@@ -134,6 +134,7 @@ import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boat
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { checkTapeDuplicate } from "./utils/tape-validation";
 
 import { loadSettings, type WorkstationSettings } from "@/lib/video-recorder/settings-manager";
 import {
@@ -5503,24 +5504,46 @@ function V10PreviewLayout() {
       const jobVal = Number(activeDep?.id);
 
       if (activeDep?.id && (!tId || action === "Start Tape")) {
-        // 1. Try to find if this tape_no and chapter_no is already registered for this job
-        const { data: existingTape } = await supabase
-          .from("insp_video_tapes")
-          .select("*")
-          .eq("tape_no", tapeNo || "")
-          .eq("chapter_no", activeChapter)
-          .eq(jobCol, jobVal)
-          .maybeSingle();
+        const cleanTapeNo = (tapeNo || "").replace(/\s+/g, "").toUpperCase();
+        const targetChapter = activeChapter || 1;
 
-        if (existingTape) {
-          tId = existingTape.tape_id;
-          setTapeId(existingTape.tape_id);
-          setJobTapes((prev) => {
-            if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
-              return [existingTape, ...prev];
+        // 1. Try to find if this tape_no and chapter_no is already registered (even across different dives under the same structure/jobpack)
+        const dupCheck = await checkTapeDuplicate(supabase, {
+          tapeNo: cleanTapeNo,
+          chapterNo: targetChapter,
+          jobPackId,
+          structureId,
+          activeDepId: activeDep?.id,
+          inspMethod,
+        });
+
+        let existingTapeId = dupCheck.existingTapeId || null;
+
+        if (!existingTapeId && cleanTapeNo) {
+          const { data: existingTape } = await supabase
+            .from("insp_video_tapes")
+            .select("tape_id")
+            .ilike("tape_no", cleanTapeNo)
+            .eq("chapter_no", targetChapter)
+            .maybeSingle();
+          if (existingTape) {
+            existingTapeId = existingTape.tape_id;
+          }
+        }
+
+        if (existingTapeId) {
+          tId = existingTapeId;
+          setTapeId(existingTapeId);
+          if (!jobTapes.some((t) => t.tape_id === existingTapeId)) {
+            const { data: fetchedTape } = await supabase
+              .from("insp_video_tapes")
+              .select("*")
+              .eq("tape_id", existingTapeId)
+              .maybeSingle();
+            if (fetchedTape) {
+              setJobTapes((prev) => [fetchedTape, ...prev]);
             }
-            return prev;
-          });
+          }
         } else {
           // 2. If it is not registered, create a new record in insp_video_tapes
           const user = (await supabase.auth.getUser()).data.user;
@@ -5772,9 +5795,28 @@ function V10PreviewLayout() {
       const targetDepId = editTapeDeploymentId ? Number(editTapeDeploymentId) : (activeDep?.id ? Number(activeDep.id) : null);
 
       const cleanTapeNo = String(editTapeNo || "").replace(/\s+/g, "").toUpperCase();
+      const targetChapter = parseInt(editTapeChapter) || 1;
+
+      // Validate duplicate Tape No & Chapter No under the same structure & jobpack
+      const dupCheck = await checkTapeDuplicate(supabase, {
+        tapeNo: cleanTapeNo,
+        chapterNo: targetChapter,
+        currentTapeId: tapeId,
+        jobPackId,
+        structureId,
+        activeDepId: targetDepId || activeDep?.id,
+        inspMethod,
+      });
+
+      if (dupCheck.isDuplicate) {
+        toast.error(dupCheck.message || `Tape "${cleanTapeNo}" with Chapter ${targetChapter} already exists in this Structure / Job Pack.`);
+        setIsCommitting(false);
+        return;
+      }
+
       const updateTapePayload: any = {
         tape_no: cleanTapeNo,
-        chapter_no: parseInt(editTapeChapter) || 1,
+        chapter_no: targetChapter,
         remarks: editTapeRemarks,
         status: editTapeStatus,
       };
@@ -7153,17 +7195,35 @@ function V10PreviewLayout() {
         const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
         const jobVal = Number(activeDep.id);
 
-        // Try to fetch existing active tape for this deployment matching current tapeNo and activeChapter
-        const { data: existingTape } = await supabase
-          .from("insp_video_tapes")
-          .select("tape_id")
-          .eq("tape_no", tapeNo || "")
-          .eq("chapter_no", activeChapter)
-          .eq(jobCol, jobVal)
-          .maybeSingle();
+        const cleanTapeNo = (tapeNo || "").replace(/\s+/g, "").toUpperCase();
+        const targetChapter = activeChapter || 1;
 
-        if (existingTape) {
-          tId = existingTape.tape_id;
+        // Try to fetch existing active tape matching current tapeNo and activeChapter across structure/jobpack
+        const dupCheck = await checkTapeDuplicate(supabase, {
+          tapeNo: cleanTapeNo,
+          chapterNo: targetChapter,
+          jobPackId,
+          structureId,
+          activeDepId: activeDep?.id,
+          inspMethod,
+        });
+
+        let existingTapeId = dupCheck.existingTapeId || null;
+
+        if (!existingTapeId && cleanTapeNo) {
+          const { data: existingTape } = await supabase
+            .from("insp_video_tapes")
+            .select("tape_id")
+            .ilike("tape_no", cleanTapeNo)
+            .eq("chapter_no", targetChapter)
+            .maybeSingle();
+          if (existingTape) {
+            existingTapeId = existingTape.tape_id;
+          }
+        }
+
+        if (existingTapeId) {
+          tId = existingTapeId;
           setTapeId(tId);
         } else {
           // Create one if none exists

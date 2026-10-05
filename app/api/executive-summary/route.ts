@@ -6,22 +6,33 @@ export const GET = withTenant(async (request, { companyId }) => {
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
-        const jobpackId = searchParams.get("jobpack_id");
-        const structureId = searchParams.get("structure_id");
+        const jobpackIdRaw = searchParams.get("jobpack_id");
+        const structureIdRaw = searchParams.get("structure_id");
         const sowReportNo = searchParams.get("sow_report_no");
 
-        if (!jobpackId || !structureId || !sowReportNo) {
+        if (!jobpackIdRaw || !structureIdRaw || !sowReportNo) {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
-        const { data, error } = await (supabase as any)
+        const jobpackId = parseInt(String(jobpackIdRaw).replace(/^(jobpack)-/, ""), 10);
+        const structureId = parseInt(String(structureIdRaw).replace(/^(platform|pipeline)-/, ""), 10);
+
+        if (isNaN(jobpackId) || isNaN(structureId)) {
+            return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+        }
+
+        let query = (supabase as any)
             .from("u_executive_summaries")
             .select("*")
-            .eq("company_id", companyId)
-            .eq("jobpack_id", Number(jobpackId))
-            .eq("structure_id", Number(structureId))
-            .eq("sow_report_no", sowReportNo)
-            .maybeSingle();
+            .eq("jobpack_id", jobpackId)
+            .eq("structure_id", structureId)
+            .eq("sow_report_no", sowReportNo);
+
+        if (companyId) {
+            query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+        }
+
+        const { data, error } = await query.maybeSingle();
 
         if (error) throw error;
 
@@ -41,12 +52,19 @@ export const POST = withTenant(async (request, { companyId }) => {
             return NextResponse.json({ error: "Missing parameters" }, { status: 400 });
         }
 
+        const cleanJobpackId = parseInt(String(jobpack_id).replace(/^(jobpack)-/, ""), 10);
+        const cleanStructureId = parseInt(String(structure_id).replace(/^(platform|pipeline)-/, ""), 10);
+
+        if (isNaN(cleanJobpackId) || isNaN(cleanStructureId)) {
+            return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
+        }
+
         const { data, error } = await (supabase as any)
             .from("u_executive_summaries")
             .upsert({
                 company_id: companyId,
-                jobpack_id: Number(jobpack_id),
-                structure_id: Number(structure_id),
+                jobpack_id: cleanJobpackId,
+                structure_id: cleanStructureId,
                 sow_report_no,
                 sections,
                 metadata,

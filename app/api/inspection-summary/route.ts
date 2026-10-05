@@ -42,14 +42,14 @@ export const GET = withTenant(async (request, { companyId }) => {
         const { searchParams } = new URL(request.url);
 
         const sowIdRaw = searchParams.get("sow_id");
-        const sowId = sowIdRaw ? sowIdRaw.split('-')[0] : null;
+        const sowId = sowIdRaw ? String(sowIdRaw).replace(/^(sow|platform|pipeline)-/, "") : null;
         const structureIdRaw = searchParams.get("structure_id");
-        const structureId = structureIdRaw ? structureIdRaw.split('-')[0] : null;
+        const structureId = structureIdRaw ? String(structureIdRaw).replace(/^(platform|pipeline)-/, "") : null;
         const jobpackIdRaw = searchParams.get("jobpack_id");
-        const jobpackId = jobpackIdRaw ? jobpackIdRaw.split('-')[0] : null;
+        const jobpackId = jobpackIdRaw ? String(jobpackIdRaw).replace(/^(jobpack)-/, "") : null;
         const sowReportNo = searchParams.get("sow_report_no");
-        const jpNum = parseInt(String(jobpackId));
-        const strNum = parseInt(String(structureId));
+        const jpNum = parseInt(String(jobpackId), 10);
+        const strNum = parseInt(String(structureId), 10);
 
         // ─── 1. RESOLVE STRUCTURE METADATA & PIPELINE SPECS ─────────────────
         let structureInfo: any = null;
@@ -101,17 +101,50 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         console.log(`[Summary API] sowId=${sowId}, jp=${jpNum}, str=${strNum}, isPipeline=${isPipelineStructure}`);
 
-        if (!resolvedSowId && !isNaN(jpNum) && !isNaN(strNum)) {
-            const { data: sowRec } = await (supabase as any)
+        if (!resolvedSowId && !isNaN(jpNum)) {
+            let sowQuery = (supabase as any)
                 .from("u_sow")
-                .select("id")
-                .eq("company_id", companyId)
-                .eq("jobpack_id", jpNum)
-                .eq("structure_id", strNum)
-                .limit(1)
-                .maybeSingle();
-            if (sowRec) {
-                resolvedSowId = String(sowRec.id);
+                .select("id, report_numbers, structure_id")
+                .eq("jobpack_id", jpNum);
+
+            if (!isNaN(strNum)) {
+                sowQuery = sowQuery.eq("structure_id", strNum);
+            }
+            if (companyId) {
+                sowQuery = sowQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            let { data: sowRecs } = await sowQuery;
+
+            // Fallback: if no row matches both jobpack_id and structure_id, try fetching by jobpack_id alone
+            if (!sowRecs || sowRecs.length === 0) {
+                let fbQuery = (supabase as any)
+                    .from("u_sow")
+                    .select("id, report_numbers, structure_id")
+                    .eq("jobpack_id", jpNum);
+                if (companyId) {
+                    fbQuery = fbQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+                }
+                const { data: fbData } = await fbQuery;
+                if (fbData && fbData.length > 0) {
+                    sowRecs = fbData;
+                }
+            }
+
+            if (sowRecs && sowRecs.length > 0) {
+                if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "all") {
+                    const matchByRep = sowRecs.find((s: any) => {
+                        if (Array.isArray(s.report_numbers)) {
+                            return s.report_numbers.some((rn: any) => {
+                                const num = String(rn?.number || rn || "").trim().toLowerCase();
+                                return num === String(sowReportNo).trim().toLowerCase();
+                            });
+                        }
+                        return false;
+                    });
+                    resolvedSowId = String(matchByRep ? matchByRep.id : sowRecs[0].id);
+                } else {
+                    resolvedSowId = String(sowRecs[0].id);
+                }
                 console.log(`[Summary API] Resolved SOW ID to ${resolvedSowId}`);
             }
         }
@@ -120,7 +153,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         let allSowItems: any[] = [];
         let itemsErr: any = null;
         if (resolvedSowId) {
-            const { data: itemsData, error: err } = await (supabase as any)
+            let sowItemsQuery = (supabase as any)
                 .from("u_sow_items")
                 .select(`
                     status, 
@@ -134,8 +167,11 @@ export const GET = withTenant(async (request, { companyId }) => {
                     notes,
                     report_number
                 `)
-                .eq("company_id", companyId)
                 .eq("sow_id", Number(resolvedSowId));
+            if (companyId) {
+                sowItemsQuery = sowItemsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: itemsData, error: err } = await sowItemsQuery;
             itemsErr = err;
             if (itemsErr) {
                 console.error("[Summary API] SOW Items fetch error:", itemsErr);
@@ -143,14 +179,19 @@ export const GET = withTenant(async (request, { companyId }) => {
             allSowItems = itemsData || [];
         }
 
-        const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all";
-        const sowItemsToProcess = isReportSpecific
-            ? allSowItems.filter((i: any) => {
+        const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all" && sowReportNo !== "undefined" && String(sowReportNo).trim() !== "";
+        let sowItemsToProcess = allSowItems;
+        if (isReportSpecific && allSowItems.length > 0) {
+            const matchingItems = allSowItems.filter((i: any) => {
+                if (!i.report_number) return false;
                 const itemRep = String(i.report_number || "").replace(/\s+/g, "").toLowerCase();
                 const filterRep = String(sowReportNo).replace(/\s+/g, "").toLowerCase();
                 return itemRep === filterRep;
-              })
-            : allSowItems;
+            });
+            if (matchingItems.length > 0) {
+                sowItemsToProcess = matchingItems;
+            }
+        }
 
         // Extract active component IDs and QIDs to query target components specifically
         // Coerce componentIds strictly to numbers to prevent "operator does not exist: integer = text" SQL errors
@@ -329,14 +370,17 @@ export const GET = withTenant(async (request, { companyId }) => {
         // isReportSpecific already declared and evaluated above
 
         // Filter records by report locally if requested
-        // Using strict matching after trim and lowercase conversion to match selected report number exactly
-        const records = isReportSpecific
-            ? rawRecords.filter((r: any) => {
-                const recRep = String(r.sow_report_no || "").replace(/\s+/g, "").toLowerCase();
+        let records = rawRecords;
+        if (isReportSpecific && rawRecords.length > 0) {
+            const filteredRecords = rawRecords.filter((r: any) => {
+                const recRep = String(r.sow_report_no || r.inspection_data?.sow_report_no || r.inspection_data?.sowReportNo || "").replace(/\s+/g, "").toLowerCase();
                 const filterRep = String(sowReportNo).replace(/\s+/g, "").toLowerCase();
                 return recRep === filterRep;
-              })
-            : rawRecords;
+            });
+            if (filteredRecords.length > 0) {
+                records = filteredRecords;
+            }
+        }
 
         const isRovSowItem = (item: any) => {
             const code = String(item.inspection_code || "").trim().toUpperCase();
@@ -1850,9 +1894,15 @@ export const GET = withTenant(async (request, { companyId }) => {
                             "-"
                         );
 
+                        const comp = r.structure_components || {};
+                        const compType = (r.component_type || comp.code || comp.metadata?.type || r.inspection_data?.component_type || "").toUpperCase().trim();
+
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
                             qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            component_id: r.component_id || null,
+                            component_type: compType,
+                            component_code: comp.code || compType,
                             elevation: elevation,
                             inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
                             inspection_type_code: r.inspection_type_code || r.inspection_type?.code || "UNKNOWN",
@@ -1933,18 +1983,22 @@ export const GET = withTenant(async (request, { companyId }) => {
                             "-"
                         );
 
+                        const comp = r.structure_components || {};
+                        const compType = (r.component_type || comp.code || comp.metadata?.type || r.inspection_data?.component_type || "").toUpperCase().trim();
+
                         return {
                             ref: anomaly?.anomaly_ref_no || `ID: ${r.insp_id}`,
                             qid: r.structure_components?.q_id || r.inspection_data?.q_id || "N/A",
+                            component_id: r.component_id || null,
+                            component_type: compType,
+                            component_code: comp.code || compType,
                             elevation: elevation,
                             inspectionType: formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || "UNKNOWN"),
+                            inspection_type_code: r.inspection_type_code || r.inspection_type?.code || "UNKNOWN",
                             description: getInspectionFindings(r, anomaly),
                             priority: anomaly?.priority_code || r.inspection_data?.priority || "N/A",
                             status: anomaly?.status || "OPEN",
                             defectCode: defectCode,
-                            anomaly: defectCode,
-                            anomaly_code: defectCode,
-                            anomalyCode: defectCode,
                             defect_code: defectCode,
                             defect_type: defectCode,
                             defectType: defectCode

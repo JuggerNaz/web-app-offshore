@@ -473,7 +473,7 @@ export const normalizeReportRecords = (records: any[]): any[] => {
     return records.map(normalizeRecordFindings);
 };
 
-export { getInspectionDateRange } from "./date-range-utils";
+export { getInspectionDateRange, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./date-range-utils";
 export { sortScourFaceRecords } from "./scour-sorting-utils";
 export {
     getRecordStatusInfo,

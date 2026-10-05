@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -289,7 +289,7 @@ export const generateROVRSCORSurveyReport = async (
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
                 r.rov_job_id || r.dive_job_id || r.dive_no || "—";
 
-            const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || r.tape_no || "—";
+            const tapeNo = extractRecordTapeNo(r);
 
             // 1. Scour primary fields
             const scourDetails: string[] = [];

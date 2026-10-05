@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -452,7 +452,7 @@ export const generateDefectAnomalyReport = async (
         }
 
         // Display format: TapeNo (Time)
-        let recording = (record.tape_no || "").trim();
+        let recording = extractRecordTapeNo(record, "");
         if (videoRefTime) {
             recording += ` (${videoRefTime})`;
         }

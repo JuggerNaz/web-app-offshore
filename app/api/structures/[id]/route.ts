@@ -6,7 +6,8 @@ export const GET = withTenant(async (request, { companyId, params }) => {
     try {
         const supabase = createClient();
         const { id } = await params;
-        const structureId = parseInt(id);
+        const cleanId = String(id).replace(/^(platform|pipeline)-/, "").trim();
+        const structureId = parseInt(cleanId);
 
         const { data: structure, error: structureError } = await (supabase as any)
             .from("structure")

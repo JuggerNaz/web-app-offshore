@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -538,7 +538,7 @@ export const generateDefectSummaryReport = async (
         const isRectified = rec.is_rectified === true || rec.is_rectified === "true" || rec.rectified_remarks;
 
         // Tape no + counter
-        const tapeNo = (rec.tape_no || "").trim();
+        const tapeNo = extractRecordTapeNo(rec, "");
         const counter = formatCounter(rec.video_ref);
         const tapeDisplay = tapeNo ? (counter ? `${tapeNo} (${counter})` : tapeNo) : (counter || "—");
 

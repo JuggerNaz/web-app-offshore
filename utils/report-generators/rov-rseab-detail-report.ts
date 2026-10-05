@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -228,7 +228,7 @@ export const generateROVRSEABDetailReport = async (
 
             // Dive & Tape No
             const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.dive_job_id || r.rov_job_id || "—";
-            const tapeNo = r.insp_video_tapes?.tape_no || r.tape_no || d.tape_no || r.tape_id || "—";
+            const tapeNo = extractRecordTapeNo(r);
 
             // Format Findings
             const findings = formatReportFindingText(r, r.description || d.findings || d.description || d.debris_desc);

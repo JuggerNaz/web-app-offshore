@@ -7,12 +7,19 @@ export const GET = withTenant(async (request, { companyId }) => {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
         
-        const jobpack_id = searchParams.get("jobpack_id");
-        const structure_id = searchParams.get("structure_id");
+        const jobpackIdRaw = searchParams.get("jobpack_id");
+        const structureIdRaw = searchParams.get("structure_id");
         const sow_report_no = searchParams.get("sow_report_no");
 
-        if (!jobpack_id || !structure_id) {
+        if (!jobpackIdRaw || !structureIdRaw) {
             return NextResponse.json({ error: "Missing required parameters" }, { status: 400 });
+        }
+
+        const jobpack_id = parseInt(String(jobpackIdRaw).replace(/^(jobpack)-/, ""), 10);
+        const structure_id = parseInt(String(structureIdRaw).replace(/^(platform|pipeline)-/, ""), 10);
+
+        if (isNaN(jobpack_id) || isNaN(structure_id)) {
+            return NextResponse.json({ error: "Invalid parameters" }, { status: 400 });
         }
 
         let query = (supabase as any)
@@ -25,22 +32,34 @@ export const GET = withTenant(async (request, { companyId }) => {
                 description,
                 inspection_date,
                 inspection_data,
+                sow_report_no,
                 inspection_type:inspection_type_id!left(id, code, name),
                 structure_components:component_id!left(id, q_id, code)
             `)
-            .eq("company_id", companyId)
-            .eq("jobpack_id", Number(jobpack_id))
-            .eq("structure_id", Number(structure_id));
+            .eq("jobpack_id", jobpack_id)
+            .eq("structure_id", structure_id);
 
-        if (sow_report_no && sow_report_no !== "all") {
-            query = query.eq("sow_report_no", sow_report_no);
+        if (companyId) {
+            query = query.or(`company_id.eq.${companyId},company_id.is.null`);
         }
 
         const { data, error } = await query.order("inspection_date", { ascending: false });
 
         if (error) throw error;
 
-        return NextResponse.json({ data });
+        let filteredData = data || [];
+        if (sow_report_no && sow_report_no !== "all" && sow_report_no !== "N/A" && sow_report_no.trim() !== "") {
+            const matches = filteredData.filter((r: any) => {
+                const recRep = String(r.sow_report_no || r.inspection_data?.sow_report_no || r.inspection_data?.sowReportNo || "").replace(/\s+/g, "").toLowerCase();
+                const filterRep = String(sow_report_no).replace(/\s+/g, "").toLowerCase();
+                return recRep === filterRep;
+            });
+            if (matches.length > 0) {
+                filteredData = matches;
+            }
+        }
+
+        return NextResponse.json({ data: filteredData });
     } catch (error: any) {
         console.error("[InspectionRecords API] Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });

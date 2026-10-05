@@ -206,6 +206,7 @@ export const REPORT_TEMPLATES = {
 const TOC_SECTIONS = [
   { id: 1, name: "Structure Configuration", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
+      { id: "component-catalog", name: "Component Catalogue", mode: "General" },
       { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
@@ -1670,23 +1671,24 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.log("[fetchStructureData] No structureId selected");
             return null;
         }
-        console.log(`[fetchStructureData] Fetching data for structure ID: ${selections.structureId}`);
+        const cleanId = String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim();
+        console.log(`[fetchStructureData] Fetching data for structure ID: ${cleanId}`);
         try {
-            const res = await fetch(`/api/structures/${selections.structureId}`);
+            const res = await fetch(`/api/structures/${cleanId}`);
             const data = await res.json();
-            if (!data.success) {
+            if (!data.success && !data.data) {
                 console.warn("[fetchStructureData] API returned success=false");
                 return null;
             }
 
-            const structureData = data.data;
+            const structureData = data.data || data;
             console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
 
             // Fetch discussion/comment records for this structure
             try {
                 const strType = structureData.str_type?.toLowerCase() || "platform";
-                console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${selections.structureId}`);
-                const commentRes = await fetch(`/api/comment/${strType}/${selections.structureId}`);
+                console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${cleanId}`);
+                const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
                 const commentText = await commentRes.text();
                 if (commentText.trim()) {
                     const commentJson = JSON.parse(commentText);
@@ -1864,14 +1866,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             console.error("Error fetching company settings for report:", error);
         }
 
+        const cleanStructureId = selections.structureId ? String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim() : "";
+        const structId = cleanStructureId ? Number(cleanStructureId) : NaN;
+        const cleanJobPackId = selections.jobPackId ? String(selections.jobPackId).trim() : "";
+        const jobPackIdNum = cleanJobPackId ? Number(cleanJobPackId) : NaN;
+
         const isFinalDatasheet = selections.templateId === "final-inspection-datasheet";
 
         const reportConfig = { 
             ...config, 
             returnBlob,
             isBlankReport: selections.printBlankReport ?? false,
-            jobPackId: selections.jobPackId,
-            structureId: selections.structureId,
+            jobPackId: isNaN(jobPackIdNum) ? selections.jobPackId : jobPackIdNum,
+            structureId: isNaN(structId) ? selections.structureId : structId,
             sowReportNo: selections.sowReportNo,
             ...(isFinalDatasheet ? { showPageNumbers: false, showSignatures: false, isFinalDatasheet: true } : {})
         };
@@ -2080,7 +2087,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!selections.printBlankReport && selections.structureId) {
                 try {
                     const supabase = (await import("@/utils/supabase/client")).createClient();
-                    const structId = Number(selections.structureId);
+                    // structId in scope
                     let q = supabase
                         .from('insp_records')
                         .select(`
@@ -2136,7 +2143,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 structure || {},
                 selections.sowReportNo || "N/A",
                 companySettings,
-                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, headerData } as any,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo, headerData } as any,
                 records
             );
         }
@@ -2151,7 +2158,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!selections.printBlankReport && selections.structureId) {
                 try {
                     const supabase = (await import("@/utils/supabase/client")).createClient();
-                    const structId = Number(selections.structureId);
+                    // structId in scope
                     let q = supabase
                         .from('insp_records')
                         .select(`
@@ -2194,7 +2201,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 structure || {},
                 selections.sowReportNo || "N/A",
                 companySettings,
-                { ...reportConfig, returnBlob, structureId: Number(selections.structureId), sowReportNo: selections.sowReportNo, printBlankReport: selections.printBlankReport, isBlankReport: selections.printBlankReport, headerData } as any,
+                { ...reportConfig, returnBlob, structureId: structId, sowReportNo: selections.sowReportNo, printBlankReport: selections.printBlankReport, isBlankReport: selections.printBlankReport, headerData } as any,
                 records
             );
         }
@@ -2240,7 +2247,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
@@ -2304,7 +2311,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
@@ -2368,7 +2375,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
@@ -2450,7 +2457,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const rmgiTypeId = typeData?.id || 79; // Fallback to 79 from screenshot if not found
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this report.");
                 return null;
@@ -2552,7 +2559,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const rmgiTypeId = typeData?.id || 79; // Fallback to 79
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this report.");
                 return null;
@@ -2654,7 +2661,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -2726,7 +2733,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -2797,7 +2804,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -2872,7 +2879,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -2924,7 +2931,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                    { ...reportConfig, returnBlob, structureId: structId, reportType } as any
                 );
             } catch (error) {
                 console.error("Diving Riser/J-Tube/I-Tube Sketch Generator Error:", error);
@@ -2954,7 +2961,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -3006,7 +3013,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     rrisiRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), reportType } as any
+                    { ...reportConfig, returnBlob, structureId: structId, reportType } as any
                 );
             } catch (error) {
                 console.error("Diving Riser/J-Tube/I-Tube Detail Generator Error:", error);
@@ -3033,7 +3040,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -3106,7 +3113,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -3162,18 +3169,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
 
         // ROV RRISI/JTISI/ITISI Survey Report (Unified)
-        if (["rrisi-report", "rrisi-detail-report", "rov-jtisi-report", "rov-jtisi-detail-report", "rov-itisi-report", "rov-itisi-detail-report"].includes(currentTemplateId)) {
+        if (["rrisi-report", "rrisi-detail-report", "rov-rrisi-report", "rov-rrisi-detail-report", "rov-jtisi-report", "rov-jtisi-detail-report", "rov-itisi-report", "rov-itisi-detail-report"].includes(currentTemplateId)) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
             }
-            const { data: records, error } = await supabase
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -3181,8 +3187,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_rov_jobs:rov_job_id(job_no:deployment_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             // Determine Report Type based on Template ID
@@ -3213,7 +3224,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             });
 
             if (filteredTubeRecords.length === 0) {
-                alert(`No records found for ${reportType === 'R' ? 'Riser' : reportType === 'J' ? 'J-Tube' : 'I-Tube'} in this SOW.`);
+                if (!returnBlob && !isFinalDatasheet) {
+                    alert(`No records found for ${reportType === 'R' ? 'Riser' : reportType === 'J' ? 'J-Tube' : 'I-Tube'} in this SOW.`);
+                }
                 return null;
             }
 
@@ -3239,7 +3252,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
-                if (currentTemplateId === "rrisi-detail-report") {
+                if (currentTemplateId === "rrisi-detail-report" || currentTemplateId === "rov-rrisi-detail-report") {
                     return await generateROVRRISIDetailReport(
                         tubeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                         headerData,
@@ -3284,7 +3297,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             let scourRecords: any[] = [];
             if (!selections.printBlankReport) {
-                const structId = Number(selections.structureId);
+                // structId in scope
                 if (isNaN(structId)) {
                     alert("Invalid Structure selection. Please ensure a structure is selected.");
                     return null;
@@ -3362,7 +3375,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Invalid Structure selection. Please ensure a structure is selected.");
                 return null;
@@ -3452,7 +3465,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }));
             } else {
                 const supabase = (await import("@/utils/supabase/client")).createClient();
-                const structId = Number(selections.structureId);
+                // structId in scope
                 if (isNaN(structId)) {
                     alert("Invalid Structure selection. Please ensure a structure is selected.");
                     return null;
@@ -3532,7 +3545,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Invalid Structure selection. Please ensure a structure is selected.");
                 return null;
@@ -3611,7 +3624,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack   = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId  = Number(selections.structureId);
+            // structId in scope
             const { data: records, error } = await supabase
                 .from("insp_records")
                 .select(`
@@ -3693,7 +3706,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -3765,7 +3778,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -3835,7 +3848,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -3916,7 +3929,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         insp_video_tapes:tape_id!left(tape_no),
                         insp_anomalies(*)
                     `)
-                    .eq("structure_id", Number(selections.structureId));
+                    .eq("structure_id", structId);
 
                 if (fetchError) {
                     alert(`Database error: ${fetchError.message}`);
@@ -3998,7 +4011,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                         insp_anomalies(*)
                     `)
-                    .eq('structure_id', Number(selections.structureId));
+                    .eq('structure_id', structId);
 
                 if (fetchError) {
                     console.error("Fetch Error:", fetchError);
@@ -4068,7 +4081,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4137,7 +4150,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4206,7 +4219,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4275,7 +4288,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4343,7 +4356,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4410,7 +4423,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4478,7 +4491,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4547,7 +4560,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4599,137 +4612,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // Diving Caisson Underwater Report (diving-dcasn-uw-report)
-        if (currentTemplateId === "diving-dcasn-uw-report") {
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
 
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', Number(selections.structureId));
-
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                return null;
-            }
-
-            const caissonRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
-            });
-
-            if (!caissonRecords || caissonRecords.length === 0) {
-                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
-            }
-
-            let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
-                try {
-                    const cRes = await fetch(`/api/library/CONTR_NAM`);
-                    const cJson = await cRes.json();
-                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
-                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                } catch (e) { console.error("Logo fetch error", e); }
-            }
-
-            const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
-                contractorLogoUrl,
-                vessel: resolveVessel(jobPack)
-            };
-
-            try {
-                return await generateDivingDCASNUWReport(
-                    caissonRecords,
-                    headerData,
-                    companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
-                );
-            } catch (error) {
-                console.error("Caisson UW Generator Error:", error);
-                throw error;
-            }
-        }
-
-        // Diving Caisson Topside Report (diving-dcasn-ts-report)
-        if (currentTemplateId === "diving-dcasn-ts-report") {
-            const structure = await fetchStructureData();
-            const jobPack = await fetchJobPackData();
-            if (!structure || !jobPack) return null;
-
-            const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
-                .from('insp_records')
-                .select(`
-                    *,
-                    inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(id, q_id, code, metadata),
-                    insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-                    insp_anomalies(*)
-                `)
-                .eq('structure_id', Number(selections.structureId));
-
-            if (fetchError) {
-                console.error("Fetch Error:", fetchError);
-                return null;
-            }
-
-            const caissonRecords = records?.filter(r => {
-                const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
-                const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                return sowMatches && jobPackMatches;
-            });
-
-            if (!caissonRecords || caissonRecords.length === 0) {
-                alert(`No records found for structure "${structure.str_name}" in this SOW.`);
-                return null;
-            }
-
-            let contractorLogoUrl = "";
-            if (jobPack.metadata?.contrac) {
-                try {
-                    const cRes = await fetch(`/api/library/CONTR_NAM`);
-                    const cJson = await cRes.json();
-                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
-                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                } catch (e) { console.error("Logo fetch error", e); }
-            }
-
-            const headerData = {
-                jobpackName: jobPack.name || jobPack.title || "N/A",
-                sowReportNo: selections.sowReportNo || "N/A",
-                platformName: structure.str_name || structure.title || "N/A",
-                contractorLogoUrl,
-                vessel: resolveVessel(jobPack)
-            };
-
-            try {
-                return await generateDivingDCASNTSReport(
-                    caissonRecords,
-                    headerData,
-                    companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId) } as any
-                );
-            } catch (error) {
-                console.error("Caisson TS Generator Error:", error);
-                throw error;
-            }
-        }
 
         // Diving Splashzone Inspection Report (SZONE)
         if (currentTemplateId === "diving-szone-report") {
@@ -4748,7 +4631,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4792,7 +4675,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     szoneRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any,
+                    { ...reportConfig, returnBlob, structureId: structId, jobPackId: jobPackIdNum } as any,
                     supabase
                 );
             } catch (error) {
@@ -4819,7 +4702,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4889,7 +4772,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -4939,7 +4822,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     cpclbRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any
+                    { ...reportConfig, returnBlob, structureId: structId, jobPackId: jobPackIdNum } as any
                 );
             } catch (error) {
                 console.error("CPCLB Generator Error:", error);
@@ -4964,7 +4847,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -5014,7 +4897,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     utclbRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any
+                    { ...reportConfig, returnBlob, structureId: structId, jobPackId: jobPackIdNum } as any
                 );
             } catch (error) {
                 console.error("UTCLB Generator Error:", error);
@@ -5039,7 +4922,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -5089,7 +4972,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     anodeRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any,
+                    { ...reportConfig, returnBlob, structureId: structId, jobPackId: jobPackIdNum } as any,
                     supabase
                 );
             } catch (error) {
@@ -5115,7 +4998,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', Number(selections.structureId));
+                .eq('structure_id', structId);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -5178,7 +5061,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     activeMGIProfile,
                     headerData,
                     companySettings,
-                    { ...reportConfig, returnBlob, structureId: Number(selections.structureId), jobPackId: Number(selections.jobPackId) } as any,
+                    { ...reportConfig, returnBlob, structureId: structId, jobPackId: jobPackIdNum } as any,
                     supabase
                 );
             } catch (error) {
@@ -5210,7 +5093,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -5284,7 +5167,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -5331,8 +5214,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { 
                         ...reportConfig, 
                         returnBlob,
-                        structureId: Number(selections.structureId),
-                        jobPackId: Number(selections.jobPackId)
+                        structureId: structId,
+                        jobPackId: jobPackIdNum
                     } as any
                 );
             } catch (error) {
@@ -5348,8 +5231,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5359,8 +5246,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5396,8 +5288,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5407,8 +5303,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5444,8 +5345,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5455,8 +5360,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5492,8 +5402,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5503,8 +5417,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5540,8 +5459,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5551,8 +5474,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5588,8 +5516,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5599,8 +5531,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             let contractorLogoUrl = "";
@@ -5636,8 +5573,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5647,8 +5588,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             const itemRecords = (records || []).filter((r: any) => {
@@ -5691,8 +5637,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
-            const { data: records, error } = await supabase
+            if (isNaN(structId)) {
+                alert("Please select a specific structure for this inspection report.");
+                return null;
+            }
+
+            let q = supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -5702,8 +5652,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq('structure_id', structId)
-                .eq('sow_report_no', selections.sowReportNo);
+                .eq('structure_id', structId);
+
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                q = q.eq('sow_report_no', selections.sowReportNo);
+            }
+
+            const { data: records, error } = await q;
 
             if (error) throw error;
             const itemRecords = (records || []).filter((r: any) => {
@@ -5762,7 +5717,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -5808,8 +5763,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { 
                         ...reportConfig, 
                         returnBlob,
-                        structureId: Number(selections.structureId),
-                        jobPackId: Number(selections.jobPackId)
+                        structureId: structId,
+                        jobPackId: jobPackIdNum
                     } as any
                 );
             } catch (error) {
@@ -5841,7 +5796,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -5887,8 +5842,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { 
                         ...reportConfig, 
                         returnBlob,
-                        structureId: Number(selections.structureId),
-                        jobPackId: Number(selections.jobPackId)
+                        structureId: structId,
+                        jobPackId: jobPackIdNum
                     } as any
                 );
             } catch (error) {
@@ -5920,7 +5875,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -5966,8 +5921,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { 
                         ...reportConfig, 
                         returnBlob,
-                        structureId: Number(selections.structureId),
-                        jobPackId: Number(selections.jobPackId)
+                        structureId: structId,
+                        jobPackId: jobPackIdNum
                     } as any
                 );
             } catch (error) {
@@ -5999,7 +5954,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
-                .eq("structure_id", Number(selections.structureId));
+                .eq("structure_id", structId);
 
             if (fetchError) {
                 alert(`Database error: ${fetchError.message}`);
@@ -6045,8 +6000,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { 
                         ...reportConfig, 
                         returnBlob,
-                        structureId: Number(selections.structureId),
-                        jobPackId: Number(selections.jobPackId)
+                        structureId: structId,
+                        jobPackId: jobPackIdNum
                     } as any
                 );
             } catch (error) {
@@ -6122,8 +6077,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { data: records } = await supabase
                 .from("insp_records")
                 .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", Number(selections.structureId))
-                .eq("jobpack_id", Number(selections.jobPackId))
+                .eq("structure_id", structId)
+                .eq("jobpack_id", jobPackIdNum)
                 .eq("sow_report_no", targetSowNo);
 
             if (!records || records.length === 0) {
@@ -6252,8 +6207,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { data: records } = await supabase
                 .from("insp_records")
                 .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", Number(selections.structureId))
-                .eq("jobpack_id", Number(selections.jobPackId))
+                .eq("structure_id", structId)
+                .eq("jobpack_id", jobPackIdNum)
                 .eq("sow_report_no", targetSowNo);
 
             if (!records || records.length === 0) {
@@ -6322,7 +6277,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
@@ -6394,7 +6349,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            const structId = Number(selections.structureId);
+            // structId in scope
             if (isNaN(structId)) {
                 alert("Please select a specific structure for this inspection report.");
                 return null;
