@@ -292,8 +292,8 @@ export function matchPipelineEventMenu(
   let eventName = ev || "SEABED PROFILE";
   let eventType = ty || "-";
   let eventPosition = po || "-";
-  let eventDescription = de;
-  let findings = de || "Pipeline inspection record";
+  const eventDescription = de;
+  const findings = de || "Pipeline inspection record";
   let findingType = "Complete";
 
   const combined = `${ev} ${ty} ${po} ${de}`.toUpperCase();

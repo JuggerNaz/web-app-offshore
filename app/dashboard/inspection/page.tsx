@@ -273,7 +273,7 @@ export default function InspectionLanding() {
                 }
 
                 // 2. Fallback: Paginated loop through insp_records
-                let allRecs: any[] = [];
+                const allRecs: any[] = [];
                 let page = 0;
                 const pageSize = 1000;
                 let hasMore = true;
@@ -450,7 +450,7 @@ export default function InspectionLanding() {
                 const uniqueStructureIds = Array.from(new Set(structureIds));
                 console.log("Extracted structure IDs from metadata:", uniqueStructureIds);
 
-                let structureMap = new Map<number, string>();
+                const structureMap = new Map<number, string>();
 
                 if (uniqueStructureIds.length > 0) {
                     const [platformsRes, pipelinesRes] = await Promise.all([

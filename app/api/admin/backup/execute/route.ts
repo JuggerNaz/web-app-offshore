@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runDatabaseBackup, BackupOptions } from "@/utils/backup-helper";
 import { createClient } from "@/utils/supabase/server";
 
-export const maxDuration = 300; // Allow 5 minutes on Vercel/Next.js
+export const maxDuration = 300; // Allow up to 5 minutes (Next.js route segment config, honored by Netlify)
 
 export async function POST(request: NextRequest) {
   // 1. Authenticate user request

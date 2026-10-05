@@ -23,8 +23,7 @@ import {
     BookOpen,
     BarChart3
 } from "lucide-react";
-import { SummaryTemplatesDialog } from "./SummaryTemplatesDialog";
-import { InspectionAnalyticsDialog } from "./InspectionAnalyticsDialog";
+import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -39,9 +38,20 @@ import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { EXECUTIVE_SUMMARY_TOC } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
-import { ReportSettingsDialog } from "./ReportSettingsDialog";
-import { generateTemplateReport } from "@/utils/report-generators/template-report-generator";
-import { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } from "@/utils/report-generators/report-data-mapper";
+// Heavy dialogs are lazy-loaded client-side; Radix Dialog renders nothing while
+// closed, so their chunks still background-preload on mount without blocking first paint.
+const ReportSettingsDialog = dynamic(
+    () => import("./ReportSettingsDialog").then((m) => m.ReportSettingsDialog),
+    { ssr: false }
+);
+const SummaryTemplatesDialog = dynamic(
+    () => import("./SummaryTemplatesDialog").then((m) => m.SummaryTemplatesDialog),
+    { ssr: false }
+);
+const InspectionAnalyticsDialog = dynamic(
+    () => import("./InspectionAnalyticsDialog").then((m) => m.InspectionAnalyticsDialog),
+    { ssr: false }
+);
 
 export default function ExecutiveSummaryPage() {
     const [selections, setSelections] = useState({
@@ -76,7 +86,15 @@ export default function ExecutiveSummaryPage() {
 
     // Fetch context data
     const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher);
-    const { data: inspJobpacksRes } = useSWR("/api/jobpack?limit=1000&has_inspection=true", fetcher);
+    // Fallback fetch fires only after the primary list has resolved empty,
+    // instead of doubling the /api/jobpack load on every mount.
+    const allJobpackList = allJobpacksRes?.data;
+    const { data: inspJobpacksRes } = useSWR(
+        allJobpacksRes !== undefined && (!allJobpackList || allJobpackList.length === 0)
+            ? "/api/jobpack?limit=1000&has_inspection=true"
+            : null,
+        fetcher
+    );
     const { data: companySettings } = useSWR("/api/company-settings", fetcher);
     const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
     const { data: structuresRes } = useSWR("/api/structures", fetcher);
@@ -395,7 +413,7 @@ export default function ExecutiveSummaryPage() {
 
         setIsGenerating(true);
         try {
-            const { mapInspectionDataForDocx, generateMgiProfileImage } = await import("@/utils/report-generators/report-data-mapper");
+            const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             
             const sections = EXECUTIVE_SUMMARY_TOC.map((s, idx) => {
                 const sectionData: any = {
@@ -541,7 +559,7 @@ export default function ExecutiveSummaryPage() {
             };
 
             // Fetch Priority Colors from AMLYCLR combo
-            let priorityColors: Record<string, string> = {
+            const priorityColors: Record<string, string> = {
                 "P1": "255,0,0",
                 "P2": "255,255,0",
                 "P3": "0,255,0",

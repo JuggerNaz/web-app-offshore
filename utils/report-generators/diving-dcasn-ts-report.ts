@@ -153,7 +153,7 @@ export const generateDivingDCASNTSReport = async (
             const qid = (comp.q_id || "Unknown").toUpperCase();
 
             const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            let parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
+            const parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
 
             const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
                 if (!cid || depth > 5) return null;

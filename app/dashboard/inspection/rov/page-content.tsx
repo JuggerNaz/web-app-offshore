@@ -34,8 +34,10 @@ import {
   Film,
   Wrench,
   ChevronDown,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { formatClientTime } from "@/utils/client-date";
@@ -57,19 +59,42 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Import components
-import ROVJobSetupDialog from "./components/ROVJobSetupDialog";
-import ROVLiveDataDialog from "./components/ROVLiveDataDialog";
-import ROVVideoDialog from "./components/ROVVideoDialog";
-import DiveVideoRecorder from "@/components/dive-video-recorder";
-import ROVInspectionRecordingDialog from "./components/ROVInspectionRecordingDialog";
-import ROVMovementDialog from "./components/ROVMovementDialog";
-import { SeabedSurveyGuiInline } from "./components/SeabedSurveyGuiDialog";
+// Heavy dialogs/recorders are lazy-loaded: their chunks (and the jsPDF/video
+// deps they drag in) stream in after the screen renders instead of blocking the
+// initial inspection bundle. Radix dialogs render nothing while closed, so no
+// visible placeholder is needed for them.
+const ROVJobSetupDialog = dynamic(() => import("./components/ROVJobSetupDialog"), { ssr: false });
+const ROVLiveDataDialog = dynamic(() => import("./components/ROVLiveDataDialog"), { ssr: false });
+const ROVVideoDialog = dynamic(() => import("./components/ROVVideoDialog"), { ssr: false });
+const DiveVideoRecorder = dynamic(() => import("@/components/dive-video-recorder"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-purple-50/50 dark:bg-purple-900/10">
+      <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+    </div>
+  ),
+});
+const ROVInspectionRecordingDialog = dynamic(() => import("./components/ROVInspectionRecordingDialog"), { ssr: false });
+const ROVMovementDialog = dynamic(() => import("./components/ROVMovementDialog"), { ssr: false });
+const SeabedSurveyGuiInline = dynamic(
+  () => import("./components/SeabedSurveyGuiDialog").then((m) => m.SeabedSurveyGuiInline),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex h-full w-full items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    ),
+  }
+);
+const ComponentTreeDialog = dynamic(() => import("../rov/components/ComponentTreeDialog"), { ssr: false });
+const RovCalibrationDialog = dynamic(() => import("./components/RovCalibrationDialog"), { ssr: false });
+const ComponentSpecDialog = dynamic(
+  () => import("@/components/dialogs/component-spec-dialog").then((m) => m.ComponentSpecDialog),
+  { ssr: false }
+);
 import ROVInspectionTypeCard from "./components/ROVInspectionTypeCard";
 import ROVInspectionList from "./components/ROVInspectionList";
-import ComponentTreeDialog from "../rov/components/ComponentTreeDialog";
-import RovCalibrationDialog from "./components/RovCalibrationDialog";
-import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { useSetAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 import { ROVDataStringBanner } from "./components/ROVDataStringBanner";
@@ -1378,7 +1403,7 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
                         <>
                           <Separator className="my-1" />
                           <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
-                            No tapes yet. Click '+ New Tape' to create one.
+                            No tapes yet. Click ‘+ New Tape’ to create one.
                           </div>
                         </>
                       )}

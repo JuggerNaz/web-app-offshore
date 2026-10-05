@@ -426,7 +426,7 @@ export default function AttachmentTreeView() {
                                             }
 
                                             const activeCompIds = components.map(c => c.id);
-                                            let allCompAttachments = allAttachments.filter((a: any) => 
+                                            const allCompAttachments = allAttachments.filter((a: any) => 
                                                 (a.source_type?.toLowerCase() === 'component' || a.source_type?.toLowerCase() === 'structure_component') && 
                                                 (activeCompIds.includes(a.source_id) || activeCompIds.includes(a.component_id))
                                             );

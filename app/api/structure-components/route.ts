@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
         // Fetch all components (including archived/deleted ones so historical SOW inspection data is complete)
         // Paginated fetch to work around the default 1000-record limit
-        let allData: any[] = [];
+        const allData: any[] = [];
         let page = 0;
         const pageSize = 1000;
         let hasMore = true;

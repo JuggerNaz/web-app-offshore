@@ -87,7 +87,7 @@ export const generateROVCasnSketchReport = async (
             
             // 1. Check explicit association in record metadata
             const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            let parentQid  = metadata.parent_qid || metadata.parent_q_id;
+            const parentQid  = metadata.parent_qid || metadata.parent_q_id;
 
             // Helper to find the ultimate "CS" parent in the hierarchy
             const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {

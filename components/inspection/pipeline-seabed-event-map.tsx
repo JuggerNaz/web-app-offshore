@@ -902,13 +902,13 @@ export function PipelineSeabedEventMap({
     const span = viewEndKp - viewStartKp;
     const step = span * 0.25;
     if (direction === "left") {
-      let nStart = Math.max(0, viewStartKp - step);
-      let nEnd = nStart + span;
+      const nStart = Math.max(0, viewStartKp - step);
+      const nEnd = nStart + span;
       setViewStartKp(nStart);
       setViewEndKp(nEnd);
     } else {
-      let nEnd = Math.min(maxCalculatedKp, viewEndKp + step);
-      let nStart = Math.max(0, nEnd - span);
+      const nEnd = Math.min(maxCalculatedKp, viewEndKp + step);
+      const nStart = Math.max(0, nEnd - span);
       setViewStartKp(nStart);
       setViewEndKp(nEnd);
     }
@@ -919,8 +919,8 @@ export function PipelineSeabedEventMap({
     const currentSpan = viewEndKp - viewStartKp;
     const newSpan = currentSpan * 0.6;
     const mid = (viewStartKp + viewEndKp) / 2;
-    let nStart = Math.max(0, mid - newSpan / 2);
-    let nEnd = Math.min(maxCalculatedKp, mid + newSpan / 2);
+    const nStart = Math.max(0, mid - newSpan / 2);
+    const nEnd = Math.min(maxCalculatedKp, mid + newSpan / 2);
     setViewStartKp(nStart);
     setViewEndKp(nEnd);
     setZoomLevel(maxCalculatedKp / (nEnd - nStart));
@@ -930,8 +930,8 @@ export function PipelineSeabedEventMap({
     const currentSpan = viewEndKp - viewStartKp;
     const newSpan = currentSpan * 1.5;
     const mid = (viewStartKp + viewEndKp) / 2;
-    let nStart = Math.max(0, mid - newSpan / 2);
-    let nEnd = Math.min(maxCalculatedKp, mid + newSpan / 2);
+    const nStart = Math.max(0, mid - newSpan / 2);
+    const nEnd = Math.min(maxCalculatedKp, mid + newSpan / 2);
     setViewStartKp(nStart);
     setViewEndKp(nEnd);
     setZoomLevel(maxCalculatedKp / (nEnd - nStart));

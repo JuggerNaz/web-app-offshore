@@ -159,7 +159,7 @@ function getAssociatedComponentInfo(comp: any, allComponents: any[] = []) {
         md.associated_comp_type || 
         comp.raw?.associated_type;
 
-    let assocId = comp.associated_id || comp.associated_component_id || md.associated_id || md.associated_component_id;
+    const assocId = comp.associated_id || comp.associated_component_id || md.associated_id || md.associated_component_id;
 
     // Reverse association check in allComponents
     if (!assocQId && !assocId && allComponents && allComponents.length > 0) {
@@ -261,8 +261,8 @@ function getComponentNodeLegDetails(comp: any) {
         }
     }
 
-    let startLeg = md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp?.start_leg || comp?.startLeg || comp?.s_leg || rawObj.start_leg || rawObj.s_leg;
-    let endLeg = md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp?.end_leg || comp?.endLeg || comp?.f_leg || rawObj.end_leg || rawObj.f_leg;
+    const startLeg = md.start_leg || md.s_leg || md.leg_1 || md.StartLeg || md.Leg_1 || comp?.start_leg || comp?.startLeg || comp?.s_leg || rawObj.start_leg || rawObj.s_leg;
+    const endLeg = md.end_leg || md.f_leg || md.leg_2 || md.EndLeg || md.Leg_2 || comp?.end_leg || comp?.endLeg || comp?.f_leg || rawObj.end_leg || rawObj.f_leg;
     let generalLeg = md.leg_no || md.leg || md.leg_name || comp?.leg_no || comp?.leg || comp?.leg_name || rawObj.leg_no || rawObj.leg;
 
     if (!startLeg && !generalLeg) {

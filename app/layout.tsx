@@ -7,9 +7,9 @@ import Link from "next/link";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 
-const defaultUrl = process.env.VERCEL_URL
-  ? `https://${process.env.VERCEL_URL}`
-  : "http://localhost:3000";
+// Netlify injects URL at build time; NEXT_PUBLIC_SITE_URL can pin the canonical origin.
+const defaultUrl =
+  process.env.NEXT_PUBLIC_SITE_URL ?? process.env.URL ?? "http://localhost:3000";
 
 export const metadata = {
   metadataBase: new URL(defaultUrl),

@@ -220,7 +220,7 @@ export const generateWorkScopeStatusReport = async (
 
     // Group items by Structure
     const groupedByStructure: Record<string, any[]> = {};
-    let globalStats: Record<string, { total: number, completed: number }> = {};
+    const globalStats: Record<string, { total: number, completed: number }> = {};
     let grandTotal = 0;
     let grandCompleted = 0;
 

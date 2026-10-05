@@ -57,7 +57,8 @@ export async function GET(request: NextRequest) {
             query = query.ilike("display_ref_no", `%${prefix}%`);
         }
 
-        let { data: anomalies, error: viewError } = await query;
+        const { data: anomaliesData, error: viewError } = await query;
+        let anomalies = anomaliesData;
 
         if (viewError) {
             console.error("View Error:", viewError);
@@ -113,7 +114,7 @@ export async function GET(request: NextRequest) {
         const inspIds = Array.from(new Set(anomalies.map((a: any) => a.id ?? a.insp_id).filter(Boolean)));
         const anomalyIds = Array.from(new Set(anomalies.map((a: any) => a.anomaly_id).filter(Boolean)));
 
-        let attachments: any[] = [];
+        const attachments: any[] = [];
         const allSourceIds = Array.from(new Set([...inspIds, ...anomalyIds].map(String)));
 
         if (allSourceIds.length > 0) {

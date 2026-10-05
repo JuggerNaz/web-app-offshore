@@ -172,7 +172,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
     const sanitizeElevation = (elvVal: any): number => {
         if (elvVal === undefined || elvVal === null) return 0;
-        let val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
+        const val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
         if (isNaN(val)) return 0;
         if (val === 50.772) return -50.772; // Fix 50m spike typo
         if (val < -1000) return val / 1000; // Fix -21424m typo
@@ -820,7 +820,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
             items.forEach((item, idx) => {
                 const md = item.metadata || {};
-                let pos = new THREE.Vector3();
+                const pos = new THREE.Vector3();
 
                 if ((md.elv_1 || md.depth) && Math.abs(fNode.y - sNode.y) > 0.001) {
                     const targetY = sanitizeElevation(md.elv_1 || -parseFloat(md.depth) / 10);
@@ -1187,7 +1187,7 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     Number(wincairsParam.s_point3d_y),
                     Number(wincairsParam.s_point3d_z)
                 );
-                let end = new THREE.Vector3();
+                const end = new THREE.Vector3();
                 const hasEndVec = isFinite(Number(wincairsParam.e_point3d_x)) &&
                                   isFinite(Number(wincairsParam.e_point3d_y)) &&
                                   isFinite(Number(wincairsParam.e_point3d_z)) &&
@@ -1287,8 +1287,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             const hasStartNode = !!startNode;
             const hasEndNode = !!endNode;
 
-            let start = new THREE.Vector3();
-            let end = new THREE.Vector3();
+            const start = new THREE.Vector3();
+            const end = new THREE.Vector3();
             let resolved = false;
 
             const isPointNodeWeld = isWeld && (!md.s_node || !md.f_node || md.s_node === md.f_node || md.s_node.toString().toUpperCase() === extractBareNode(c.q_id));
@@ -1335,13 +1335,13 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                     const pileLength = md.length ? Math.abs(parseFloat(md.length)) : 2.0;
                     const yBottom = yTop - pileLength;
 
-                    let topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
+                    const topCoords = nodePos ? nodePos.clone() : new THREE.Vector3(0, yTop, 0);
                     if (!nodePos && targetLeg) {
                         const cTop = getLegCoordsAtElv(targetLeg, yTop);
                         topCoords.set(cTop.x, yTop, cTop.z);
                     }
 
-                    let bottomCoords = new THREE.Vector3();
+                    const bottomCoords = new THREE.Vector3();
                     if (targetLeg) {
                         const cBot = getLegCoordsAtElv(targetLeg, yBottom);
                         bottomCoords.set(cBot.x, yBottom, cBot.z);
@@ -1792,9 +1792,9 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
         // Pass 1.9: Resolve deferred Caisson Placements
         pendingCaissons.forEach(c => {
             const md = c.metadata || {};
-            let thickness = 0.30;
-            let start = new THREE.Vector3();
-            let end = new THREE.Vector3();
+            const thickness = 0.30;
+            const start = new THREE.Vector3();
+            const end = new THREE.Vector3();
 
             const sNodeName = (md.s_node || md.start_node || c.s_node || "").toString().trim().toUpperCase();
             const fNodeName = (md.f_node || md.end_node || c.f_node || "").toString().trim().toUpperCase();
@@ -1933,8 +1933,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 const itemQId = (item.component.q_id || "").toUpperCase();
                 const isAnode = itemCode === "AN" || itemCode.includes("ANOD");
 
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
+                const start = new THREE.Vector3();
+                const end = new THREE.Vector3();
 
                 const isSupportWeld = itemCode === "WP" || itemCode === "CL" || itemQId.includes("SUPP") || itemQId.includes("CLP");
                 const suppMidpoint = isSupportWeld ? resolveSupportWeldPosition(item.component) : null;
@@ -2003,12 +2003,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
         pendingAttachmentsByParent.forEach((children, parentId) => {
             if (parentId === -1) {
                 children.forEach((c) => {
-                    let start = new THREE.Vector3();
+                    const start = new THREE.Vector3();
                     const layer = Math.floor(unattachedIndex / 16);
                     const radius = 25 + layer * 2;
                     const angle = (unattachedIndex / 16) * Math.PI * 2;
                     start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
-                    let end = start.clone();
+                    const end = start.clone();
                     intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
                     unattachedIndex++;
                 });
@@ -2051,12 +2051,12 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 }
 
                 children.forEach((c) => {
-                    let start = new THREE.Vector3();
+                    const start = new THREE.Vector3();
                     const layer = Math.floor(unattachedIndex / 16);
                     const radius = 25 + layer * 2;
                     const angle = (unattachedIndex / 16) * Math.PI * 2;
                     start.set(Math.cos(angle) * radius, maxElv, Math.sin(angle) * radius);
-                    let end = start.clone();
+                    const end = start.clone();
                     intermediateLayouts.set(c.id, { component: c, start, end, thickness: 0.15 });
                     unattachedIndex++;
                 });
@@ -2092,8 +2092,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
                 anodeChildren.sort((a, b) => a.q_id.localeCompare(b.q_id));
                 const anodeCount = anodeChildren.length;
                 anodeChildren.forEach((c, idx) => {
-                    let start = new THREE.Vector3();
-                    let end = new THREE.Vector3();
+                    const start = new THREE.Vector3();
+                    const end = new THREE.Vector3();
                     const t = (idx + 1) / (anodeCount + 1);
                     start.copy(isParentCaisson ? caissonTop : pStart).lerp(pEnd, t);
                     if (direction.lengthSq() > 0.1) {
@@ -2118,8 +2118,8 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
             childrenWithPos.forEach((c) => {
                 const md = c.metadata || {};
                 let thickness = pThickness;
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
+                const start = new THREE.Vector3();
+                const end = new THREE.Vector3();
 
                 const cCode = (c.code || "").toUpperCase();
                 const cQId = (c.q_id || "").toUpperCase();
@@ -2191,9 +2191,9 @@ export function generatePlatform3DCoordinates(platformDetails: any, elevations: 
 
             const count = childrenWithoutPos.length;
             childrenWithoutPos.forEach((c, idx) => {
-                let thickness = pThickness;
-                let start = new THREE.Vector3();
-                let end = new THREE.Vector3();
+                const thickness = pThickness;
+                const start = new THREE.Vector3();
+                const end = new THREE.Vector3();
 
                 const t = (idx + 1) / (count + 1);
                 start.copy(pStart).lerp(pEnd, t);

@@ -223,20 +223,21 @@ function LibraryDetails({ master }: { master: LibMaster }) {
     const COMBO_LIBRARIES = ['AMLYCODFND', 'ANMLYCLR', 'ANMTRGINSP', 'ANMALTDAYS'];
     const isComboLibrary = COMBO_LIBRARIES.includes(master.lib_code);
 
-    // Route to combo interface if needed
-    if (isComboLibrary) {
-        return <LibraryComboDetails master={master} />;
-    }
-
+    // Hooks must run unconditionally (before any early return below)
     const [searchTerm, setSearchTerm] = useState("");
     const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("all");
     const [isCreateOpen, setIsCreateOpen] = useState(false);
 
     // Fetch Items with include_deleted=true so archived items can be managed
     const { data: itemsData, error, isLoading, mutate: refreshItems } = useSWR(
-        master ? `/api/library/${encodeURIComponent(master.lib_code)}?include_deleted=true` : null,
+        !isComboLibrary && master ? `/api/library/${encodeURIComponent(master.lib_code)}?include_deleted=true` : null,
         fetcher
     );
+
+    // Route to combo interface if needed
+    if (isComboLibrary) {
+        return <LibraryComboDetails master={master} />;
+    }
 
     const items: LibItem[] = itemsData?.data || [];
     const activeCount = items.filter(i => i.lib_delete !== 1).length;

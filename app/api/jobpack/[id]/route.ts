@@ -10,12 +10,13 @@ export const GET = withTenant(async (request, { companyId, params }) => {
   }
 
   const supabase = createClient();
-  let { data, error } = await (supabase as any)
+  const { data: jobpackData, error } = await (supabase as any)
     .from("jobpack")
     .select("*")
     .eq("company_id", companyId)
     .eq("id", numId)
     .maybeSingle();
+  let data = jobpackData;
 
   // Fallback: If not found under current company_id, check if jobpack exists with NULL company_id (unassigned/legacy)
   if (!data) {

@@ -27,7 +27,7 @@ export const GET = withAuth(
 
     const structureIdNumber = Number(structure_id);
 
-    let allData: any[] = [];
+    const allData: any[] = [];
     let page = 0;
     const pageSize = 1000;
     let hasMore = true;

@@ -201,12 +201,12 @@ export const GET = withAuth(
 
         if (isPile) {
           const sX = mathLayout?.start?.x ?? mathLayout?.start?.[0] ?? (item.start_x || 0);
-          let sY = mathLayout?.start?.y ?? mathLayout?.start?.[1] ?? (item.start_y || 0);
+          const sY = mathLayout?.start?.y ?? mathLayout?.start?.[1] ?? (item.start_y || 0);
           const sZ = mathLayout?.start?.z ?? mathLayout?.start?.[2] ?? (item.start_z || 0);
 
-          let eX = mathLayout?.end?.x ?? mathLayout?.end?.[0] ?? (item.end_x || sX);
+          const eX = mathLayout?.end?.x ?? mathLayout?.end?.[0] ?? (item.end_x || sX);
           let eY = mathLayout?.end?.y ?? mathLayout?.end?.[1] ?? (item.end_y || sY);
-          let eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
+          const eZ = mathLayout?.end?.z ?? mathLayout?.end?.[2] ?? (item.end_z || sZ);
 
           const isSingleNodePoint = (sX === eX && sY === eY && sZ === eZ);
 

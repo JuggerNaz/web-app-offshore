@@ -257,7 +257,7 @@ export default function InspectionLanding() {
             if (queryJobPack && queryJobPack !== selectedJobPack) {
                 setSelectedJobPack(queryJobPack);
             }
-            let activeSow = querySow && querySowReport ? `${querySow}-${querySowReport}` : querySow;
+            const activeSow = querySow && querySowReport ? `${querySow}-${querySowReport}` : querySow;
             if (activeSow && activeSow !== selectedSOW) {
                 setSelectedSOW(activeSow);
             }
@@ -560,7 +560,7 @@ export default function InspectionLanding() {
 
                 const { data: anomData, error: anomErr } = await anomQuery;
                 if (!anomErr && anomData) {
-                    let total = anomData.length;
+                    const total = anomData.length;
                     let rov = 0;
                     let dive = 0;
                     anomData.forEach((a: any) => {
@@ -575,7 +575,7 @@ export default function InspectionLanding() {
                 }
 
                 // 2. Fallback: Paginated loop through insp_records
-                let allRecs: any[] = [];
+                const allRecs: any[] = [];
                 let page = 0;
                 const pageSize = 1000;
                 let hasMore = true;
@@ -606,7 +606,7 @@ export default function InspectionLanding() {
                 });
 
                 const flaggedRecs = relevantRecs.filter((r: any) => r.has_anomaly || String(r.status || "").toLowerCase() === "anomaly");
-                let total = flaggedRecs.length;
+                const total = flaggedRecs.length;
                 let rov = 0;
                 let dive = 0;
                 flaggedRecs.forEach((r: any) => {
