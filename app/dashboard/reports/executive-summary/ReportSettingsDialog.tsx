@@ -20,7 +20,7 @@ import { Upload, FileText, Check, Star, Trash2, Info, ExternalLink } from "lucid
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
 import { fetcher } from "@/utils/utils";
-import { REPORT_TEMPLATES } from "../report-wizard";
+import { REPORT_TEMPLATES } from "../report-template-catalog";
 
 interface ReportSettingsDialogProps {
     open: boolean;

@@ -33,12 +33,6 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   // Apply pagination
   query = applyPagination(query, paginationParams);
 
-  const { data, error, count } = (await query) as any;
-
-  if (error) {
-    return handleSupabaseError(error, "Failed to fetch platforms");
-  }
-
   // Fetch oil fields for this tenant to resolve names efficiently
   let fieldsQuery = (supabase as any)
     .from("u_lib_list")
@@ -50,7 +44,19 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     fieldsQuery = fieldsQuery.eq("company_id", companyId);
   }
 
-  const { data: allFields } = (await fieldsQuery) as any;
+  // Run the platform page query and the independent fields lookup in parallel.
+  // (The attachment-images query below stays sequential — it needs the platform IDs.)
+  const [platformRes, fieldsRes] = await Promise.all([
+    query as unknown as Promise<Record<string, any>>,
+    fieldsQuery as unknown as Promise<Record<string, any>>,
+  ]);
+
+  const { data, error, count } = platformRes;
+  if (error) {
+    return handleSupabaseError(error, "Failed to fetch platforms");
+  }
+
+  const { data: allFields } = fieldsRes;
 
   const fieldMap = new Map((allFields || []).map((f: any) => [f.lib_id.toString(), f.lib_desc]));
 
