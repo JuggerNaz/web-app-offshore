@@ -159,7 +159,7 @@ export function InspectionStatusDialog({
 
     // Calculate SOW metrics
     const metrics = useMemo(() => {
-        let total = sowItems.length;
+        const total = sowItems.length;
         let completed = 0;
         let incomplete = 0;
         let pending = 0;

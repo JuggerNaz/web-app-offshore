@@ -281,7 +281,7 @@ export const POST = withAuth(
       } catch (e) {}
 
       // Fetch component reference table from Supabase to filter by pipe=1 or plat=1
-      let dbComponentsMap: Map<string, { descrip?: string; plat?: number; pipe?: number }> = new Map();
+      const dbComponentsMap: Map<string, { descrip?: string; plat?: number; pipe?: number }> = new Map();
       try {
         const { data: dbComps } = await supabase.from('components').select('code, descrip, name, plat, pipe');
         if (dbComps && dbComps.length > 0) {

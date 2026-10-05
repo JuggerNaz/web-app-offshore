@@ -297,7 +297,7 @@ export function EventsTablePanel({
     }
 
     const fromIdx = columnSettings.findIndex((c) => c.id === draggedColId);
-    let toIdx = columnSettings.findIndex((c) => c.id === targetColId);
+    const toIdx = columnSettings.findIndex((c) => c.id === targetColId);
 
     if (fromIdx !== -1 && toIdx !== -1) {
       const newCols = [...columnSettings];

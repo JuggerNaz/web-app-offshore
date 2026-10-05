@@ -8,7 +8,7 @@ import { withTenant, TenantContext } from "@/utils/tenant-auth";
 import { getUserMembership } from "@/utils/role-auth";
 import { withCacheHeaders } from "@/utils/api-cache";
 
-let serverJobpackCache = new Map<string, { data: any[]; timestamp: number }>();
+const serverJobpackCache = new Map<string, { data: any[]; timestamp: number }>();
 const JOBPACK_CACHE_TTL_MS = 60 * 1000; // 60s
 
 async function getAllJobpacksCached(supabase: any, companyId?: string) {

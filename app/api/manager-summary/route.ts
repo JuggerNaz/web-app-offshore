@@ -262,7 +262,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             for (const targetStruct of plan.structs) {
                 const structId = targetStruct?.id || targetStruct?.plat_id || targetStruct?.str_id;
                 const sowReportNos: string[] = [];
-                let sowIds: number[] = [];
+                const sowIds: number[] = [];
 
                 // Filter SOW data for this structure
                 const structSow = (sowRows || []).filter((s: any) => String(s.structure_id) === String(structId));

@@ -940,7 +940,7 @@ export function WorkspaceDialogs({
 
     const dialogSowList = React.useMemo(() => {
         return componentsSow.filter((c: any) => {
-            let tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
+            const tasksToFilter = c.taskStatuses?.map((ts: any) => ts.code) || c.tasks || [];
             const hasValidTask = tasksToFilter.some((tCode: string) => {
                 const it = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
                 if (!it) return true;

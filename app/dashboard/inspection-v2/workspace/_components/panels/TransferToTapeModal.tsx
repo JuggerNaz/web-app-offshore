@@ -212,7 +212,7 @@ export function TransferToTapeModal({
               tapeEndTime = t ? t.slice(0, 8) : null;
             }
 
-            let minC = 0;
+            const minC = 0;
             let maxC = 0;
             logs.forEach((l: any) => {
               const c = Number(l.tape_counter_start || 0);

@@ -502,7 +502,7 @@ export default function Platform3DPage() {
         const rawQuery = (searchQuery || "").trim().toLowerCase();
         const tokens = rawQuery.split(/\s+/).filter(Boolean);
 
-        let list = platforms.filter((p) => {
+        const list = platforms.filter((p) => {
             if (tokens.length === 0) return true;
 
             const pIdStr = String(p.plat_id || "");

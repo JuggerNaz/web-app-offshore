@@ -55,7 +55,7 @@ export async function GET(request: NextRequest) {
 
         query = query.order("priority", { ascending: true });
 
-        let { data: anomalies, error: anomalyError } = await query;
+        const { data: anomalies, error: anomalyError } = await query;
         if (anomalyError) {
             console.error("[DefectSummary] Anomaly query error:", anomalyError);
             throw anomalyError;

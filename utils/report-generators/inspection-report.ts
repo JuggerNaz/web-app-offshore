@@ -123,7 +123,7 @@ export const generateInspectionReport = async (
         // 2. Fetch Structure Name (Separate query if needed, or if stored in metadata)
         // Check if we need structure info. inspection.structure_id?
         // Usually context is needed.
-        let structureName = inspection.inspection_data?.structure_name || "Unknown Structure";
+        const structureName = inspection.inspection_data?.structure_name || "Unknown Structure";
         if (!structureName || structureName === "Unknown Structure") {
             // Try fetching from structure_components -> u_structure?
             // Or simpler, fetch from u_structure if we have structure_id on record?

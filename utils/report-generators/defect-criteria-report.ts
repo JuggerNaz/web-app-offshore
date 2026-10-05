@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import autoTablePlugin from "jspdf-autotable";
 
 // Helper to load image for PDF (reused from pdf-generator.ts logic)
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
@@ -50,8 +50,8 @@ export const generateDefectCriteriaReport = async (
 
         // Fetch Data
         let procedures: any[] = [];
-        let allRules: any = {}; // Map procedureId -> rules[]
-        let libraryData: any = {};
+        const allRules: any = {}; // Map procedureId -> rules[]
+        const libraryData: any = {};
 
         // 1. Fetch Procedures
         try {
@@ -170,14 +170,7 @@ export const generateDefectCriteriaReport = async (
         };
 
         // We'll use autoTable for the content
-        let autoTable = (doc as any).autoTable;
-        if (!autoTable) {
-            try {
-                autoTable = require('jspdf-autotable').default;
-            } catch (e) {
-                console.warn("AutoTable require failed", e);
-            }
-        }
+        const autoTable = (doc as any).autoTable || autoTablePlugin;
 
         if (!autoTable) {
             // Fallback if autoTable not found

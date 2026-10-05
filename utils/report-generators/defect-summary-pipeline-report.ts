@@ -1014,7 +1014,7 @@ export const generatePipelineDefectSummaryReport = async (
         const priorityLabel = (item.priority || item.priority_code || anomData.priority || "P3").toUpperCase();
 
         // Finding / Comments Column Construction
-        let findingLines: string[] = [];
+        const findingLines: string[] = [];
 
         const sLen = idraw.span_length || idraw.length || idraw.spanLength || anomData.spanLength;
         const sHgt = idraw.span_height || idraw.height || idraw.spanHeight || anomData.spanHeight;

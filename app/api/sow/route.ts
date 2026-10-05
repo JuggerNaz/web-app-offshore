@@ -55,7 +55,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                 query = query.or(`company_id.eq.${companyId},company_id.is.null`);
             }
 
-            let { data: sows, error: sowError } = await query;
+            const { data: sowsData, error: sowError } = await query;
+            let sows = sowsData;
 
             if (sowError) {
                 return NextResponse.json({ error: sowError.message }, { status: 400 });
