@@ -109,6 +109,7 @@ export function CollapsibleSidebar() {
                   alt="Company Logo"
                   width={isCollapsed ? 40 : 64}
                   height={isCollapsed ? 40 : 64}
+                  loading="eager"
                   unoptimized
                   className="object-contain w-full h-full"
                 />
