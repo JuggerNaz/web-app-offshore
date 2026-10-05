@@ -30,6 +30,7 @@ import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import {
     Select,
     SelectContent,
@@ -403,11 +404,11 @@ export default function ROVLiveDataDialog({
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
-                                                    <Input
-                                                        type="time"
-                                                        step="1"
+                                                    <SmartTimeInput
                                                         value={editForm.time}
-                                                        onChange={e => setEditForm({ ...editForm, time: e.target.value })}
+                                                        onChange={val => setEditForm({ ...editForm, time: val })}
+                                                        includeSeconds={true}
+                                                        className="h-8"
                                                     />
                                                     <div className="flex gap-2 justify-end mt-2">
                                                         <Button size="sm" variant="ghost" onClick={() => setEditingId(null)}>Cancel</Button>

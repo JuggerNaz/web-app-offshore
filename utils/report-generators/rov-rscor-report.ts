@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -32,6 +32,7 @@ export const generateROVRSCORReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -45,7 +46,7 @@ export const generateROVRSCORReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
@@ -90,17 +91,7 @@ export const generateROVRSCORReport = async (
             d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 19.5, { align: 'center' });
         };
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = new Date(Math.min(...dates.map(d => d.getTime()))); endDate = new Date(Math.max(...dates.map(d => d.getTime()))); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-            : (headerData.date || "N/A");
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const drawContext = (d: jsPDF, y: number) => {
             const rowH = 6;
@@ -108,7 +99,7 @@ export const generateROVRSCORReport = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) d.rect(x, ty, w, rowH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 2, ty + 4.2); d.setFont("helvetica", "normal");
@@ -271,9 +262,10 @@ export const generateROVRSCORReport = async (
 
         for (let pageIdx = 0; pageIdx < renderFaces.length; pageIdx++) {
             const faceName = renderFaces[pageIdx];
-            const faceRecords = faceGroups.get(faceName) || [];
+            const rawFaceRecords = faceGroups.get(faceName) || [];
+            const faceRecords = sortScourFaceRecords(rawFaceRecords, faceName);
 
-            // Extract all unique components in this face
+            // Extract all unique components in this face (in sorted order)
             const qidSet = new Set<string>();
             faceRecords.forEach(r => {
                 const q = r.structure_components?.q_id || r.component?.q_id || r.qid;
@@ -567,9 +559,9 @@ export const generateROVRSCORReport = async (
                     if (isPileInspected && pileQid && String(pileQid).trim()) {
                         const pileText = `Pile: ${pileQid}`;
                         const badgeW = Math.max(24, pileText.length * 2.0 + 5);
-                        da.setFillColor(240, 245, 255); da.setDrawColor(31, 55, 93); da.setLineWidth(0.3);
+                        da.setFillColor(240, 245, 255); da.setDrawColor(7, 78, 136); da.setLineWidth(0.3);
                         da.rect(lx + pSlantB - (badgeW / 2), pOffsetBot + 1, badgeW, 4, 'FD');
-                        da.setFontSize(5); da.setTextColor(31, 55, 93); da.setFont("helvetica", "bold");
+                        da.setFontSize(5); da.setTextColor(7, 78, 136); da.setFont("helvetica", "bold");
                         da.text(pileText, lx + pSlantB, pOffsetBot + 3.7, { align: 'center' });
                     }
                 };
@@ -686,26 +678,13 @@ export const generateROVRSCORReport = async (
             drawGraphics(doc, currentY);
             currentY += panelH + 4;
 
-            // Sort face records by location:
-            // 1. Start Leg (Left Leg) + respective Piles
-            // 2. Midpoint (always in the middle)
-            // 3. End Leg (Right Leg) + respective Piles
-            const sortGroupRecords = (recs: any[]) => {
-                return [...recs].sort((a, b) => {
-                    const qidA = (a.structure_components?.q_id || a.component?.q_id || a.qid || "").toUpperCase();
-                    const qidB = (b.structure_components?.q_id || b.component?.q_id || b.qid || "").toUpperCase();
-                    const isPlA = qidA.startsWith("PL");
-                    const isPlB = qidB.startsWith("PL");
-                    if (isPlA !== isPlB) return isPlA ? 1 : -1;
-                    return qidA.localeCompare(qidB);
-                });
-            };
-
-            const sortedTableRecords = [
-                ...sortGroupRecords(leftRecords),
-                ...sortGroupRecords(midRecords),
-                ...sortGroupRecords(rightRecords)
-            ];
+            // Sort face records by spatial order:
+            // 1. Start Leg Pile (at first)
+            // 2. Start Leg Member
+            // 3. Midpoint Member (always at the centre)
+            // 4. End Leg Member
+            // 5. End Leg Pile (at last)
+            const sortedTableRecords = sortScourFaceRecords(faceRecords, faceName);
 
             autoTable(doc, {
                 startY: currentY,
@@ -732,15 +711,11 @@ export const generateROVRSCORReport = async (
                         else locationStr = 'N/A';
                     }
 
-                    const findingsParts: string[] = [];
-                    if (r.description?.trim()) findingsParts.push(r.description.trim());
-                    if (rd.comments?.trim() && !findingsParts.includes(rd.comments.trim())) findingsParts.push(rd.comments.trim());
-
-                    if (rd.cp_rdg) findingsParts.push(`CP: ${rd.cp_rdg} mV`);
-                    if (rd.ut_rdg) findingsParts.push(`UT: ${rd.ut_rdg} mm`);
-
-                    if (isAnomaly && anomRef) findingsParts.push(`[Anomaly Ref: ${anomRef}]`);
-                    if (isRectified) findingsParts.push(`[Rectified: ${rectRem || 'Yes'}]`);
+                    const baseFinding = [
+                        r.description?.trim(),
+                        rd.comments?.trim()
+                    ].filter(Boolean).join('\n');
+                    const findings = formatReportFindingText(r, baseFinding);
 
                     return [
                         qid,
@@ -748,26 +723,18 @@ export const generateROVRSCORReport = async (
                         rd.scour_depth !== undefined && rd.scour_depth !== null && String(rd.scour_depth).trim() !== '' ? `${rd.scour_depth} mm` : '—',
                         rd.Burial_percent !== undefined && rd.Burial_percent !== null && String(rd.Burial_percent).trim() !== '' ? `${rd.Burial_percent}%` : '—',
                         rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true || rd.Exposed_pile === 1 ? 'Yes' : 'No',
-                        { 
-                            content: findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings',
-                            styles: {
-                                textColor: isAnomaly ? colors.anomaly : (isRectified ? colors.rectified : colors.text),
-                                fontStyle: (isAnomaly || isRectified) ? 'bold' : 'normal'
-                            }
-                        }
+                        findings
                     ];
                 }) : [
                     ["-", "-", "-", "-", "-", "No scour survey observations recorded for this scope."]
                 ],
                 theme: 'grid',
-                headStyles: { 
-                    fillColor: isPF ? [255,255,255] : colors.navy, 
-                    textColor: isPF ? colors.navy : 255, 
+                headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, 
+                    textColor: config?.printFriendly ? colors.navy : 255, 
                     fontSize: 6.5, 
                     minCellHeight: 4.5,
-                    halign: 'center' 
-                },
-                styles: { fontSize: 6.5, cellPadding: 1.5, minCellHeight: 4 },
+                    halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 6.5, cellPadding: 1.5, minCellHeight: 4, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: {
                     0: { cellWidth: 32 },
                     1: { cellWidth: 40 },
@@ -783,17 +750,7 @@ export const generateROVRSCORReport = async (
                     if (data.section === 'body') {
                         const r = sortedTableRecords[data.row.index];
                         if (!r) return;
-                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                        const isAnom = r.has_anomaly || !!linkedAnom;
-                        const isRect = linkedAnom ? linkedAnom.is_rectified : r.rectified;
-
-                        if (isAnom) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (isRect) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
+                        applyRecordCellStyling(data.cell, r, isPF);
                     }
                 }
             });
@@ -835,7 +792,7 @@ export const generateROVRSCORReport = async (
             doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
             doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
             doc.setFont("helvetica", "normal");
-            doc.text(`${companySettings.company_name || 'NasQuest Resources Sdn Bhd'}  |  Scour Survey Sketch Report (ROV)  |  SOW: ${sowReportNo}`, margin, footerY);
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             if (config.showPageNumbers !== false) {
                 doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
             }

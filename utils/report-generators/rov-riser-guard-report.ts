@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -39,6 +39,7 @@ export const generateROVRiserGuardReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
@@ -48,7 +49,7 @@ export const generateROVRiserGuardReport = async (
         const supabase = createClient();
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -106,19 +107,7 @@ export const generateROVRiserGuardReport = async (
             const half = contentWidth / 2;
             
             let startDate: Date | null = null;
-            let endDate:   Date | null = null;
-            if (groupRecords.length > 0) {
-                const dates = groupRecords
-                    .map(r => new Date(r.cr_date || r.created_at))
-                    .filter(d => !isNaN(d.getTime()));
-                if (dates.length > 0) {
-                    startDate = min(dates);
-                    endDate   = max(dates);
-                }
-            }
-            const dateRangeStr = startDate && endDate
-                ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-                : "N/A";
+            const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, w: number, y: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1);
@@ -323,54 +312,15 @@ export const generateROVRiserGuardReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const findingsParts: string[] = [];
-
-            // 1. Findings / Description
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            } else if (d.findings && d.findings.trim()) {
-                findingsParts.push(d.findings.trim());
-            }
-
-            const mg = d.marine_growth ?? [
-                d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
-                d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
-            ].filter(Boolean).join(', ');
-            if (mg !== "" && mg !== null && mg !== undefined) findingsParts.push(`Marine Growth: ${mg}`);
-
-            const compCond = d.component_condition ?? d.general_condition ?? "";
-            if (compCond) findingsParts.push(`Component Condition: ${compCond}`);
-
-            const coatCond = d.coating_condition ?? "";
-            if (coatCond) findingsParts.push(`Coating Condition: ${coatCond}`);
-
-            const debris = d.debris ?? "";
-            if (debris) {
-                const mat = d.debris_material ? ` (${d.debris_material})` : "";
-                findingsParts.push(`Debris: ${debris}${mat}`);
-            }
-
-            // 2. CP Additional
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly Reference
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
-
-            // Rectification
-            const isRectified = linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED';
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified: ${rectRem}`);
-            }
+            const baseFinding = [
+                r.description?.trim(),
+                d.findings?.trim(),
+                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
+                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
+                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
+                d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
+            ].filter(Boolean).join('\n');
+            const findings = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
@@ -379,7 +329,7 @@ export const generateROVRiserGuardReport = async (
                 String(diveNo),
                 String(tapeNo),
                 cpDisplay,
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -419,32 +369,28 @@ export const generateROVRiserGuardReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
-                    { content: "Item No.",       styles: { halign: "center" } },
-                    { content: "QID",             styles: { halign: "center" } },
-                    { content: "Elevation\n(m)",  styles: { halign: "center" } },
-                    { content: "Dive No.",        styles: { halign: "center" } },
-                    { content: "Tape No.",        styles: { halign: "center" } },
-                    { content: "CP (mV)",         styles: { halign: "center" } },
-                    { content: "Findings",        styles: { halign: "center" } }
+                    { content: "Item No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID",             styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Elevation\n(m)",  styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Tape No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP (mV)",         styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 body: groupRecords.length > 0
                     ? groupRecords.map(buildRow)
                     : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
                 theme: "grid",
-                headStyles: {
-                    fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
+                headStyles: {fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255],
                     fontSize: 8,
                     fontStyle: "bold",
                     minCellHeight: 10,
-                    valign: "middle"
-                },
-                styles: {
-                    fontSize: 7.5,
+                    valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7.5,
                     cellPadding: 2.5,
                     textColor: colors.text,
-                    lineColor: colors.border,
-                },
+                    lineColor: colors.border, lineWidth: 0.1,},
                 columnStyles: {
                     0: { cellWidth: 12,   halign: "center" },
                     1: { cellWidth: 25 },
@@ -457,20 +403,7 @@ export const generateROVRiserGuardReport = async (
                 didParseCell: (data) => {
                     if (data.section !== "body") return;
                     const r = groupRecords[data.row.index];
-                    if (!r) return;
-                    const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    
-                    if (metaStatus === "finding") {
-                        data.cell.styles.textColor = colors.finding;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (r.has_anomaly && metaStatus !== "finding") {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (linkedAnom?.is_rectified || r.rectified || linkedAnom?.status === 'CLOSED') {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = "bold";
-                    }
+                    applyRecordCellStyling(data.cell, r, config.printFriendly);
                 },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawPageHeader(doc);
@@ -481,7 +414,7 @@ export const generateROVRiserGuardReport = async (
                     doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                     doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                     doc.text(
-                        `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Riser Guard Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                        REPORT_FOOTER_APP_TEXT,
                         margin, pageHeight - 6
                     );
                     if (config.showPageNumbers !== false) {

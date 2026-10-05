@@ -24,6 +24,7 @@ import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { useAtomValue } from "jotai";
 import { videoTapeNoAtom, videoTimeCodeAtom, videoTapeIdAtom } from "@/lib/video-recorder/video-state";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface DiveInspectionDialogProps {
     open: boolean;
@@ -45,6 +46,7 @@ export default function DiveInspectionDialog({
     onInspectionSaved,
 }: DiveInspectionDialogProps) {
     const supabase = createClient();
+    const { activeCompanyId } = useUserProfile();
 
     const [formData, setFormData] = useState({
         inspection_type: "", // Empty by default
@@ -180,7 +182,8 @@ export default function DiveInspectionDialog({
                         inspection_id: recordId,
                         remarks: `Inspection - ${formData.inspection_type} - ${formData.condition}`,
                         cr_user: user?.id || 'system',
-                        workunit: '000'
+                        workunit: '000',
+                        company_id: diveJob?.company_id || activeCompanyId || null,
                     });
                 }
             }

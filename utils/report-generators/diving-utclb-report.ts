@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -36,6 +36,7 @@ export const generateDivingUTCLBReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -47,28 +48,17 @@ export const generateDivingUTCLBReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records && records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -198,18 +188,18 @@ export const generateDivingUTCLBReport = async (
 
         // ── Header definitions ──────────────────────────────────────────────────
         const headerRow: any[] = [
-            { content: "Item\nNo.",        styles: { halign: "center", valign: "middle" } },
-            { content: "Dive No.",         styles: { halign: "center", valign: "middle" } },
-            { content: "Equipment\nType",  styles: { halign: "center", valign: "middle" } },
-            { content: "Serial No.",       styles: { halign: "center", valign: "middle" } },
-            { content: "Calibration\nBlock",styles: { halign: "center", valign: "middle" } },
+            { content: "Item\nNo.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Equipment\nType",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Serial No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Calibration\nBlock",styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
         ];
         
         for (let i = 0; i < maxLabels; i++) {
-            headerRow.push({ content: activeLabels[i] || `Reading ${i+1}`, styles: { halign: "center", valign: "middle" } });
+            headerRow.push({ content: activeLabels[i] || `Reading ${i+1}`, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} });
         }
         
-        headerRow.push({ content: "Probe", styles: { halign: "center", valign: "middle" } });
+        headerRow.push({ content: "Probe", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} });
 
         // Calculate dynamic column widths
         const baseColumns = {
@@ -244,26 +234,14 @@ export const generateDivingUTCLBReport = async (
             head: [headerRow],
             body: (records || []).map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
-                fontSize: 6.5,
-                fontStyle: "bold",
-                halign: "center",
-                valign: "middle",
-                minCellHeight: 10,
-                lineColor: colors.border,
-                lineWidth: 0.1,
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255, 255, 255], fontSize: 8, fontStyle: "bold", halign: "center", valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
+            columnStyles: { 0: { cellWidth: 15, halign: "center" }, 1: { cellWidth: 35 }, 2: { cellWidth: 35, halign: "center" }, 3: { cellWidth: 35, halign: "center" }, 4: { cellWidth: 35, halign: "center" }, 5: { cellWidth: "auto" } },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = (records || [])[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
-            styles: {
-                fontSize: 6.5,
-                cellPadding: 2,
-                textColor: colors.text,
-                lineColor: colors.border,
-                lineWidth: 0.1,
-                overflow: "linebreak",
-            },
-            columnStyles,
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
 
@@ -272,7 +250,7 @@ export const generateDivingUTCLBReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  UT Calibration Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

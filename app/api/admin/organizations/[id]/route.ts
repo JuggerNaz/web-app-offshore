@@ -125,7 +125,15 @@ export const PATCH = withRole(
 
       for (const field of allowedFields) {
         if (json[field] !== undefined) {
-          updates[field] = json[field];
+          let val = json[field];
+          if (field === "start_date" || field === "end_date") {
+            val = typeof val === "string" && val.trim() ? val.trim() : null;
+          } else if (typeof val === "string" && field !== "name" && field !== "slug") {
+            val = val.trim() || null;
+          } else if (field === "max_users") {
+            val = parseInt(val) || 50;
+          }
+          updates[field] = val;
         }
       }
 

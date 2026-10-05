@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import "jspdf-autotable";
 
 // Helper to load image for PDF (reused from pdf-generator.ts logic)
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface ReportConfig {
     reportNoPrefix?: string;
@@ -43,8 +43,8 @@ export const generateDefectCriteriaReport = async (
         const pageHeight = doc.internal.pageSize.getHeight();
 
         // Colors
-        const headerBlue: [number, number, number] = [26, 54, 93];
-        const sectionBlue: [number, number, number] = [44, 82, 130];
+        const headerBlue: [number, number, number] = [7, 78, 136];
+        const sectionBlue: [number, number, number] = [7, 78, 136];
         const tableHeaderColor: [number, number, number] = [240, 240, 240];
         const isPrintFriendly = config?.printFriendly === true;
 
@@ -160,7 +160,7 @@ export const generateDefectCriteriaReport = async (
             doc.setFont("helvetica", "normal");
 
             // System Name
-            doc.text(`WebApp Offshore - Defect Criteria System`, 10, footerY);
+            doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
 
             // Version / Date
             doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, footerY, { align: "center" });
@@ -276,7 +276,7 @@ export const generateDefectCriteriaReport = async (
                 });
 
                 // Add Group Header
-                tableBody.push([{ content: groupKey, colSpan: 6, styles: { fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left' } }]);
+                tableBody.push([{ content: groupKey, colSpan: 6, styles: {fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
 
                 // Add Rules
                 groupRules.forEach(rule => {
@@ -299,7 +299,7 @@ export const generateDefectCriteriaReport = async (
                         rule.structureGroup,
                         defectType,
                         condition,
-                        { content: prioLabel, styles: { halign: 'center' }, rawPriorityId: rule.priorityId },
+                        { content: prioLabel, styles: {halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]}, rawPriorityId: rule.priorityId },
                         rule.alertMessage
                     ]);
                 });
@@ -384,14 +384,14 @@ export const generateDefectCriteriaReport = async (
             const contentWidth = pageWidth - 20;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, name: string, date: string, lx: number) => {
-                doc.setDrawColor(31, 55, 93); doc.setLineWidth(0.1);
+                doc.setDrawColor(7, 78, 136); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 2, 18);
                 if (!isPrintFriendly) {
-                    doc.setFillColor(31, 55, 93);
+                    doc.setFillColor(7, 78, 136);
                     doc.rect(lx, sigY, sigW - 2, 4.5, "F");
                     doc.setTextColor(255);
                 } else {
-                    doc.setTextColor(31, 55, 93);
+                    doc.setTextColor(7, 78, 136);
                 }
                 doc.setFontSize(7); doc.setFont("helvetica", "bold");
                 doc.text(label, lx + 2, sigY + 3.5);

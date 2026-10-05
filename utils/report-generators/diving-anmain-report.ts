@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -33,6 +33,7 @@ export const generateDivingANMAINReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }
@@ -44,28 +45,18 @@ export const generateDivingANMAINReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) { startDate = min(dates); endDate = max(dates); }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -187,16 +178,7 @@ export const generateDivingANMAINReport = async (
             const anomalyRef = linkedAnomaly?.anomaly_ref_no || r.anomaly_ref_no || r.ref_no || r.anomaly_no || d._meta_ref_no || "";
             const rectifiedComments = linkedAnomaly?.rectified_remarks || r.rectified_comments || "";
 
-            const findingsLines: string[] = [];
-            if (r.description) findingsLines.push(r.description);
-            if ((isAnomaly || isDefect) && anomalyRef) {
-                findingsLines.push(`[Ref: ${anomalyRef}]`);
-            }
-            if (isRectified) {
-                findingsLines.push(`Rectified: ${rectifiedComments || "N/A"}`);
-            }
-
-            const findings = findingsLines.length > 0 ? findingsLines.join("\n") : "—";
+            const findings = formatReportFindingText(r, r.description);
 
             return [
                 String(idx + 1),
@@ -223,23 +205,23 @@ export const generateDivingANMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
-                { content: "Item No.",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Component QID",  styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Elevation",      styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Dive No.",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Anode Type",     styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Installed Date", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Replaced/Installed", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Position",       styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Life",           styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Installed Type", styles: { halign: "center" as const, valign: "middle" as const } },
-                { content: "Findings",       styles: { halign: "center" as const, valign: "middle" as const } }
+                { content: "Item No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component QID",  styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation",      styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Anode Type",     styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Installed Date", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Replaced/Installed", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Position",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Life",           styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Installed Type", styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} }
             ]],
             body: sortedRecords.map(buildRow),
             theme: "grid",
             headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center" as const,
@@ -271,21 +253,9 @@ export const generateDivingANMAINReport = async (
                 10: { cellWidth: "auto", halign: "left" as const } // Findings
             },
             didParseCell: (data) => {
-                if (data.section === "body") {
-                    const r = sortedRecords[data.row.index];
-                    const linkedAnomaly = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                    const isAnomaly = r.has_anomaly === true || r.is_anomaly === true || r.component_condition === "Anomalous" || (r.description && r.description.toLowerCase().includes("anomaly")) || !!linkedAnomaly;
-                    const isDefect = r.has_defect === true || r.is_defect === true || (r.description && r.description.toLowerCase().includes("defect"));
-                    const isRectified = linkedAnomaly ? linkedAnomaly.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes("rectified")));
-                    
-                    if (isAnomaly || isDefect) {
-                        data.cell.styles.textColor = colors.anomaly;
-                        data.cell.styles.fontStyle = "bold";
-                    } else if (isRectified) {
-                        data.cell.styles.textColor = colors.rectified;
-                        data.cell.styles.fontStyle = "bold";
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
@@ -295,7 +265,7 @@ export const generateDivingANMAINReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Anode Maintenance Inspection Report  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

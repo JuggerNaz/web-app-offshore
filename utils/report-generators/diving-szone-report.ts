@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -37,6 +37,7 @@ export const generateDivingSZONEReport = async (
     supabase?: any
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config?.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -48,31 +49,17 @@ export const generateDivingSZONEReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
             text:      [30,  41,  59]  as [number, number, number],
             anomaly:   [220, 38,  38]  as [number, number, number],
             rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate   = max(dates);
-            }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -165,66 +152,31 @@ export const generateDivingSZONEReport = async (
             const ut12 = d.ut_12_o_clock ?? "—";
             
             // Robust nominal thickness and unit
-            const ntVal = d.nominal_thickness || 
-                          r.structure_components?.metadata?.nominal_thickness || 
-                          r.structure_components?.metadata?.nom_thick || 
-                          "—";
+            const ntVal = getRecordNominalThickness(r);
             const utUnit = d.ut_unit || 
                            r.structure_components?.metadata?.ut_unit || 
                            "mm";
             
-            const nt = ntVal !== "—" ? `${ntVal} ${utUnit}` : "—";
+            const nt = ntVal !== "-" ? `${ntVal} ${utUnit}` : "—";
 
             const diveNo =
                 r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
                 r.dive_job_id || "—";
 
-            const parts: string[] = [];
-            if (r.description?.trim()) parts.push(r.description.trim());
-
-            // Append additional CP readings
-            if (Array.isArray(addCP) && addCP.length > 0) {
-                addCP.forEach((item: any) => {
-                    const val = item.reading ?? item.cp_rdg ?? "";
-                    if ((val !== "" && val !== null && val !== undefined) || item.location) {
-                        const loc = item.location ? ` @ ${item.location}` : "";
-                        const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                        parts.push(`Add. CP${loc}: ${val}${unit}`);
-                    }
-                });
-            }
-
-            // Append additional UT readings
-            const addUT = d.ut_readings_additional || [];
-            if (Array.isArray(addUT) && addUT.length > 0) {
-                addUT.forEach((item: any) => {
-                    if (item.reading) {
-                        parts.push(`Add. UT: ${item.reading}mm${item.location ? ` (${item.location})` : ""}`);
-                    }
-                });
-            }
-
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Anomaly Ref: ${anomRef}`);
-
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified Comments: ${rectComments}`);
-            }
+            const baseFinding = r.description?.trim() || "";
+            const findingDisplay = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
                 qid,
-                String(cpDisplay),
+                cpDisplay,
                 String(ut3),
                 String(ut6),
                 String(ut9),
                 String(ut12),
                 String(nt),
                 String(diveNo),
-                parts.length > 0 ? parts.join("\n") : "—",
+                findingDisplay,
             ];
         };
 
@@ -237,38 +189,34 @@ export const generateDivingSZONEReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [
                 [
-                    { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "QID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "CP Reading\n(mV)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: { halign: "center", valign: "middle" } },
-                    { content: "Nominal\nThk (mm)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                    { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "QID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "CP Reading\n(mV)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Nominal\nThk (mm)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Findings", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 ],
                 [
-                    { content: "3", styles: { halign: "center" } },
-                    { content: "6", styles: { halign: "center" } },
-                    { content: "9", styles: { halign: "center" } },
-                    { content: "12", styles: { halign: "center" } },
+                    { content: "3", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "6", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "9", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "12", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                 ]
             ],
             body: sorted.map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
-                valign: "middle",
-            },
-            styles: {
-                fontSize: 7,
+                valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 7,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },
                 1: { cellWidth: 28 },
@@ -284,22 +232,7 @@ export const generateDivingSZONEReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawCell: (data) => {
             },
@@ -313,7 +246,7 @@ export const generateDivingSZONEReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Splash Zone Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -48,7 +48,7 @@ export const generatePlatformInspectionSummaryReport = async (
         const contentWidth = pageWidth - margin * 2; // 186mm
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -59,6 +59,7 @@ export const generatePlatformInspectionSummaryReport = async (
         };
 
         const HEADER_H = 26;
+        const isPF = config?.printFriendly;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -72,7 +73,6 @@ export const generatePlatformInspectionSummaryReport = async (
 
         // ── Synchronous Page Header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF) => {
-            const isPF = config?.printFriendly;
             if (isPF) {
                 d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
                 d.rect(margin, margin, contentWidth, HEADER_H, "S");
@@ -125,9 +125,16 @@ export const generatePlatformInspectionSummaryReport = async (
         let currentY = margin + HEADER_H + 2 + (ROW_H * 2) + 6;
 
         // ── SECTION 1: Scope of Work Progress Overview ───────────────────────────
-        doc.setFillColor(...colors.navy);
-        doc.rect(margin, currentY, contentWidth, 6, "F");
-        doc.setTextColor(255); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+        if (isPF) {
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+            doc.rect(margin, currentY, contentWidth, 6, "S");
+            doc.setTextColor(...colors.navy);
+        } else {
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, currentY, contentWidth, 6, "F");
+            doc.setTextColor(255);
+        }
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
         doc.text("1. SCOPE OF WORK (SOW) OVERVIEW & PROGRESS", margin + 3, currentY + 4.2);
         currentY += 8;
 
@@ -146,16 +153,23 @@ export const generatePlatformInspectionSummaryReport = async (
                 `${sow.completionPct || 0}%`
             ]],
             theme: "plain",
-            styles: { fontSize: 8, cellPadding: 3, halign: "center", textColor: colors.text },
+            styles: {fontSize: 8, cellPadding: 3, halign: "center", textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
             headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
             bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
         });
         currentY = (doc as any).lastAutoTable.finalY + 6;
 
         // ── SECTION 2: Inspection Mode & Type Summary ────────────────────────────
-        doc.setFillColor(...colors.navy);
-        doc.rect(margin, currentY, contentWidth, 6, "F");
-        doc.setTextColor(255); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+        if (isPF) {
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+            doc.rect(margin, currentY, contentWidth, 6, "S");
+            doc.setTextColor(...colors.navy);
+        } else {
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, currentY, contentWidth, 6, "F");
+            doc.setTextColor(255);
+        }
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
         doc.text("2. INSPECTION RECORDS & METHODOLOGY BREAKDOWN", margin + 3, currentY + 4.2);
         currentY += 8;
 
@@ -180,7 +194,7 @@ export const generatePlatformInspectionSummaryReport = async (
             head: [["Type Code", "Inspection Description", "Total Logged", "ROV Mode", "Diver Mode", "Anomalies", "Findings"]],
             body: inspTypeRows,
             theme: "plain",
-            styles: { fontSize: 7.5, cellPadding: 2.5, textColor: colors.text },
+            styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
             headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
             columnStyles: {
                 0: { fontStyle: "bold", halign: "center", cellWidth: 20 },
@@ -202,9 +216,16 @@ export const generatePlatformInspectionSummaryReport = async (
             currentY = margin + HEADER_H + 6;
         }
 
-        doc.setFillColor(...colors.navy);
-        doc.rect(margin, currentY, contentWidth, 6, "F");
-        doc.setTextColor(255); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+        if (isPF) {
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+            doc.rect(margin, currentY, contentWidth, 6, "S");
+            doc.setTextColor(...colors.navy);
+        } else {
+            doc.setFillColor(...colors.navy);
+            doc.rect(margin, currentY, contentWidth, 6, "F");
+            doc.setTextColor(255);
+        }
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
         doc.text("3. STRUCTURAL COMPONENT BREAKDOWN (GROUPED PIVOT TABLES)", margin + 3, currentY + 4.2);
         currentY += 8;
 
@@ -252,7 +273,7 @@ export const generatePlatformInspectionSummaryReport = async (
                 head: [["Component Group", "Component QID", "Inspection Status"]],
                 body: [["N/A", "No component breakdown data available", "-"]],
                 theme: "plain",
-                styles: { fontSize: 7.5, cellPadding: 2.5, textColor: colors.text },
+                styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
                 headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
                 bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
             });
@@ -342,7 +363,7 @@ export const generatePlatformInspectionSummaryReport = async (
                     head: [headers],
                     body: groupRows,
                     theme: "plain",
-                    styles: { fontSize: 7, cellPadding: 2, textColor: colors.text },
+                    styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
                     headStyles: { fillColor: [241, 245, 249], textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
                     columnStyles: colStylesConfig,
                     bodyStyles: { lineWidth: 0.1, drawColor: colors.border },
@@ -386,10 +407,17 @@ export const generatePlatformInspectionSummaryReport = async (
                 currentY = margin + HEADER_H + 6;
             }
 
+            if (isPF) {
+            doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
+            doc.rect(margin, currentY, contentWidth, 6, "S");
+            doc.setTextColor(...colors.navy);
+        } else {
             doc.setFillColor(...colors.navy);
             doc.rect(margin, currentY, contentWidth, 6, "F");
-            doc.setTextColor(255); doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
-            doc.text("4. ANOMALIES & DEFECTS SUMMARY", margin + 3, currentY + 4.2);
+            doc.setTextColor(255);
+        }
+        doc.setFontSize(8.5); doc.setFont("helvetica", "bold");
+        doc.text("4. ANOMALIES & DEFECTS SUMMARY", margin + 3, currentY + 4.2);
             currentY += 8;
 
             (autoTable as any)(doc, {
@@ -402,7 +430,7 @@ export const generatePlatformInspectionSummaryReport = async (
                     ["Rectified Anomalies", String(anomalies.rectified || 0), "Closed"]
                 ],
                 theme: "plain",
-                styles: { fontSize: 7.5, cellPadding: 2.5, textColor: colors.text },
+                styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
                 headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
                 bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
             });
@@ -452,7 +480,7 @@ export const generatePlatformInspectionSummaryReport = async (
             doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
             doc.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
             doc.setFontSize(7); doc.setFont("helvetica", "normal"); doc.setTextColor(100, 116, 139);
-            doc.text(`${companySettings?.company_name || "NasQuest Resources"} | Platform Inspection Summary Report | SOW: ${headerData?.sowReportNo || "N/A"}`, margin, pageHeight - 7);
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 7);
             doc.text(`Page ${i} of ${totalPages}`, pageWidth - margin, pageHeight - 7, { align: "right" });
         }
 

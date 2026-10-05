@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -25,13 +25,13 @@ export const generateMultiInspectionReport = async (
         const margin = 12;
         const contentWidth = pageWidth - (margin * 2);
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number]
         };
-        const sectionBlue: [number, number, number] = [44, 82, 130];
+        const sectionBlue: [number, number, number] = [7, 78, 136];
         const isPrintFriendly = config?.printFriendly === true;
 
         for (let idx = 0; idx < inspectionIds.length; idx++) {
@@ -63,13 +63,32 @@ export const generateMultiInspectionReport = async (
                 .eq('inspection_id', inspectionId);
 
             // 3. Fetch Attachments
-            const { data: attachmentsData } = await supabase
+            let { data: attachmentsData } = await supabase
                 .from('attachment')
                 .select('*')
                 .eq('source_id', inspectionId)
-                .eq('source_type', 'inspection');
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
+                .is('is_deleted', false);
 
             (inspection as any).insp_anomalies = anomalies || [];
+            if (!attachmentsData || attachmentsData.length === 0) {
+                const { data: mediaData } = await supabase
+                    .from('insp_media' as any)
+                    .select('*')
+                    .eq('inspection_id', inspectionId);
+                if (mediaData && mediaData.length > 0) {
+                    attachmentsData = mediaData.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: 'inspection',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media'
+                    }));
+                }
+            }
             (inspection as any).attachment = attachmentsData || [];
 
             // --- HEADER ---
@@ -158,7 +177,7 @@ export const generateMultiInspectionReport = async (
                     details.slice(3).map(d => `${d[0]}: ${d[1]}`)
                 ],
                 theme: 'plain',
-                styles: { fontSize: 9, cellPadding: 2 },
+                styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
                 columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 60 }, 2: { cellWidth: 60 } },
                 margin: { left: 10 }
             });
@@ -182,8 +201,8 @@ export const generateMultiInspectionReport = async (
                     startY: yPos,
                     body: anomalyData,
                     theme: 'striped',
-                    headStyles: { fillColor: [200, 200, 200], textColor: 0 },
-                    styles: { fontSize: 9, cellPadding: 2 },
+                    headStyles: {fillColor: [200, 200, 200], textColor: 0, lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
+                    styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
                     columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
                     margin: { left: 10 }
                 });
@@ -244,7 +263,7 @@ export const generateMultiInspectionReport = async (
                         const colCenterX = currentX + (imgWidth / 2);
                         doc.setFontSize(8);
                         doc.setFont("helvetica", "bold");
-                        doc.setTextColor(31, 55, 93);
+                        doc.setTextColor(7, 78, 136);
                         doc.text(title.toUpperCase(), colCenterX, yPos + 4, { align: "center", maxWidth: imgWidth });
 
                         const imgData = await loadLogoWithTransparency(url);
@@ -278,7 +297,23 @@ export const generateMultiInspectionReport = async (
         } // End of For Loop
 
         if (config?.returnBlob) {
-            applyWatermarkAndSignaturesGlobal(doc, config);
+            
+        const totalPages = doc.getNumberOfPages();
+        for (let j = 1; j <= totalPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if (config?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
+
+        applyWatermarkAndSignaturesGlobal(doc, config);
             return doc.output("blob");
         }
 

@@ -39,7 +39,7 @@ import { Slider } from "@/components/ui/slider";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
-import { isROVRecord } from "@/utils/report-generators/rov-cp-report";
+import { isROVRecord, hasCPReading } from "@/utils/report-generators/rov-cp-report";
 import { isDivingCPSURVRecord } from "@/utils/report-generators/diving-cpsurv-report";
 
 interface ReportTemplate {
@@ -166,7 +166,7 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
         case 'DGVI':
             return records.filter(r => hasCode(r, ['RGVI', 'DGVI']));
         case 'CP':
-            return records.filter(r => r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || r.inspection_data?.cp !== undefined);
+            return records.filter(r => isROVRecord(r) && hasCPReading(r));
         case 'RSWNI':
         case 'SWNI':
             return records.filter(r => hasCode(r, ['RSWNI', 'SWNI']));
@@ -380,6 +380,7 @@ interface ReportWizardDialogProps {
         generatePhotographyReport: () => void;
         generateROVRWDIReport: () => void;
         generatePhotographyLogReport: () => void;
+        generateVideoLogReport?: () => void;
         generateFMDReport: () => void;
         generateDivingFMDReport?: () => void;
         generateDivingMEASUReport?: () => void;
@@ -544,7 +545,7 @@ export function ReportWizardDialog({
         const baseTemplates: ReportTemplate[] = [
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
             { id: 'rgvi', code: 'RGVI', name: 'General Visual Inspection (ROV)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
-            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => isROVRecord(r) && (r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined || (r.inspection_type_code || '').toUpperCase() === 'CP')) },
+            { id: 'cp_rov', code: 'CP', name: 'CP Survey Report (ROV)', description: 'Cathodic protection potential readings and anode depletion.', mode: 'ROV', category: 'Inspection', handler: handlers.generateCPReport, available: currentRecords.some(r => isROVRecord(r) && hasCPReading(r)) },
             { id: 'rswni_rov', code: 'RSWNI', name: 'Selected Node Report (ROV)', description: 'Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSWNIReport, available: hasRecords(['RSWNI', 'SWNI']) },
             { id: 'rov_ricmi_report', code: 'RICMI', name: 'Inclinometer Survey Report (ROV)', description: 'Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRICMIReport, available: hasRecords(['RICMI']) },
             { id: 'anode_rov', code: 'ANODE', name: 'Anode Inspection Report (ROV)', description: 'Detailed depletion measurements and attachment status (excluding RSANI).', mode: 'ROV', category: 'Inspection', handler: handlers.generateAnodeReport, available: currentRecords.some(r => {
@@ -558,7 +559,7 @@ export function ReportWizardDialog({
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 return typeCode === 'RSANI' || (compCode === 'AN' && typeCode === 'RSANI');
             }) },
-            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generatePhotographyLogReport, available: currentRecords.some(r => (r.tape_logs && r.tape_logs.length > 0) || r.tape_no || r.video_no || r.dive_no || (r.dive_logs && r.dive_logs.length > 0) || currentRecords.length > 0) },
+            { id: 'video_log', code: 'VIDLOG', name: 'Video Log Report (ROV)', description: 'Chronological log of video events with timecodes.', mode: 'ROV', category: 'Inspection', handler: handlers.generateVideoLogReport || handlers.generatePhotographyLogReport, available: currentRecords.some(r => (r.tape_logs && r.tape_logs.length > 0) || r.tape_no || r.video_no || r.dive_no || (r.dive_logs && r.dive_logs.length > 0) || currentRecords.length > 0) },
             { id: 'fmd_rov', code: 'RFMD', name: 'FMD Survey Report (ROV)', description: 'Flooded Member Detection summary report with QID, Elevation, Dive and Tape details', mode: 'ROV', category: 'Inspection', handler: handlers.generateFMDReport, available: hasRecords(['RFMD', 'FMD']) },
             { id: 'utwt_rov', code: 'RUTWT', name: 'UT Thickness Report (ROV)', description: 'Detailed ROV UT wall thickness report with 4 clock positions and elevation reference', mode: 'ROV', category: 'Inspection', handler: handlers.generateUTWTReport, available: hasRecords(['RUTWT', 'UTWT', 'UTWTK']) },
             { id: 'seabed_rov', code: 'RSEAB-SKETCH', name: 'Seabed Survey Inspection Sketch Report (ROV)', description: 'General unfiltered Seabed GUI maps showing all debris, craters, and gas seepages.', mode: 'ROV', category: 'Inspection', handler: () => handlers.generateSeabedReport('rov-seabed-report'), available: hasRecords(['RSEAB', 'SEABED']) },

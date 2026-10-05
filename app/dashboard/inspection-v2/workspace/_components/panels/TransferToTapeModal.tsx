@@ -38,6 +38,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { format } from "date-fns";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface TransferToTapeModalProps {
   open: boolean;
@@ -73,6 +74,7 @@ export function TransferToTapeModal({
   onTransferComplete,
   container,
 }: TransferToTapeModalProps) {
+  const { activeCompanyId } = useUserProfile();
   const [transferScope, setTransferScope] = useState<"CURRENT_DIVE" | "DIFFERENT_DIVE">("CURRENT_DIVE");
   const [targetDiveId, setTargetDiveId] = useState<string>("");
   const [targetDiveTapes, setTargetDiveTapes] = useState<any[]>([]);
@@ -349,6 +351,7 @@ export function TransferToTapeModal({
         status: "ACTIVE",
         [isDiving ? "dive_job_id" : "rov_job_id"]: diveIdNum,
         cr_user: user?.id || "system",
+        company_id: activeCompanyId || targetDepObj?.company_id || null,
       })
       .select("tape_id, tape_no, chapter_no, status")
       .single();

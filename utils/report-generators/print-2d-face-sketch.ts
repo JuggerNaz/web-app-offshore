@@ -1,3 +1,4 @@
+import { normalizeReportRecords } from "./shared-logo";
 import * as THREE from 'three';
 
 interface FaceSketchOptions {

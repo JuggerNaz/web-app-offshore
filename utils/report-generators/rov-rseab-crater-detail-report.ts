@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -37,6 +37,7 @@ export const generateROVRSEABCraterDetailReport = async (
     companySettingsOrConfig: any = {},
     maybeConfig?: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     let companySettings: CompanySettings = {};
     let config: ReportConfig = {};
     if (maybeConfig !== undefined) {
@@ -50,7 +51,7 @@ export const generateROVRSEABCraterDetailReport = async (
     console.log("[ROV Seabed Crater Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -142,27 +143,13 @@ export const generateROVRSEABCraterDetailReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
 
-            // Date range for this group
-            let startDate: Date | null = null;
-            let endDate: Date | null = null;
-            if (groupRecords.length > 0) {
-                const dates = groupRecords
-                    .map(r => new Date(r.cr_date || r.created_at))
-                    .filter(d => !isNaN(d.getTime()));
-                if (dates.length > 0) {
-                    startDate = min(dates);
-                    endDate = max(dates);
-                }
-            }
-            const dateStr = startDate && endDate
-                ? `${format(startDate, "dd MMM yyyy")} - ${format(endDate, "dd MMM yyyy")}`
-                : "N/A";
+            const dateStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, y: number, w: number) => {
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.1);
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, y, w, ROW_H, isPF ? "S" : "F");
+                d.rect(x, y, w, ROW_H, config?.printFriendly ? "S" : "F");
                 d.rect(x, y, w, ROW_H, "S");
 
                 d.setTextColor(...colors.text);
@@ -190,7 +177,7 @@ export const generateROVRSEABCraterDetailReport = async (
             d.setFontSize(7);
             d.setTextColor(...colors.text);
             d.setFont("helvetica", "bold");
-            d.text("CONFIDENTIAL", margin, footerY);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
 
             d.setFont("helvetica", "normal");
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: "right" });
@@ -232,7 +219,7 @@ export const generateROVRSEABCraterDetailReport = async (
 
         // Map records to autoTable RowInput[]
         const tableRows = sortedRecords.map((r, rIdx) => {
-            const comp = r.structure_components || {};
+            const qid = r.structure_components?.q_id || r.component?.q_id || r.q_id || "—";
             const d = r.inspection_data || {};
             const anoms = r.insp_anomalies || [];
             const isAnom = anoms.length > 0;
@@ -242,18 +229,13 @@ export const generateROVRSEABCraterDetailReport = async (
             const tapeNo = r.insp_video_tapes?.tape_no || r.tape_no || d.tape_no || r.tape_id || "—";
 
             // Format Findings
-            let findings = r.description || d.findings || "No significant findings";
-            
-            if (anoms.length > 0) {
-                findings += `\n` + anoms.map((a: any) => `[Anom Ref: ${a.ref_no || a.anomaly_ref_no || "N/A"}]${a.is_rectified ? `\n(Rectified: ${a.rect_comments || ""})` : ""}`).join("\n");
-            }
-
+            const findings = formatReportFindingText(r, r.description || d.findings);
             return [
-                { content: String(rIdx + 1), styles: { halign: "center" as const } },
-                { content: comp.q_id || r.qid || "—" },
-                { content: String(diveNo), styles: { halign: "center" as const } },
-                { content: String(tapeNo), styles: { halign: "center" as const } },
-                { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                { content: String(rIdx + 1) },
+                { content: qid },
+                { content: String(diveNo) },
+                { content: String(tapeNo) },
+                { content: findings }
             ];
         });
 
@@ -262,29 +244,34 @@ export const generateROVRSEABCraterDetailReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 6 },
             head: [
                 [
-                    { content: "Item No.", styles: { halign: "center" as const } },
+                    { content: "Item No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID" },
-                    { content: "Dive No.", styles: { halign: "center" as const } },
-                    { content: "Tape No.", styles: { halign: "center" as const } },
+                    { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Findings" }
                 ]
             ],
             body: tableRows.length > 0 ? tableRows : [[
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "-" },
-                { content: "-", styles: { halign: "center" as const } },
-                { content: "-", styles: { halign: "center" as const } },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "No seabed crater observations recorded for this scope." }
             ]],
             theme: "grid",
-            headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold" },
-            styles: { fontSize: 7.5, cellPadding: 2.5 },
+            headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
             columnStyles: {
                 0: { cellWidth: 12 }, // Item No.
                 1: { cellWidth: 42 }, // QID
                 2: { cellWidth: 18 }, // Dive No.
                 3: { cellWidth: 38 }, // Tape No.
                 4: { cellWidth: "auto" } // Findings
+            },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);

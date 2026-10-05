@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -68,7 +68,7 @@ export const generatePipelineEventSketchReport = async (
     const isPrintFriendly = config.printFriendly === true;
 
     const colors = {
-        navy: [31, 55, 93] as [number, number, number],
+        navy: [7, 78, 136] as [number, number, number],
         headerBg: [226, 232, 240] as [number, number, number],
         border: [100, 116, 139] as [number, number, number],
         darkBorder: [15, 23, 42] as [number, number, number],
@@ -518,7 +518,7 @@ export const generatePipelineEventSketchReport = async (
             margin: { left: margin, right: margin },
             head: [
                 [
-                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: { fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7 } }
+                    { content: "GEODETIC PARAMETERS & NAVIGATION REFERENCE", colSpan: 6, styles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136], textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontStyle: "bold", halign: "center", fontSize: 7, lineWidth: 0.1, lineColor: colors.border} }
                 ]
             ],
             body: [
@@ -913,7 +913,23 @@ export const generatePipelineEventSketchReport = async (
     }
 
     // Apply Watermark, Signatures & Page Numbers
-    applyWatermarkAndSignaturesGlobal(doc, config);
+    
+        const numPages = doc.getNumberOfPages();
+        for (let j = 1; j <= numPages; j++) {
+            doc.setPage(j);
+            const footerY = pageHeight - 5;
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.1);
+            doc.line(margin, footerY - 2.5, pageWidth - margin, footerY - 2.5);
+            doc.setFontSize(6.5); doc.setTextColor(150, 150, 150);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
+            if ((config as any)?.showPageNumbers !== false) {
+                doc.text(`Page ${j} of ${numPages}`, pageWidth - margin, footerY, { align: 'right' });
+            }
+        }
+        (doc as any)._footerApplied = true;
+
+        applyWatermarkAndSignaturesGlobal(doc, config);
 
     if (config.returnBlob) {
         return doc.output("blob");

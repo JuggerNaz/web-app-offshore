@@ -6,6 +6,7 @@ import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
 import { withTenant, TenantContext } from "@/utils/tenant-auth";
 import { getUserMembership } from "@/utils/role-auth";
+import { withCacheHeaders } from "@/utils/api-cache";
 
 let serverJobpackCache = new Map<string, { data: any[]; timestamp: number }>();
 const JOBPACK_CACHE_TTL_MS = 60 * 1000; // 60s
@@ -17,9 +18,9 @@ async function getAllJobpacksCached(supabase: any, companyId?: string) {
   if (cached && now - cached.timestamp < JOBPACK_CACHE_TTL_MS) {
     return cached.data;
   }
-  let query = supabase
+  let query = (supabase as any)
     .from("jobpack")
-    .select("*")
+    .select("id, name, status, metadata, created_at, updated_at, company_id")
     .order("id", { ascending: false });
 
   if (companyId) {
@@ -84,11 +85,11 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     const allJps = await getAllJobpacksCached(supabase, companyId);
     const found = allJps.find((jp: any) => Number(jp.id) === Number(singleIdParam));
     if (found) {
-      return NextResponse.json({ data: found });
+      return withCacheHeaders(NextResponse.json({ data: found }), 60);
     }
     let singleQuery = (supabase as any)
       .from("jobpack")
-      .select("*")
+      .select("id, name, status, metadata, created_at, updated_at, company_id")
       .eq("id", Number(singleIdParam));
 
     if (companyId) {
@@ -97,28 +98,45 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
 
     const { data, error } = await singleQuery.single();
     if (error) return handleSupabaseError(error, "Failed to fetch jobpack");
-    return NextResponse.json({ data });
+    return withCacheHeaders(NextResponse.json({ data }), 60);
   }
 
   // --- Jobpacks with inspection data (checked BEFORE the structure path so
   // has_inspection=true&structure_id=… keeps the inspection-filtered semantics) ---
   if (hasInspection) {
-    let diveQ = (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null);
-    let rovQ = (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null);
-    let recQ = (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null);
-
-    if (companyId) {
-      diveQ = diveQ.eq("company_id", companyId);
-      rovQ = rovQ.eq("company_id", companyId);
-      recQ = recQ.eq("company_id", companyId);
-    }
-
-    const [diveRes, rovRes, recRes] = await Promise.all([diveQ, rovQ, recQ]);
-
     let allIds = new Set<number>();
-    (diveRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
-    (rovRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
-    (recRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+
+    // 1. Try fast database RPC function
+    try {
+      const { data: rpcIds, error: rpcErr } = await (supabase as any).rpc("get_inspection_jobpack_ids", {
+        target_company_id: companyId || null,
+      });
+      if (!rpcErr && Array.isArray(rpcIds)) {
+        rpcIds.forEach((r: any) => {
+          const jid = r.jobpack_id || r;
+          if (jid) allIds.add(Number(jid));
+        });
+      }
+    } catch (_) {}
+
+    // 2. Direct fast indexed fallback if RPC not yet created in DB
+    if (allIds.size === 0) {
+      let diveQ = (supabase as any).from("insp_dive_jobs").select("jobpack_id").not("jobpack_id", "is", null).limit(1000);
+      let rovQ = (supabase as any).from("insp_rov_jobs").select("jobpack_id").not("jobpack_id", "is", null).limit(1000);
+      let recQ = (supabase as any).from("insp_records").select("jobpack_id").not("jobpack_id", "is", null).limit(2000);
+
+      if (companyId) {
+        diveQ = diveQ.eq("company_id", companyId);
+        rovQ = rovQ.eq("company_id", companyId);
+        recQ = recQ.eq("company_id", companyId);
+      }
+
+      const [diveRes, rovRes, recRes] = await Promise.all([diveQ, rovQ, recQ]);
+
+      (diveRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+      (rovRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+      (recRes?.data || []).forEach((r: any) => r.jobpack_id && allIds.add(Number(r.jobpack_id)));
+    }
 
     if (structureIdParam || structureTitleParam) {
       const rawSIds = structureIdParam
@@ -154,13 +172,13 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     }
 
     if (allIds.size === 0) {
-      return apiPaginated([], createPaginationMeta(paginationParams, 0));
+      return withCacheHeaders(apiPaginated([], createPaginationMeta(paginationParams, 0)), 60);
     }
 
     const allJps = await getAllJobpacksCached(supabase, companyId);
     const filtered = allJps.filter((jp: any) => allIds.has(Number(jp.id)));
     const sorted = sortByDate(filtered);
-    return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
+    return withCacheHeaders(apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length)), 60);
   }
 
   // --- Jobpacks for specific structure(s) (uses relational tables and cached metadata scan) ---
@@ -180,9 +198,9 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     let rovQuery = (supabase as any).from("insp_rov_jobs").select("jobpack_id, structure_id").not("jobpack_id", "is", null);
 
     if (sIdNums.length > 0) {
-      recQuery = recQuery.in("structure_id", sIdNums);
-      diveQuery = diveQuery.in("structure_id", sIdNums);
-      rovQuery = rovQuery.in("structure_id", sIdNums);
+      recQuery = recQuery.in("structure_id", sIdNums).limit(5000);
+      diveQuery = diveQuery.in("structure_id", sIdNums).limit(1000);
+      rovQuery = rovQuery.in("structure_id", sIdNums).limit(1000);
     } else {
       recQuery = Promise.resolve({ data: [] });
       diveQuery = Promise.resolve({ data: [] });
@@ -190,11 +208,11 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     }
 
     if (sIdNums.length > 0 && cleanTitles.length > 0) {
-      sowQuery = sowQuery.or(`structure_id.in.(${sIdNums.join(",")}),structure_title.in.(${cleanTitles.map((t) => `"${t}"`).join(",")})`);
+      sowQuery = sowQuery.or(`structure_id.in.(${sIdNums.join(",")}),structure_title.in.(${cleanTitles.map((t) => `"${t}"`).join(",")})`).limit(2000);
     } else if (sIdNums.length > 0) {
-      sowQuery = sowQuery.in("structure_id", sIdNums);
+      sowQuery = sowQuery.in("structure_id", sIdNums).limit(2000);
     } else if (cleanTitles.length > 0) {
-      sowQuery = sowQuery.in("structure_title", cleanTitles);
+      sowQuery = sowQuery.in("structure_title", cleanTitles).limit(2000);
     } else {
       sowQuery = Promise.resolve({ data: [] });
     }
@@ -258,13 +276,13 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
     }
 
     if (matchedJpIds.size === 0) {
-      return apiPaginated([], createPaginationMeta(paginationParams, 0));
+      return withCacheHeaders(apiPaginated([], createPaginationMeta(paginationParams, 0)), 60);
     }
 
     // Filter matched jobpacks directly from in-memory cache
     const matched = allJobpacks.filter((jp: any) => matchedJpIds.has(Number(jp.id)));
     const sorted = sortByDate(matched);
-    return apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length));
+    return withCacheHeaders(apiPaginated(sorted, createPaginationMeta(paginationParams, sorted.length)), 60);
   }
 
   // --- Default listing: includes metadata for plantype, tasktype, structures, and dates ---
@@ -287,7 +305,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
 
   const pagination = createPaginationMeta(paginationParams, count || 0);
 
-  return apiPaginated(data || [], pagination);
+  return withCacheHeaders(apiPaginated(data || [], pagination), 60);
 });
 
 export const POST = withTenant(async (request: NextRequest, { user, companyId }: TenantContext) => {

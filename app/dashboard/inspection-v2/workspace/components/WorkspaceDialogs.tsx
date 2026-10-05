@@ -23,7 +23,8 @@ import {
     Video,
     History,
     ArrowRightLeft,
-    Film
+    Film,
+    Anchor
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -95,6 +96,8 @@ interface WorkspaceDialogsProps {
         isMovementLogOpen: boolean;
         isEditTapeOpen: boolean;
         jobTapes?: any[];
+        deployments?: any[];
+        editTapeDeploymentId?: string;
         editTapeNo: string;
         editTapeChapter: string;
         editTapeStatus: string;
@@ -165,6 +168,7 @@ interface WorkspaceDialogsProps {
         blPreviewOpen: boolean;
         photographyPreviewOpen: boolean;
         photographyLogPreviewOpen: boolean;
+        videoLogPreviewOpen?: boolean;
         seabedPreviewOpen: boolean;
         seabedDetailPreviewOpen: boolean;
         seabedGasDetailPreviewOpen: boolean;
@@ -221,6 +225,7 @@ interface WorkspaceDialogsProps {
         setLastStartEventForEdit: (event: any) => void;
         setIsMovementLogOpen: (open: boolean) => void;
         setIsEditTapeOpen: (open: boolean) => void;
+        setEditTapeDeploymentId?: (val: string) => void;
         setEditTapeNo: (val: string) => void;
         setEditTapeChapter: (val: string) => void;
         setEditTapeStatus: (val: string) => void;
@@ -273,6 +278,7 @@ interface WorkspaceDialogsProps {
         setBlPreviewOpen: (open: boolean) => void;
         setPhotographyPreviewOpen: (open: boolean) => void;
         setPhotographyLogPreviewOpen: (open: boolean) => void;
+        setVideoLogPreviewOpen?: (open: boolean) => void;
         setSeabedPreviewOpen: (open: boolean) => void;
         setSeabedDetailPreviewOpen: (open: boolean) => void;
         setSeabedGasDetailPreviewOpen: (open: boolean) => void;
@@ -388,6 +394,8 @@ interface WorkspaceDialogsProps {
         generateSeabedCraterDetailReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generatePhotographyLogReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateVideoLogReport?: () => void;
+        generateVideoLogReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateGVINSReport: () => void;
         generateGVINSReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateBSINSReport: () => void;
@@ -470,6 +478,8 @@ export function WorkspaceDialogs({
         lastStartEventForEdit,
         isMovementLogOpen,
         isEditTapeOpen,
+        deployments,
+        editTapeDeploymentId,
         editTapeNo,
         editTapeChapter,
         editTapeStatus,
@@ -540,6 +550,7 @@ export function WorkspaceDialogs({
         blPreviewOpen,
         photographyPreviewOpen,
         photographyLogPreviewOpen,
+        videoLogPreviewOpen,
         seabedPreviewOpen,
         seabedDetailPreviewOpen,
         seabedGasDetailPreviewOpen,
@@ -590,6 +601,7 @@ export function WorkspaceDialogs({
         setLastStartEventForEdit,
         setIsMovementLogOpen,
         setIsEditTapeOpen,
+        setEditTapeDeploymentId,
         setEditTapeNo,
         setEditTapeChapter,
         setEditTapeStatus,
@@ -637,6 +649,7 @@ export function WorkspaceDialogs({
         setBlPreviewOpen,
         setPhotographyPreviewOpen,
         setPhotographyLogPreviewOpen,
+        setVideoLogPreviewOpen,
         setSeabedPreviewOpen,
         setSeabedDetailPreviewOpen,
         setSeabedGasDetailPreviewOpen,
@@ -730,6 +743,7 @@ export function WorkspaceDialogs({
         generateSeabedCraterDetailReportBlob,
         generatePhotographyReportBlob,
         generatePhotographyLogReportBlob,
+        generateVideoLogReportBlob,
         generateGVINSReport,
         generateGVINSReportBlob,
         generateBSINSReport,
@@ -1086,10 +1100,46 @@ export function WorkspaceDialogs({
                                 <Label className="text-[10px] font-black uppercase text-slate-400 dark:text-slate-500 tracking-widest ml-1">Video Tape Number / Name</Label>
                                 <Input 
                                     value={editTapeNo} 
-                                    onChange={(e) => setEditTapeNo(e.target.value.toUpperCase())}
-                                    placeholder="Enter tape reference..."
+                                    onChange={(e) => setEditTapeNo(e.target.value.replace(/\s+/g, "").toUpperCase())}
+                                    placeholder="Enter tape reference (no spaces)..."
                                     className="h-11 text-sm font-bold bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200 focus:bg-white dark:focus:bg-slate-800 focus:ring-4 focus:ring-blue-500/5 transition-all"
                                 />
+                            </div>
+
+                            {/* Linked Dive / ROV Deployment Reassignment */}
+                            <div className="space-y-1.5 p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-800/40">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase text-blue-700 dark:text-blue-300 tracking-wider flex items-center gap-1.5">
+                                        <Anchor className="w-3.5 h-3.5 text-blue-500" />
+                                        Linked {inspMethod === "DIVING" ? "Dive Log" : "ROV Log"}
+                                    </Label>
+                                    <Badge variant="outline" className="text-[9px] font-bold border-blue-300 dark:border-blue-700 text-blue-600 dark:text-blue-400">
+                                        Reassign Deployment
+                                    </Badge>
+                                </div>
+                                <Select 
+                                    value={String(editTapeDeploymentId || activeDep?.id || "")} 
+                                    onValueChange={(val) => setEditTapeDeploymentId && setEditTapeDeploymentId(val)}
+                                >
+                                    <SelectTrigger className="h-10 text-xs font-bold bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100">
+                                        <SelectValue placeholder={`Select ${inspMethod === "DIVING" ? "Dive" : "ROV Job"}...`} />
+                                    </SelectTrigger>
+                                    <SelectContent className="dark:bg-slate-950 dark:border-slate-800">
+                                        {(deployments || []).map((dep: any) => {
+                                            const depId = String(dep.id || dep.dive_job_id || dep.rov_job_id);
+                                            const depNo = dep.jobNo || dep.name || `Job #${depId}`;
+                                            const depDate = dep.date || dep.dive_date || dep.rov_date || "";
+                                            return (
+                                                <SelectItem key={depId} value={depId} className="text-xs font-bold py-1.5">
+                                                    {depNo} {depDate ? `(${depDate})` : ""}
+                                                </SelectItem>
+                                            );
+                                        })}
+                                    </SelectContent>
+                                </Select>
+                                <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
+                                    Reassigning this tape to another {inspMethod === "DIVING" ? "Dive" : "ROV"} will automatically transfer this tape, its video timeline logs, and all linked inspection records to that deployment.
+                                </p>
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -1203,7 +1253,7 @@ export function WorkspaceDialogs({
                             <Input
                                 id="ws_new_tape_no"
                                 value={newTapeNo}
-                                onChange={(e) => setNewTapeNo(e.target.value)}
+                                onChange={(e) => setNewTapeNo(e.target.value.replace(/\s+/g, "").toUpperCase())}
                                 className="col-span-3 font-mono bg-slate-50 dark:bg-slate-900 border-slate-200 dark:border-slate-800 dark:text-slate-200"
                                 placeholder="e.g. RPT-001/PLAT-C/V001D"
                             />
@@ -1233,13 +1283,14 @@ export function WorkspaceDialogs({
                         <Button variant="outline" onClick={() => setIsNewTapeOpen(false)} className="dark:border-slate-800 dark:hover:bg-slate-800 dark:text-slate-300">Cancel</Button>
                         <Button
                             onClick={async () => {
-                                if (!newTapeNo) { toast.error("Tape number is required"); return; }
+                                const cleanTapeNo = (newTapeNo || "").replace(/\s+/g, "").toUpperCase();
+                                if (!cleanTapeNo) { toast.error("Tape number is required"); return; }
                                 if (!activeDep?.id) { toast.error("No active deployment selected"); return; }
                                 try {
                                     const { data: { user } } = await supabase.auth.getUser();
                                     const depCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
                                     const payload: any = {
-                                        tape_no: newTapeNo,
+                                        tape_no: cleanTapeNo,
                                         status: 'ACTIVE',
                                         tape_type: 'DIGITAL - PRIMARY',
                                         cr_user: user?.id || 'system',
@@ -1253,7 +1304,7 @@ export function WorkspaceDialogs({
                                         .select('*')
                                         .single();
                                     if (error) throw error;
-                                    toast.success(`Tape "${newTapeNo}" created successfully`);
+                                    toast.success(`Tape "${cleanTapeNo}" created successfully`);
                                     setIsNewTapeOpen(false);
                                     window.location.reload(); // Hard refresh to update parent state safely
                                 } catch (err: any) {
@@ -1506,68 +1557,120 @@ export function WorkspaceDialogs({
                 onOpenChange={(open) => !open && setEditingAttachment(null)}
                 attachment={editingAttachment}
                 onSave={async (updated) => {
-                    if (updated.isEdited || updated.title !== editingAttachment.title || updated.description !== editingAttachment.description) {
-                        // 1. Handle Pending Attachments (local state - unsaved items)
-                        if (pendingAttachments.some(a => a.id === updated.id)) {
-                            setPendingAttachments(prev => prev.map(a => a.id === updated.id ? updated : a));
-                        } 
-                        // 2. Handle Saved Attachments (database records)
-                        else {
-                            try {
-                                if (updated.isEdited && updated.file) {
-                                    // Use the centralized API to handle multi-provider upload
-                                    const formData = new FormData();
-                                    formData.append("id", String(updated.id));
-                                    formData.append("file", updated.file);
-                                    formData.append("filePath", updated.path || ""); // Old path for deletion
+                    if (!updated) return;
+                    const updatedTitle = updated.title || updated.name || '';
+                    const updatedDesc = updated.description || '';
 
-                                    const response = await fetch("/api/attachment", {
-                                        method: "PUT",
-                                        body: formData
-                                    });
-
-                                    if (!response.ok) {
-                                        const errData = await response.json();
-                                        throw new Error(errData.error || "Failed to upload edited image");
+                    // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
+                    setPendingAttachments((prev: any[]) => {
+                        return prev.map(a => {
+                            if (String(a.id) === String(updated.id) || (a.name && a.name === updated.name && a.created_at === updated.created_at)) {
+                                return {
+                                    ...a,
+                                    ...updated,
+                                    title: updatedTitle,
+                                    name: updatedTitle || a.name,
+                                    description: updatedDesc,
+                                    path: updated.path || a.path,
+                                    previewUrl: updated.previewUrl || a.previewUrl,
+                                    meta: {
+                                        ...(a.meta || {}),
+                                        ...(updated.meta || {}),
+                                        title: updatedTitle,
+                                        description: updatedDesc,
                                     }
+                                };
+                            }
+                            return a;
+                        });
+                    });
 
-                                    const result = await response.json();
-                                    updated.path = result.url; // Update path with the new cloud storage URL
+                    // 2. Also update viewingRecordAttachments if present
+                    if (viewingRecordAttachments) {
+                        const updateViewing = (prev: any[] | null) =>
+                            prev ? prev.map(a => String(a.id) === String(updated.id) ? {
+                                ...a,
+                                ...updated,
+                                title: updatedTitle,
+                                name: updatedTitle || a.name,
+                                description: updatedDesc,
+                                path: updated.path || a.path,
+                                previewUrl: updated.previewUrl || a.previewUrl,
+                                meta: {
+                                    ...(a.meta || {}),
+                                    ...(updated.meta || {}),
+                                    title: updatedTitle,
+                                    description: updatedDesc,
                                 }
+                            } : a) : null;
+                        if (typeof setViewingRecordAttachments === 'function') {
+                            setViewingRecordAttachments(updateViewing);
+                        } else if (setters && typeof setters.setViewingRecordAttachments === 'function') {
+                            setters.setViewingRecordAttachments(updateViewing);
+                        }
+                    }
 
-                                // Update title, description, and path in the database
-                                const { error } = await supabase
+                    // 3. Persist to DB if existing record
+                    const isExistingRecord = updated.isExisting || (!isNaN(Number(updated.id)) && !String(updated.id).startsWith('temp-') && !String(updated.id).startsWith('rand-'));
+                    if (isExistingRecord) {
+                        try {
+                            let finalPath = updated.path;
+                            if (updated.isEdited && updated.file) {
+                                const formData = new FormData();
+                                formData.append("id", String(updated.id));
+                                formData.append("file", updated.file);
+                                formData.append("filePath", updated.path || "");
+                                const response = await fetch("/api/attachment", {
+                                    method: "PUT",
+                                    body: formData
+                                });
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    if (result.url) {
+                                        finalPath = result.url;
+                                        updated.path = result.url;
+                                    }
+                                }
+                            }
+
+                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            if (isMediaPrefix) {
+                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                if (!isNaN(cleanId)) {
+                                    await (supabase as any)
+                                        .from('insp_media')
+                                        .update({
+                                            name: updatedTitle,
+                                            meta: {
+                                                ...(updated.meta || {}),
+                                                title: updatedTitle,
+                                                description: updatedDesc,
+                                            }
+                                        })
+                                        .eq('media_id', cleanId);
+                                }
+                            } else if (!isNaN(Number(updated.id))) {
+                                await (supabase as any)
                                     .from('attachment')
                                     .update({
-                                        name: updated.title,
-                                        path: updated.path,
+                                        name: updatedTitle,
+                                        path: finalPath,
                                         meta: {
-                                            ...updated.meta,
-                                            description: updated.description,
+                                            ...(updated.meta || {}),
+                                            title: updatedTitle,
+                                            description: updatedDesc,
                                             type: updated.type || 'PHOTO'
                                         }
                                     })
-                                    .eq('id', updated.id);
-                                
-                                if (error) throw error;
-                                toast.success("Attachment updated successfully");
-                                
-                                // Refresh local state to reflect changes
-                                if (viewingRecordAttachments) {
-                                    setViewingRecordAttachments((prev: any[] | null) => 
-                                        prev ? prev.map(a => a.id === updated.id ? { 
-                                            ...a, 
-                                            name: updated.title, 
-                                            path: updated.path,
-                                            meta: { ...a.meta, description: updated.description } 
-                                        } : a) : null
-                                    );
-                                }
-                            } catch (err: any) {
-                                console.error("Error updating attachment:", err);
-                                toast.error("Failed to update: " + err.message);
+                                    .eq('id', Number(updated.id));
                             }
+                            toast.success("Attachment updated successfully");
+                        } catch (err: any) {
+                            console.error("Error saving attachment to DB:", err);
+                            toast.error("Failed to save attachment to server: " + (err.message || "Unknown error"));
                         }
+                    } else {
+                        toast.success("Attachment updated locally");
                     }
                     setEditingAttachment(null);
                 }}
@@ -2485,6 +2588,17 @@ export function WorkspaceDialogs({
                 fileName={`ROV_Photography_Log_Report_${headerData.sowReportNo}`} 
                 generateReport={generatePhotographyLogReportBlob} 
             />
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={videoLogPreviewOpen || false} 
+                onOpenChange={setVideoLogPreviewOpen || (() => {})} 
+                title="ROV Video Log Report Preview" 
+                fileName={`ROV_Video_Log_Report_${headerData.sowReportNo}`} 
+                generateReport={generateVideoLogReportBlob || (async () => {})} 
+            />
 
             <ReportPreviewDialog
                 reportConfig={reportConfig}
@@ -2782,74 +2896,121 @@ export function WorkspaceDialogs({
                 attachment={editingAttachment}
                 onSave={async (updated) => {
                     if (!updated) return;
+                    const updatedTitle = updated.title || updated.name || '';
+                    const updatedDesc = updated.description || '';
 
-                    // Handle Pending (local) Update
-                    if (!updated.isExisting) {
-                        setPendingAttachments((prev: any[]) => {
-                            const newAtts = prev.map(a => {
-                                if (String(a.id) === String(updated.id)) {
-                                    return {
-                                        ...a,
-                                        ...updated,
-                                        isEdited: updated.isEdited || a.isEdited,
-                                        // Ensure meta description stays in sync if used by certain templates
-                                        meta: {
-                                            ...(a.meta || {}),
-                                            description: updated.description,
-                                            title: updated.title
-                                        }
-                                    };
-                                }
-                                return a;
-                            });
-                            return [...newAtts]; // Force new array reference
-                        });
-                        setEditingAttachment(null);
-                        toast.success("Attachment updated locally");
-                    } else {
-                        // Handle Existing (Supabase) Update
-                        try {
-                            // 1. If file has changed (markup applied), upload to storage
-                            let newPath = updated.path;
-                            if (updated.file && updated.file instanceof Blob) {
-                                const fileExt = updated.name.split('.').pop();
-                                const filePath = `${updated.source_id || 'edited'}/${updated.id}_${Date.now()}.${fileExt}`;
-                                
-                                const { error: uploadError } = await supabase.storage.from('attachments').upload(filePath, updated.file);
-                                if (uploadError) throw uploadError;
-                                newPath = filePath;
-                            }
-
-                            // 2. Update DB
-                            const { error } = await supabase
-                                .from('attachment')
-                                .update({
-                                    name: updated.title,
-                                    path: newPath,
+                    // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
+                    setPendingAttachments((prev: any[]) => {
+                        return prev.map(a => {
+                            if (String(a.id) === String(updated.id) || (a.name && a.name === updated.name && a.created_at === updated.created_at)) {
+                                return {
+                                    ...a,
+                                    ...updated,
+                                    title: updatedTitle,
+                                    name: updatedTitle || a.name,
+                                    description: updatedDesc,
+                                    path: updated.path || a.path,
+                                    previewUrl: updated.previewUrl || a.previewUrl,
                                     meta: {
-                                        ...updated.meta,
-                                        description: updated.description,
-                                        type: updated.type || 'PHOTO'
+                                        ...(a.meta || {}),
+                                        ...(updated.meta || {}),
+                                        title: updatedTitle,
+                                        description: updatedDesc,
                                     }
-                                })
-                                .eq('id', updated.id);
-
-                            if (error) throw error;
-
-                            // 3. Update local state for viewingRecordAttachments
-                            if (viewingRecordAttachments) {
-                                setters.setViewingRecordAttachments(prev => 
-                                    prev ? prev.map(a => a.id === updated.id ? { ...a, ...updated, path: newPath } : a) : null
-                                );
+                                };
                             }
+                            return a;
+                        });
+                    });
 
-                            setEditingAttachment(null);
-                            toast.success("Attachment saved to server");
-                        } catch (err: any) {
-                            console.error("Failed to save attachment:", err);
-                            toast.error("Failed to save attachment: " + err.message);
+                    // 2. Also update viewingRecordAttachments if present
+                    if (viewingRecordAttachments) {
+                        const updateViewing = (prev: any[] | null) => 
+                            prev ? prev.map(a => String(a.id) === String(updated.id) ? {
+                                ...a,
+                                ...updated,
+                                title: updatedTitle,
+                                name: updatedTitle || a.name,
+                                description: updatedDesc,
+                                path: updated.path || a.path,
+                                previewUrl: updated.previewUrl || a.previewUrl,
+                                meta: {
+                                    ...(a.meta || {}),
+                                    ...(updated.meta || {}),
+                                    title: updatedTitle,
+                                    description: updatedDesc,
+                                }
+                            } : a) : null;
+                        if (setters && typeof setters.setViewingRecordAttachments === 'function') {
+                            setters.setViewingRecordAttachments(updateViewing);
+                        } else if (typeof setViewingRecordAttachments === 'function') {
+                            setViewingRecordAttachments(updateViewing);
                         }
                     }
+
+                    // 3. Persist to DB if existing record
+                    const isExistingRecord = updated.isExisting || (!isNaN(Number(updated.id)) && !String(updated.id).startsWith('temp-') && !String(updated.id).startsWith('rand-'));
+                    if (isExistingRecord) {
+                        try {
+                            let finalPath = updated.path;
+                            if (updated.isEdited && updated.file) {
+                                const formData = new FormData();
+                                formData.append("id", String(updated.id));
+                                formData.append("file", updated.file);
+                                formData.append("filePath", updated.path || "");
+                                const response = await fetch("/api/attachment", {
+                                    method: "PUT",
+                                    body: formData
+                                });
+                                if (response.ok) {
+                                    const result = await response.json();
+                                    if (result.url) {
+                                        finalPath = result.url;
+                                        updated.path = result.url;
+                                    }
+                                }
+                            }
+
+                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            if (isMediaPrefix) {
+                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                if (!isNaN(cleanId)) {
+                                    await (supabase as any)
+                                        .from('insp_media')
+                                        .update({
+                                            name: updatedTitle,
+                                            meta: {
+                                                ...(updated.meta || {}),
+                                                title: updatedTitle,
+                                                description: updatedDesc,
+                                            }
+                                        })
+                                        .eq('media_id', cleanId);
+                                }
+                            } else if (!isNaN(Number(updated.id))) {
+                                await (supabase as any)
+                                    .from('attachment')
+                                    .update({
+                                        name: updatedTitle,
+                                        path: finalPath,
+                                        meta: {
+                                            ...(updated.meta || {}),
+                                            title: updatedTitle,
+                                            description: updatedDesc,
+                                            type: updated.type || 'PHOTO'
+                                        }
+                                    })
+                                    .eq('id', Number(updated.id));
+                            }
+                            toast.success("Attachment updated successfully");
+                        } catch (err: any) {
+                            console.error("Failed to save attachment:", err);
+                            toast.error("Failed to save attachment: " + (err.message || "Unknown error"));
+                        }
+                    } else {
+                        toast.success("Attachment updated locally");
+                    }
+                    setEditingAttachment(null);
                 }}
             />
             <ReportWizardDialog
@@ -2891,6 +3052,7 @@ export function WorkspaceDialogs({
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
+                    generateVideoLogReport: () => setters.setVideoLogPreviewOpen ? setters.setVideoLogPreviewOpen(true) : handlers.generateVideoLogReport?.(),
                     generateFMDReport: () => setters.setFmdPreviewOpen(true),
                     generateDivingFMDReport: () => setters.setDivingFmdPreviewOpen ? setters.setDivingFmdPreviewOpen(true) : setters.setFmdPreviewOpen(true),
                     generateDivingMEASUReport: () => setters.setDivingMeasuPreviewOpen ? setters.setDivingMeasuPreviewOpen(true) : setters.setFmdPreviewOpen(true),

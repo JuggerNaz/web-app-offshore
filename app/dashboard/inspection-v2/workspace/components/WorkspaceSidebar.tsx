@@ -49,6 +49,11 @@ interface WorkspaceSidebarProps {
   tapeLogExpanded: boolean;
   setTapeLogExpanded: (val: boolean) => void;
   formatTime: (sec: number) => string;
+  onSetVidTimer?: (seconds: number) => void;
+  deployments?: any[];
+  onRefresh?: () => Promise<void> | void;
+  jobPackId?: string | number | null;
+  structureId?: string | number | null;
 
   // Video Props
   pipWindow: Window | null;
@@ -88,6 +93,11 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
     tapeLogExpanded,
     setTapeLogExpanded,
     formatTime,
+    onSetVidTimer,
+    deployments = [],
+    onRefresh,
+    jobPackId,
+    structureId,
     pipWindow,
     renderStreamUI,
   } = props;
@@ -252,6 +262,7 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
         formatTime={formatTime}
         handleDeleteTape={handleDeleteTape}
         canDelete={tapeId ? !videoEvents.some((ev: any) => ev.tapeId === tapeId) : false}
+        onSetVidTimer={onSetVidTimer}
         onChapterChange={(ch: number) => {
           const match = jobTapes.find((t) => t.tape_no === tapeNo && t.chapter_no === ch);
           if (match) {
@@ -269,6 +280,12 @@ export function WorkspaceSidebar(props: WorkspaceSidebarProps) {
           expanded={tapeLogExpanded}
           setExpanded={setTapeLogExpanded}
           isFloating={!!pipWindow}
+          onRefresh={onRefresh}
+          deployments={deployments}
+          activeDep={activeDep}
+          inspMethod={inspMethod}
+          jobPackId={jobPackId}
+          structureId={structureId}
         />
       </TapeManagementCard>
 

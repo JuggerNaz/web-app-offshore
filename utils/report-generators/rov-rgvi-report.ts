@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -26,7 +26,9 @@ interface ReportConfig {
 }
 
 const EXCLUDED_RGVI_COMP_CODES = new Set([
-    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG"
+    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG",
+    "ANODE", "ANOD", "RISG", "RGRD", "RISER GUARD", "SEAG", "SEA GUARD", 
+    "CAIS", "CAISSON GUARD", "COND", "CONDUCTOR GUARD", "BOATLANDING"
 ]);
 
 export const isExcludedFromRGVI = (r: any): boolean => {
@@ -35,16 +37,22 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         r.structure_components?.code,
         r.structure_components?.comp_type,
         r.structure_components?.component_type_code,
+        r.structure_components?.component_type,
         r.component?.code,
         r.component?.comp_type,
         r.component?.component_type_code,
+        r.component?.component_type,
         r.component_code,
         r.component_type_code,
+        r.component_type,
         r.comp_code,
         r.comp_type,
         r.inspection_data?.component_code,
         r.inspection_data?.comp_type,
         r.inspection_data?.component_type,
+        r.inspection_data?.comp_code,
+        r.inspection_data?.component_type_code,
+        r.inspection_data?.type,
     ];
 
     for (const c of candidates) {
@@ -54,20 +62,34 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         }
     }
 
-    // 2. Check component QID prefix (e.g. "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
+    // 2. Check component QID prefix (e.g. "RG-01", "CU-01", "SG-01", "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
     const qid = (
         r.structure_components?.q_id ||
+        r.structure_components?.name ||
         r.component?.q_id ||
+        r.component?.name ||
         r.component_qid ||
+        r.component_name ||
         r.inspection_data?.component_qid ||
+        r.inspection_data?.component ||
+        r.inspection_data?.q_id ||
         ""
     ).toString().trim().toUpperCase();
 
     if (qid) {
-        const prefixMatch = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
-        if (prefixMatch && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch[1])) {
+        // Match 2-letter codes: RG, CU, SG, AN, FD, BL, CS, CD, CG, RS
+        const prefixMatch2 = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
+        if (prefixMatch2 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch2[1])) {
             return true;
         }
+        // Match 3-6 letter codes or longer prefixes: RISG, RGRD, SEAG, CAIS, COND, ANOD, FLOT
+        const prefixMatch3 = qid.match(/^([A-Z]{3,6})([-_/\s\d]|$)/);
+        if (prefixMatch3 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch3[1])) {
+            return true;
+        }
+        if (qid.startsWith("RG-") || qid.startsWith("RG_") || qid.startsWith("RG/") || qid.startsWith("RG ") || qid.startsWith("RISG") || qid.startsWith("RGRD")) return true;
+        if (qid.startsWith("CU-") || qid.startsWith("CU_") || qid.startsWith("CU/") || qid.startsWith("CU ") || qid.startsWith("CG-") || qid.startsWith("CG_") || qid.startsWith("CG/") || qid.startsWith("CG ")) return true;
+        if (qid.startsWith("SG-") || qid.startsWith("SG_") || qid.startsWith("SG/") || qid.startsWith("SG ") || qid.startsWith("SEAG")) return true;
     }
 
     return false;
@@ -84,6 +106,7 @@ export const generateROVRGVIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
         const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
 
@@ -98,7 +121,7 @@ export const generateROVRGVIReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -108,21 +131,7 @@ export const generateROVRGVIReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (validRecords.length > 0) {
-            const dates = validRecords
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate   = max(dates);
-            }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -242,26 +251,8 @@ export const generateROVRGVIReport = async (
                 parts.push(`Debris: ${debris}${mat}`);
             }
 
-            // 2. CP Additional
-            addCPs.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    parts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly & Rectification
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef    = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) parts.push(`Ref: ${anomRef}`);
-
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                parts.push(`Rectified: ${rectRem}`);
-            }
+            const baseFinding = parts.join("\n");
+            const findingDisplay = formatReportFindingText(r, baseFinding);
 
             return [
                 String(idx + 1),
@@ -270,7 +261,7 @@ export const generateROVRGVIReport = async (
                 String(diveNo),
                 String(tapeNo),
                 cpDisplay,
-                parts.length > 0 ? parts.join("\n") : "—",
+                findingDisplay,
             ];
         };
 
@@ -283,32 +274,28 @@ export const generateROVRGVIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
-                { content: "Component\nQID",  styles: { halign: "center", valign: "middle" } },
-                { content: "Elevation\n(m)",  styles: { halign: "center", valign: "middle" } },
-                { content: "Dive No.",         styles: { halign: "center", valign: "middle" } },
-                { content: "Tape No.",         styles: { halign: "center", valign: "middle" } },
-                { content: "CP (mV)",          styles: { halign: "center", valign: "middle" } },
-                { content: "Findings",         styles: { halign: "center", valign: "middle" } },
+                { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component\nQID",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Tape No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "CP (mV)",          styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
             body: sorted.length > 0 ? sorted.map(buildRow) : [["-", "-", "-", "-", "-", "-", "No inspection observations recorded for this scope."]],
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10,
-            },
-            styles: {
-                fontSize: 7.5,
+                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 7.5,
                 cellPadding: 2.5,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0: { cellWidth: 11,   halign: "center" },
                 1: { cellWidth: 28 },
@@ -321,22 +308,7 @@ export const generateROVRGVIReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawCell: (data) => {
             },
@@ -350,7 +322,7 @@ export const generateROVRGVIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  General Visual Inspection Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {
