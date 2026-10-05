@@ -277,22 +277,43 @@ export function to24HourTime(timeInput?: string | null, includeSeconds = true): 
 }
 
 /**
- * Combines separate local date (YYYY-MM-DD) and local time (which can be 12h or 24h) strings
- * into a UTC ISO string for PostgreSQL storage.
+ * Combines separate local date (YYYY-MM-DD or ISO timestamp) and local time (which can be 12h or 24h) strings
+ * into a UTC ISO string for PostgreSQL storage, respecting the user's local timezone.
  */
 export function combineLocalDateAndTimeToUtcIso(
   localDate: string,
   localTime: string
 ): string {
   if (!localDate) return new Date().toISOString();
-  const parsed24 = parseFlexibleTimeTo24Hour(localTime) || "00:00:00";
-  const [y, m, d] = localDate.split("-").map(Number);
-  const [hh, mm, ss] = parsed24.split(":").map(Number);
-  const localDateObj = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0);
-  if (isNaN(localDateObj.getTime())) {
-    return new Date().toISOString();
+  
+  let dateOnly = String(localDate).trim();
+  if (dateOnly.includes("T")) {
+    dateOnly = dateOnly.split("T")[0];
+  } else if (dateOnly.includes(" ")) {
+    dateOnly = dateOnly.split(" ")[0];
   }
-  return localDateObj.toISOString();
+
+  const parsed24 = parseFlexibleTimeTo24Hour(localTime) || "00:00:00";
+  const parts = dateOnly.split("-").map(Number);
+  
+  if (parts.length >= 3 && !parts.some(isNaN)) {
+    const [y, m, d] = parts;
+    const [hh, mm, ss] = parsed24.split(":").map(Number);
+    const localDateObj = new Date(y, (m || 1) - 1, d || 1, hh || 0, mm || 0, ss || 0, 0);
+    if (!isNaN(localDateObj.getTime())) {
+      return localDateObj.toISOString();
+    }
+  }
+
+  // Fallback for non-standard formats
+  const fallbackDate = new Date(localDate);
+  if (!isNaN(fallbackDate.getTime())) {
+    const [hh, mm, ss] = parsed24.split(":").map(Number);
+    fallbackDate.setHours(hh || 0, mm || 0, ss || 0, 0);
+    return fallbackDate.toISOString();
+  }
+
+  return new Date().toISOString();
 }
 
 /**

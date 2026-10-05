@@ -207,15 +207,24 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         return parseInt(tc, 10) || 0;
     };
 
-    // Sort events latest first
+    // Sort events latest first: 1. Inspection Date & Time, 2. Counter No (Timecode), 3. ID
     const sortedEvents = useMemo(() => {
         return [...localEvents].sort((a, b) => {
-            const timeA = a.eventTime ? new Date(a.eventTime).getTime() : 0;
-            const timeB = b.eventTime ? new Date(b.eventTime).getTime() : 0;
-            if (timeA === timeB) {
-                return (b.realId || b.id || 0) - (a.realId || a.id || 0);
+            const timeA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
+            const timeB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
+            if (timeA !== timeB) {
+                return timeB - timeA;
             }
-            return timeB - timeA;
+            const counterA = a.tape_counter_start != null 
+                ? Number(a.tape_counter_start) 
+                : timecodeToSeconds(a.time || "00:00:00");
+            const counterB = b.tape_counter_start != null 
+                ? Number(b.tape_counter_start) 
+                : timecodeToSeconds(b.time || "00:00:00");
+            if (counterA !== counterB) {
+                return counterB - counterA;
+            }
+            return (b.realId || b.id || 0) - (a.realId || a.id || 0);
         });
     }, [localEvents]);
 
