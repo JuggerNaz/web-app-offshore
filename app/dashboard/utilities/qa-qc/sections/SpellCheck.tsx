@@ -149,7 +149,7 @@ export default function SpellCheckSection({ jobpackId, structureId, sowId, repor
     
     setIsFixing(true);
     try {
-      let updatePayload: any = {};
+      const updatePayload: any = {};
       
       // If root description matches original findings, update it there
       if (fixingRecord.description === fixingRecord.findings) {

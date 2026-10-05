@@ -269,7 +269,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             inspection_time
         `;
 
-        let allRecordsData: any[] = [];
+        const allRecordsData: any[] = [];
         let inspPage = 0;
         const inspPageSize = 1000;
         let hasMoreInsp = true;
@@ -304,7 +304,7 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // Fetch anomalies in a fast targeted query scoped strictly to matching inspection records
         const allRecordInspIds = allRecordsData.map((r: any) => r.insp_id).filter(Boolean);
-        let allAnomalies: any[] = [];
+        const allAnomalies: any[] = [];
         if (allRecordInspIds.length > 0) {
             // Fetch in chunks of 500 if large
             const chunkSize = 500;
@@ -720,7 +720,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
         const anmainTotal = anmainRecords.length;
         let anmainReplaced = 0;
-        let anmainInstalled = 0;
+        const anmainInstalled = 0;
         let anmainMaintenanceCount = 0;
 
         anmainRecords.forEach((r: any) => {
@@ -834,7 +834,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const parseMGI_Coverage = (mg: string) => {
             if (!mg || typeof mg !== 'string') return { h: NaN, s: NaN };
             const lower = mg.toLowerCase();
-            let rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '';
+            const rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '';
             let val = parseFloat(rawVal.replace('%', ''));
             if (isNaN(val) && rawVal.toLowerCase() === 'all over') val = 100;
             
@@ -2054,7 +2054,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     let totalFieldJoints = 0;
                     let totalSpanCount = 0;
                     let totalBurialCount = 0;
-                    let burialDepth = 0;
+                    const burialDepth = 0;
                     let totalCpStab = 0;
                     let totalAnodeCpStab = 0;
                     let totalFjCpStab = 0;

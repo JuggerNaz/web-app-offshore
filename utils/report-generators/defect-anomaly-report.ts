@@ -424,7 +424,7 @@ export const generateDefectAnomalyReport = async (
         // Determine vessel 
         // If jobpack metadata provides multiple vessels (comma separated), they should be displayed.
         // We prioritize explicit anomaly vessel if present, otherwise jobpack vessel.
-        let vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
+        const vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
 
         // Field/Install
         // Field/Install

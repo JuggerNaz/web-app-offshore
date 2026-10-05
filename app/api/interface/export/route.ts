@@ -161,7 +161,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     });
 
     // 2. Fetch Jobpacks & SOWs scoped to selected structures
-    let rawJpQuery = (supabase as any).from("jobpack").select("id, name, status, metadata, created_at");
+    const rawJpQuery = (supabase as any).from("jobpack").select("id, name, status, metadata, created_at");
     const { data: allCompanyJps } = await rawJpQuery;
 
     let finalJobpacks: any[] = [];
@@ -736,7 +736,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     }
 
     // 5. Fetch Anomalies (insp_anomalies where inspection_id = insp_records.insp_id)
-    let allAnomalies: any[] = [];
+    const allAnomalies: any[] = [];
     const anomMapByInspId = new Map<number, any>();
     if (templatesToProcess.some((t) => t.queryStrategy === "INSP_RECORDS")) {
       const allInspIds = allRecords
@@ -795,7 +795,7 @@ export const POST = withTenant(async (request, { companyId, user }) => {
     }
 
     // 7. Fetch Attachments linked to matching inspection records
-    let attachmentsList: any[] = [];
+    const attachmentsList: any[] = [];
     if (needsAttachments) {
       const targetInspIds = allRecords.map((r: any) => Number(r.insp_id)).filter((id: number) => !isNaN(id) && id > 0);
       if (targetInspIds.length > 0) {

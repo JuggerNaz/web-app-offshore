@@ -125,7 +125,7 @@ export const generateDivingMGIReport = async (
         const parseCoverage = (mg: string) => {
             if (!mg || typeof mg !== 'string') return { h: '0', s: '0' };
             const lower = mg.toLowerCase();
-            let rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '0';
+            const rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '0';
             let val = rawVal.replace('%', '');
             if (val.toLowerCase() === 'all over') val = '100';
 

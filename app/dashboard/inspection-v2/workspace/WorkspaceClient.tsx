@@ -1454,7 +1454,7 @@ function V10PreviewLayout() {
 
       // 3. Fetch anomalies for all retrieved records
       const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
-      let anomData: any[] = [];
+      const anomData: any[] = [];
       if (allInspIds.length > 0) {
         const chunkSize = 500;
         for (let i = 0; i < allInspIds.length; i += chunkSize) {
@@ -2208,7 +2208,7 @@ function V10PreviewLayout() {
         .eq("id", Number(jobPackId))
         .single();
 
-      let profileId = jobData?.mgi_profile_id;
+      const profileId = jobData?.mgi_profile_id;
 
       // 2. If no job-specific profile, fetch the global active profile
       if (!profileId) {
@@ -3023,7 +3023,7 @@ function V10PreviewLayout() {
       const userName = user?.user_metadata?.full_name || user?.email || user?.id || "system";
 
       if (existing) {
-        let updatedFields: any = {
+        const updatedFields: any = {
           updated_at: new Date().toISOString(),
           updated_by: userName,
         };
@@ -4468,8 +4468,6 @@ function V10PreviewLayout() {
 
   // Dynamic Time in Water Clock with Pause on TMS support
   useEffect(() => {
-    let timerId: NodeJS.Timeout;
-
     const computeTime = () => {
       if (!diveStartTime) {
         setTimeInWater("00:00:00");
@@ -4543,7 +4541,7 @@ function V10PreviewLayout() {
     };
 
     computeTime();
-    timerId = setInterval(computeTime, 1000);
+    const timerId: NodeJS.Timeout = setInterval(computeTime, 1000);
 
     return () => {
       if (timerId) clearInterval(timerId);
@@ -4706,15 +4704,16 @@ function V10PreviewLayout() {
         .from("insp_anomalies")
         .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
 
-      let [movsRes, tapesRes, inspsRes, allInspsRes] = await Promise.all([
+      const [movsRes, tapesRes, inspsInit, allInspsRes] = await Promise.all([
         movementsPromise,
         tapesPromise,
         inspsQuery,
         allInspsQuery,
       ]);
+      let inspsRes = inspsInit;
 
       const movs = movsRes.data;
-      let rawTapes: any[] = (tapesRes.data || []) as any[];
+      const rawTapes: any[] = (tapesRes.data || []) as any[];
       const allInspsData: any[] = (allInspsRes?.data || []) as any[];
 
       // Expand tape discovery: Fetch all sibling chapters (e.g. chapters 11, 12) for all discovered tape numbers
@@ -4983,7 +4982,7 @@ function V10PreviewLayout() {
         }
       }
 
-      let allEv: any[] = [];
+      const allEv: any[] = [];
 
       // Fetch Video Logs for all tapeIds
       const logsRes = tapeIds.length > 0
@@ -5712,7 +5711,7 @@ function V10PreviewLayout() {
 
     try {
       let finalTimecode = newTime;
-      let finalEventTime = newEventTime || editingEvent.eventTime;
+      const finalEventTime = newEventTime || editingEvent.eventTime;
 
       // Auto-correct counter based on Date/Time if eventTime was changed
       if (
@@ -6007,7 +6006,7 @@ function V10PreviewLayout() {
 
       const targetColumn = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
 
-      let recQuery = supabase
+      const recQuery = supabase
         .from("insp_records")
         .select(targetColumn)
         .eq("jobpack_id", queryJobPackId)
@@ -6263,7 +6262,7 @@ function V10PreviewLayout() {
       const sowItems = allSowItems;
 
       // 2.5 Fetch actual records for true dynamic status correction
-      let recsQuery = supabase
+      const recsQuery = supabase
         .from("insp_records")
         .select("component_id, inspection_type_code, status, cr_date")
         .eq("structure_id", Number(structureId));
@@ -7783,7 +7782,7 @@ function V10PreviewLayout() {
           if (anomalyData.referenceNo && anomalyData.referenceNo.trim() !== "") {
             autoRefNo = anomalyData.referenceNo.trim();
           } else {
-            let baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
+            const baseRef = (existingAnomaly.anomaly_ref_no || "").replace(/[AR]$/, "");
             if (anomalyData.rectify) {
               autoRefNo = baseRef + "R";
             } else {
@@ -8033,7 +8032,7 @@ function V10PreviewLayout() {
       }
     }
     setDeletedAttachmentIds([]);
-    let fullRecord = record;
+    const fullRecord = record;
     const recordId = record.insp_id || record.id;
 
     // 1. Immediately determine and set component & active spec synchronously
@@ -8818,7 +8817,7 @@ function V10PreviewLayout() {
       ? parseFloat(String(evtData.kp))
       : (headerData.kp ? parseFloat(String(headerData.kp)) : 0);
 
-    let targetComp = await resolvePipelineComponent(parsedEventKp);
+    const targetComp = await resolvePipelineComponent(parsedEventKp);
     if (targetComp) {
       setSelectedComp(targetComp);
     }

@@ -1,5 +1,5 @@
 import jsPDF from "jspdf";
-import "jspdf-autotable";
+import autoTablePlugin from "jspdf-autotable";
 
 // Helper to load image for PDF
 const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
@@ -54,7 +54,7 @@ const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y:
 
 const getPublicStorageUrl = (pathOrUrl: string): string => {
   if (!pathOrUrl || typeof pathOrUrl !== 'string') return '';
-  let str = pathOrUrl.trim().replace(/\\/g, '/');
+  const str = pathOrUrl.trim().replace(/\\/g, '/');
   if (str.startsWith("http://") || str.startsWith("https://") || str.startsWith("data:") || str.startsWith("/")) {
     return str;
   }
@@ -311,7 +311,7 @@ const generatePipelineReport = async (
   let yPos = 32;
 
   // Define autoTable helper for jsPDF
-  const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+  const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Helper to draw section header bar (print-friendly aware)
   const drawSectionBar = (x: number, y: number, w: number, h: number, text: string, textX: number, textY: number) => {
@@ -666,7 +666,7 @@ const generatePlatformReport = async (
   let yPos = 32;
 
   // Define autoTable helper for jsPDF
-  const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+  const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Helper to draw section header bar (print-friendly aware)
   const drawSectionBar = (x: number, y: number, w: number, h: number, text: string, textX: number, textY: number) => {
@@ -1602,10 +1602,10 @@ const generatePlatformHTML = (
             const meta = typeof v.meta === 'string' ? (() => { try { return JSON.parse(v.meta); } catch { return {}; } })() : (v.meta || {});
             
             // Use proxy URL for reliable loading (no CORS)
-            let imgUrl = v.id ? `/api/attachment/url?id=${v.id}` : (meta?.file_url || v.file_url || v.url || '');
+            const imgUrl = v.id ? `/api/attachment/url?id=${v.id}` : (meta?.file_url || v.file_url || v.url || '');
             if (!imgUrl) continue;
 
-            let rawTitle = meta?.title || v.title || v.name || meta?.original_file_name || 'Platform Visual';
+            const rawTitle = meta?.title || v.title || v.name || meta?.original_file_name || 'Platform Visual';
             uniqueItems.push({ url: imgUrl, title: rawTitle });
           }
 
@@ -1928,7 +1928,7 @@ export const generateComponentSummaryReport = async (
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+  const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];
@@ -2527,7 +2527,7 @@ export const generateComponentSpecReport = async (
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+  const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];
@@ -2814,7 +2814,7 @@ export const generateTechnicalSpecsReport = async (
   const doc = new jsPDF();
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
-  const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+  const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];

@@ -106,7 +106,7 @@ export const generateROVRiserGuardReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
             
-            let startDate: Date | null = null;
+            const startDate: Date | null = null;
             const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, w: number, y: number) => {
@@ -348,7 +348,7 @@ export const generateROVRiserGuardReport = async (
 
             // RG Section Label (Sub-header)
             const subH = 6;
-            let subY = startY;
+            const subY = startY;
             doc.setFillColor(...colors.navy);
             doc.rect(margin, subY, contentWidth, subH, "F");
             doc.setTextColor(255);

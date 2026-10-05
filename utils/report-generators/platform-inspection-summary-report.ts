@@ -441,7 +441,7 @@ export const generatePlatformInspectionSummaryReport = async (
         if (config?.showSignatures !== false) {
             const sigH = 18;
             const sigW = contentWidth / 3;
-            let finalY = (doc as any).lastAutoTable?.finalY ?? currentY;
+            const finalY = (doc as any).lastAutoTable?.finalY ?? currentY;
             if (finalY + sigH + 15 > pageHeight) {
                 doc.addPage();
                 drawPageHeader(doc);

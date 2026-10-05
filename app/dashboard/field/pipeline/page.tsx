@@ -175,7 +175,7 @@ export default function PipelinePage() {
 
   // Filter and sort pipelines
   const filteredAndSortedPipelines = useMemo(() => {
-    let filtered = pipelines.filter((pipeline) => {
+    const filtered = pipelines.filter((pipeline) => {
       // Search query filter
       const matchesSearch = pipeline.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           pipeline.field_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||

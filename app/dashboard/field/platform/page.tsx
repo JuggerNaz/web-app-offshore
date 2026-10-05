@@ -198,7 +198,7 @@ function PlatformPageContent() {
 
   // Filter and sort platforms
   const filteredAndSortedPlatforms = useMemo(() => {
-    let filtered = platforms.filter((platform) => {
+    const filtered = platforms.filter((platform) => {
       // Search query filter
       const matchesSearch = platform.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           platform.field_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||

@@ -7,13 +7,7 @@ import {
     ChevronLeft,
     Check,
     FileText,
-    Building2,
     Layers,
-    Package,
-    Calendar,
-    CheckSquare,
-    Wrench,
-    FileBarChart,
     Printer,
     Download,
     Share2,
@@ -24,14 +18,14 @@ import {
     Search,
     X,
     LayoutGrid,
-    List,
-    Compass
+    List
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isBLRecord, isSGRecord, isCURecord, isRGRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
+import { REPORT_TEMPLATES, TOC_SECTIONS } from "./report-template-catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -61,7 +55,6 @@ import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anm
 import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
 import { generateDivingITMAINReport } from "@/utils/report-generators/diving-itmain-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
-import { FinalDatasheetBuilder } from "./final-datasheet-builder";
 
 // Types
 type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
@@ -2464,7 +2457,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // 2. Fetch records for the structure
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2566,7 +2559,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // 2. Fetch records for the structure
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2650,7 +2643,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             // 1. Fetch records with all necessary joins for FMD
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2722,7 +2715,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2793,7 +2786,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2868,7 +2861,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (currentTemplateId === "diving-jtisi-report") reportType = 'J';
             if (currentTemplateId === "diving-itisi-report") reportType = 'I';
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -2950,7 +2943,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (currentTemplateId === "diving-jtisi-detail-report") reportType = 'J';
             if (currentTemplateId === "diving-itisi-detail-report") reportType = 'I';
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -3029,7 +3022,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             // 1. Fetch records with all necessary joins for SZCI
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -3102,7 +3095,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             // 1. Fetch records with all necessary joins for UTWT
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -3303,7 +3296,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
 
-                let { data: records, error: fetchError } = await supabase
+                const { data: records, error: fetchError } = await supabase
                     .from('insp_records')
                     .select(`
                         *,
@@ -3382,7 +3375,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // 1. Fetch records with all necessary joins for RSCOR
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -3471,7 +3464,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
 
-                let { data: records, error: fetchError } = await supabase
+                const { data: records, error: fetchError } = await supabase
                     .from('insp_records')
                     .select(`
                         *,
@@ -3551,7 +3544,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4001,7 +3994,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }));
             } else {
                 const supabase = (await import("@/utils/supabase/client")).createClient();
-                let { data: records, error: fetchError } = await supabase
+                const { data: records, error: fetchError } = await supabase
                     .from('insp_records')
                     .select(`
                         *,
@@ -4071,7 +4064,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4140,7 +4133,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4209,7 +4202,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4278,7 +4271,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4347,7 +4340,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4414,7 +4407,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4481,7 +4474,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4550,7 +4543,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!structure || !jobPack) return null;
 
             const supabase = (await import("@/utils/supabase/client")).createClient();
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4612,8 +4605,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-
-
         // Diving Splashzone Inspection Report (SZONE)
         if (currentTemplateId === "diving-szone-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
@@ -4621,7 +4612,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4692,7 +4683,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4762,7 +4753,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4837,7 +4828,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4912,7 +4903,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -4988,7 +4979,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            let { data: records, error: fetchError } = await supabase
+            const { data: records, error: fetchError } = await supabase
                 .from('insp_records')
                 .select(`
                     *,
@@ -6088,7 +6079,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const recordIds = records.map(r => r.insp_id);
 
-            let { data: attachments } = await supabase
+            const { data: attachments } = await supabase
                 .from("attachment")
                 .select("*")
                 .in("source_id", recordIds)
@@ -6218,7 +6209,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
             const recordIds = records.map(r => r.insp_id);
 
-            let { data: attachments } = await supabase
+            const { data: attachments } = await supabase
                 .from("attachment")
                 .select("*")
                 .in("source_id", recordIds)

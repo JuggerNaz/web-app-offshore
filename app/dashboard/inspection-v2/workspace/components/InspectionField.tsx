@@ -523,7 +523,7 @@ const InspectionField = ({
     }
 
     const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         const digits = val.replace(/\D/g, "").slice(0, 6);
         let formatted = digits;
         if (digits.length > 2 && digits.length <= 4) {
@@ -535,14 +535,14 @@ const InspectionField = ({
     };
 
     const handleTimeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         if (!val) {
             if (type === 'primary') setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
             return;
         }
 
         const parts = val.split(':');
-        let normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
+        const normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
         
         // Pad to 3 parts (HH:MM:SS) if incomplete
         while (normalized.length < 3) {

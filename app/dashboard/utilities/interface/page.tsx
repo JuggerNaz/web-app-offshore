@@ -47,6 +47,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import { cn } from "@/lib/utils";
 import {
   INITIAL_CLIENT_PROFILES,
@@ -75,12 +77,14 @@ export default function InterfaceModulePage() {
   const [customFileName, setCustomFileName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("configure");
 
-  // Data fetching state
-  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  // Data fetching state (SWR: shared cache + 30s dedupe across page visits)
+  const { data: structuresRes, isLoading: isLoadingStructures, mutate: mutateStructures } = useSWR<any>("/api/structures", fetcher);
+  const { data: jobpacksRes, isLoading: isLoadingJobpacks, mutate: mutateJobpacks } = useSWR<any>("/api/jobpack?limit=1000", fetcher);
+  const structuresList = useMemo<any[]>(() => structuresRes?.data || [], [structuresRes]);
+  const allJobpacksMaster = useMemo<any[]>(() => jobpacksRes?.data || [], [jobpacksRes]);
+  const isLoadingData = isLoadingStructures || isLoadingJobpacks;
   const [isFetchingJobpacks, setIsFetchingJobpacks] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [structuresList, setStructuresList] = useState<any[]>([]);
-  const [allJobpacksMaster, setAllJobpacksMaster] = useState<any[]>([]);
   const [jobpacksList, setJobpacksList] = useState<any[]>([]);
   const [searchStructureQuery, setSearchStructureQuery] = useState<string>("");
   const [searchJobpackQuery, setSearchJobpackQuery] = useState<string>("");
@@ -147,49 +151,17 @@ export default function InterfaceModulePage() {
     },
   ]);
 
-  // ─── Initial Load (Parallel Fetch) ──────────────────────────────────────────
-  const loadData = async () => {
-    setIsLoadingData(true);
-    try {
-      const [strRes, jpRes] = await Promise.all([
-        fetch("/api/structures").catch((e) => {
-          console.warn("[Interface] /api/structures fetch failed:", e);
-          return null;
-        }),
-        fetch("/api/jobpack?limit=1000").catch((e) => {
-          console.warn("[Interface] /api/jobpack fetch failed:", e);
-          return null;
-        }),
-      ]);
-      let sList: any[] = [];
-      let jList: any[] = [];
-      if (strRes && strRes.ok) {
-        const strJson = await strRes.json().catch(() => ({}));
-        sList = strJson.data || [];
-        setStructuresList(sList);
-        const platIds = sList
-          .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
-          .map((s: any) => s.str_id || s.id);
-        setSelectedStructureIds(platIds.length > 0 ? platIds : sList.map((s: any) => s.str_id || s.id));
-      }
-      if (jpRes && jpRes.ok) {
-        const jpJson = await jpRes.json().catch(() => ({}));
-        jList = jpJson.data || [];
-        setAllJobpacksMaster(jList);
-      }
-    } catch (err) {
-      console.warn("[Interface] Load initial data error:", err);
-    } finally {
-      setIsLoadingData(false);
-    }
-  };
-
+  // Default-select all platforms once structures arrive (re-applied on manual refresh)
   useEffect(() => {
-    loadData();
-  }, []);
+    if (structuresList.length === 0) return;
+    const platIds = structuresList
+      .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
+      .map((s: any) => s.str_id || s.id);
+    setSelectedStructureIds(platIds.length > 0 ? platIds : structuresList.map((s: any) => s.str_id || s.id));
+  }, [structuresList]);
 
   const handleRefreshData = async () => {
-    await loadData();
+    await Promise.all([mutateStructures(), mutateJobpacks()]);
     toast.success("Asset structures & jobpack data refreshed");
   };
 

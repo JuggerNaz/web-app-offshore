@@ -20,7 +20,10 @@ import {
     PopoverTrigger,
 } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import ROVInspectionRecordingDialog from "./ROVInspectionRecordingDialog";
+import dynamic from "next/dynamic";
+
+// Lazy: this 1.4k-line recording dialog (and its deps) loads on first open.
+const ROVInspectionRecordingDialog = dynamic(() => import("./ROVInspectionRecordingDialog"), { ssr: false });
 
 interface InspectionType {
     id: number;

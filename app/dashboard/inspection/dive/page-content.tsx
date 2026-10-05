@@ -33,9 +33,11 @@ import {
   Film,
   ChevronDown,
   Wrench,
+  Loader2,
 } from "lucide-react";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { formatClientTime } from "@/utils/client-date";
@@ -57,19 +59,31 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 
-// Import components
-import DiveJobSetupDialog from "./components/DiveJobSetupDialog";
-import DiveLiveDataDialog from "./components/DiveLiveDataDialog";
-import DiveVideoDialog from "./components/DiveVideoDialog";
-import DiveVideoRecorder from "@/components/dive-video-recorder";
-import InspectionRecordingDialog from "./components/InspectionRecordingDialog";
-import DiveMovementDialog from "./components/DiveMovementDialog";
+// Heavy dialogs/recorders are lazy-loaded: their chunks (and the jsPDF/video
+// deps they drag in) stream in after the screen renders instead of blocking the
+// initial inspection bundle. Radix dialogs render nothing while closed, so no
+// visible placeholder is needed for them.
+const DiveJobSetupDialog = dynamic(() => import("./components/DiveJobSetupDialog"), { ssr: false });
+const DiveLiveDataDialog = dynamic(() => import("./components/DiveLiveDataDialog"), { ssr: false });
+const DiveVideoDialog = dynamic(() => import("./components/DiveVideoDialog"), { ssr: false });
+const DiveVideoRecorder = dynamic(() => import("@/components/dive-video-recorder"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full w-full items-center justify-center bg-purple-50/50 dark:bg-purple-900/10">
+      <Loader2 className="h-6 w-6 animate-spin text-purple-500" />
+    </div>
+  ),
+});
+const InspectionRecordingDialog = dynamic(() => import("./components/InspectionRecordingDialog"), { ssr: false });
+const DiveMovementDialog = dynamic(() => import("./components/DiveMovementDialog"), { ssr: false });
+const DiveCalibrationDialog = dynamic(() => import("./components/DiveCalibrationDialog"), { ssr: false });
+const ComponentTreeDialog = dynamic(() => import("../rov/components/ComponentTreeDialog"), { ssr: false });
+const ComponentSpecDialog = dynamic(
+  () => import("@/components/dialogs/component-spec-dialog").then((m) => m.ComponentSpecDialog),
+  { ssr: false }
+);
 import DiveInspectionTypeCard from "./components/DiveInspectionTypeCard";
 import DiveInspectionList from "./components/DiveInspectionList";
-import DiveCalibrationDialog from "./components/DiveCalibrationDialog";
-
-import ComponentTreeDialog from "../rov/components/ComponentTreeDialog";
-import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { useSetAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
 
@@ -1322,7 +1336,7 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
                         <>
                           <Separator className="my-1" />
                           <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
-                            No tapes yet. Click '+ New Tape' to create one.
+                            No tapes yet. Click ‘+ New Tape’ to create one.
                           </div>
                         </>
                       )}

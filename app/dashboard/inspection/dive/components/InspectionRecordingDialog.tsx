@@ -176,7 +176,7 @@ export default function InspectionRecordingDialog({
             // Determine Inspection Type ID
             const inspTypeId = sowItem?.inspection_type_id || currentRecord?.inspection_type_id || currentRecord?.inspection_type?.id;
 
-            let defaults: Record<string, any> = {};
+            const defaults: Record<string, any> = {};
 
             // 1. Fetch Schema & Defaults
             if (inspTypeId) {
@@ -739,7 +739,7 @@ export default function InspectionRecordingDialog({
 
                 if (atWorksite && atWorksite.timestamp) {
                     const startLimit = new Date(atWorksite.timestamp).getTime();
-                    let endLimit = leavingWorksite?.timestamp ? new Date(leavingWorksite.timestamp).getTime() : new Date().getTime(); // up to current time if not left yet
+                    const endLimit = leavingWorksite?.timestamp ? new Date(leavingWorksite.timestamp).getTime() : new Date().getTime(); // up to current time if not left yet
 
                     if (inspDate < startLimit || (leavingWorksite && inspDate > endLimit)) {
                         const confirmed = window.confirm(
@@ -862,7 +862,7 @@ export default function InspectionRecordingDialog({
 
                 let refNo = anomalyData.displayRefNo;
                 let seqNo = 0;
-                let isUpdate = !!anomalyData.id;
+                const isUpdate = !!anomalyData.id;
 
                 if (!isUpdate || !refNo) {
                     // Generate New
@@ -903,7 +903,7 @@ export default function InspectionRecordingDialog({
                 else if (refNo.endsWith('A')) baseRef = refNo.slice(0, -1);
                 else baseRef = refNo;
 
-                let finalRefNo = (baseRef + postfix).trim();
+                const finalRefNo = (baseRef + postfix).trim();
 
                 const anomalyPayload: any = {
                     inspection_id: insertedRecord.insp_id,

@@ -54,8 +54,8 @@ export async function searchGlobal(query: string, activeCompanyId?: string): Pro
   let structQ = (supabase as any).from("structure").select("str_id, str_type");
   let platInfoQ = (supabase as any).from("platform").select("plat_id, title");
   let pipeInfoQ = (supabase as any).from("u_pipeline").select("pipe_id, title");
-  let inspTypeQ = (supabase as any).from("inspection_type").select("code, name");
-  let compTypeQ = (supabase as any).from("components").select("code, name, descrip");
+  const inspTypeQ = (supabase as any).from("inspection_type").select("code, name");
+  const compTypeQ = (supabase as any).from("components").select("code, name, descrip");
 
   if (companyId) {
     structQ = structQ.eq("company_id", companyId);
