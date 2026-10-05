@@ -114,9 +114,9 @@ const SICS_COMMON_SUFFIX: TemplateColumn[] = [
   { key: "REC_DATE", header: "rec_date", dataType: "date", width: 14, description: "Record Last Modified Date" },
   { key: "INSP_COND", header: "insp_cond", dataType: "string", width: 40, dataSize: 1000, description: "Findings (Single-line space separated)" },
   { key: "CMNTS", header: "cmnts", dataType: "string", width: 40, dataSize: 4000, description: "Comments (Single-line space separated)" },
-  { key: "JOB_TYPE", header: "job_type", dataType: "string", width: 16, dataSize: 20, description: "Job/Scope Type (MAJOR, PARTIAL, SPECIAL, PIPELINE)" },
+  { key: "JOB_TYPE", header: "job_type", dataType: "string", width: 16, dataSize: 20, description: "Job / Scope Ttype" },
   { key: "LAST_MAJOR_INSPNO", header: "last_major_inspno", dataType: "string", width: 18, dataSize: 11, description: "Last Major Inspection No." },
-  { key: "INSPTYPE", header: "insptype", dataType: "string", width: 10, dataSize: 3, description: "Inspection Type Identifier Code" },
+  { key: "INSPTYPE", header: "insptype", dataType: "string", width: 10, dataSize: 3, description: "Inspection type name" },
   { key: "EVAL_BY", header: "eval_by", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Evaluated By" },
   { key: "APPROV_BY", header: "approv_by", dataType: "string", width: 20, dataSize: 250, description: "Anomaly Rectification Approved By" },
 ];
@@ -738,7 +738,7 @@ const RAW_PCSB_SICS_TEMPLATES: TemplateSheet[] = [
       { key: "B_WALL_THK9", header: "B_WALL_THK9", dataType: "number", width: 14, dataSize: 9, decSize: 3, description: "Brace 9 O’ Clock" },
       { key: "B_WALL_THK12", header: "B_WALL_THK12", dataType: "number", width: 14, dataSize: 9, decSize: 3, description: "Brace 12 O’ Clock" },
       ...SICS_COMMON_PREFIX.slice(30, 35),
-      ...SICS_COMMON_SUFFIX.filter((c) => !["JOB_TYPE", "LAST_MAJOR_INSPNO", "INSPTYPE"].includes(c.key)),
+      ...SICS_COMMON_SUFFIX,
     ],
   },
 
