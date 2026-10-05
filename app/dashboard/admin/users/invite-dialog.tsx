@@ -208,7 +208,7 @@ export function InviteDialog({
         headers["x-company-id"] = activeCompanyId;
       }
 
-      let payload: any = {
+      const payload: any = {
         email: email.trim(),
         full_name: fullName.trim(),
         designation: designation.trim(),

@@ -559,7 +559,7 @@ export default function ExecutiveSummaryPage() {
             };
 
             // Fetch Priority Colors from AMLYCLR combo
-            let priorityColors: Record<string, string> = {
+            const priorityColors: Record<string, string> = {
                 "P1": "255,0,0",
                 "P2": "255,255,0",
                 "P3": "0,255,0",

@@ -124,7 +124,7 @@ export const POST = withAuth(
       let oracleItems: { key: string; label: string }[] = [];
       let postgresItems: { key: string; label: string }[] = [];
       let customMissingInPostgres: { key: string; label: string }[] | null = null;
-      let customMissingInOracle: { key: string; label: string }[] | null = null;
+      const customMissingInOracle: { key: string; label: string }[] | null = null;
 
       const upperCode = code.toUpperCase().trim();
 

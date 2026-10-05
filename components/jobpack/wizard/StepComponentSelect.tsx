@@ -73,7 +73,7 @@ export function StepComponentSelect({ state, updateState, onNext, onBack }: Step
         const isSelected = selectedStructures.includes(id);
 
         let newStructures;
-        let newSelections = { ...selections };
+        const newSelections = { ...selections };
 
         if (isSelected) {
             newStructures = selectedStructures.filter(x => x !== id);

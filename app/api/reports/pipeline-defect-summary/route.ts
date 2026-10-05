@@ -64,7 +64,8 @@ export async function GET(request: NextRequest) {
 
         mainQuery = mainQuery.order("priority", { ascending: true });
 
-        let { data: rawPipelineAnomalies, error: mainErr } = await mainQuery;
+        const { data: rawPipelineAnomaliesData, error: mainErr } = await mainQuery;
+        let rawPipelineAnomalies = rawPipelineAnomaliesData;
         if (mainErr) {
             console.error("[PipelineDefectSummary API] Pipeline query error:", mainErr);
         }
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
 
         // ── 3. Associated Riser Anomalies ──────────────────────────────────────
         // Riser anomalies under same SOW Report No & jobpack, on different structures, associated with selected pipeline
-        let riserAnomalies: any[] = [];
+        const riserAnomalies: any[] = [];
         if (sowReportNo) {
             let riserQuery = (supabase as any)
                 .from("v_anomaly_details")
@@ -172,7 +173,7 @@ export async function GET(request: NextRequest) {
 
         // Fallback: If 0 inspection records found with exact sow_report_no filter, query without sow_report_no filter
         if ((!rawInspRecords || rawInspRecords.length === 0) && sowReportNo) {
-            let fbInspQuery = (supabase as any)
+            const fbInspQuery = (supabase as any)
                 .from("insp_records")
                 .select("*")
                 .or(`jobpack_id.eq.${jobpackId},jobpack_id.eq.${Number(jobpackId) || 0}`)

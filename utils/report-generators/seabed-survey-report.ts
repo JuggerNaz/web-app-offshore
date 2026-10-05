@@ -149,7 +149,7 @@ export const generateSeabedSurveyReport = async (
     }
 
     let contractorLogo: any = null;
-    let contractorName = "";
+    const contractorName = "";
     const contrLogoUrl = config.headerData?.contractorLogoUrl || (config as any).contractorLogoUrl || (config as any).contrLogoUrl;
     if (contrLogoUrl) {
         try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
@@ -274,7 +274,7 @@ export const generateSeabedSurveyReport = async (
     const maxDist = Math.max(maxDistCurrent, maxDistComp);
     const totalRanges = Math.max(1, Math.ceil((maxDist + 1) / 21));
 
-    let pageRanges: { pageIndex: number; items: any[]; compItems: any[]; minD: number; maxD: number }[] = [];
+    const pageRanges: { pageIndex: number; items: any[]; compItems: any[]; minD: number; maxD: number }[] = [];
     for (let i = 0; i < totalRanges; i++) {
         const minD = i * 21;
         const maxD = (i + 1) * 21;

@@ -1,5 +1,5 @@
 import { jsPDF } from "jspdf";
-import "jspdf-autotable";
+import autoTablePlugin from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
 interface JobPackData {
@@ -70,7 +70,7 @@ export const generateJobPackSummaryReport = async (
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const autoTable = (doc as any).autoTable || require('jspdf-autotable').default;
+    const autoTable = (doc as any).autoTable || autoTablePlugin;
 
     // Colors
     const headerBlue: [number, number, number] = [7, 78, 136];

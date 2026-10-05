@@ -1336,7 +1336,7 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
                         <>
                           <Separator className="my-1" />
                           <div className="px-2 py-1.5 text-xs text-muted-foreground italic">
-                            No tapes yet. Click '+ New Tape' to create one.
+                            No tapes yet. Click ‘+ New Tape’ to create one.
                           </div>
                         </>
                       )}

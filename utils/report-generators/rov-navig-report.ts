@@ -246,7 +246,7 @@ export const generateROVNavigReport = async (
         if (eventDescRaw) eventNameFormatted += ` (${eventDescRaw})`;
 
         // Finding Column & Postfixes (Add'l CP + Anomaly Ref + Rectified Comments)
-        let mainFinding = idraw.findings || idraw.observations || r.remarks || r.description || "Satisfactory inspection";
+        const mainFinding = idraw.findings || idraw.observations || r.remarks || r.description || "Satisfactory inspection";
         const postfixes: string[] = [];
 
         if (additionalCpArray.length > 0) {

@@ -9,8 +9,8 @@ export async function FormMessage({ message }: { message: Message | Promise<Mess
     rawError = "Invalid email or password. Please check your credentials and try again.";
   }
 
-  let rawSuccess = "success" in resolvedMessage ? String(resolvedMessage.success || "") : "";
-  let rawInfo = "message" in resolvedMessage ? String(resolvedMessage.message || "") : "";
+  const rawSuccess = "success" in resolvedMessage ? String(resolvedMessage.success || "") : "";
+  const rawInfo = "message" in resolvedMessage ? String(resolvedMessage.message || "") : "";
 
   return (
     <div className="flex flex-col gap-2 w-full text-sm">

@@ -45,15 +45,15 @@ export const GET = withTenant(async (request, { companyId }) => {
       if (item.str_type === "PLATFORM") {
         const platform = platforms?.find((platform) => platform.plat_id === item.str_id);
         resultObj.str_id = item.str_id;
-        resultObj.str_title = platform?.title!;
-        resultObj.str_field = platform?.pfield!;
+        resultObj.str_title = platform?.title ?? "";
+        resultObj.str_field = platform?.pfield ?? "";
         resultObj.str_type = item.str_type;
         return resultObj;
       } else if (item.str_type === "PIPELINE") {
         const pipline = pipelines?.find((pipeline) => pipeline.pipe_id === item.str_id);
         resultObj.str_id = item.str_id;
-        resultObj.str_title = pipline?.title!;
-        resultObj.str_field = pipline?.pfield!;
+        resultObj.str_title = pipline?.title ?? "";
+        resultObj.str_field = pipline?.pfield ?? "";
         resultObj.str_type = item.str_type;
         return resultObj;
       }

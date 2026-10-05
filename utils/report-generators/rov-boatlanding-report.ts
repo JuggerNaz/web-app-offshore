@@ -106,7 +106,7 @@ export const generateROVBoatlandingReport = async (
             const isPF = config.printFriendly;
             const half = contentWidth / 2;
             
-            let startDate: Date | null = null;
+            const startDate: Date | null = null;
             const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
             const drawBox = (label: string, value: string, x: number, w: number, y: number) => {

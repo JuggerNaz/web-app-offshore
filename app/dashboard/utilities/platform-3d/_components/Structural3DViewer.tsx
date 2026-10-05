@@ -548,7 +548,7 @@ const ComponentMesh = ({
         // Detect if offset vector points inwards (towards the center of the platform at 0,0,0)
         // If so, negate the offset vector and adjust rotation to ensure it renders on the exterior (blue spot)
         const radialVec = new THREE.Vector3(legMidpoint.x, 0, legMidpoint.z);
-        let finalOffset = offset.clone();
+        const finalOffset = offset.clone();
         let finalGroupRotationAngle = yawAngle; // default: unflipped
 
         if (offset.dot(radialVec) < 0) {
@@ -1513,7 +1513,7 @@ function CameraRig({
             }
             const endCamPos = endTarget.clone().add(offset);
 
-            let startTime = performance.now();
+            const startTime = performance.now();
             const duration = 500;
 
             const animate = (now: number) => {
@@ -1982,7 +1982,7 @@ function InstancedComponentViewer({
             // Find closest member
             let closestDist = Infinity;
             let closestCyl: any = null;
-            let closestPoint = new THREE.Vector3();
+            const closestPoint = new THREE.Vector3();
             let cylDir = new THREE.Vector3(0, 1, 0);
             
             cylinders.forEach(cyl => {
@@ -1998,7 +1998,7 @@ function InstancedComponentViewer({
                     closestDist = dist;
                     closestCyl = cyl;
                     closestPoint.copy(cp);
-                    let dirLen = ce.clone().sub(cs).length();
+                    const dirLen = ce.clone().sub(cs).length();
                     cylDir = dirLen > 0.001 ? ce.clone().sub(cs).normalize() : new THREE.Vector3(0, 1, 0);
                 }
             });
@@ -2015,7 +2015,7 @@ function InstancedComponentViewer({
             }
             
             // Standoff distance (uniform 0.15m standoff from member surface across all anodes)
-            let standoffDist = 0.15;
+            const standoffDist = 0.15;
             
             // Parse clock position
             const md = item.comp?.metadata || item.comp || item;
@@ -2036,7 +2036,7 @@ function InstancedComponentViewer({
             }
             
             // Calculate 12 o'clock reference vector
-            let refVec = new THREE.Vector3();
+            const refVec = new THREE.Vector3();
             const isVertical = Math.abs(cylDir.y) > 0.8;
             
             if (isVertical) {
@@ -2057,7 +2057,7 @@ function InstancedComponentViewer({
 
             // Rotate refVec by clock angle clockwise around member axis
             const clockAngle = (clockPos / 12) * Math.PI * 2;
-            let normal = refVec.clone().applyAxisAngle(rotAxis, -clockAngle).normalize();
+            const normal = refVec.clone().applyAxisAngle(rotAxis, -clockAngle).normalize();
             
             // Dynamically reposition the anode based on the computed normal and uniform standoff
             pos = closestPoint.clone().add(normal.clone().multiplyScalar(memberRadius + standoffDist));
@@ -3421,7 +3421,7 @@ export function Structural3DViewer({
     // Helper to sanitize elevation typos
     const sanitizeElevation = (elvVal: any): number => {
         if (elvVal === undefined || elvVal === null) return 0;
-        let val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
+        const val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
         if (isNaN(val)) return 0;
         if (val === 50.772) return -50.772; // Fix 50m spike typo
         if (val < -1000) return val / 1000; // Fix -21424m typo
@@ -3568,7 +3568,7 @@ export function Structural3DViewer({
                 finalColor = inspectionColor;
             }
 
-            let startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
+            const startVec = (dbItem.start_x !== undefined && dbItem.start_y !== undefined && dbItem.start_z !== undefined)
                 ? [Number(dbItem.start_x), Number(dbItem.start_y), Number(dbItem.start_z)]
                 : (dbItem.start || [Number(dbItem.pos_x || 0), Number(dbItem.pos_y || 0), Number(dbItem.pos_z || 0)]);
 

@@ -198,7 +198,7 @@ export const generateWorkScopeIncompleteReport = async (
 
     // Group items by Structure
     const groupedByStructure: Record<string, any[]> = {};
-    let globalStats: Record<string, { total: number, incomplete: number }> = {};
+    const globalStats: Record<string, { total: number, incomplete: number }> = {};
     let grandTotal = 0;
     let grandIncomplete = 0;
 

@@ -189,7 +189,7 @@ export const generateROVPhotographyReport = async (
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
         
-        let contrLogoUrl = headerData.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        const contrLogoUrl = headerData.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
         if (contrLogoUrl) {
             try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
         }
@@ -314,7 +314,7 @@ export const generateROVPhotographyReport = async (
             
             drawHeaderFooter(doc, p, totalPages);
             
-            let yPos = margin + HEADER_H + 15;
+            const yPos = margin + HEADER_H + 15;
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
                 if (currentPhotoIdx >= resolvedPhotos.length) break;

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 import { withTenant } from "@/utils/tenant-auth";
 
-let serverStructuresCache = new Map<string, { data: any[]; timestamp: number }>();
+const serverStructuresCache = new Map<string, { data: any[]; timestamp: number }>();
 const STRUCTURES_CACHE_TTL_MS = 60 * 1000; // 60s
 
 export const GET = withTenant(async (request, { companyId }) => {

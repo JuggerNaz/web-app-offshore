@@ -30,7 +30,8 @@ export async function GET(request: NextRequest) {
         if (structureId) jobsQuery = jobsQuery.eq("structure_id", structureId);
         if (sowReportNo) jobsQuery = jobsQuery.eq("sow_report_no", sowReportNo);
 
-        let { data: diveJobs, error: jobsError } = await jobsQuery;
+        const { data: diveJobsData, error: jobsError } = await jobsQuery;
+        let diveJobs = diveJobsData;
         if (jobsError) throw jobsError;
 
         // 1b. Fetch tapes for this jobpack via ROV jobs
@@ -42,7 +43,8 @@ export async function GET(request: NextRequest) {
         if (structureId) rovJobsQuery = rovJobsQuery.eq("structure_id", structureId);
         if (sowReportNo) rovJobsQuery = rovJobsQuery.eq("sow_report_no", sowReportNo);
 
-        let { data: rovJobs, error: rovJobsError } = await rovJobsQuery;
+        const { data: rovJobsData, error: rovJobsError } = await rovJobsQuery;
+        let rovJobs = rovJobsData;
         if (rovJobsError) throw rovJobsError;
 
         // Fallback: if sowReportNo was provided but returned no jobs, fetch all jobs for structure/jobpack

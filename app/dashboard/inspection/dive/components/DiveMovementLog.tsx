@@ -165,7 +165,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
             const finalTime = combineLocalDateAndTimeToUtcIso(newDate, newTime);
             const selectedAction = diveActionsList.find(a => a.label === newActivity || a.value === newActivity);
 
-            let insertPayload: Record<string, any> = {
+            const insertPayload: Record<string, any> = {
                 company_id: compId,
             };
             if (activeSchema === "corrected") {
@@ -270,7 +270,7 @@ export default function DiveMovementLog({ diveJob, onRefresh }: DiveMovementLogP
             const pkField = activeSchema === "corrected" ? "movement_id" : "id";
             const finalTime = combineLocalDateAndTimeToUtcIso(editDate, editTime);
 
-            let updatePayload: Record<string, any> = {};
+            const updatePayload: Record<string, any> = {};
 
             if (activeSchema === "corrected") {
                 updatePayload.movement_time = finalTime;

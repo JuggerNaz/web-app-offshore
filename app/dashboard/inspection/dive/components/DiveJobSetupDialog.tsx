@@ -178,7 +178,7 @@ export default function DiveJobSetupDialog({
             const qId = parseInt(jobpackId);
             if (isNaN(qId)) return;
 
-            let query = supabase
+            const query = supabase
                 .from("insp_dive_jobs")
                 .select("diver_name, dive_supervisor, report_coordinator, standby_diver, dive_date, start_time, cr_date, dive_no, dive_type")
                 .eq("jobpack_id", qId)
@@ -215,7 +215,7 @@ export default function DiveJobSetupDialog({
                 // Handle AM/PM
                 const match = time.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
                 if (match) {
-                    let [_, h, m, mod] = match;
+                    const [_, h, m, mod] = match;
                     let hours = parseInt(h, 10);
                     if (hours === 12) hours = mod.toUpperCase() === 'AM' ? 0 : 12;
                     else if (mod.toUpperCase() === 'PM') hours += 12;

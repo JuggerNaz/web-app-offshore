@@ -615,7 +615,7 @@ export function SOWDialog({
     };
 
     const activeComponents = useMemo(() => {
-        let filtered = componentsToFilter.filter(c => {
+        const filtered = componentsToFilter.filter(c => {
             // 1. Hide Archived components option
             if (hideArchived) {
                 const isArchived = Boolean((c as any)?.is_deleted || (c as any)?.is_archived || (c as any)?.archived);
@@ -834,7 +834,7 @@ export function SOWDialog({
             if (activeReportNumber === removed) setActiveReportNumber(null);
             
             // Purge all selected items associated with this report number locally
-            let itemsToPurge: string[] = [];
+            const itemsToPurge: string[] = [];
             setSelectedItems(prev => {
                 const next = new Set(prev);
                 const prefixToMatch = `${removed}:`;

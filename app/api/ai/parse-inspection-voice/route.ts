@@ -804,7 +804,7 @@ function parseWithRules(
   );
 
   if (fallbackCpMatches.length > 0) {
-    let rawStr = fallbackCpMatches[0][1];
+    const rawStr = fallbackCpMatches[0][1];
     let cpVal = parseFloat(rawStr);
     const fullMatchText = fallbackCpMatches[0][0].toLowerCase();
     

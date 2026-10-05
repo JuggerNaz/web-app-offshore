@@ -32,7 +32,7 @@ export const GET = withTenant(async (request, { companyId }) => {
 
   const enrichedData = await Promise.all(
     (data || []).map(async (attachment: any) => {
-      let enrichment: any = {
+      const enrichment: any = {
         source_name: "Unknown",
         structure_name: null,
         structure_id: null,
@@ -405,7 +405,8 @@ export const DELETE = withTenant(async (request, { companyId }) => {
       query = query.or(`company_id.eq.${companyId},company_id.is.null`);
     }
 
-    let { data: attachment, error: fetchError } = await query.maybeSingle();
+    const { data: attachmentData, error: fetchError } = await query.maybeSingle();
+    let attachment = attachmentData;
 
     if (!attachment) {
       const { data: directItem, error: directErr } = await (supabase as any)
@@ -497,7 +498,8 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     query = query.or(`company_id.eq.${companyId},company_id.is.null`);
   }
 
-  let { data: current, error: fetchError } = await query.maybeSingle();
+  const { data: currentData, error: fetchError } = await query.maybeSingle();
+  let current = currentData;
 
   if (!current) {
     const { data: directItem, error: directErr } = await (supabase as any)

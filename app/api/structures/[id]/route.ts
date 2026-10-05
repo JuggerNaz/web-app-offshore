@@ -96,7 +96,7 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 }
                 let directUrl = metaObj?.file_url || a.file_url || "";
                 if (!directUrl && a.path) {
-                    let p = String(a.path).trim().replace(/\\/g, '/');
+                    const p = String(a.path).trim().replace(/\\/g, '/');
                     if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) {
                         directUrl = p;
                     } else {

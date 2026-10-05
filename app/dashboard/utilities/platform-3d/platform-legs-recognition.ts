@@ -213,7 +213,7 @@ export function detectPlatformLegs(nodes: Node3D[], members: Member3D[]): Platfo
       return by - ay;
     });
 
-    let legId = `Leg ${index + 1}`;
+    const legId = `Leg ${index + 1}`;
 
     platformLegs.push({
       legId,
