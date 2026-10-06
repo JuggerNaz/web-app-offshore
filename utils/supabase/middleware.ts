@@ -1,5 +1,24 @@
 import { createServerClient } from "@supabase/ssr";
 import { type NextRequest, NextResponse } from "next/server";
+import { fetchWithTimeout } from "./fetch-with-timeout";
+
+// Fail-fast guards: when Supabase is slow/unreachable, return a retryable 503
+// instead of hanging until the hosting platform kills the request (observed in
+// production as Netlify edge functions dying at ~36s with "the edge function
+// timed out" / HTTP 500 on /dashboard routes).
+const AUTH_GUARD_MS = 8000;
+
+const SERVICE_BUSY_HTML = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta http-equiv="refresh" content="5"><title>Service busy</title></head><body style="margin:0;font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;height:100vh;display:flex;align-items:center;justify-content:center"><div style="text-align:center;padding:2rem"><h1 style="font-size:1.15rem;margin:0 0 .5rem">Service is busy &mdash; retrying&hellip;</h1><p style="opacity:.7;margin:0">The connection to the server took too long. This page will refresh automatically in a few seconds.</p></div></body></html>`;
+
+const serviceBusyResponse = () =>
+  new Response(SERVICE_BUSY_HTML, {
+    status: 503,
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "Retry-After": "3",
+      "Cache-Control": "no-store",
+    },
+  });
 
 export const updateSession = async (request: NextRequest) => {
   // This `try/catch` block is only here for the interactive tutorial.
@@ -16,6 +35,7 @@ export const updateSession = async (request: NextRequest) => {
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
       {
+        global: { fetch: fetchWithTimeout },
         cookies: {
           getAll() {
             return request.cookies.getAll();
@@ -35,7 +55,21 @@ export const updateSession = async (request: NextRequest) => {
 
     // This will refresh session if expired - required for Server Components
     // https://supabase.com/docs/guides/auth/server-side/nextjs
-    const user = await supabase.auth.getUser();
+    // Guarded with a timeout so a stalled Supabase Auth server produces a
+    // retryable 503 page instead of hanging until the edge function crashes.
+    const authPromise = supabase.auth.getUser();
+    // Attach a no-op catch so the losing side of the race below can never
+    // surface an unhandled rejection when the guard wins.
+    authPromise.catch(() => {});
+    const user = await Promise.race([
+      authPromise,
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), AUTH_GUARD_MS)),
+    ]);
+
+    if (!user) {
+      console.warn("[Middleware] Supabase auth did not respond in time; returning 503 retry page.");
+      return serviceBusyResponse();
+    }
 
     // protected routes - update to go to landing page as there will be the sign in page
     if (request.nextUrl.pathname.startsWith("/dashboard")) {
@@ -43,7 +77,9 @@ export const updateSession = async (request: NextRequest) => {
         return NextResponse.redirect(new URL("/", request.url));
       }
 
-      // Fetch user profile to check active state and login schedule constraints
+      // Fetch user profile to check active state and login schedule constraints.
+      // Bounded by the client's fetchWithTimeout (10s); on failure/timeout this
+      // resolves null and the route proceeds without profile-based restrictions.
       const { data: profile } = await supabase
         .from("profiles")
         .select("is_active, must_change_password, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type")
