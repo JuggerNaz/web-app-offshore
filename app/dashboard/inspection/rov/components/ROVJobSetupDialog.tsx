@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { Label } from "@/components/ui/label";
 import { Ship, Info, Users, RotateCw, Trash2, History } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -182,7 +183,7 @@ export default function ROVJobSetupDialog({
             const qId = parseInt(jobpackId);
             if (isNaN(qId)) return;
 
-            let query = supabase
+            const query = supabase
                 .from("insp_rov_jobs")
                 .select("rov_operator, rov_supervisor, report_coordinator, deployment_date, start_time, cr_date, deployment_no")
                 .eq("jobpack_id", qId)
@@ -212,7 +213,7 @@ export default function ROVJobSetupDialog({
                 let time = timeStr || "00:00";
                 const match = time.match(/^(\d{1,2}):(\d{2})\s?(AM|PM)$/i);
                 if (match) {
-                    let [_, h, m, mod] = match;
+                    const [_, h, m, mod] = match;
                     let hours = parseInt(h, 10);
                     if (hours === 12) hours = mod.toUpperCase() === 'AM' ? 0 : 12;
                     else if (mod.toUpperCase() === 'PM') hours += 12;
@@ -721,15 +722,15 @@ export default function ROVJobSetupDialog({
                         </div>
 
                         <div className="space-y-2">
-                            <Label htmlFor="start_time">Start Time *</Label>
-                            <Input
+                            <Label htmlFor="start_time">Start Time (12h or 24h) *</Label>
+                            <SmartTimeInput
                                 id="start_time"
-                                type="time"
                                 value={formData.start_time}
-                                onChange={(e) =>
-                                    setFormData({ ...formData, start_time: e.target.value })
+                                onChange={(val) =>
+                                    setFormData({ ...formData, start_time: val })
                                 }
-                                required
+                                includeSeconds={false}
+                                className="h-10"
                             />
                         </div>
                     </div>

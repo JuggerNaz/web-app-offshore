@@ -121,8 +121,8 @@ export const POST = withRole(["super_admin"], async (request, { user }) => {
     if (contact_phone !== undefined) insertData.contact_phone = contact_phone?.trim() || null;
     if (address !== undefined) insertData.address = address?.trim() || null;
     if (country !== undefined) insertData.country = country?.trim() || null;
-    if (start_date !== undefined && start_date) insertData.start_date = start_date;
-    if (end_date !== undefined && end_date) insertData.end_date = end_date;
+    if (start_date !== undefined) insertData.start_date = typeof start_date === "string" && start_date.trim() ? start_date.trim() : null;
+    if (end_date !== undefined) insertData.end_date = typeof end_date === "string" && end_date.trim() ? end_date.trim() : null;
     if (description !== undefined) insertData.description = description?.trim() || null;
     if (max_users !== undefined) insertData.max_users = parseInt(max_users) || 50;
     if (subscription_plan !== undefined) insertData.subscription_plan = subscription_plan || "standard";

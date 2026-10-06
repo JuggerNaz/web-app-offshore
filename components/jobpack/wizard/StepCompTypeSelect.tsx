@@ -67,7 +67,7 @@ export function StepCompTypeSelect({ state, updateState, onNext, onBack }: StepC
         const isSelected = selectedStructures.includes(id);
 
         let newStructures;
-        let newSelections = { ...selections };
+        const newSelections = { ...selections };
 
         if (isSelected) {
             newStructures = selectedStructures.filter(x => x !== id);

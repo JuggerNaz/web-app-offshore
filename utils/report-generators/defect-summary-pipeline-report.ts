@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface CompanySettings {
     company_name?: string;
@@ -683,7 +683,7 @@ export const generatePipelineDefectSummaryReport = async (
             d.setLineWidth(0.3);
             d.rect(sx, sy, contentWidth, headerH);
         } else {
-            d.setFillColor(31, 55, 93);
+            d.setFillColor(7, 78, 136);
             d.rect(sx, sy, contentWidth, headerH, "F");
         }
 
@@ -696,7 +696,7 @@ export const generatePipelineDefectSummaryReport = async (
         }
 
         const titleX = sx + contentWidth / 2;
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         const compDesc = (companySettings.company_name || contractorName || "NASQUEST RESOURCES SDN BHD").toUpperCase();
@@ -804,9 +804,18 @@ export const generatePipelineDefectSummaryReport = async (
         const dashTitle = isFindingsReport ? "FINDINGS STATISTICAL SUMMARY" : "ANOMALY STATISTICAL SUMMARY";
         d.setFontSize(8.5);
         d.setFont("helvetica", "bold");
-        d.setFillColor(240, 243, 246);
-        d.rect(margin, y, contentWidth, 6, "F");
-        d.setTextColor(31, 55, 93);
+        if (isPrintFriendly) {
+            d.setFillColor(240, 243, 246);
+            d.setDrawColor(180, 180, 180);
+            d.setLineWidth(0.3);
+            d.rect(margin, y, contentWidth, 6, "FD");
+        } else {
+            d.setFillColor(240, 243, 246);
+            d.setDrawColor(200, 200, 200);
+            d.setLineWidth(0.1);
+            d.rect(margin, y, contentWidth, 6, "FD");
+        }
+        d.setTextColor(7, 78, 136);
         d.text(dashTitle, margin + 2, y + 4.2);
         d.setTextColor(0, 0, 0);
 
@@ -869,17 +878,15 @@ export const generatePipelineDefectSummaryReport = async (
             body: sortedLabels.map(l => {
                 const { bg, text } = priorityStyle(l, colorMap, undefined, isPrintFriendly);
                 return [
-                    { content: l.toUpperCase(), styles: { fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const } },
-                    { content: String(counts[l]), styles: { halign: "center" as const, fontStyle: "bold" as const } }
+                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} }
                 ];
             }),
             theme: "grid",
             styles: { fontSize: 7.5, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1 },
-            headStyles: {
-                fillColor: isPrintFriendly ? [230, 230, 230] : [31, 55, 93],
+            headStyles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                halign: "center"
-            },
+                halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
         });
 
         return Math.max((d as any).lastAutoTable?.finalY ? (d as any).lastAutoTable.finalY + 3 : chartY + dashH + 4, chartY + dashH + 4);
@@ -1007,7 +1014,7 @@ export const generatePipelineDefectSummaryReport = async (
         const priorityLabel = (item.priority || item.priority_code || anomData.priority || "P3").toUpperCase();
 
         // Finding / Comments Column Construction
-        let findingLines: string[] = [];
+        const findingLines: string[] = [];
 
         const sLen = idraw.span_length || idraw.length || idraw.spanLength || anomData.spanLength;
         const sHgt = idraw.span_height || idraw.height || idraw.spanHeight || anomData.spanHeight;
@@ -1114,13 +1121,11 @@ export const generatePipelineDefectSummaryReport = async (
             lineWidth: 0.2,
             lineColor: [203, 213, 225]
         },
-        headStyles: {
-            fillColor: isPrintFriendly ? [240, 240, 240] : [31, 55, 93],
+        headStyles: {fillColor: isPrintFriendly ? [240, 240, 240] : [7, 78, 136],
             textColor: isPrintFriendly ? [30, 41, 59] : [255, 255, 255],
             fontStyle: "bold",
             fontSize: 7.5,
-            halign: "center"
-        },
+            halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
         columnStyles: {
             0: { cellWidth: 10, halign: "center" },   // Item No.
             1: { cellWidth: 30, halign: "center" },   // Easting (m E)
@@ -1145,6 +1150,15 @@ export const generatePipelineDefectSummaryReport = async (
         },
         didDrawPage: (data) => {
             drawHeader(doc);
+            doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+            doc.setTextColor(100, 100, 100);
+            doc.setDrawColor(200, 200, 200); doc.setLineWidth(0.2);
+            doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 6);
+            if ((config as any)?.showPageNumbers !== false) {
+                doc.text(`Page ${data.pageNumber}`, margin + contentWidth, pageHeight - 6, { align: "right" });
+            }
+            (doc as any)._footerApplied = true;
         }
     });
 

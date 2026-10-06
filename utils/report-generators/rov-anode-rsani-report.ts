@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -35,7 +35,8 @@ export const generateROVAnodeRSANIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
-        if (!config.isBlankReport && (!records || records.length === 0)) {
+        records = normalizeReportRecords(records);
+        if (!config.isBlankReport && (!records || records.length === 0) && !config.returnBlob) {
             return null;
         }
 
@@ -47,13 +48,14 @@ export const generateROVAnodeRSANIReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
-            anomaly: [239, 68, 68] as [number, number, number],
-            rectified: [34, 197, 94] as [number, number, number]
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number]
         };
 
         // --- 1. Preparation ---
@@ -66,19 +68,7 @@ export const generateROVAnodeRSANIReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {
@@ -121,7 +111,7 @@ export const generateROVAnodeRSANIReport = async (
             const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
                 da.setDrawColor(...colors.border); da.setLineWidth(0.1); 
                 if (!isPF) da.setFillColor(...colors.lightGray);
-                da.rect(x, ty, w, rowH, isPF ? 'S' : 'F'); 
+                da.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
                 if (!isPF) da.rect(x, ty, w, rowH, 'S');
                 
                 da.setTextColor(...colors.text); da.setFontSize(8); da.setFont("helvetica", "bold");
@@ -202,31 +192,7 @@ export const generateROVAnodeRSANIReport = async (
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
 
-                const findingsLines: string[] = [];
-
-                // 1. Description / Findings
-                if (r.description && r.description.trim()) findingsLines.push(r.description.trim());
-                
-                // 2. Additional CP details BEFORE Anomaly details
-                if (Array.isArray(rawAddCPs) && rawAddCPs.length > 0) {
-                    rawAddCPs.forEach((cr: any) => {
-                        const val = cr.reading ?? cr.cp_rdg ?? '';
-                        if ((val !== '' && val !== null && val !== undefined) || cr.location) {
-                            const unit = String(val).toLowerCase().includes('mv') || !val ? '' : ' mV';
-                            findingsLines.push(`Add. CP${cr.location ? ` @ ${cr.location}` : ''}: ${val}${unit}`);
-                        }
-                    });
-                }
-
-                // 3. Anomaly Reference & Rectified comments
-                if ((isAnomaly || isDefect) && anomalyRef) {
-                    findingsLines.push(`[Reference: ${anomalyRef}]`);
-                }
-                if (isRectified) {
-                    findingsLines.push(`Rectified: ${rectifiedComments || 'N/A'}`);
-                }
-
-                const findings = findingsLines.length > 0 ? findingsLines.join('\n') : 'No significant findings';
+                const findings = formatReportFindingText(r, r.description);
 
                 return [
                     idx + 1,
@@ -243,8 +209,8 @@ export const generateROVAnodeRSANIReport = async (
                 ["-", "-", "-", "-", "-", "-", "-", "-", "No selected anode (RSANI) observations recorded for this scope."]
             ],
             theme: 'grid',
-            headStyles: { fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center' },
-            styles: { fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border },
+            headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+            styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             columnStyles: {
                 0: { cellWidth: 15, halign: 'center' },
                 1: { cellWidth: 35 },
@@ -256,6 +222,11 @@ export const generateROVAnodeRSANIReport = async (
                 7: { cellWidth: 25, halign: 'center' },
                 8: { cellWidth: 'auto' }
             },
+            didParseCell: (data) => {
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, config.printFriendly);
+            },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);
 
@@ -265,7 +236,7 @@ export const generateROVAnodeRSANIReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Selected Anode Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

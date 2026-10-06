@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -43,19 +43,19 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "CP Reading\n(-mV)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: { halign: "center", valign: "middle" } },
-                        { content: "Nominal\nThk (mm)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive / ROV No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings / Remarks", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "QID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP Reading\n(-mV)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Nominal\nThk (mm)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive / ROV No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings / Remarks", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ],
                     [
-                        { content: "3", styles: { halign: "center" } },
-                        { content: "6", styles: { halign: "center" } },
-                        { content: "9", styles: { halign: "center" } },
-                        { content: "12", styles: { halign: "center" } },
+                        { content: "3", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "6", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "9", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "12", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -79,18 +79,18 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item\nNo.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Component\nQID", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation\n(m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Equipment /\nSerial No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Cathodic Potential (mV)", colSpan: 3, styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", rowSpan: 2, styles: { halign: "center", valign: "middle" } }
+                        { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Component\nQID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation\n(m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Equipment /\nSerial No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Cathodic Potential (mV)", colSpan: 3, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} }
                     ],
                     [
-                        { content: "Pre Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Post Dive\n(mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP Value\n(mV)", styles: { halign: "center", valign: "middle" } }
+                        { content: "Pre Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Post Dive\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP Value\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} }
                     ]
                 ],
                 columnStyles: {
@@ -113,13 +113,13 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Primary CP (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Add. CP (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive / Tape No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Anom Ref / Findings", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Primary CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Add. CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive / Tape No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Anom Ref / Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -141,18 +141,18 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "QID / Location", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "UT Readings (mm)", colSpan: 4, styles: { halign: "center", valign: "middle" } },
-                        { content: "Nominal (mm)", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings / Remarks", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "QID / Location", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "UT Readings (mm)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Nominal (mm)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings / Remarks", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ],
                     [
-                        { content: "3 o'clock", styles: { halign: "center" } },
-                        { content: "6 o'clock", styles: { halign: "center" } },
-                        { content: "9 o'clock", styles: { halign: "center" } },
-                        { content: "12 o'clock", styles: { halign: "center" } },
+                        { content: "3 o'clock", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "6 o'clock", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "9 o'clock", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "12 o'clock", styles: {halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -176,13 +176,13 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Anode QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Depletion %", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dimensions (L x W x H)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Condition & Findings", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Anode QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Depletion %", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dimensions (L x W x H)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Condition & Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -202,16 +202,16 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Member / Weld QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Direction of Travel", styles: { halign: "center", valign: "middle" } },
-                        { content: "Clock Pos.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Probe No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Crack Length (mm)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Crack Depth (mm)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive / File No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings & Remarks", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Member / Weld QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Direction of Travel", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Clock Pos.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Probe No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Crack Length (mm)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Crack Depth (mm)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive / File No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings & Remarks", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -234,15 +234,15 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Surface Condition", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP Reading (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Damage Length (mm)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Damage Width (mm)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Assessment", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings & Anomaly Ref", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Surface Condition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP Reading (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Damage Length (mm)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Damage Width (mm)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Assessment", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings & Anomaly Ref", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -264,16 +264,16 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Anode QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Anode Type", styles: { halign: "center", valign: "middle" } },
-                        { content: "Installed Date", styles: { halign: "center", valign: "middle" } },
-                        { content: "Action (Replaced / Installed)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Position", styles: { halign: "center", valign: "middle" } },
-                        { content: "Est. Life (Yrs)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings & Remarks", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Anode QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Anode Type", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Installed Date", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Action (Replaced / Installed)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Position", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Est. Life (Yrs)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings & Remarks", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -298,14 +298,14 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Type of Item", styles: { halign: "center", valign: "middle" } },
-                        { content: "Description", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Type of Item", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Description", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -327,15 +327,15 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Angle (°)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dim 1 (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dim 2 (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dim 3 (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Angle (°)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dim 1 (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dim 2 (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dim 3 (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -360,12 +360,12 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Tape No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Tape No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -385,13 +385,13 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: { halign: "center", valign: "middle" } },
-                        { content: "Component QID", styles: { halign: "center", valign: "middle" } },
-                        { content: "Elevation (m)", styles: { halign: "center", valign: "middle" } },
-                        { content: "CP Reading (-mV)", styles: { halign: "center", valign: "middle" } },
-                        { content: "Condition / Observation", styles: { halign: "center", valign: "middle" } },
-                        { content: "Dive / ROV Job", styles: { halign: "center", valign: "middle" } },
-                        { content: "Findings / Anomaly Remarks", styles: { halign: "center", valign: "middle" } },
+                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "CP Reading (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Condition / Observation", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Dive / ROV Job", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Findings / Anomaly Remarks", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                     ]
                 ],
                 columnStyles: {
@@ -788,7 +788,7 @@ async function generateCustomFallbackBlank(
     const contentWidth = pageWidth - margin * 2;
 
     const colors = {
-        navy: [31, 55, 93] as [number, number, number],
+        navy: [7, 78, 136] as [number, number, number],
         lightGray: [248, 250, 252] as [number, number, number],
         border: [203, 213, 225] as [number, number, number],
         text: [30, 41, 59] as [number, number, number],
@@ -803,11 +803,11 @@ async function generateCustomFallbackBlank(
 
     const isPF = config.printFriendly;
     if (isPF) {
-        doc.setDrawColor(...colors.navy); doc.setLineWidth(0.5);
+        doc.setDrawColor(...[7, 78, 136]); doc.setLineWidth(0.5);
         doc.rect(margin, margin, contentWidth, HEADER_H, "S");
-        doc.setTextColor(...colors.navy);
+        doc.setTextColor(...[7, 78, 136]);
     } else {
-        doc.setFillColor(...colors.navy);
+        doc.setFillColor(...[7, 78, 136]);
         doc.rect(margin, margin, contentWidth, HEADER_H, "F");
         doc.setTextColor(255);
     }
@@ -828,10 +828,10 @@ async function generateCustomFallbackBlank(
     const half = contentWidth / 2;
 
     const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-        doc.setDrawColor(...colors.border); doc.setLineWidth(0.1);
-        if (!isPF) { doc.setFillColor(...colors.lightGray); doc.rect(x, ty, w, ROW_H, "F"); }
+        doc.setDrawColor(...[203, 213, 225]); doc.setLineWidth(0.1);
+        if (!isPF) { doc.setFillColor(...[241, 245, 249]); doc.rect(x, ty, w, ROW_H, "F"); }
         doc.rect(x, ty, w, ROW_H, "S");
-        doc.setTextColor(...colors.text);
+        doc.setTextColor(...[51, 65, 85]);
         doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
         doc.text(label, x + 2, ty + 4.8);
         doc.setFont("helvetica", "normal");
@@ -860,9 +860,9 @@ async function generateCustomFallbackBlank(
         body: blankRows,
         theme: "grid",
         headStyles: {
-            fillColor: isPF ? [255, 255, 255] : colors.navy,
-            textColor: isPF ? colors.navy : [255, 255, 255],
-            lineColor: isPF ? colors.navy : colors.border,
+            fillColor: config?.printFriendly ? [255, 255, 255] : [7, 78, 136],
+            textColor: config?.printFriendly ? [7, 78, 136] : [255, 255, 255],
+            lineColor: config?.printFriendly ? [7, 78, 136] : [203, 213, 225],
             lineWidth: 0.3,
             fontSize: 7.5,
             fontStyle: "bold",
@@ -872,8 +872,8 @@ async function generateCustomFallbackBlank(
         styles: {
             fontSize: 7,
             cellPadding: 3.5,
-            textColor: colors.text,
-            lineColor: isPF ? colors.navy : colors.border,
+            textColor: [51, 65, 85],
+            lineColor: config?.printFriendly ? [7, 78, 136] : [203, 213, 225],
             lineWidth: 0.3,
             minCellHeight: 9,
         },

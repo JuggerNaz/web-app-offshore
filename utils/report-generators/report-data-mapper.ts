@@ -1,3 +1,4 @@
+import { normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
@@ -96,6 +97,7 @@ export const mapInspectionDataForDocx = async (
     sowReportNo?: string,
     companySettings?: any
 ) => {
+    records = normalizeReportRecords(records);
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
 
@@ -110,9 +112,28 @@ export const mapInspectionDataForDocx = async (
                 .from('attachment')
                 .select('*')
                 .in('source_id', recordIds)
-                .in('source_type', ['inspection', 'INSPECTION'])
+                .in('source_type', ['inspection', 'INSPECTION', 'insp_record', 'INSP_RECORD', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'INSPECTION_RECORD'])
                 .is('is_deleted', false);
             attachments = data || [];
+
+            if (attachments.length === 0) {
+                const { data: media } = await supabase
+                    .from('insp_media' as any)
+                    .select('*')
+                    .in('inspection_id', recordIds);
+                if (media && media.length > 0) {
+                    attachments = media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: 'inspection',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media'
+                    }));
+                }
+            }
         } catch (e) {
             console.error("Failed to fetch attachments for docx:", e);
         }
@@ -352,8 +373,8 @@ export const mapInspectionDataForDocx = async (
                 const { generateROVRICMIReport } = await import("./rov-ricmi-report");
                 pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-cp-report') {
-                const { generateROVCPReport, isROVRecord } = await import("./rov-cp-report");
-                pdfBlob = await generateROVCPReport(records.filter(r => isROVRecord(r) && (["CP", "RSANI"].includes((r.inspection_type?.code || "").toUpperCase()) || r.inspection_data?.cp_rdg !== undefined || r.inspection_data?.cp_reading_mv !== undefined)), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
+                const { generateROVCPReport, isROVRecord, hasCPReading } = await import("./rov-cp-report");
+                pdfBlob = await generateROVCPReport(records.filter(r => isROVRecord(r) && hasCPReading(r)), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
                 const { generateROVFMDReport } = await import("./rov-fmd-report");
                 pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), { jobpackName: jobPack?.name, sowReportNo, platformName: structure?.str_name, vessel: jobPack?.metadata?.vessel }, companySettings || {}, { returnBlob: true, showSignatures: false, showPageNumbers: false } as any);
@@ -662,6 +683,7 @@ export const generateMgiProfileImage = async (records: any[]): Promise<string | 
     if (typeof window === 'undefined') return null;
 
     try {
+        records = normalizeReportRecords(records);
         const canvas = document.createElement('canvas');
         canvas.width = 800;
         canvas.height = 400;
@@ -708,6 +730,7 @@ export const generateSeabedMapImage = async (records: any[]): Promise<string | n
     if (typeof window === 'undefined') return null;
 
     try {
+        records = normalizeReportRecords(records);
         const canvas = document.createElement('canvas');
         canvas.width = 600;
         canvas.height = 600;

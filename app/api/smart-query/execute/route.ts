@@ -174,9 +174,9 @@ export const POST = withTenant(async (request, { companyId }) => {
 
         const fieldType = catDef.fields.find(f => f.key === cond.field)?.dataType;
         let finalField = cond.field;
-        let finalValue = cond.value;
-        let finalValue2 = cond.value2;
-        let finalOperator = cond.operator;
+        const finalValue = cond.value;
+        const finalValue2 = cond.value2;
+        const finalOperator = cond.operator;
 
         const TOP_LEVEL_INSP_COLS = new Set([
           "insp_id", "structure_id", "component_id", "jobpack_id", "inspection_type_id",
@@ -391,7 +391,7 @@ export const POST = withTenant(async (request, { companyId }) => {
           }
         }
 
-        let compMap = new Map<number, any>();
+        const compMap = new Map<number, any>();
         if (compIdsToFetch.size > 0) {
           const idList = Array.from(compIdsToFetch);
           const chunkSize = 500;

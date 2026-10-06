@@ -588,7 +588,9 @@ export function SeabedSurveyGuiInline({
 
                         console.log(`[SOW] Inserting new item for component ${componentId}:`, sowPayload);
 
-                        let { data: newSowData, error: sowErr } = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        const insertRes = await supabase.from('u_sow_items').insert(sowPayload).select('id');
+                        const newSowData = insertRes.data;
+                        let sowErr = insertRes.error;
                         
                         // Handle duplicate key error gracefully by re-fetching by component_id
                         if (sowErr && sowErr.code === '23505') {

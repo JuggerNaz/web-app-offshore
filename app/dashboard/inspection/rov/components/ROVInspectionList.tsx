@@ -6,7 +6,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Edit2, Trash2, Eye, EyeOff, AlertTriangle, CheckCircle2, FileClock, History, Paperclip, FileText, Search, ArrowUpDown } from "lucide-react";
-import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
+import dynamic from "next/dynamic";
 import { format } from "date-fns";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -15,9 +15,14 @@ import {
     DropdownMenuItem,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { getReportHeaderData } from "@/utils/company-settings";
-import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
+
+// Lazy: PDF preview pulls the jsPDF chain — only load it when a preview is
+// actually rendered (it stays mounted but renders nothing while closed).
+const ReportPreviewDialog = dynamic(
+  () => import("@/components/ReportPreviewDialog").then((m) => m.ReportPreviewDialog),
+  { ssr: false }
+);
 
 interface ROVInspectionListProps {
     rovJobId?: number;
@@ -186,6 +191,11 @@ export default function ROVInspectionList({
         setPreviewOpen(true);
     }
 
+    async function handlePrintInspectionReport(inspectionId: number) {
+        const { generateInspectionReport } = await import("@/utils/report-generators/inspection-report");
+        await generateInspectionReport(inspectionId);
+    }
+
     async function generateAnomalyReportBlob(printFriendly?: boolean, showSignatures?: boolean) {
         if (!previewRecord) return;
         const record = previewRecord;
@@ -215,6 +225,7 @@ export default function ROVInspectionList({
                 showSignatures: showSignatures ?? true
             };
 
+            const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
             return await generateDefectAnomalyReport(
                 jp,
                 str,
@@ -594,7 +605,7 @@ export default function ROVInspectionList({
                                                         </Button>
                                                     </DropdownMenuTrigger>
                                                     <DropdownMenuContent align="end">
-                                                        <DropdownMenuItem onClick={() => generateInspectionReport(record.insp_id)}>
+                                                        <DropdownMenuItem onClick={() => handlePrintInspectionReport(record.insp_id)}>
                                                             <FileText className="mr-2 h-3 w-3" />
                                                             Inspection Report
                                                         </DropdownMenuItem>
@@ -609,7 +620,7 @@ export default function ROVInspectionList({
                                                     variant="ghost"
                                                     size="icon"
                                                     className="h-6 w-6 text-muted-foreground hover:text-blue-600"
-                                                    onClick={() => generateInspectionReport(record.insp_id)}
+                                                    onClick={() => handlePrintInspectionReport(record.insp_id)}
                                                     title="Print Report"
                                                 >
                                                     <FileText className="h-3 w-3" />

@@ -54,6 +54,11 @@ interface InspectionFormPanelProps {
   activeDep: any;
   currentMovement: string;
   tapeId: number | null;
+  jobTapes?: any[];
+  originalRecordContext?: any;
+  tapeNo?: string;
+  activeChapter?: number;
+  deployments?: any[];
   vidState: string;
   handleTaskChange: (code: string) => void;
   setShowTaskSelector: (val: boolean) => void;
@@ -67,6 +72,7 @@ interface InspectionFormPanelProps {
   setPrevRefNo: (val: string) => void;
   criteriaRules?: any[];
   onVoiceActionCommand?: (actionIntent: any) => void;
+  calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
 }
 
 export function InspectionFormPanel({
@@ -115,6 +121,11 @@ export function InspectionFormPanel({
   activeDep,
   currentMovement,
   tapeId,
+  jobTapes = [],
+  originalRecordContext,
+  tapeNo,
+  activeChapter = 1,
+  deployments = [],
   vidState,
   handleTaskChange,
   handleDeleteTaskFromScope,
@@ -128,7 +139,58 @@ export function InspectionFormPanel({
   setPrevRefNo,
   criteriaRules = [],
   onVoiceActionCommand,
+  calculateAutoCounter,
 }: InspectionFormPanelProps) {
+  const isEditing = Boolean(editingRecordId);
+
+  const displayDiveNo = (() => {
+    if (isEditing && originalRecordContext) {
+      return (
+        originalRecordContext.dive_no ||
+        originalRecordContext.deployment_no ||
+        originalRecordContext.raw?.insp_dive_jobs?.job_no ||
+        originalRecordContext.raw?.insp_dive_jobs?.dive_no ||
+        originalRecordContext.raw?.insp_rov_jobs?.job_no ||
+        originalRecordContext.raw?.insp_rov_jobs?.deployment_no ||
+        deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.deployment_no ||
+        deployments?.find((d: any) => String(d.id) === String(originalRecordContext.dive_job_id || originalRecordContext.rov_job_id))?.dive_no ||
+        activeDep?.deployment_no ||
+        activeDep?.dive_no ||
+        activeDep?.job_no ||
+        "-"
+      );
+    }
+    return activeDep?.deployment_no || activeDep?.dive_no || activeDep?.job_no || "-";
+  })();
+
+  const displayTapeNo = (() => {
+    if (isEditing && originalRecordContext) {
+      return (
+        originalRecordContext.tape_no ||
+        originalRecordContext.raw?.insp_video_tapes?.tape_no ||
+        jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.tape_no ||
+        tapeNo ||
+        "-"
+      );
+    }
+    return tapeNo || jobTapes?.find((t: any) => t.tape_id === tapeId)?.tape_no || "-";
+  })();
+
+  const displayChapter = (() => {
+    if (isEditing && originalRecordContext) {
+      const ch = (
+        originalRecordContext.chapter_no ??
+        originalRecordContext.raw?.insp_video_tapes?.chapter_no ??
+        originalRecordContext.raw?.chapter_no ??
+        originalRecordContext.raw?.inspection_data?.chapter_no ??
+        originalRecordContext.raw?.inspection_data?.chapter ??
+        jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.chapter_no
+      );
+      return ch !== undefined && ch !== null ? String(ch) : "1";
+    }
+    return activeChapter !== undefined && activeChapter !== null ? String(activeChapter) : "1";
+  })();
+
   return (
     <Card className="flex flex-col h-full bg-slate-50 dark:bg-slate-900 border-none rounded-none shadow-none overflow-hidden">
       {!selectedComp ? (
@@ -143,14 +205,24 @@ export function InspectionFormPanel({
         </div>
       ) : (
         <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
-          <div className="bg-slate-900 text-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center shrink-0 border-b border-slate-800 shadow-sm z-10">
-            <div className="flex items-center gap-2">
-              <span className="bg-blue-600 w-2 h-2 rounded-full animate-pulse" />
-              <span>
+          <div className="bg-slate-900 text-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider flex justify-between items-center shrink-0 border-b border-slate-800 shadow-sm z-10 gap-2 flex-wrap">
+            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+              <span className="bg-blue-600 w-2 h-2 rounded-full animate-pulse shrink-0" />
+              <span className="truncate font-black tracking-widest text-slate-200">
                 {editingRecordId ? "EDITING RECORD" : "NEW INSPECTION"}: {selectedComp.q_id || selectedComp.name}
               </span>
+              <div className="flex items-center gap-1.5 bg-slate-800/90 text-slate-300 px-2 py-0.5 rounded border border-slate-700/60 text-[9px] font-mono shrink-0 select-none">
+                <span className="text-blue-400 font-bold">{inspMethod === "ROV" ? "DEP" : "DIVE"}:</span>
+                <span className="text-white font-semibold">{displayDiveNo}</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-blue-400 font-bold">TAPE:</span>
+                <span className="text-white font-semibold max-w-[130px] truncate" title={displayTapeNo}>{displayTapeNo}</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-blue-400 font-bold">CH:</span>
+                <span className="text-white font-semibold">{displayChapter}</span>
+              </div>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <Badge variant="outline" className="text-[9px] h-4 px-2 font-black uppercase border-blue-500 text-blue-400 bg-blue-500/10 tracking-widest">
                 {(() => {
                   if (!activeSpec) return "NO SPEC";
@@ -283,6 +355,11 @@ export function InspectionFormPanel({
                 activeDep={activeDep}
                 currentMovement={currentMovement}
                 tapeId={tapeId}
+                jobTapes={jobTapes}
+                originalRecordContext={originalRecordContext}
+                tapeNo={tapeNo}
+                activeChapter={activeChapter}
+                deployments={deployments}
                 vidState={vidState}
                 onChangeTaskClick={() => setShowTaskSelector(true)}
                 onChangeComponentClick={() => setShowCompSelector(true)}
@@ -296,6 +373,7 @@ export function InspectionFormPanel({
                 setPrevRefNo={setPrevRefNo}
                 criteriaRules={criteriaRules}
                 onVoiceActionCommand={onVoiceActionCommand}
+                calculateAutoCounter={calculateAutoCounter}
               />
             )}
           </div>

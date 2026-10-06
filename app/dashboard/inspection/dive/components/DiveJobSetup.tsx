@@ -4,6 +4,7 @@ import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { Label } from "@/components/ui/label";
 import {
     Select,
@@ -253,15 +254,15 @@ export default function DiveJobSetup({
                     </div>
 
                     <div className="space-y-2">
-                        <Label htmlFor="dive_start_time">Dive Start Time *</Label>
-                        <Input
+                        <Label htmlFor="dive_start_time">Dive Start Time (12h or 24h) *</Label>
+                        <SmartTimeInput
                             id="dive_start_time"
-                            type="time"
                             value={formData.dive_start_time}
-                            onChange={(e) =>
-                                setFormData({ ...formData, dive_start_time: e.target.value })
+                            onChange={(val) =>
+                                setFormData({ ...formData, dive_start_time: val })
                             }
-                            required
+                            includeSeconds={false}
+                            className="h-10"
                         />
                     </div>
                 </div>

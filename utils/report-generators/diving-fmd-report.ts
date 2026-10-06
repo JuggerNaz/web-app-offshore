@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateDivingFMDReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }
@@ -45,7 +46,7 @@ export const generateDivingFMDReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -66,19 +67,7 @@ export const generateDivingFMDReport = async (
         }
 
         // --- 2. Calculate Date Range ---
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (records.length > 0) {
-            const dates = records.map(r => new Date(r.cr_date || r.inspection_date)).filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-
-        const dateRangeStr = startDate && endDate 
-            ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
-            : 'N/A';
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const headerH = 26;
         const drawHeader = (d: jsPDF) => {
@@ -120,7 +109,7 @@ export const generateDivingFMDReport = async (
                 d.setDrawColor(...colors.border);
                 d.setLineWidth(0.2); 
                 if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, isPF ? 'S' : 'FD'); 
+                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'FD'); 
                 
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
                 d.text(label, x + 3, ty + 4.8); d.setFont("helvetica", "normal");
@@ -185,21 +174,8 @@ export const generateDivingFMDReport = async (
                 const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                 const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || r.rectified_remarks || '';
 
-                // Construct Findings Column
-                const findingsParts: string[] = [];
-                if (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') {
-                    findingsParts.push(String(r.description).trim());
-                } else if (data.remarks && String(data.remarks).trim() !== '') {
-                    findingsParts.push(String(data.remarks).trim());
-                }
-
-                if (isAnomaly && anomRef) {
-                    findingsParts.push(`[Ref: ${anomRef}]`);
-                }
-
-                if (isRectified) {
-                    findingsParts.push(`[Rectified: ${rectRem || 'Completed'}]`);
-                }
+                const baseFinding = (r.description && String(r.description).trim() !== '' && String(r.description).trim().toUpperCase() !== 'N/A') ? String(r.description).trim() : (data.remarks && String(data.remarks).trim() !== '' ? String(data.remarks).trim() : "");
+                const findings = formatReportFindingText(r, baseFinding);
 
                 return [
                     String(itemNo),
@@ -208,13 +184,13 @@ export const generateDivingFMDReport = async (
                     diveNo,
                     floodedStr,
                     groutedStr,
-                    findingsParts.length > 0 ? findingsParts.join('\n') : 'N/A'
+                    findings
                 ];
             }),
             theme: 'grid',
             headStyles: { 
-                fillColor: isPF ? [255, 255, 255] : colors.navy, 
-                textColor: isPF ? colors.navy : 255, 
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy, 
+                textColor: config?.printFriendly ? colors.navy : 255, 
                 fontSize: 8, 
                 fontStyle: 'bold', 
                 halign: 'center',
@@ -231,22 +207,9 @@ export const generateDivingFMDReport = async (
             tableLineWidth: 0.3,
             tableLineColor: colors.darkBorder,
             didParseCell: (data) => {
-                if (data.section === 'body') {
-                    const r = sortedRecords[data.row.index];
-                    if (r) {
-                        const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-                        const isAnom = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-                        const isRect = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-
-                        if (isAnom) {
-                            data.cell.styles.textColor = colors.anomaly;
-                            data.cell.styles.fontStyle = 'bold';
-                        } else if (isRect) {
-                            data.cell.styles.textColor = colors.rectified;
-                            data.cell.styles.fontStyle = 'bold';
-                        }
-                    }
-                }
+                if (data.section !== "body") return;
+                const r = sortedRecords[data.row.index];
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             columnStyles: {
                 0: { cellWidth: 16, halign: 'center' },
@@ -266,7 +229,7 @@ export const generateDivingFMDReport = async (
                 doc.setDrawColor(...colors.darkBorder); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Flooded Member Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

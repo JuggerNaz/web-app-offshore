@@ -1,3 +1,4 @@
+import { normalizeReportRecords } from "./shared-logo";
 import * as THREE from 'three';
 
 interface FaceSketchOptions {
@@ -11,7 +12,7 @@ interface FaceSketchOptions {
 
 const sanitizeElevation = (elvVal: any): number => {
     if (elvVal === undefined || elvVal === null) return 0;
-    let val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
+    const val = typeof elvVal === "number" ? elvVal : parseFloat(elvVal);
     if (isNaN(val)) return 0;
     if (val === 50.772) return -50.772; // Fix 50m spike typo
     if (val < -1000) return val / 1000;

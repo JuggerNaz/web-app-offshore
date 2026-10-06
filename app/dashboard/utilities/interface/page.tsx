@@ -37,6 +37,8 @@ import {
   Sliders,
   FolderSync,
   Archive,
+  Hourglass,
+  Loader2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,6 +47,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import useSWR from "swr";
+import { fetcher } from "@/utils/utils";
 import { cn } from "@/lib/utils";
 import {
   INITIAL_CLIENT_PROFILES,
@@ -73,16 +77,26 @@ export default function InterfaceModulePage() {
   const [customFileName, setCustomFileName] = useState<string>("");
   const [activeTab, setActiveTab] = useState<string>("configure");
 
-  // Data fetching state
-  const [isLoadingData, setIsLoadingData] = useState<boolean>(true);
+  // Data fetching state (SWR: shared cache + 30s dedupe across page visits)
+  const { data: structuresRes, isLoading: isLoadingStructures, mutate: mutateStructures } = useSWR<any>("/api/structures", fetcher);
+  const { data: jobpacksRes, isLoading: isLoadingJobpacks, mutate: mutateJobpacks } = useSWR<any>("/api/jobpack?limit=1000", fetcher);
+  const structuresList = useMemo<any[]>(() => structuresRes?.data || [], [structuresRes]);
+  const allJobpacksMaster = useMemo<any[]>(() => jobpacksRes?.data || [], [jobpacksRes]);
+  const isLoadingData = isLoadingStructures || isLoadingJobpacks;
   const [isFetchingJobpacks, setIsFetchingJobpacks] = useState<boolean>(false);
   const [isExporting, setIsExporting] = useState<boolean>(false);
-  const [structuresList, setStructuresList] = useState<any[]>([]);
   const [jobpacksList, setJobpacksList] = useState<any[]>([]);
   const [searchStructureQuery, setSearchStructureQuery] = useState<string>("");
   const [searchJobpackQuery, setSearchJobpackQuery] = useState<string>("");
   const [selectedPreviewSheetId, setSelectedPreviewSheetId] = useState<string>("sics-ans");
   const [searchSheetQuery, setSearchSheetQuery] = useState<string>("");
+
+  // SOW Scope Selection
+  const [sowReportMode, setSowReportMode] = useState<"ALL" | "SELECTED">("ALL");
+  const [selectedSowReportNos, setSelectedSowReportNos] = useState<string[]>([]);
+  const [searchSowQuery, setSearchSowQuery] = useState<string>("");
+  const [inspectionFiltersMaster, setInspectionFiltersMaster] = useState<{ jobpack_id: number; structure_id: number; sow_report_no: string }[]>([]);
+  const [isLoadingSows, setIsLoadingSows] = useState<boolean>(false);
 
   // Modals for Registering / Editing
   const [isNewClientModalOpen, setIsNewClientModalOpen] = useState<boolean>(false);
@@ -137,76 +151,207 @@ export default function InterfaceModulePage() {
     },
   ]);
 
-  // ─── Initial Load ──────────────────────────────────────────────────────────
+  // Default-select all platforms once structures arrive (re-applied on manual refresh)
   useEffect(() => {
-    async function loadData() {
-      setIsLoadingData(true);
-      try {
-        const strRes = await fetch("/api/structures");
-        if (strRes.ok) {
-          const strJson = await strRes.json();
-          const list = strJson.data || [];
-          setStructuresList(list);
-          const platIds = list
-            .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
-            .map((s: any) => s.str_id || s.id);
-          setSelectedStructureIds(platIds.length > 0 ? platIds : list.map((s: any) => s.str_id || s.id));
-        }
-      } catch (err) {
-        console.warn("[Interface] Load structures error:", err);
-      } finally {
-        setIsLoadingData(false);
-      }
-    }
-    loadData();
-  }, []);
+    if (structuresList.length === 0) return;
+    const platIds = structuresList
+      .filter((s: any) => String(s.str_type).toUpperCase() === "PLATFORM")
+      .map((s: any) => s.str_id || s.id);
+    setSelectedStructureIds(platIds.length > 0 ? platIds : structuresList.map((s: any) => s.str_id || s.id));
+  }, [structuresList]);
 
-  // ─── Fetch Jobpacks Scoped Strictly to Selected Structure(s) ───────────────
+  const handleRefreshData = async () => {
+    await Promise.all([mutateStructures(), mutateJobpacks()]);
+    toast.success("Asset structures & jobpack data refreshed");
+  };
+
+  // ─── Filter Jobpacks Scoped Strictly to Selected Structure(s) in Memory ─────
   useEffect(() => {
-    let isMounted = true;
-    async function loadScopedJobpacks() {
-      if (selectedStructureIds.length === 0) {
-        setJobpacksList([]);
-        setSelectedJobpackIds([]);
+    if (selectedStructureIds.length === 0 || allJobpacksMaster.length === 0) {
+      setJobpacksList([]);
+      setSelectedJobpackIds([]);
+      return;
+    }
+
+    const selectedSet = new Set(selectedStructureIds.map(Number));
+    const selectedTitles = new Set(
+      structuresList
+        .filter((s) => selectedSet.has(Number(s.str_id || s.id)))
+        .map((s) => String(s.str_name || s.title || "").toLowerCase().trim())
+        .filter(Boolean)
+    );
+
+    const scoped = allJobpacksMaster.filter((jp: any) => {
+      // 1. Direct structure_id or platform_id / pipe_id
+      const directSId = Number(String(jp.metadata?.structure_id || jp.metadata?.platform_id || jp.metadata?.pipe_id || jp.metadata?.plat_id || jp.metadata?.str_id || "").replace(/^(platform|pipeline)-/, ""));
+      if (!isNaN(directSId) && directSId > 0 && selectedSet.has(directSId)) return true;
+
+      // 2. Direct title match
+      const directTitle = String(jp.metadata?.structure_name || jp.metadata?.plantype || jp.metadata?.title || "").toLowerCase().trim();
+      if (directTitle && (selectedTitles.has(directTitle) || Array.from(selectedTitles).some(st => directTitle.includes(st) || st.includes(directTitle)))) return true;
+
+      // 3. Array of structures in metadata
+      const structures = jp.metadata?.structures;
+      if (Array.isArray(structures) && structures.length > 0) {
+        return structures.some((s: any) => {
+          const sid = Number(String(s.id || s.structure_id || s.platform_id || s.pipe_id || s.str_id || s.plat_id || "").replace(/^(platform|pipeline)-/, ""));
+          if (!isNaN(sid) && selectedSet.has(sid)) return true;
+          const sName = String(s.title || s.name || s.code || "").toLowerCase().trim();
+          if (sName && (selectedTitles.has(sName) || Array.from(selectedTitles).some(st => sName.includes(st) || st.includes(sName)))) return true;
+          return false;
+        });
+      }
+
+      // If jobpack has no structure metadata and all structures are selected, include it
+      if (selectedSet.size === structuresList.length) return true;
+
+      return false;
+    });
+
+    setJobpacksList(scoped);
+    setSelectedJobpackIds((prev) =>
+      prev.filter((id) => scoped.some((jp: any) => jp.id === id))
+    );
+  }, [selectedStructureIds, structuresList, allJobpacksMaster]);
+
+  // ─── Fetch SOW & Inspection Filters for Scoped Structures ───────────────────
+  useEffect(() => {
+    if (selectedStructureIds.length === 0) {
+      setInspectionFiltersMaster([]);
+      return;
+    }
+    const abortController = new AbortController();
+    let isCurrent = true;
+    setIsLoadingSows(true);
+
+    const fetchFilters = async () => {
+      try {
+        const res = await fetch("/api/reports/inspection-filters", {
+          signal: abortController.signal,
+        });
+        if (!res.ok) return;
+        const data = await res.json().catch(() => ({}));
+        if (!isCurrent) return;
+        if (data && data.success && Array.isArray(data.data)) {
+          setInspectionFiltersMaster(data.data);
+        }
+      } catch (err: any) {
+        if (err.name !== "AbortError") {
+          console.warn("[Interface] Error fetching inspection filters:", err);
+        }
+      } finally {
+        if (isCurrent) setIsLoadingSows(false);
+      }
+    };
+
+    fetchFilters();
+
+    return () => {
+      isCurrent = false;
+      abortController.abort();
+    };
+  }, [selectedStructureIds]);
+
+  // ─── Filter SOW Reports Scoped to Selected Structures & Jobpacks ───────────
+  const scopedSowReports = useMemo(() => {
+    if (selectedStructureIds.length === 0) return [];
+    const selectedStrSet = new Set(selectedStructureIds.map(Number));
+    const activeJpSet = new Set(
+      (jobpackMode === "SELECTED" && selectedJobpackIds.length > 0
+        ? selectedJobpackIds
+        : jobpacksList.map((jp) => jp.id)
+      ).map(Number)
+    );
+
+    const sowMap = new Map<string, { sow_report_no: string; jobpack_id?: number; jobpack_name?: string; structure_id?: number }>();
+
+    // 1. From inspectionFiltersMaster
+    inspectionFiltersMaster.forEach((f) => {
+      const sId = Number(f.structure_id);
+      const jpId = Number(f.jobpack_id);
+      const sowNo = (f.sow_report_no || "").trim();
+      if (!sowNo) return;
+      if (selectedStrSet.has(sId) && (activeJpSet.size === 0 || activeJpSet.has(jpId))) {
+        const jpObj = allJobpacksMaster.find((jp) => jp.id === jpId);
+        if (!sowMap.has(sowNo.toUpperCase())) {
+          sowMap.set(sowNo.toUpperCase(), {
+            sow_report_no: sowNo,
+            jobpack_id: jpId,
+            jobpack_name: jpObj?.name || (jpId ? `JP-${jpId}` : "Active"),
+            structure_id: sId,
+          });
+        }
+      }
+    });
+
+    // 2. From jobpack metadata
+    jobpacksList.forEach((jp) => {
+      if (jobpackMode === "SELECTED" && selectedJobpackIds.length > 0 && !selectedJobpackIds.includes(jp.id)) {
         return;
       }
+      const rawSows = [
+        jp.metadata?.sow_report_no,
+        jp.metadata?.sow_no,
+        jp.metadata?.report_no,
+        ...(Array.isArray(jp.metadata?.sow_reports) ? jp.metadata.sow_reports : []),
+        ...(Array.isArray(jp.metadata?.sows) ? jp.metadata.sows : []),
+        ...(Array.isArray(jp.metadata?.sow_list) ? jp.metadata.sow_list : []),
+        ...(Array.isArray(jp.metadata?.scopes) ? jp.metadata.scopes : []),
+      ];
 
-      setIsFetchingJobpacks(true);
-      try {
-        const idsParam = selectedStructureIds.join(",");
-        const selectedTitles = structuresList
-          .filter((s) => selectedStructureIds.includes(s.str_id || s.id))
-          .map((s) => s.str_name || s.title || "")
-          .filter(Boolean);
-        const titlesParam = encodeURIComponent(selectedTitles.join(","));
+      rawSows.forEach((item) => {
+        if (!item) return;
+        const sowStr = String(typeof item === "object" ? (item.sow_report_no || item.report_no || item.name || item.id || "") : item).trim();
+        if (sowStr && !sowMap.has(sowStr.toUpperCase())) {
+          sowMap.set(sowStr.toUpperCase(), {
+            sow_report_no: sowStr,
+            jobpack_id: jp.id,
+            jobpack_name: jp.name,
+          });
+        }
+      });
+    });
 
-        const url = `/api/jobpack?structure_ids=${idsParam}${titlesParam ? `&structure_titles=${titlesParam}` : ""}&limit=1000`;
-        const jpRes = await fetch(url);
-        if (jpRes.ok) {
-          const jpJson = await jpRes.json();
-          const list = jpJson.data || [];
-          if (isMounted) {
-            setJobpacksList(list);
-            // Automatically prune any selected jobpack IDs that are no longer part of the scoped structures
-            setSelectedJobpackIds((prev) =>
-              prev.filter((id) => list.some((jp: any) => jp.id === id))
-            );
-          }
-        }
-      } catch (err) {
-        console.warn("[Interface] Load scoped jobpacks error:", err);
-      } finally {
-        if (isMounted) {
-          setIsFetchingJobpacks(false);
-        }
-      }
+    return Array.from(sowMap.values());
+  }, [selectedStructureIds, jobpackMode, selectedJobpackIds, jobpacksList, inspectionFiltersMaster, allJobpacksMaster]);
+
+  const filteredSowReports = useMemo(() => {
+    if (!searchSowQuery.trim()) return scopedSowReports;
+    const q = searchSowQuery.toLowerCase().trim();
+    return scopedSowReports.filter((s) =>
+      s.sow_report_no.toLowerCase().includes(q) ||
+      (s.jobpack_name && s.jobpack_name.toLowerCase().includes(q))
+    );
+  }, [scopedSowReports, searchSowQuery]);
+
+  const handleToggleSowReport = (sowNo: string) => {
+    setSelectedSowReportNos((prev) =>
+      prev.includes(sowNo) ? prev.filter((item) => item !== sowNo) : [...prev, sowNo]
+    );
+  };
+
+  // Resolve Selected Structure Objects with full details (Name, ID, Field, Desc, Type)
+  const selectedStructures = useMemo(() => {
+    const selectedSet = new Set(selectedStructureIds.map(Number));
+    return structuresList.filter((s) => selectedSet.has(Number(s.str_id || s.id)));
+  }, [structuresList, selectedStructureIds]);
+
+  // Resolve Selected Jobpack Objects
+  const selectedJobpackObjects = useMemo(() => {
+    if (jobpackMode === "ALL") {
+      return jobpacksList;
     }
+    const selectedSet = new Set(selectedJobpackIds.map(Number));
+    return jobpacksList.filter((jp) => selectedSet.has(Number(jp.id)));
+  }, [jobpackMode, selectedJobpackIds, jobpacksList]);
 
-    loadScopedJobpacks();
-    return () => {
-      isMounted = false;
-    };
-  }, [selectedStructureIds, structuresList]);
+  // Resolve Selected SOW Names
+  const selectedSowNames = useMemo(() => {
+    if (sowReportMode === "ALL") {
+      return scopedSowReports.map((s) => s.sow_report_no);
+    }
+    return selectedSowReportNos;
+  }, [sowReportMode, selectedSowReportNos, scopedSowReports]);
 
   // Active Client & Active Interface
   const activeClient = useMemo(() => {
@@ -357,6 +502,8 @@ export default function InterfaceModulePage() {
           structureType: structureTypeFilter,
           jobpackMode,
           jobpackIds: selectedJobpackIds,
+          sowReportMode,
+          sowReportNos: selectedSowReportNos,
           inspectionTypes: selectedInspectionTypes,
           format: fileFormat,
           destinationFolder,
@@ -424,6 +571,8 @@ export default function InterfaceModulePage() {
           structureType: structureTypeFilter,
           jobpackMode,
           jobpackIds: selectedJobpackIds,
+          sowReportMode,
+          sowReportNos: selectedSowReportNos,
           inspectionTypes: selectedInspectionTypes,
           format: exportFormat,
           destinationFolder,
@@ -614,6 +763,242 @@ export default function InterfaceModulePage() {
               4. Transfer Logs ({exportHistory.length})
             </TabsTrigger>
           </TabsList>
+
+          {/* ─── Active Interface Deliverable Target Scope Banner ─────────────────── */}
+          <div className="rounded-3xl p-5 bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 text-white border border-indigo-500/30 shadow-xl shadow-indigo-950/20 backdrop-blur-xl relative overflow-hidden animate-in fade-in duration-300">
+            <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-cyan-500/10 rounded-full blur-3xl pointer-events-none" />
+            <div className="absolute bottom-0 left-1/3 -mb-8 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+
+            <div className="relative z-10 flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-white/10 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-8 w-8 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30 flex items-center justify-center font-bold text-xs shadow-inner">
+                    <Database className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-black uppercase tracking-[0.2em] text-cyan-400">
+                        Active Interface Target
+                      </span>
+                      <Badge className="bg-emerald-500/20 text-emerald-300 border-emerald-500/30 font-mono text-[10px] py-0">
+                        {activeClient.code} • {activeInterface.name}
+                      </Badge>
+                    </div>
+                    <h2 className="text-base font-bold text-white flex flex-wrap items-center gap-2">
+                      Creating Interface Files for:{" "}
+                      <span className="text-cyan-300 font-black">
+                        {selectedStructures.length === 1
+                          ? (selectedStructures[0].str_name || selectedStructures[0].title || `Structure ${selectedStructures[0].str_id || selectedStructures[0].id}`)
+                          : selectedStructures.length > 1
+                          ? `${selectedStructures.length} Structures (${selectedStructures.map((s) => s.str_name || s.title || s.str_id || s.id).slice(0, 3).join(", ")}${selectedStructures.length > 3 ? "..." : ""})`
+                          : "No Structure Selected"}
+                      </span>
+                    </h2>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 self-start md:self-auto">
+                  {activeTab !== "configure" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setActiveTab("configure")}
+                      className="h-8 text-xs font-bold rounded-xl bg-white/10 hover:bg-white/20 text-white border-white/20 gap-1.5 shadow-sm"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 text-cyan-300" />
+                      Change Selection
+                    </Button>
+                  )}
+                  {activeTab !== "preview" && (
+                    <Button
+                      size="sm"
+                      onClick={() => setActiveTab("preview")}
+                      className="h-8 text-xs font-bold rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white gap-1.5 shadow-md"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      Generate Deliverables
+                    </Button>
+                  )}
+                </div>
+              </div>
+
+              {/* Scope Breakdown Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* 1. Structure Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <Building2 className="h-3.5 w-3.5 text-cyan-400" />
+                      Target Structure
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-cyan-300 bg-cyan-950/40">
+                      {selectedStructures.length} Asset{selectedStructures.length !== 1 ? "s" : ""}
+                    </Badge>
+                  </div>
+
+                  {selectedStructures.length === 0 ? (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      No structure selected. Please select in Step 1.
+                    </p>
+                  ) : selectedStructures.length === 1 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-white truncate">
+                          {selectedStructures[0].str_name || selectedStructures[0].title || `Structure ${selectedStructures[0].str_id || selectedStructures[0].id}`}
+                        </p>
+                        <Badge className="text-[10px] font-mono uppercase bg-blue-500/20 text-blue-300 border-blue-500/30">
+                          {selectedStructures[0].str_type || "PLATFORM"}
+                        </Badge>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-slate-300">
+                        <span>
+                          <span className="text-slate-400">ID:</span>{" "}
+                          <strong className="font-mono text-cyan-300">{selectedStructures[0].str_id || selectedStructures[0].plat_id || selectedStructures[0].id}</strong>
+                        </span>
+                        {selectedStructures[0].pfield && (
+                          <span>
+                            <span className="text-slate-400">Field:</span>{" "}
+                            <strong className="text-slate-200">{selectedStructures[0].pfield}</strong>
+                          </span>
+                        )}
+                        {(selectedStructures[0].pdesc || selectedStructures[0].description) && (
+                          <span className="truncate max-w-[200px]" title={selectedStructures[0].pdesc || selectedStructures[0].description}>
+                            <span className="text-slate-400">Desc:</span>{" "}
+                            <span className="text-slate-300">{selectedStructures[0].pdesc || selectedStructures[0].description}</span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        {selectedStructures.length} Offshore Assets Targeted:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedStructures.map((s) => (
+                          <Badge
+                            key={s.str_id || s.id}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-white/10 border-white/20 text-cyan-200"
+                          >
+                            {s.str_name || s.title || `ID ${s.str_id || s.id}`} (ID: {s.str_id || s.plat_id || s.id})
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Jobpack Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <Package className="h-3.5 w-3.5 text-indigo-400" />
+                      Target Jobpack
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-indigo-300 bg-indigo-950/40">
+                      {jobpackMode === "ALL" ? "Mode: ALL" : `Selected (${selectedJobpackIds.length})`}
+                    </Badge>
+                  </div>
+
+                  {jobpackMode === "ALL" ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-white">
+                        All Scoped Jobpacks ({jobpacksList.length})
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        Extracting records across all active jobpacks for selected structure(s).
+                      </p>
+                    </div>
+                  ) : selectedJobpackObjects.length === 1 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-black text-white truncate">
+                          {selectedJobpackObjects[0].name || `Jobpack ${selectedJobpackObjects[0].id}`}
+                        </p>
+                        <Badge className="text-[9px] font-mono uppercase bg-emerald-500/20 text-emerald-300 border-emerald-500/30">
+                          {selectedJobpackObjects[0].status || "OPEN"}
+                        </Badge>
+                      </div>
+                      <p className="text-[11px] text-slate-300">
+                        <span className="text-slate-400">Jobpack ID:</span>{" "}
+                        <strong className="font-mono text-indigo-300">{selectedJobpackObjects[0].id}</strong>
+                      </p>
+                    </div>
+                  ) : selectedJobpackObjects.length > 1 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        {selectedJobpackObjects.length} Specific Jobpacks Selected:
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedJobpackObjects.map((jp) => (
+                          <Badge
+                            key={jp.id}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-white/10 border-white/20 text-indigo-200"
+                          >
+                            {jp.name || `JP-${jp.id}`}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      No specific jobpack selected.
+                    </p>
+                  )}
+                </div>
+
+                {/* 3. SOW Report No. Details Card */}
+                <div className="p-3.5 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md flex flex-col justify-between space-y-2">
+                  <div className="flex items-center justify-between text-slate-400 text-xs">
+                    <span className="flex items-center gap-1.5 font-bold text-slate-300 uppercase tracking-wider text-[10px]">
+                      <FileSpreadsheet className="h-3.5 w-3.5 text-teal-400" />
+                      SOW Report Filter
+                    </span>
+                    <Badge variant="outline" className="text-[10px] font-mono border-white/10 text-teal-300 bg-teal-950/40">
+                      {sowReportMode === "ALL" ? "All SOWs" : `Specific (${selectedSowReportNos.length})`}
+                    </Badge>
+                  </div>
+
+                  {sowReportMode === "ALL" ? (
+                    <div className="space-y-1">
+                      <p className="text-sm font-bold text-white">
+                        All Scoped SOW Reports ({scopedSowReports.length})
+                      </p>
+                      <p className="text-[11px] text-slate-300">
+                        Including all inspection sow reports associated with selected scope.
+                      </p>
+                    </div>
+                  ) : selectedSowReportNos.length > 0 ? (
+                    <div className="space-y-1.5">
+                      <p className="text-xs font-bold text-white">
+                        Filtered SOW Reports ({selectedSowReportNos.length}):
+                      </p>
+                      <div className="flex flex-wrap gap-1.5 max-h-16 overflow-y-auto custom-scrollbar pr-1">
+                        {selectedSowReportNos.map((sow) => (
+                          <Badge
+                            key={sow}
+                            variant="outline"
+                            className="text-[10px] font-mono bg-teal-500/20 border-teal-500/30 text-teal-200"
+                          >
+                            {sow}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-amber-300 flex items-center gap-1.5 font-medium">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      Specific mode selected but no SOW chosen.
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* ═══════════════════════════════════════════════════════════════════════
               TAB 1: SETUP & SCOPE
@@ -858,41 +1243,54 @@ export default function InterfaceModulePage() {
                     </div>
                   </div>
 
-                  {/* Filter Pills */}
-                  <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <button
-                      onClick={() => setStructureTypeFilter("ALL")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "ALL"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
+                  {/* Header Actions: Refresh & Filter Pills */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRefreshData}
+                      disabled={isLoadingData}
+                      className="rounded-xl text-xs h-8 gap-1.5 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800"
                     >
-                      All ({structuresList.length})
-                    </button>
-                    <button
-                      onClick={() => setStructureTypeFilter("PLATFORM")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "PLATFORM"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      Platforms
-                    </button>
-                    <button
-                      onClick={() => setStructureTypeFilter("PIPELINE")}
-                      className={cn(
-                        "px-3 py-1 rounded-lg text-xs font-bold transition-all",
-                        structureTypeFilter === "PIPELINE"
-                          ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
-                          : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
-                      )}
-                    >
-                      Pipelines
-                    </button>
+                      <RefreshCw className={cn("h-3.5 w-3.5 text-blue-500", isLoadingData && "animate-spin")} />
+                      <span>{isLoadingData ? "Refreshing..." : "Refresh Assets"}</span>
+                    </Button>
+
+                    <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setStructureTypeFilter("ALL")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "ALL"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        All ({structuresList.length})
+                      </button>
+                      <button
+                        onClick={() => setStructureTypeFilter("PLATFORM")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "PLATFORM"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Platforms
+                      </button>
+                      <button
+                        onClick={() => setStructureTypeFilter("PIPELINE")}
+                        className={cn(
+                          "px-3 py-1 rounded-lg text-xs font-bold transition-all",
+                          structureTypeFilter === "PIPELINE"
+                            ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Pipelines
+                      </button>
+                    </div>
                   </div>
                 </div>
               </CardHeader>
@@ -904,6 +1302,7 @@ export default function InterfaceModulePage() {
                       placeholder="Search structure name, pipeline code, or ID..."
                       value={searchStructureQuery}
                       onChange={(e) => setSearchStructureQuery(e.target.value)}
+                      disabled={isLoadingData}
                       className="pl-9 h-9 text-xs rounded-xl bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700"
                     />
                   </div>
@@ -912,6 +1311,7 @@ export default function InterfaceModulePage() {
                       variant="outline"
                       size="sm"
                       onClick={handleSelectAllStructures}
+                      disabled={isLoadingData || filteredStructures.length === 0}
                       className="rounded-xl text-xs h-8"
                     >
                       Select All Filtered ({filteredStructures.length})
@@ -920,6 +1320,7 @@ export default function InterfaceModulePage() {
                       variant="outline"
                       size="sm"
                       onClick={handleClearStructures}
+                      disabled={isLoadingData || selectedStructureIds.length === 0}
                       className="rounded-xl text-xs h-8 text-slate-500"
                     >
                       Clear Selection
@@ -933,59 +1334,95 @@ export default function InterfaceModulePage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar p-1">
-                  {filteredStructures.map((str) => {
-                    const strId = str.str_id || str.id;
-                    const isSelected = selectedStructureIds.includes(strId);
-                    const isPlat = str.str_type === "PLATFORM";
+                {isLoadingData ? (
+                  <div className="flex flex-col items-center justify-center py-12 text-slate-500 dark:text-slate-400 gap-3 border border-dashed border-indigo-300/60 dark:border-indigo-800/60 rounded-2xl bg-indigo-50/30 dark:bg-indigo-950/20 animate-in fade-in duration-300">
+                    <div className="p-3 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 shadow-inner">
+                      <Hourglass className="h-8 w-8 animate-spin" style={{ animationDuration: "2.5s" }} />
+                    </div>
+                    <div className="text-center space-y-1">
+                      <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                        Fetching Asset Structures & Titles...
+                      </p>
+                      <p className="text-xs text-slate-400 max-w-sm">
+                        Loading platforms, pipelines, and structural inspection components from the database.
+                      </p>
+                    </div>
+                  </div>
+                ) : filteredStructures.length === 0 ? (
+                  <div className="p-8 rounded-2xl border border-dashed border-amber-300/50 bg-amber-500/5 text-center text-xs text-amber-700 dark:text-amber-400 space-y-3">
+                    <AlertCircle className="h-8 w-8 mx-auto text-amber-500 opacity-80" />
+                    <div className="space-y-1">
+                      <p className="font-bold text-sm">No Asset Structures Retrieved</p>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                        No {structureTypeFilter !== "ALL" ? structureTypeFilter.toLowerCase() : ""} structures matched the current search filter or active organization.
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={handleRefreshData}
+                      className="rounded-xl text-xs gap-1.5 border-amber-300 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-950"
+                    >
+                      <RefreshCw className="h-3.5 w-3.5 text-amber-600" />
+                      Retry Structure Retrieval
+                    </Button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-60 overflow-y-auto custom-scrollbar p-1">
+                    {filteredStructures.map((str) => {
+                      const strId = str.str_id || str.id;
+                      const isSelected = selectedStructureIds.includes(strId);
+                      const isPlat = str.str_type === "PLATFORM";
 
-                    return (
-                      <div
-                        key={strId}
-                        onClick={() => handleToggleStructure(strId)}
-                        className={cn(
-                          "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group",
-                          isSelected
-                            ? "bg-indigo-500/10 border-indigo-500/60 shadow-sm"
-                            : "bg-white/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-slate-400"
-                        )}
-                      >
-                        <div className="flex items-center justify-between">
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              "text-[9px] px-1.5 py-0 font-bold",
-                              isPlat
-                                ? "text-blue-500 border-blue-400/40"
-                                : "text-emerald-500 border-emerald-400/40"
-                            )}
-                          >
-                            {str.str_type || "PLATFORM"}
-                          </Badge>
-                          <div
-                            className={cn(
-                              "h-4 w-4 rounded-full border flex items-center justify-center",
-                              isSelected
-                                ? "bg-indigo-600 border-indigo-600 text-white"
-                                : "border-slate-300 dark:border-slate-600"
-                            )}
-                          >
-                            {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
-                          </div>
-                        </div>
-                        <p
-                          className="font-bold text-xs text-slate-900 dark:text-white truncate"
-                          title={str.str_name || str.title}
+                      return (
+                        <div
+                          key={strId}
+                          onClick={() => handleToggleStructure(strId)}
+                          className={cn(
+                            "p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-1 group",
+                            isSelected
+                              ? "bg-indigo-500/10 border-indigo-500/60 shadow-sm ring-1 ring-indigo-500/30"
+                              : "bg-white/80 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700/80 hover:border-slate-400"
+                          )}
                         >
-                          {str.str_name || str.title || `Asset ${strId}`}
-                        </p>
-                        <p className="text-[10px] text-slate-400 truncate">
-                          {str.field_name || str.pfield || "Offshore"}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
+                          <div className="flex items-center justify-between">
+                            <Badge
+                              variant="outline"
+                              className={cn(
+                                "text-[9px] px-1.5 py-0 font-bold",
+                                isPlat
+                                  ? "text-blue-500 border-blue-400/40"
+                                  : "text-emerald-500 border-emerald-400/40"
+                              )}
+                            >
+                              {str.str_type || "PLATFORM"}
+                            </Badge>
+                            <div
+                              className={cn(
+                                "h-4 w-4 rounded-full border flex items-center justify-center",
+                                isSelected
+                                  ? "bg-indigo-600 border-indigo-600 text-white"
+                                  : "border-slate-300 dark:border-slate-600"
+                              )}
+                            >
+                              {isSelected && <Check className="h-2.5 w-2.5 stroke-[3]" />}
+                            </div>
+                          </div>
+                          <p
+                            className="font-bold text-xs text-slate-900 dark:text-white truncate"
+                            title={str.title || str.str_name || str.name || `Asset ${strId}`}
+                          >
+                            {str.title || str.str_name || str.name || (isPlat ? `Platform ${strId}` : `Pipeline ${strId}`)}
+                          </p>
+                          <p className="text-[10px] text-slate-400 truncate flex items-center justify-between gap-1">
+                            <span>{str.field_name || str.pfield || "Offshore"}</span>
+                            <span className="font-mono text-[9px] opacity-60">#{strId}</span>
+                          </p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
 
@@ -1007,7 +1444,7 @@ export default function InterfaceModulePage() {
                     </div>
                   </div>
 
-                  {selectedStructureIds.length > 0 && !isFetchingJobpacks && (
+                  {selectedStructureIds.length > 0 && !isLoadingData && !isFetchingJobpacks && (
                     <Badge variant="outline" className="font-mono text-[10px] bg-teal-500/10 text-teal-600 dark:text-teal-400 border-teal-500/20">
                       {jobpacksList.length} Jobpack{jobpacksList.length !== 1 ? "s" : ""} Scoped
                     </Badge>
@@ -1040,10 +1477,10 @@ export default function InterfaceModulePage() {
                   </button>
                 </div>
 
-                {isFetchingJobpacks ? (
-                  <div className="flex items-center justify-center py-8 text-xs text-slate-400 gap-2 border border-dashed border-slate-200 dark:border-slate-800 rounded-2xl">
-                    <RefreshCw className="h-4 w-4 animate-spin text-teal-500" />
-                    <span>Loading jobpacks for selected structure(s)...</span>
+                {isLoadingData || isFetchingJobpacks ? (
+                  <div className="flex flex-col items-center justify-center py-8 text-xs text-teal-600 dark:text-teal-400 gap-2 border border-dashed border-teal-300/60 dark:border-teal-800/60 rounded-2xl bg-teal-50/30 dark:bg-teal-950/20 animate-in fade-in duration-300">
+                    <Hourglass className="h-6 w-6 animate-spin text-teal-500" style={{ animationDuration: "2.5s" }} />
+                    <span className="font-semibold">Retrieving jobpack scopes from database...</span>
                   </div>
                 ) : selectedStructureIds.length === 0 ? (
                   <div className="p-5 rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 text-center text-xs text-slate-400 space-y-1">
@@ -1159,6 +1596,138 @@ export default function InterfaceModulePage() {
                         ))
                       )}
                     </div>
+                  </div>
+                )}
+
+                {/* SOW Scope Selector (Optional Multi-SOW Filter) */}
+                {selectedStructureIds.length > 0 && scopedSowReports.length > 0 && (
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3 animate-in fade-in duration-300">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <FileSpreadsheet className="w-4 h-4 text-cyan-600 dark:text-cyan-400" />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          SOW Report Number Filter
+                        </span>
+                        <span className="text-[11px] text-slate-400">
+                          (Filter specific SOW report no. under jobpack)
+                        </span>
+                      </div>
+                      <Badge variant="outline" className="text-[10px] font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 border-cyan-500/20">
+                        {scopedSowReports.length} SOW Report{scopedSowReports.length !== 1 ? "s" : ""} Available
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+                      <button
+                        onClick={() => setSowReportMode("ALL")}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center",
+                          sowReportMode === "ALL"
+                            ? "bg-white dark:bg-slate-700 text-cyan-600 dark:text-cyan-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        All SOW Reports for Jobpack ({scopedSowReports.length})
+                      </button>
+                      <button
+                        onClick={() => setSowReportMode("SELECTED")}
+                        className={cn(
+                          "flex-1 py-1.5 rounded-lg text-xs font-bold transition-all text-center",
+                          sowReportMode === "SELECTED"
+                            ? "bg-white dark:bg-slate-700 text-cyan-600 dark:text-cyan-400 shadow-sm"
+                            : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        )}
+                      >
+                        Specific Selected SOW Reports ({selectedSowReportNos.length})
+                      </button>
+                    </div>
+
+                    {sowReportMode === "SELECTED" ? (
+                      <div className="space-y-2 animate-in fade-in duration-300">
+                        <div className="flex items-center gap-2">
+                          <div className="relative flex-1">
+                            <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                            <Input
+                              placeholder="Search SOW report number..."
+                              value={searchSowQuery}
+                              onChange={(e) => setSearchSowQuery(e.target.value)}
+                              className="pl-8 h-8 text-xs rounded-xl"
+                            />
+                          </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSowReportNos(filteredSowReports.map((s) => s.sow_report_no))}
+                            className="text-[11px] h-8 px-2 text-cyan-600 dark:text-cyan-400 hover:bg-cyan-500/10"
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedSowReportNos([])}
+                            className="text-[11px] h-8 px-2 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                          >
+                            Clear
+                          </Button>
+                        </div>
+
+                        <div className="max-h-44 overflow-y-auto custom-scrollbar space-y-1 p-1">
+                          {filteredSowReports.length === 0 ? (
+                            <p className="text-center py-4 text-xs text-slate-400">No matching SOW report numbers</p>
+                          ) : (
+                            filteredSowReports.map((sow) => {
+                              const isSel = selectedSowReportNos.includes(sow.sow_report_no);
+                              return (
+                                <div
+                                  key={sow.sow_report_no}
+                                  onClick={() => handleToggleSowReport(sow.sow_report_no)}
+                                  className={cn(
+                                    "p-2 rounded-xl border text-xs flex items-center justify-between cursor-pointer transition-all",
+                                    isSel
+                                      ? "bg-cyan-500/10 border-cyan-500/50 font-bold text-cyan-800 dark:text-cyan-200 shadow-sm"
+                                      : "bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:border-cyan-400/40"
+                                  )}
+                                >
+                                  <div className="flex items-center gap-2.5 truncate">
+                                    <div
+                                      className={cn(
+                                        "h-4 w-4 rounded-md border flex items-center justify-center shrink-0 transition-colors",
+                                        isSel
+                                          ? "bg-cyan-600 border-cyan-600 text-white"
+                                          : "border-slate-300 dark:border-slate-600"
+                                      )}
+                                    >
+                                      {isSel && <Check className="h-3 w-3 stroke-[3]" />}
+                                    </div>
+                                    <span className="font-mono font-semibold">{sow.sow_report_no}</span>
+                                  </div>
+                                  {sow.jobpack_name && (
+                                    <Badge variant="outline" className="text-[9px] font-mono shrink-0 max-w-[180px] truncate">
+                                      {sow.jobpack_name}
+                                    </Badge>
+                                  )}
+                                </div>
+                              );
+                            })
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5 p-2 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-slate-200/60 dark:border-slate-700/60">
+                        {scopedSowReports.map((sow) => (
+                          <Badge
+                            key={sow.sow_report_no}
+                            variant="secondary"
+                            className="font-mono text-[10px] bg-cyan-500/10 text-cyan-700 dark:text-cyan-300 border border-cyan-500/20 px-2 py-0.5"
+                          >
+                            {sow.sow_report_no}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </CardContent>
@@ -1352,7 +1921,7 @@ export default function InterfaceModulePage() {
                                   <td className="p-3 font-mono text-slate-400">{idx + 1}</td>
                                   <td className="p-3 font-black text-slate-800 dark:text-slate-100 flex items-center gap-2">
                                     <span className="font-mono bg-blue-500/10 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-md text-xs font-bold">
-                                      {col.header}
+                                      {col.header.toLowerCase()}
                                     </span>
                                   </td>
                                   <td className="p-3">

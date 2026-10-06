@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateDivingBSINSReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | void | null> => {
+    records = normalizeReportRecords(records);
     if (!config.isBlankReport && (!records || records.length === 0)) {
         return null;
     }
@@ -45,14 +46,14 @@ export const generateDivingBSINSReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const HEADER_H = 26;
@@ -98,7 +99,7 @@ export const generateDivingBSINSReport = async (
             d.setDrawColor(...colors.border); d.setLineWidth(0.2);
             d.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
             d.text(
-                `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Bolted Support Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                REPORT_FOOTER_APP_TEXT,
                 margin, pageHeight - 6
             );
             if (config.showPageNumbers !== false) {
@@ -181,21 +182,7 @@ export const generateDivingBSINSReport = async (
                     const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
                     const inspDate = r.inspection_date ? format(new Date(r.inspection_date), 'dd MMM yyyy') : "—";
                     
-                    // Anomalies handling
-                    const parts: string[] = [];
-                    if (r.description?.trim()) parts.push(r.description.trim());
-
-                    const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                    const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-                    if (anomRef) parts.push(`Ref: ${anomRef}`);
-
-                    const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-                    if (isRectified) {
-                        const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                        parts.push(`Rectified: ${rectComments}`);
-                    }
-
-                    const findingsText = parts.length > 0 ? parts.join("\n") : "—";
+                    const findingsText = formatReportFindingText(r, r.description);
 
                     // Record Header info
                     autoTable(doc, {
@@ -203,22 +190,20 @@ export const generateDivingBSINSReport = async (
                         margin: { left: margin, right: margin },
                         body: [
                             [
-                                { content: "Elevation:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(elevation) + " m", styles: { cellWidth: 'auto' } },
-                                { content: "Dive No:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(diveNo), styles: { cellWidth: 'auto' } },
-                                { content: "Date:", styles: { fontStyle: "bold", cellWidth: 25 } },
-                                { content: String(inspDate), styles: { cellWidth: 'auto' } }
+                                { content: "Elevation:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(elevation) + " m", styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "Dive No:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(diveNo), styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} },
+                                { content: "Date:", styles: {fontStyle: "bold", cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
+                                { content: String(inspDate), styles: {cellWidth: 'auto', lineWidth: 0.1, lineColor: colors.border} }
                             ]
                         ],
                         theme: "grid",
-                        styles: {
-                            fontSize: 7,
+                        styles: {fontSize: 7,
                             cellPadding: 2,
                             textColor: colors.text,
                             lineColor: colors.border,
-                            valign: "middle"
-                        }
+                            valign: "middle", lineWidth: 0.1}
                     });
 
                     currentY = (doc as any).lastAutoTable.finalY + 3;
@@ -231,9 +216,9 @@ export const generateDivingBSINSReport = async (
                             const f1 = fields[j];
                             const f2 = fields[j + 1] || { label: "", value: "" };
                             body.push([
-                                { content: f1.label, styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
+                                { content: f1.label, styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
                                 { content: f1.value },
-                                { content: f2.label, styles: { fontStyle: "bold", fillColor: isPF ? [255,255,255] : colors.lightGray } },
+                                { content: f2.label, styles: {fontStyle: "bold", fillColor: config?.printFriendly ? [255,255,255] : colors.lightGray, lineWidth: 0.1, lineColor: colors.border} },
                                 { content: f2.value }
                             ]);
                         }
@@ -241,15 +226,13 @@ export const generateDivingBSINSReport = async (
                         autoTable(doc, {
                             startY: currentY,
                             margin: { left: margin, right: margin },
-                            head: [[{ content: title.toUpperCase(), colSpan: 4, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                            head: [[{ content: title.toUpperCase(), colSpan: 4, styles: {halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border} }]],
                             body: body as any,
                             theme: "grid",
-                            styles: {
-                                fontSize: 6.5,
+                            styles: {fontSize: 6.5,
                                 cellPadding: 1.5,
                                 textColor: colors.text,
-                                lineColor: colors.border
-                            },
+                                lineColor: colors.border, lineWidth: 0.1},
                             columnStyles: {
                                 0: { cellWidth: 40 },
                                 1: { cellWidth: 'auto' },
@@ -311,26 +294,21 @@ export const generateDivingBSINSReport = async (
                     autoTable(doc, {
                         startY: currentY,
                         margin: { left: margin, right: margin },
-                        head: [[{ content: "FINDINGS & REMARKS", colSpan: 1, styles: { halign: "left", fillColor: isPF ? [255,255,255] : colors.navy, textColor: isPF ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold" } }]],
+                        head: [[{ content: "FINDINGS & REMARKS", colSpan: 1, styles: {halign: "left", fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : [255,255,255], fontSize: 7, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border} }]],
                         body: [
                             [
                                 { content: findingsText }
                             ]
                         ],
                         theme: "grid",
-                        styles: {
-                            fontSize: 7,
+                        styles: {fontSize: 7,
                             cellPadding: 3,
                             textColor: colors.text,
                             lineColor: colors.border,
-                            valign: "top"
-                        },
+                            valign: "top", lineWidth: 0.1},
                         didParseCell: (data) => {
-                            if (data.section === "body" && parts.length > 0) {
-                                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                                if (metaStatus === "finding") data.cell.styles.textColor = colors.finding;
-                                else if (r.has_anomaly) data.cell.styles.textColor = colors.anomaly;
-                                else if (isRectified) data.cell.styles.textColor = colors.rectified;
+                            if (data.section === "body") {
+                                applyRecordCellStyling(data.cell, r, isPF);
                             }
                         }
                     });

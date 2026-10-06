@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -38,6 +38,7 @@ export const generateDivingITMAINReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         // ── Filter to ITMAIN records ───────────────────────────────────────────
         const filteredRecords = (records || []).filter(r => {
             const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
@@ -55,32 +56,18 @@ export const generateDivingITMAINReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
             anomaly: [220, 38, 38] as [number, number, number],
             rectified: [22, 163, 74] as [number, number, number],
-            finding: [124, 58, 237] as [number, number, number],
+            finding:   [217, 119, 6] as [number, number, number],
         };
 
         const targetRecords = filteredRecords.length > 0 ? filteredRecords : (records || []);
 
-        // ── Date range calculation ──────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate: Date | null = null;
-        if (targetRecords.length > 0) {
-            const dates = targetRecords
-                .map(r => new Date(r.cr_date || r.created_at || r.inspection_date))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate = max(dates);
-            }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -204,47 +191,7 @@ export const generateDivingITMAINReport = async (
                 (typeof r.notes === 'string' && r.notes.trim()) ? r.notes.trim() :
                 "";
 
-            if (mainFinding) {
-                findingsParts.push(mainFinding);
-            } else if (r.description && typeof r.description === 'string' && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            }
-
-            // 2) CP Postfix handling if present
-            const primaryCP = d.cp_rdg ?? d.cp_reading ?? d.cp_reading_mv ?? d.cp ?? "";
-            const additionals = Array.isArray(d.cp_rdg_additional) 
-                ? d.cp_rdg_additional 
-                : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-
-            if (primaryCP !== "" && primaryCP !== null && primaryCP !== undefined) {
-                const unit = String(primaryCP).toLowerCase().includes("mv") ? "" : " mV";
-                findingsParts.push(`CP: ${primaryCP}${unit}`);
-            }
-
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3) Append Anomaly / Finding Reference No. if present
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || linkedAnom?.ref_no || r.anomaly_ref_no || "";
-            if (anomRef) {
-                findingsParts.push(`[Anom Ref: ${anomRef}]`);
-            }
-
-            // 4) Append Rectified comments if rectified
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectComments = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`(Rectified: ${rectComments})`);
-            }
-
-            const findingsDisplay = findingsParts.length > 0 ? findingsParts.join("\n") : "No significant findings";
+            const findingsDisplay = formatReportFindingText(r, mainFinding || r.description);
 
             return [
                 String(idx + 1),
@@ -267,34 +214,30 @@ export const generateDivingITMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.", styles: { halign: "center", valign: "middle" } },
-                { content: "QID", styles: { halign: "center", valign: "middle" } },
-                { content: "Elevation\n(m)", styles: { halign: "center", valign: "middle" } },
-                { content: "Dive No.", styles: { halign: "center", valign: "middle" } },
-                { content: "Angle\n(°)", styles: { halign: "center", valign: "middle" } },
-                { content: "Dim 1\n(m)", styles: { halign: "center", valign: "middle" } },
-                { content: "Dim 2\n(m)", styles: { halign: "center", valign: "middle" } },
-                { content: "Dim 3\n(m)", styles: { halign: "center", valign: "middle" } },
-                { content: "Findings", styles: { halign: "center", valign: "middle" } },
+                { content: "Item\nNo.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Angle\n(°)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dim 1\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dim 2\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dim 3\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
             body: sorted.map(buildRow),
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10,
-            },
-            styles: {
-                fontSize: 7,
+                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 7,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },  // Item No.
                 1: { cellWidth: 20 },                     // QID
@@ -309,23 +252,7 @@ export const generateDivingITMAINReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                if (!r) return;
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding = metaStatus === "finding";
-                const isAnom = r.has_anomaly && !isFinding;
-                const isRect = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
@@ -335,7 +262,7 @@ export const generateDivingITMAINReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}  |  Item Maintenance Inspection Report (Diving)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config?.showPageNumbers !== false) {

@@ -277,7 +277,7 @@ export default function DiveVideoRecorder({
 
         // 3. Fetch logs for history display - SCOPED TO CURRENT TAPE
         // User requested logs to vary based on selected tape no
-        let logsQuery = supabase
+        const logsQuery = supabase
             .from('insp_video_logs')
             .select('*')
             .eq('tape_id', currentTapeId)

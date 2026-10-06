@@ -33,12 +33,6 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   // Apply pagination
   query = applyPagination(query, paginationParams);
 
-  const { data, error, count } = (await query) as any;
-
-  if (error) {
-    return handleSupabaseError(error, "Failed to fetch platforms");
-  }
-
   // Fetch oil fields for this tenant to resolve names efficiently
   let fieldsQuery = (supabase as any)
     .from("u_lib_list")
@@ -50,7 +44,19 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     fieldsQuery = fieldsQuery.eq("company_id", companyId);
   }
 
-  const { data: allFields } = (await fieldsQuery) as any;
+  // Run the platform page query and the independent fields lookup in parallel.
+  // (The attachment-images query below stays sequential — it needs the platform IDs.)
+  const [platformRes, fieldsRes] = await Promise.all([
+    query as unknown as Promise<Record<string, any>>,
+    fieldsQuery as unknown as Promise<Record<string, any>>,
+  ]);
+
+  const { data, error, count } = platformRes;
+  if (error) {
+    return handleSupabaseError(error, "Failed to fetch platforms");
+  }
+
+  const { data: allFields } = fieldsRes;
 
   const fieldMap = new Map((allFields || []).map((f: any) => [f.lib_id.toString(), f.lib_desc]));
 
@@ -148,18 +154,18 @@ export const POST = withAuth(async (request: NextRequest, { user }) => {
   }
 
   // First create parent structure entry to satisfy foreign key constraint
-  const { error: structureError } = await supabase
+  const { error: structureError } = await (supabase as any)
     .from("structure")
-    .insert({ str_id: candidateId, str_type: "PLATFORM" });
+    .insert({ str_id: candidateId, str_type: "PLATFORM", ...(companyId ? { company_id: companyId } : {}) });
 
   if (structureError) {
     return handleSupabaseError(structureError, "Failed to create structure entry for platform");
   }
 
   // Next insert platform entry with the unique candidateId
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from("platform")
-    .insert({ ...body, plat_id: candidateId })
+    .insert({ ...body, plat_id: candidateId, ...(companyId ? { company_id: companyId } : {}) })
     .select()
     .single();
 

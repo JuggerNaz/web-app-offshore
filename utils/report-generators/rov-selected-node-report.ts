@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -36,6 +36,7 @@ export const generateROVSelectedNodeReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }
@@ -47,7 +48,7 @@ export const generateROVSelectedNodeReport = async (
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy:      [31,  55,  93]  as [number, number, number],
+            navy: [7, 78, 136]  as [number, number, number],
             teal:      [20,  184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border:    [203, 213, 225] as [number, number, number],
@@ -57,21 +58,7 @@ export const generateROVSelectedNodeReport = async (
             finding:   [124, 58,  237] as [number, number, number],
         };
 
-        // ── Date range ──────────────────────────────────────────────────────────
-        let startDate: Date | null = null;
-        let endDate:   Date | null = null;
-        if (records.length > 0) {
-            const dates = records
-                .map(r => new Date(r.cr_date || r.created_at))
-                .filter(d => !isNaN(d.getTime()));
-            if (dates.length > 0) {
-                startDate = min(dates);
-                endDate   = max(dates);
-            }
-        }
-        const dateRangeStr = startDate && endDate
-            ? `${format(startDate, "dd MMM yyyy")} – ${format(endDate, "dd MMM yyyy")}`
-            : "N/A";
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
         const HEADER_H = 26;
 
@@ -171,33 +158,7 @@ export const generateROVSelectedNodeReport = async (
             const compCond = d.component_condition || r.component_condition || "—";
             const coatCond = d.coating_condition || r.coating_condition || "—";
 
-            const findingsParts: string[] = [];
-
-            // 1. Findings / Description
-            if (r.description && r.description.trim()) {
-                findingsParts.push(r.description.trim());
-            }
-
-            // 2. CP Additional details
-            additionals.forEach((a: any) => {
-                const val = a.reading ?? a.cp_rdg ?? "";
-                if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                    const loc = a.location ? ` @ ${a.location}` : "";
-                    const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                    findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                }
-            });
-
-            // 3. Anomaly & Rectification
-            const linkedAnom = r.insp_anomalies?.[0] ?? null;
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || "";
-            if (anomRef) findingsParts.push(`Ref: ${anomRef}`);
-
-            const isRectified = linkedAnom?.is_rectified || r.rectified || false;
-            if (isRectified) {
-                const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || "N/A";
-                findingsParts.push(`Rectified: ${rectRem}`);
-            }
+            const findings = formatReportFindingText(r);
 
             return [
                 String(idx + 1),
@@ -207,7 +168,7 @@ export const generateROVSelectedNodeReport = async (
                 cpDisplay,
                 String(compCond),
                 String(coatCond),
-                findingsParts.length > 0 ? findingsParts.join("\n") : "—",
+                findings,
             ];
         };
 
@@ -220,33 +181,29 @@ export const generateROVSelectedNodeReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
-                { content: "Item\nNo.",       styles: { halign: "center", valign: "middle" } },
-                { content: "QID",             styles: { halign: "center", valign: "middle" } },
-                { content: "Elevation\n(m)",  styles: { halign: "center", valign: "middle" } },
-                { content: "Dive No.",        styles: { halign: "center", valign: "middle" } },
-                { content: "CP\n(mV)",        styles: { halign: "center", valign: "middle" } },
-                { content: "Component\nCondition", styles: { halign: "center", valign: "middle" } },
-                { content: "Coating\nCondition", styles: { halign: "center", valign: "middle" } },
-                { content: "Findings",        styles: { halign: "center", valign: "middle" } }
+                { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "QID",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "CP\n(mV)",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Coating\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Findings",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
             ]],
             body: sorted.length > 0 ? sorted.map(buildRow) : [["-", "-", "-", "-", "-", "-", "-", "No selected node observations recorded for this scope."]],
             theme: "grid",
-            headStyles: {
-                fillColor: isPF ? [255, 255, 255] : colors.navy,
-                textColor: isPF ? colors.navy : [255, 255, 255],
+            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+                textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10,
-            },
-            styles: {
-                fontSize: 7,
+                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
+            styles: {fontSize: 7,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak",
-            },
+                overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
                 0: { cellWidth: 8,   halign: "center" },
                 1: { cellWidth: 18 },
@@ -260,22 +217,7 @@ export const generateROVSelectedNodeReport = async (
             didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sorted[data.row.index];
-                const linkedAnom = r.insp_anomalies?.[0] ?? null;
-                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
-                const isFinding  = metaStatus === "finding";
-                const isAnom     = r.has_anomaly && !isFinding;
-                const isRect     = linkedAnom?.is_rectified || r.rectified || false;
-
-                if (isFinding) {
-                    data.cell.styles.textColor = colors.finding;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isAnom) {
-                    data.cell.styles.textColor = colors.anomaly;
-                    data.cell.styles.fontStyle  = "bold";
-                } else if (isRect) {
-                    data.cell.styles.textColor = colors.rectified;
-                    data.cell.styles.fontStyle  = "bold";
-                }
+                applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawCell: (data) => {
             },
@@ -289,7 +231,7 @@ export const generateROVSelectedNodeReport = async (
                 doc.setDrawColor(...colors.border); doc.setLineWidth(0.2);
                 doc.line(margin, pageHeight - 9, margin + contentWidth, pageHeight - 9);
                 doc.text(
-                    `${companySettings.company_name || "NasQuest Resources Sdn Bhd"}  |  Selected Node Report (ROV)  |  SOW: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`,
+                    REPORT_FOOTER_APP_TEXT,
                     margin, pageHeight - 6
                 );
                 if (config.showPageNumbers !== false) {

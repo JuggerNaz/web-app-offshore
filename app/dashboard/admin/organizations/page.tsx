@@ -241,10 +241,15 @@ export default function OrganizationsPage() {
   const handleCreate = async () => {
     setSubmitting(true);
     try {
+      const payload = {
+        ...formData,
+        start_date: formData.start_date?.trim() ? formData.start_date.trim() : null,
+        end_date: formData.end_date?.trim() ? formData.end_date.trim() : null,
+      };
       const res = await fetch("/api/admin/organizations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (res.ok && json.success) {
@@ -269,10 +274,15 @@ export default function OrganizationsPage() {
     if (!selectedOrg) return;
     setSubmitting(true);
     try {
+      const payload = {
+        ...formData,
+        start_date: formData.start_date?.trim() ? formData.start_date.trim() : null,
+        end_date: formData.end_date?.trim() ? formData.end_date.trim() : null,
+      };
       const res = await fetch(`/api/admin/organizations/${selectedOrg.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(formData),
+        body: JSON.stringify(payload),
       });
       const json = await res.json();
       if (res.ok && json.success) {

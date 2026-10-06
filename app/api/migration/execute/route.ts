@@ -16,7 +16,7 @@ import {
 } from "@/utils/pipeline-migration-handler";
 
 
-export const maxDuration = 300; // Allow 5 minutes for this route (Vercel/Next.js config)
+export const maxDuration = 300; // Allow up to 5 minutes (Next.js route segment config, honored by Netlify)
 
 function setNestedProperty(obj: Record<string, any>, path: string, value: any) {
   if (!path.includes('.')) {
@@ -446,8 +446,6 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
   let databaseUrl = process.env.DATABASE_URL;
   if (!databaseUrl) {
     try {
-      const fs = require('fs');
-      const path = require('path');
       const envPath = path.resolve(process.cwd(), '.env.local');
       if (fs.existsSync(envPath)) {
         const envContent = fs.readFileSync(envPath, 'utf-8');
@@ -466,7 +464,7 @@ async function setRlsStatus(disable: boolean, logs: string[]): Promise<boolean> 
     return false;
   }
 
-  const { Client } = require('pg');
+  const { Client } = await import('pg');
   let client: any;
   try {
     client = new Client({ connectionString: databaseUrl });
@@ -1167,7 +1165,7 @@ export async function POST(request: NextRequest) {
     }
 
     const isPipeline = structureType === "PIPELINE";
-    let targetTable = isPipeline ? "u_pipeline" : "platform";
+    const targetTable = isPipeline ? "u_pipeline" : "platform";
 
     // Extra fallback check for DEF_UNIT in U_PIPELINE if still METRIC
     if (structureUnit === "METRIC" && isPipeline) {
@@ -1219,8 +1217,8 @@ export async function POST(request: NextRequest) {
       structureSuccess = false; // must succeed if mapped
       report["STRUCTURE"].status = "failed"; // set to failed by default once mapped, success later
 
-      let oracleTable = isPipeline ? 'U_PIPELINE' : 'PLATFORM';
-      let idCol = isPipeline ? 'PIPE_ID' : 'PLAT_ID';
+      const oracleTable = isPipeline ? 'U_PIPELINE' : 'PLATFORM';
+      const idCol = isPipeline ? 'PIPE_ID' : 'PLAT_ID';
 
       let rows: any[] = [];
 
@@ -1557,9 +1555,9 @@ export async function POST(request: NextRequest) {
 
           const oracleColumns = childMappings.map(m => m.oracleCol).filter(Boolean);
           if (oracleColumns.length > 0) {
-            let oracleTableName = childTable;
-            let pgTableName = childTable.toLowerCase();
-            let fkCol = "PLAT_ID";
+            const oracleTableName = childTable;
+            const pgTableName = childTable.toLowerCase();
+            const fkCol = "PLAT_ID";
 
             const queryCols = new Set(oracleColumns);
             if (!queryCols.has(fkCol)) queryCols.add(fkCol);
@@ -1790,7 +1788,7 @@ export async function POST(request: NextRequest) {
             else if (upperCode === 'IT') specTableName = 'IT_COMP_PLAT';
           }
 
-          let query = `
+          const query = `
             SELECT c.COMP_ID, c.STR_ID, c.ID_NO, c.Q_ID, c.CODE, c.DEL, s.* 
             FROM ALLCOMPID c
             LEFT JOIN ${specTableName} s ON c.COMP_ID = s.COMP_ID
@@ -2183,9 +2181,9 @@ export async function POST(request: NextRequest) {
 
           const oracleColumns = childMappings.map(m => m.oracleCol).filter(Boolean);
           if (oracleColumns.length > 0) {
-            let oracleTableName = childTable === "ATTACHMENT" ? "U_ATTACH_1" : "THECOMMENTS";
-            let pgTableName = childTable.toLowerCase();
-            let fkCol = "STR_ID";
+            const oracleTableName = childTable === "ATTACHMENT" ? "U_ATTACH_1" : "THECOMMENTS";
+            const pgTableName = childTable.toLowerCase();
+            const fkCol = "STR_ID";
 
             const existingCols = new Set<string>();
             try {
@@ -5357,6 +5355,7 @@ export async function POST(request: NextRequest) {
                 inspIdCache,
                 jobpackDefaultPrefixMap,
                 sowReportMap: sowInspCache,
+                companyId: resolvedCompanyId || undefined,
               });
               return;
             }
@@ -7523,8 +7522,8 @@ export async function POST(request: NextRequest) {
                       }
                     }
 
-                    let mX = parseFloat(((targetX / VIEW_SIZE) * 100).toFixed(2));
-                    let mY = parseFloat(((targetY / VIEW_SIZE) * 100).toFixed(2));
+                    const mX = parseFloat(((targetX / VIEW_SIZE) * 100).toFixed(2));
+                    const mY = parseFloat(((targetY / VIEW_SIZE) * 100).toFixed(2));
 
                     mappedX = parseFloat(Math.max(5, Math.min(95, mX)).toFixed(2));
                     mappedY = parseFloat(Math.max(5, Math.min(95, mY)).toFixed(2));
@@ -8030,7 +8029,7 @@ export async function POST(request: NextRequest) {
               const fName = rObj.A_FILENAME ? String(rObj.A_FILENAME).trim() : "";
               const pDir = rObj.A_PATH ? String(rObj.A_PATH).trim() : "";
               let legacyPath = "";
-              let searchLocationsAttempted: any[] = [];
+              const searchLocationsAttempted: any[] = [];
 
               if (fName) {
                 // 1. If legacyAttachmentPath was defined, search there first
@@ -8217,7 +8216,7 @@ export async function POST(request: NextRequest) {
                     );
 
                     let finalStatus: 'pending' | 'completed' | 'incomplete' = 'pending';
-                    let updatedFields: any = {
+                    const updatedFields: any = {
                       updated_at: new Date().toISOString(),
                       updated_by: 'migration',
                     };

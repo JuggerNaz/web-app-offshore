@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
@@ -176,9 +176,10 @@ export const generateROVPhotographyReport = async (
         }
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             text: [30, 41, 59] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
+            lightGray: [248, 250, 252] as [number, number, number],
         };
 
         // Pre-load logos
@@ -188,7 +189,7 @@ export const generateROVPhotographyReport = async (
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
         
-        let contrLogoUrl = headerData.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        const contrLogoUrl = headerData.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
         if (contrLogoUrl) {
             try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
         }
@@ -271,23 +272,30 @@ export const generateROVPhotographyReport = async (
             const rowY = margin + HEADER_H + 2;
             const half = contentWidth / 2;
             d.setDrawColor(...colors.border); d.setLineWidth(0.1);
+            if (!isPF) {
+                d.setFillColor(...colors.lightGray);
+                d.rect(margin, rowY, contentWidth, 7, "F");
+            }
             d.rect(margin, rowY, contentWidth, 7, "S");
+            d.line(margin + half, rowY, margin + half, rowY + 7);
             d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
-            d.text("Structure:", margin + 2, rowY + 4.5);
+            d.text("Structure:", margin + 2, rowY + 4.8);
             d.setFont("helvetica", "normal");
-            d.text(headerData.platformName || "N/A", margin + 18, rowY + 4.5);
+            d.text(headerData.platformName || "N/A", margin + 22, rowY + 4.8);
 
             d.setFont("helvetica", "bold");
-            d.text("Vessel:", margin + half + 2, rowY + 4.5);
+            d.text("Vessel:", margin + half + 2, rowY + 4.8);
             d.setFont("helvetica", "normal");
-            d.text(headerData.vessel || "N/A", margin + half + 14, rowY + 4.5);
+            d.text(headerData.vessel || "N/A", margin + half + 18, rowY + 4.8);
 
             // Footer
+            d.setDrawColor(...colors.border); d.setLineWidth(0.1);
+            d.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
+            d.setFontSize(7); d.setFont("helvetica", "normal"); d.setTextColor(100);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 8);
             if (config.showPageNumbers !== false) {
-                d.setFontSize(7);
-                d.setTextColor(100);
-                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-                d.text(format(new Date(), "dd MMM yyyy HH:mm"), margin, pageHeight - 10);
+                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: "center" });
+                d.text(format(new Date(), "dd MMM yyyy HH:mm"), pageWidth - margin, pageHeight - 8, { align: "right" });
             }
         };
 
@@ -306,7 +314,7 @@ export const generateROVPhotographyReport = async (
             
             drawHeaderFooter(doc, p, totalPages);
             
-            let yPos = margin + HEADER_H + 15;
+            const yPos = margin + HEADER_H + 15;
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
                 if (currentPhotoIdx >= resolvedPhotos.length) break;

@@ -1,8 +1,9 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { 
     Select, 
     SelectContent, 
@@ -11,8 +12,9 @@ import {
     SelectValue 
 } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { Video, Play, Pause, Square, Plus, Edit, Trash2, History } from "lucide-react";
+import { Video, Play, Pause, Square, Plus, Edit, Trash2, History, ArrowRightLeft, Check, X } from "lucide-react";
 import { format } from "date-fns";
+import { toast } from "sonner";
 
 interface TapeManagementCardProps {
     vidState: "IDLE" | "RECORDING" | "PAUSED";
@@ -32,6 +34,7 @@ interface TapeManagementCardProps {
     canDelete?: boolean;
     onChapterChange?: (ch: number) => void;
     onOpenHistory?: () => void;
+    onSetVidTimer?: (seconds: number) => void;
     children?: React.ReactNode;
 }
 
@@ -53,11 +56,34 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
     canDelete,
     onChapterChange,
     onOpenHistory,
+    onSetVidTimer,
     children
 }) => {
     const now = new Date();
     const dateStr = format(now, "dd MMM yyyy");
     const timeStr = format(now, "HH:mm:ss");
+
+    const [isEditingCounter, setIsEditingCounter] = useState(false);
+    const [customCounterInput, setCustomCounterInput] = useState("");
+
+    const parseTimeToSeconds = (input: string): number => {
+        if (!input) return 0;
+        const clean = input.trim();
+        const parts = clean.split(":").map(p => parseInt(p, 10) || 0);
+        if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        if (parts.length === 2) return parts[0] * 60 + parts[1];
+        const n = Number(clean);
+        return isNaN(n) ? 0 : n;
+    };
+
+    const handleApplyCustomCounter = () => {
+        const secs = parseTimeToSeconds(customCounterInput);
+        if (onSetVidTimer) {
+            onSetVidTimer(secs);
+            toast.success(`Video counter set to ${formatTime(secs)}`);
+        }
+        setIsEditingCounter(false);
+    };
 
     return (
         <Card className="border-none shadow-none rounded-none bg-white dark:bg-[#090d16] overflow-y-auto custom-scrollbar flex flex-col h-full w-full min-w-0 flex-1">
@@ -96,6 +122,18 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
                             <Tooltip>
                                 <TooltipTrigger asChild>
                                     <button
+                                        onClick={handleOpenEditTape}
+                                        disabled={!tapeId}
+                                        className="p-1 text-slate-500 dark:text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-200 dark:hover:bg-white/10 rounded transition-all disabled:opacity-30 disabled:pointer-events-none"
+                                    >
+                                        <ArrowRightLeft className="w-3 h-3" />
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="top"><p className="text-[10px] font-bold">Transfer / Reassign Tape to Dive</p></TooltipContent>
+                            </Tooltip>
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
                                         onClick={() => handleDeleteTape && tapeId && handleDeleteTape(tapeId)}
                                         disabled={!tapeId || !canDelete}
                                         className={`p-1 text-slate-500 dark:text-slate-400 rounded transition-all ${!tapeId || !canDelete ? 'opacity-30 pointer-events-none' : 'hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30'}`}
@@ -130,10 +168,74 @@ export const TapeManagementCardPipeline: React.FC<TapeManagementCardProps> = ({
                         <span className="font-bold font-mono text-purple-600 dark:text-purple-400">: Chapter {activeChapter || 1}</span>
                     </div>
                     <div className="flex items-center justify-between text-slate-500 dark:text-slate-400">
-                        <span>Tape Counter</span>
-                        <span className={`font-bold font-mono text-base ${vidState === "RECORDING" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"}`}>
-                            : {formatTime(vidTimer)}
-                        </span>
+                        <div className="flex items-center gap-1">
+                            <span>Tape Counter</span>
+                            {onSetVidTimer && (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setCustomCounterInput(formatTime(vidTimer));
+                                        setIsEditingCounter(!isEditingCounter);
+                                    }}
+                                    className="text-slate-400 hover:text-cyan-400 p-0.5 rounded transition-colors"
+                                    title="Set / Jump Counter (Historical Entry)"
+                                >
+                                    <Edit className="w-2.5 h-2.5" />
+                                </button>
+                            )}
+                        </div>
+                        {isEditingCounter ? (
+                            <div className="flex items-center gap-1">
+                                <Input
+                                    type="text"
+                                    value={customCounterInput}
+                                    onChange={(e) => setCustomCounterInput(e.target.value)}
+                                    placeholder="HH:mm:ss"
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") handleApplyCustomCounter();
+                                        if (e.key === "Escape") setIsEditingCounter(false);
+                                    }}
+                                    className="h-6 w-24 text-center font-mono font-black text-xs bg-slate-950 border-cyan-500/50 text-green-400 px-1 py-0"
+                                    autoFocus
+                                />
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    onClick={handleApplyCustomCounter}
+                                    className="h-6 w-6 bg-green-600 hover:bg-green-700 text-white shrink-0"
+                                    title="Save"
+                                >
+                                    <Check className="w-3 h-3" />
+                                </Button>
+                                <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setIsEditingCounter(false)}
+                                    className="h-6 w-6 text-slate-400 hover:text-white shrink-0 p-0"
+                                    title="Cancel"
+                                >
+                                    <X className="w-3 h-3" />
+                                </Button>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (onSetVidTimer) {
+                                        setCustomCounterInput(formatTime(vidTimer));
+                                        setIsEditingCounter(true);
+                                    }
+                                }}
+                                className="group/pipcounter flex items-center gap-1 cursor-pointer"
+                                title="Click to set counter for historical data entry"
+                            >
+                                <span className={`font-bold font-mono text-sm ${vidState === "RECORDING" ? "text-red-600 dark:text-red-400" : "text-green-600 dark:text-green-400"} group-hover/pipcounter:text-cyan-400 transition-colors`}>
+                                    : {formatTime(vidTimer)}
+                                </span>
+                                {onSetVidTimer && <Edit className="w-2.5 h-2.5 text-slate-500 opacity-0 group-hover/pipcounter:opacity-100 transition-opacity" />}
+                            </button>
+                        )}
                     </div>
                 </div>
 

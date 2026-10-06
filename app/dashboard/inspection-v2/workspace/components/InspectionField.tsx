@@ -523,7 +523,7 @@ const InspectionField = ({
     }
 
     const handleTimeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         const digits = val.replace(/\D/g, "").slice(0, 6);
         let formatted = digits;
         if (digits.length > 2 && digits.length <= 4) {
@@ -535,14 +535,14 @@ const InspectionField = ({
     };
 
     const handleTimeBlur = (e: React.FocusEvent<HTMLInputElement>) => {
-        let val = e.target.value;
+        const val = e.target.value;
         if (!val) {
             if (type === 'primary') setDebouncedProps((prev: any) => ({ ...prev, [p.name || p.label]: "" }));
             return;
         }
 
         const parts = val.split(':');
-        let normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
+        const normalized = parts.map(p => p.slice(0, 2).padStart(2, '0'));
         
         // Pad to 3 parts (HH:MM:SS) if incomplete
         while (normalized.length < 3) {
@@ -576,6 +576,40 @@ const InspectionField = ({
                 placeholder={`Enter ${p.label || p.name}`}
                 className={`w-full min-h-[60px] rounded-md border ${borderClass} bg-white dark:bg-slate-900 p-2 text-xs font-semibold ${ringClass} dark:text-slate-200 resize-none shadow-inner`}
             />
+        );
+    }
+
+    if (p.name === 'mgi_profile' || p.type === 'mgi_profile_display') {
+        const displayVal = currentValue
+            ? (typeof currentValue === 'number' ? currentValue : parseFloat(String(currentValue).replace(/[^\d.-]/g, '')) || '')
+            : (dynamicProps?.max_allowable_thickness ?? '');
+
+        return (
+            <div className="relative flex items-center gap-1">
+                <Input
+                    type="number"
+                    step="0.1"
+                    value={displayVal}
+                    onChange={(e) => {
+                        if (readOnly) return;
+                        const val = e.target.value;
+                        const num = parseFloat(val);
+                        handler('mgi_profile', val ? `${val}mm` : '');
+                        handler('max_allowable_thickness', isNaN(num) ? '' : num);
+                        if (type === 'primary') {
+                            setDebouncedProps((prev: any) => ({
+                                ...prev,
+                                mgi_profile: val ? `${val}mm` : '',
+                                max_allowable_thickness: isNaN(num) ? '' : num
+                            }));
+                        }
+                    }}
+                    readOnly={readOnly}
+                    placeholder="Max Allowable (mm)"
+                    className={`h-8 text-xs font-semibold bg-white dark:bg-slate-900 ${borderClass} ${ringClass} flex-1 dark:text-slate-200`}
+                />
+                <span className="text-[10px] font-bold text-slate-500 px-1">mm</span>
+            </div>
         );
     }
 

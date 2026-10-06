@@ -1,6 +1,7 @@
-
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
+
+export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
     const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -17,6 +18,23 @@ export async function GET(request: NextRequest) {
     let storagePath = decodeURIComponent(path.trim());
 
     if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
+        // Direct remote or public Supabase URL: attempt direct fetch
+        try {
+            const directResp = await fetch(storagePath);
+            if (directResp.ok) {
+                const buffer = await directResp.arrayBuffer();
+                return new NextResponse(buffer, {
+                    headers: {
+                        "Content-Type": directResp.headers.get("Content-Type") || "image/jpeg",
+                        "Content-Length": buffer.byteLength.toString(),
+                        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                    },
+                });
+            }
+        } catch {}
+
         const parts = storagePath.split("/");
         const bucketIndex = parts.indexOf(bucket);
         if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
@@ -26,6 +44,12 @@ export async function GET(request: NextRequest) {
             if (attIndex !== -1 && attIndex < parts.length - 1) {
                 storagePath = parts.slice(attIndex + 1).join("/");
                 bucket = "attachments";
+            } else {
+                const inspIndex = parts.indexOf("inspection-media");
+                if (inspIndex !== -1 && inspIndex < parts.length - 1) {
+                    storagePath = parts.slice(inspIndex + 1).join("/");
+                    bucket = "inspection-media";
+                }
             }
         }
     }
@@ -34,62 +58,103 @@ export async function GET(request: NextRequest) {
         storagePath = storagePath.slice(bucket.length + 1);
     } else if (storagePath.startsWith("attachments/")) {
         storagePath = storagePath.replace(/^attachments\//, "");
+    } else if (storagePath.startsWith("inspection-media/")) {
+        storagePath = storagePath.replace(/^inspection-media\//, "");
     }
     storagePath = storagePath.replace(/^\/+/, "");
 
-    let { data, error } = await supabase.storage.from(bucket).download(storagePath);
+    const pathVariations = [
+        storagePath,
+        storagePath.startsWith("uploads/") ? storagePath.replace(/^uploads\//, "") : `uploads/${storagePath}`,
+    ].filter(Boolean);
 
-    // If Supabase storage download fails, check if multi-cloud storage (e.g. Backblaze B2, S3) is configured
-    if (error || !data) {
-        try {
-            const { getStorageHandler } = await import("@/utils/storage-factory");
-            const { data: settings } = await (supabase as any)
-                .from("company_settings")
-                .select("storage_provider, storage_config")
-                .limit(1)
-                .maybeSingle();
+    const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
 
-            const provider = settings?.storage_provider || (path.includes("backblazeb2.com") ? "Backblaze" : null);
-            if (provider && provider !== "Supabase") {
-                const handler = await getStorageHandler(provider, settings?.storage_config);
-                const signedUrl = await handler.getSignedUrl(path, 3600);
-                if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
-                    const resp = await fetch(signedUrl);
-                    if (resp.ok) {
-                        const buffer = await resp.arrayBuffer();
-                        return new NextResponse(buffer, {
-                            headers: {
-                                "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
-                                "Content-Length": buffer.byteLength.toString(),
-                                "Cache-Control": "public, max-age=86400",
-                                "Access-Control-Allow-Origin": "*",
-                                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-                            },
-                        });
-                    }
+    let downloadedBuffer: ArrayBuffer | null = null;
+    let contentType = "image/jpeg";
+
+    for (const b of bucketVariations) {
+        for (const p of pathVariations) {
+            try {
+                const { data, error } = await supabase.storage.from(b).download(p);
+                if (!error && data) {
+                    downloadedBuffer = await data.arrayBuffer();
+                    contentType = data.type || "image/jpeg";
+                    break;
+                }
+            } catch {}
+        }
+        if (downloadedBuffer) break;
+    }
+
+    if (downloadedBuffer) {
+        return new NextResponse(downloadedBuffer, {
+            headers: {
+                "Content-Type": contentType,
+                "Content-Length": downloadedBuffer.byteLength.toString(),
+                "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+            },
+        });
+    }
+
+    // Try signed URL or public URL via Supabase Storage
+    try {
+        const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(storagePath, 3600);
+        const urlToFetch = signedData?.signedUrl || supabase.storage.from(bucket).getPublicUrl(storagePath)?.data?.publicUrl;
+        if (urlToFetch) {
+            const fetchResp = await fetch(urlToFetch);
+            if (fetchResp.ok) {
+                const buffer = await fetchResp.arrayBuffer();
+                return new NextResponse(buffer, {
+                    headers: {
+                        "Content-Type": fetchResp.headers.get("Content-Type") || "image/jpeg",
+                        "Content-Length": buffer.byteLength.toString(),
+                        "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                    },
+                });
+            }
+        }
+    } catch {}
+
+    // Multi-cloud fallback (e.g. Backblaze B2, S3)
+    try {
+        const { getStorageHandler } = await import("@/utils/storage-factory");
+        const { data: settings } = await (supabase as any)
+            .from("company_settings")
+            .select("storage_provider, storage_config")
+            .limit(1)
+            .maybeSingle();
+
+        const provider = settings?.storage_provider || (path.includes("backblazeb2.com") ? "Backblaze" : null);
+        if (provider && provider !== "Supabase") {
+            const handler = await getStorageHandler(provider, settings?.storage_config);
+            const signedUrl = await handler.getSignedUrl(path, 3600);
+            if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+                const resp = await fetch(signedUrl);
+                if (resp.ok) {
+                    const buffer = await resp.arrayBuffer();
+                    return new NextResponse(buffer, {
+                        headers: {
+                            "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
+                            "Content-Length": buffer.byteLength.toString(),
+                            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        },
+                    });
                 }
             }
-        } catch (multiCloudErr) {
-            console.warn("[Download] Multi-cloud fallback error:", multiCloudErr);
         }
+    } catch (multiCloudErr) {
+        console.warn("[Download] Multi-cloud fallback error:", multiCloudErr);
     }
 
-    if (error || !data) {
-        console.error(`[Download] Error fetching ${storagePath} from bucket ${bucket}:`, error);
-        return NextResponse.json({ error: error?.message || "Attachment not found" }, { status: 404 });
-    }
-
-    const buffer = await data.arrayBuffer();
-
-    return new NextResponse(buffer, {
-        headers: {
-            "Content-Type": data.type || "image/jpeg",
-            "Content-Length": data.size.toString(),
-            "Cache-Control": "public, max-age=86400",
-            "Access-Control-Allow-Origin": "*",
-            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-        },
-    });
+    console.error(`[Download] Error fetching ${storagePath} from buckets`);
+    return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
 }
 
 export async function OPTIONS() {

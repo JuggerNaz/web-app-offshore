@@ -4,10 +4,17 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 // Friendly labels for video log event types
 const EVENT_TYPE_LABELS: Record<string, string> = {
+    NEW_LOG_START: "Start Tape",
+    START_TAPE: "Start Tape",
+    END: "Stop Tape",
+    STOP: "Stop Tape",
+    STOP_TAPE: "Stop Tape",
+    PAUSE: "Pause Tape",
+    RESUME: "Resume Tape",
     START_TASK: "Start Task",
     STOP_TASK: "Stop Task",
     PAUSE_TASK: "Pause Task",
@@ -21,7 +28,11 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
 };
 
 function friendlyEventType(eventType: string): string {
-    return EVENT_TYPE_LABELS[eventType] ?? eventType?.replace(/_/g, " ") ?? "—";
+    if (!eventType) return "—";
+    if (EVENT_TYPE_LABELS[eventType]) return EVENT_TYPE_LABELS[eventType];
+    const upper = String(eventType).toUpperCase();
+    if (EVENT_TYPE_LABELS[upper]) return EVENT_TYPE_LABELS[upper];
+    return eventType.replace(/_/g, " ").replace(/\b\w/g, l => l.toUpperCase());
 }
 
 export const generateVideoLogReport = async (
@@ -93,7 +104,7 @@ export const generateVideoLogReport = async (
             d.setLineWidth(0.3);
             d.rect(sx, sy, contentWidth, headerH);
         } else {
-            d.setFillColor(31, 55, 93);
+            d.setFillColor(7, 78, 136);
             d.rect(sx, sy, contentWidth, headerH, "F");
         }
 
@@ -105,7 +116,7 @@ export const generateVideoLogReport = async (
             drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
         }
 
-        d.setTextColor(isPrintFriendly ? 31 : 255, isPrintFriendly ? 55 : 255, isPrintFriendly ? 93 : 255);
+        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
         d.setFont("helvetica", "bold");
         d.setFontSize(11);
         d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
@@ -170,6 +181,58 @@ export const generateVideoLogReport = async (
     };
 
     if (tapes.length === 0) {
+        // Direct Supabase fetch fallback if API fetch didn't return data
+        try {
+            const jobpackId = jobPack?.id;
+            const structureId = structure?.id;
+            if (jobpackId) {
+                let diveJobsQ = (supabase as any).from("insp_dive_jobs").select("dive_job_id, dive_no").eq("jobpack_id", jobpackId);
+                if (structureId) diveJobsQ = diveJobsQ.eq("structure_id", structureId);
+                const { data: dj } = await diveJobsQ;
+
+                let rovJobsQ = (supabase as any).from("insp_rov_jobs").select("rov_job_id, deployment_no").eq("jobpack_id", jobpackId);
+                if (structureId) rovJobsQ = rovJobsQ.eq("structure_id", structureId);
+                const { data: rj } = await rovJobsQ;
+
+                const djIds = (dj || []).map((j: any) => j.dive_job_id);
+                const rjIds = (rj || []).map((j: any) => j.rov_job_id);
+
+                if (djIds.length > 0 || rjIds.length > 0) {
+                    const diveMap: Record<number, string> = {};
+                    (dj || []).forEach((j: any) => { diveMap[j.dive_job_id] = j.dive_no; });
+                    (rj || []).forEach((j: any) => { diveMap[j.rov_job_id] = j.deployment_no; });
+
+                    let tQuery = (supabase as any).from("insp_video_tapes").select("tape_id, tape_no, dive_job_id, rov_job_id, status, chapter_no, remarks").order("tape_no", { ascending: true });
+                    if (djIds.length > 0 && rjIds.length > 0) {
+                        tQuery = tQuery.or(`dive_job_id.in.(${djIds.join(",")}),rov_job_id.in.(${rjIds.join(",")})`);
+                    } else if (djIds.length > 0) {
+                        tQuery = tQuery.in("dive_job_id", djIds);
+                    } else {
+                        tQuery = tQuery.in("rov_job_id", rjIds);
+                    }
+                    const { data: rawTapes } = await tQuery;
+                    if (rawTapes && rawTapes.length > 0) {
+                        const rawTapeIds = rawTapes.map((t: any) => t.tape_id);
+                        const { data: rawLogs } = await (supabase as any).from("insp_video_logs").select("video_log_id, tape_id, event_type, event_time, timecode_start, tape_counter_start, remarks, inspection_id").in("tape_id", rawTapeIds).order("event_time", { ascending: true });
+                        const lByTape: Record<number, any[]> = {};
+                        (rawLogs || []).forEach((l: any) => {
+                            if (!lByTape[l.tape_id]) lByTape[l.tape_id] = [];
+                            lByTape[l.tape_id].push(l);
+                        });
+                        tapes = rawTapes.map((t: any) => ({
+                            ...t,
+                            dive_no: diveMap[t.dive_job_id] || diveMap[t.rov_job_id] || null,
+                            logs: lByTape[t.tape_id] || []
+                        })).filter((t: any) => t.logs.length > 0);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[VideoLog] Direct fetch fallback failed:", e);
+        }
+    }
+
+    if (tapes.length === 0) {
         if ((config as any).isBlankReport) {
             tapes = [{
                 tape_no: "__________",
@@ -179,8 +242,15 @@ export const generateVideoLogReport = async (
                     dive_no: "",
                     component_qid: "",
                     elevation: "",
-                    description: ""
+                    description: "",
+                    remarks: ""
                 }))
+            }];
+        } else if (config.returnBlob) {
+            tapes = [{
+                tape_no: "N/A",
+                tape_type: "Video Tape",
+                logs: []
             }];
         } else {
             return null;
@@ -247,10 +317,13 @@ export const generateVideoLogReport = async (
 
         if (isPrintFriendly) {
             doc.setFillColor(240, 240, 240);
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.rect(margin, currentY, contentWidth, 7, "FD");
         } else {
-            doc.setFillColor(52, 86, 139);
+            doc.setFillColor(7, 78, 136);
+            doc.rect(margin, currentY, contentWidth, 7, "F");
         }
-        doc.rect(margin, currentY, contentWidth, 7, "F");
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
@@ -262,7 +335,7 @@ export const generateVideoLogReport = async (
         const tableBody: any[][] = [];
 
         if (logs.length === 0) {
-            tableBody.push([{ content: "No log entries for this tape.", colSpan: 4, styles: { halign: "center", textColor: [100, 100, 100] } }]);
+            tableBody.push([{ content: "No log entries for this tape.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
         } else {
             logs.forEach((log: any, idx: number) => {
                 const eventDateTime = log.event_time
@@ -278,14 +351,32 @@ export const generateVideoLogReport = async (
                     })()
                     : "—";
 
-                const timecode = log.timecode_start || "—";
-                const action = friendlyEventType(log.event_type);
-                const remarks = log.remarks || "";
+                const timecode = log.timecode_start || (log.tape_counter_start !== undefined && log.tape_counter_start !== null ? String(log.tape_counter_start) : "—");
+                const action = friendlyEventType(log.event_type || log.action);
+
+                // Extract any remarks, notes or inspection details
+                const remarkParts: string[] = [];
+                const directRemark = log.remarks ?? log.remark ?? log.notes ?? log.note ?? "";
+                if (directRemark && String(directRemark).trim()) {
+                    remarkParts.push(String(directRemark).trim());
+                }
+                const inspDesc = log.insp_records?.description ?? log.description ?? "";
+                if (inspDesc && String(inspDesc).trim() && !remarkParts.includes(String(inspDesc).trim())) {
+                    remarkParts.push(String(inspDesc).trim());
+                }
+                const inspData = log.insp_records?.inspection_data ?? log.inspection_data ?? {};
+                const dataRemark = inspData.remarks ?? inspData.notes ?? inspData.comment ?? "";
+                if (dataRemark && String(dataRemark).trim() && !remarkParts.includes(String(dataRemark).trim())) {
+                    remarkParts.push(String(dataRemark).trim());
+                }
+
+                const remarksText = remarkParts.join("\n");
+                const actionDisplay = remarksText ? `${action}\n${remarksText}` : action;
 
                 tableBody.push([
                     String(idx + 1),
                     tape.dive_no ?? "—",
-                    `${action}${remarks ? `\n${remarks}` : ""}`,
+                    actionDisplay,
                     timecode,
                     eventDateTime
                 ]);
@@ -298,7 +389,7 @@ export const generateVideoLogReport = async (
             body: tableBody,
             theme: "grid",
             headStyles: {
-                fillColor: isPrintFriendly ? [229, 231, 235] : [31, 55, 93],
+                fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 8,
@@ -339,6 +430,9 @@ export const generateVideoLogReport = async (
         doc.setDrawColor(180, 180, 180);
         doc.setLineWidth(0.3);
         doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+
+        doc.setTextColor(100, 100, 100);
+        doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
 
         if (config.showPageNumbers) {
             doc.setTextColor(100, 100, 100);

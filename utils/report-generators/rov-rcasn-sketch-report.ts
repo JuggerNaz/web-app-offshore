@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -41,7 +41,7 @@ export const generateROVCasnSketchReport = async (
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
-            navy: [31, 55, 93] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
             teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
             border: [203, 213, 225] as [number, number, number],
@@ -87,7 +87,7 @@ export const generateROVCasnSketchReport = async (
             
             // 1. Check explicit association in record metadata
             const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            let parentQid  = metadata.parent_qid || metadata.parent_q_id;
+            const parentQid  = metadata.parent_qid || metadata.parent_q_id;
 
             // Helper to find the ultimate "CS" parent in the hierarchy
             const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
@@ -194,20 +194,17 @@ export const generateROVCasnSketchReport = async (
             d.line(margin, footerY - 5, pageWidth - margin, footerY - 5);
             d.setFontSize(7); d.setTextColor(150, 150, 150);
             d.setFont("helvetica", "normal");
-            d.text(`Report ID: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin, footerY);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, footerY);
             d.text(`Printed: ${format(new Date(), 'dd MMM yyyy HH:mm')}`, margin + contentWidth/2, footerY, { align: 'center' });
             d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, footerY, { align: 'right' });
         };
 
         const drawContext = (d: jsPDF, y: number, groupRecords: any[]) => {
             const rH = 7; const half = contentWidth / 2; const isPF = config.printFriendly;
-            let sD: Date | null = null; let eD: Date | null = null;
-            const ds = groupRecords.map(r => new Date(r.cr_date || r.created_at)).filter(d => !isNaN(d.getTime()));
-            if (ds.length > 0) { sD = min(ds); eD = max(ds); }
-            const dr = sD && eD ? `${format(sD, 'dd MMM yyyy')} - ${format(eD, 'dd MMM yyyy')}` : 'N/A';
+            const dr = getInspectionDateRange(records, headerData, config);
             const drawBox = (l: string, v: string, x: number, w: number, ty: number) => {
                 d.setDrawColor(...colors.border); d.setLineWidth(0.1); if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rH, isPF ? 'S' : 'F'); d.rect(x, ty, w, rH, 'S');
+                d.rect(x, ty, w, rH, config?.printFriendly ? 'S' : 'F'); d.rect(x, ty, w, rH, 'S');
                 d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold"); d.text(l, x + 2, ty + 4.8);
                 d.setFont("helvetica", "normal"); d.text(String(v), x + 36, ty + 4.8);
             };
@@ -287,7 +284,7 @@ export const generateROVCasnSketchReport = async (
 
             // Sketch Card Panel (Border box matching Riser sketch)
             doc.setDrawColor(...colors.border); doc.setLineWidth(0.3);
-            doc.setFillColor(isPF ? 255 : 252, isPF ? 255 : 253, isPF ? 255 : 254);
+            doc.setFillColor(config?.printFriendly ? 255 : 252, config?.printFriendly ? 255 : 253, config?.printFriendly ? 255 : 254);
             doc.rect(gX, currentY, gW, sketchH, 'FD');
 
             doc.setFontSize(7.5); doc.setFont("helvetica", "bold"); doc.setTextColor(...colors.navy);
@@ -497,47 +494,25 @@ export const generateROVCasnSketchReport = async (
                     const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                    let findingsParts: string[] = [];
-                    if (r.description && r.description.trim()) {
-                        findingsParts.push(r.description.trim());
-                    } else if (rd.findings && rd.findings.trim()) {
-                        findingsParts.push(rd.findings.trim());
-                    }
-
-                    additionals.forEach((a: any) => {
-                        const val = a.reading ?? a.cp_rdg ?? "";
-                        if ((val !== "" && val !== null && val !== undefined) || a.location) {
-                            const loc = a.location ? ` @ ${a.location}` : "";
-                            const unit = String(val).toLowerCase().includes("mv") || !val ? "" : " mV";
-                            findingsParts.push(`Add. CP${loc}: ${val}${unit}`);
-                        }
-                    });
-
-                    if (isAnom && anoms.length > 0) {
-                        anoms.forEach((a: any) => {
-                            findingsParts.push(`[Anom Ref: ${a.anomaly_ref_no || a.ref_no || 'N/A'}]${a.is_rectified ? ` (Rectified: ${a.rectified_remarks || a.rect_comments || ''})` : ''}`);
-                        });
-                    }
-
-                    const findings = findingsParts.length > 0 ? findingsParts.join('\n') : 'No significant findings';
+                    const findings = formatReportFindingText(r);
 
                     return [
-                        { content: String(itemNo), styles: { halign: 'center' } },
-                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: { fontStyle: 'bold', halign: 'center' } },
-                        { content: String(diveNo), styles: { halign: 'center' } },
-                        { content: cpDisplay, styles: { halign: 'center' } },
-                        { content: findings, styles: { textColor: isAnom ? colors.anomaly : colors.text } }
+                        { content: String(itemNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: {fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: String(diveNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: cpDisplay, styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: findings, styles: {textColor: isAnom ? colors.anomaly : colors.text, lineWidth: 0.1, lineColor: colors.border} }
                     ];
                 }) : [[
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "-", styles: { halign: 'center' } },
-                    { content: "No observations recorded for this scope.", styles: { textColor: colors.text } }
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "-", styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No observations recorded for this scope.", styles: {textColor: colors.text, lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 theme: 'grid',
-                headStyles: { fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center' },
-                styles: { fontSize: 7, cellPadding: 2 },
+                headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: {fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);

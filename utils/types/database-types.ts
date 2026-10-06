@@ -12,7 +12,7 @@ export type User = {
 export type Module = {
   id: string;
   name: string;
-  data: {};
+  data: Record<string, unknown>;
   created_at: string;
 };
 

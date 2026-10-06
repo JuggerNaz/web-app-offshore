@@ -54,6 +54,7 @@ const AVAILABLE_MODULES = [
   "Reports",
   "Executive Summary",
   "Oracle Migration",
+  "Interface",
   "Library",
   "Platform 3D",
   "Inspection Type",
@@ -66,7 +67,7 @@ const AVAILABLE_MODULES = [
 ];
 
 export default function UserManagementPage() {
-  const { profile: currentProfile, activeCompanyId, role } = useUserRole();
+  const { profile: currentProfile, activeCompanyId, role, isLoading: isRoleLoading } = useUserRole();
   const [members, setMembers] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -155,7 +156,7 @@ export default function UserManagementPage() {
         alert(json.error || "Failed to update access configuration");
       }
     } catch (err) {
-      console.error("[UserManagement] Failed to save access configuration:", err);
+      console.warn("[UserManagement] Failed to save access configuration:", err);
     } finally {
       setIsSavingAccess(false);
     }
@@ -188,16 +189,18 @@ export default function UserManagementPage() {
         setErrorMsg(errText);
       }
     } catch (err: any) {
-      console.error("[UserManagement] Error loading members:", err);
-      setErrorMsg(err.message || "An unexpected error occurred while loading members.");
+      console.warn("[UserManagement] Error loading members:", err?.message || err);
+      setErrorMsg(err?.message || "An unexpected error occurred while loading members.");
     } finally {
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchMembers();
-  }, [activeCompanyId]);
+    if (!isRoleLoading) {
+      fetchMembers();
+    }
+  }, [activeCompanyId, isRoleLoading]);
 
   const handleRoleChange = async (membershipId: string, newRole: UserRole) => {
     try {

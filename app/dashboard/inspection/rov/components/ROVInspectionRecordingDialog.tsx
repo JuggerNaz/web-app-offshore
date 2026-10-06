@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -225,7 +226,7 @@ export default function ROVInspectionRecordingDialog({
             // Determine Inspection Type ID
             const inspTypeId = sowItem?.inspection_type_id || currentRecord?.inspection_type_id || currentRecord?.inspection_type?.id;
 
-            let defaults: Record<string, any> = {};
+            const defaults: Record<string, any> = {};
 
             // 1. Fetch Schema & Defaults
             if (inspTypeId) {
@@ -830,7 +831,7 @@ export default function ROVInspectionRecordingDialog({
 
                 if (atWorksite && atWorksite.movement_time) {
                     const startLimit = new Date(atWorksite.movement_time).getTime();
-                    let endLimit = leavingWorksite?.movement_time ? new Date(leavingWorksite.movement_time).getTime() : new Date().getTime(); // up to current time if not left yet
+                    const endLimit = leavingWorksite?.movement_time ? new Date(leavingWorksite.movement_time).getTime() : new Date().getTime(); // up to current time if not left yet
 
                     if (inspDate < startLimit || (leavingWorksite && inspDate > endLimit)) {
                         const confirmed = window.confirm(
@@ -959,7 +960,7 @@ export default function ROVInspectionRecordingDialog({
 
                 let refNo = anomalyData.displayRefNo;
                 let seqNo = 0;
-                let isUpdate = !!anomalyData.id;
+                const isUpdate = !!anomalyData.id;
 
                 if (!isUpdate || !refNo) {
                     // Generate New
@@ -1000,7 +1001,7 @@ export default function ROVInspectionRecordingDialog({
                 else if (refNo.endsWith('A')) baseRef = refNo.slice(0, -1);
                 else baseRef = refNo;
 
-                let finalRefNo = (baseRef + postfix).trim();
+                const finalRefNo = (baseRef + postfix).trim();
 
                 const anomalyPayload: any = {
                     inspection_id: insertedRecord.insp_id,
@@ -1355,12 +1356,12 @@ export default function ROVInspectionRecordingDialog({
                             />
                         </div>
                         <div className="space-y-2">
-                            <Label>Inspection Time</Label>
-                            <Input
-                                type="time"
-                                step="1"
+                            <Label>Inspection Time (12h or 24h)</Label>
+                            <SmartTimeInput
                                 value={commonData.inspectionTime}
-                                onChange={(e) => handleCommonChange('inspectionTime', e.target.value)}
+                                onChange={(val) => handleCommonChange('inspectionTime', val)}
+                                includeSeconds={true}
+                                className="h-10"
                             />
                         </div>
                     </div>

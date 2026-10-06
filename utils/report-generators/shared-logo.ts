@@ -1,5 +1,9 @@
 import { jsPDF } from "jspdf";
 
+export const APP_NAME = "OFFSHOREPRO";
+export const APP_VERSION = "1.0";
+export const REPORT_FOOTER_APP_TEXT = `${APP_NAME} Version ${APP_VERSION}`;
+
 export const loadLogoWithTransparency = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
     if (!url || typeof url !== 'string' || !url.trim()) {
         return null;
@@ -51,74 +55,9 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
                     return;
                 }
 
+                // Draw original image onto canvas and return standard PNG data URL without altering colors/background
                 ctx.drawImage(img, 0, 0);
-
-                try {
-                    const imageData = ctx.getImageData(0, 0, w, h);
-                    const data = imageData.data;
-
-                    const isWhite = (i: number) => data[i] > 230 && data[i + 1] > 230 && data[i + 2] > 230 && data[i + 3] > 0;
-
-                    const stack: { x: number, y: number }[] = [];
-                    const visited = new Uint8Array(w * h);
-
-                    const pushIfWhite = (x: number, y: number) => {
-                        if (x < 0 || x >= w || y < 0 || y >= h) return;
-                        const idx = y * w + x;
-                        if (!visited[idx]) {
-                            const p = idx * 4;
-                            if (isWhite(p)) {
-                                visited[idx] = 1;
-                                stack.push({ x, y });
-                            }
-                        }
-                    };
-
-                    for (let x = 0; x < w; x++) { pushIfWhite(x, 0); pushIfWhite(x, h - 1); }
-                    for (let y = 0; y < h; y++) { pushIfWhite(0, y); pushIfWhite(w - 1, y); }
-
-                    while (stack.length > 0) {
-                        const pt = stack.pop();
-                        if (!pt) continue;
-                        const { x, y } = pt;
-                        const p = (y * w + x) * 4;
-                        data[p + 3] = 0; // make transparent
-
-                        pushIfWhite(x + 1, y);
-                        pushIfWhite(x - 1, y);
-                        pushIfWhite(x, y + 1);
-                        pushIfWhite(x, y - 1);
-                    }
-
-                    // Edge smoothing
-                    for (let y = 1; y < h - 1; y++) {
-                        for (let x = 1; x < w - 1; x++) {
-                            const p = (y * w + x) * 4;
-                            if (data[p + 3] !== 0) {
-                                const hasTransparentNeighbor =
-                                    data[((y) * w + x - 1) * 4 + 3] === 0 ||
-                                    data[((y) * w + x + 1) * 4 + 3] === 0 ||
-                                    data[((y - 1) * w + x) * 4 + 3] === 0 ||
-                                    data[((y + 1) * w + x) * 4 + 3] === 0;
-                                if (hasTransparentNeighbor) {
-                                    const avgColor = (data[p] + data[p + 1] + data[p + 2]) / 3;
-                                    if (avgColor > 200) {
-                                        data[p + 3] = Math.max(0, 255 - (avgColor - 180) * 3);
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    ctx.putImageData(imageData, 0, 0);
-                    resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
-                } catch {
-                    // If canvas security or getImageData throws, return data URL or original source
-                    try {
-                        resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
-                    } catch {
-                        resolve({ data: finalSrc, width: w, height: h });
-                    }
-                }
+                resolve({ data: canvas.toDataURL("image/png"), width: w, height: h });
             } catch {
                 resolve({ data: finalSrc, width: w, height: h });
             }
@@ -134,18 +73,54 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
     });
 };
 
+export const loadLogo = loadLogoWithTransparency;
 
-export const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
+
+export const drawLogo = (
+    doc: any,
+    logo: any,
+    maxW: number,
+    maxH: number,
+    x: number,
+    y: number,
+    alignX: string = 'left',
+    alignY: string = 'center'
+) => {
+    if (!logo || !logo.data || !logo.width || !logo.height) return;
+
+    // Aspect ratio of the image (width / height)
+    const aspectRatio = logo.width / logo.height;
+
+    // Determine effective max width:
+    // If it's a single logo (roughly square or portrait, aspect ratio <= 1.25), keep current maxW.
+    // If it contains multiple logos or is a wide rectangle (aspect ratio > 1.25),
+    // scale the allowed width proportionally (e.g. current size x no. of logos in image)
+    // so that the height stays at maxH and logos inside are not shrunk down.
+    // Capped at 50mm to prevent overlapping header title text.
+    let effectiveMaxW = maxW;
+    if (aspectRatio > 1.25) {
+        effectiveMaxW = Math.min(50, Math.max(maxW, maxH * aspectRatio));
+    }
+
+    const ratio = Math.min(effectiveMaxW / logo.width, maxH / logo.height);
     const w = logo.width * ratio;
     const h = logo.height * ratio;
+
     let dx = x;
     let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
+
+    if (alignX === 'right') {
+        dx = x + maxW - w;
+    } else if (alignX === 'center') {
+        dx = x + (maxW - w) / 2;
+    }
+
+    if (alignY === 'center' || alignY === 'middle') {
+        dy = y + (maxH - h) / 2;
+    } else if (alignY === 'bottom') {
+        dy = y + maxH - h;
+    }
+
     doc.addImage(logo.data, 'PNG', dx, dy, w, h);
 };
 
@@ -293,7 +268,218 @@ if (typeof window !== "undefined") {
         console.log("shared-logo.ts: jsPDF prototype successfully patched");
     };
     
-    // Run the patch
+// Run the patch
     patchJsPdfPrototypeGlobal();
 }
 
+/**
+ * Resolves the effective description/findings for an inspection record.
+ * Where the record status is 'INCOMPLETE' (case-insensitive):
+ * - Priority is for the Reason for Incomplete Task value.
+ * - If blank or null, fallback to the inspection finding value.
+ * - Never prints both.
+ */
+export const getEffectiveFindings = (r: any, explicitFindings?: string | null): string => {
+    if (!r) return "";
+
+    const d = r.inspection_data || r.inspection_dat || {};
+
+    const rawDesc = explicitFindings !== undefined && explicitFindings !== null 
+        ? explicitFindings 
+        : (r.findings ?? r.description ?? r.remarks ?? d.findings ?? d.finding ?? d.description ?? d.remarks ?? "");
+    
+    const cleanDesc = typeof rawDesc === "string" ? rawDesc.trim() : (rawDesc ? String(rawDesc).trim() : "");
+
+    const isStatusIncomplete = 
+        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
+        String(d.status || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(d.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+
+    const incReason = (
+        r.incomplete_reason || 
+        r.incompleteReason || 
+        d.incomplete_reason || 
+        d.incompleteReason || 
+        r.inspection_dat?.incomplete_reason ||
+        ""
+    ).toString().trim();
+
+    if (isStatusIncomplete) {
+        if (incReason) {
+            return incReason;
+        }
+        if (cleanDesc && cleanDesc !== "No significant findings" && cleanDesc !== "N/A" && cleanDesc !== "—" && cleanDesc !== "-") {
+            return cleanDesc;
+        }
+        return "Incomplete";
+    }
+
+    return cleanDesc;
+};
+
+const safeParseJson = (val: any): any => {
+    if (!val) return {};
+    if (typeof val === "object") return val;
+    if (typeof val === "string") {
+        try {
+            const parsed = JSON.parse(val);
+            return typeof parsed === "object" && parsed !== null ? parsed : {};
+        } catch (_) {
+            return {};
+        }
+    }
+    return {};
+};
+
+/**
+ * Resolves the nominal thickness from inspection record data or component metadata.
+ */
+export const getRecordNominalThickness = (r: any): string => {
+    if (!r) return "-";
+
+    const d = safeParseJson(r.inspection_data || r.inspection_dat);
+    
+    // Resolve component object which could be object, array, or nested
+    let rawComp = r.structure_components || r.structure_component || r.component || r.comp || {};
+    if (Array.isArray(rawComp)) {
+        rawComp = rawComp[0] || {};
+    }
+    const comp = safeParseJson(rawComp);
+    const compRaw = safeParseJson(comp.raw);
+    const compMeta = safeParseJson(comp.metadata || compRaw.metadata || comp.component_metadata || comp.additionalInfo || comp.props);
+    const compSpec = safeParseJson(comp.spec || compRaw.spec || compMeta.spec || compMeta.specs || compMeta.details || compMeta.additional_details);
+    const compData = safeParseJson(comp.data || compRaw.data);
+
+    const sources = [
+        d,
+        r,
+        compMeta,
+        compSpec,
+        compData,
+        comp,
+        compRaw,
+        safeParseJson(r.component_metadata),
+        safeParseJson(r.component_spec),
+        safeParseJson(r.metadata),
+        safeParseJson(r.spec)
+    ];
+
+    const keys = [
+        'nominal_thickness',
+        'nominal_wall_thickness',
+        'nominalThickness',
+        'nominal_thk',
+        'nominalThk',
+        'wall_thk',
+        'wall_thickness',
+        'nom_wt',
+        'nom_thickness',
+        'nom_thick',
+        'nominal_wt',
+        'wt_nom',
+        'wt',
+        'design_wt',
+        'pipe_wt',
+        'thickness',
+        'nc_wall_thk',
+        'memb_wall_thk',
+        'member_wall_thickness'
+    ];
+
+    for (const src of sources) {
+        if (!src || typeof src !== 'object') continue;
+        for (const k of keys) {
+            const val = src[k];
+            if (val !== undefined && val !== null && val !== '' && val !== '-') {
+                const str = String(val).trim();
+                if (str && str !== 'null' && str !== 'undefined' && str !== 'NaN' && str !== '-') {
+                    return str;
+                }
+            }
+        }
+    }
+
+    return "-";
+};
+
+/**
+ * Normalizes a single inspection record so that:
+ * 1. If status = 'INCOMPLETE' and description/findings is null, blank, or empty,
+ *    it replaces description, findings, and inspection_data.findings/description with incomplete_reason.
+ * 2. If nominal_thickness is missing in inspection_data, it populates it from alternative fields or component metadata.
+ */
+export const normalizeRecordFindings = (r: any): any => {
+    if (!r) return r;
+    let modified = false;
+    const inspData = { ...(r.inspection_data || r.inspection_dat || {}) };
+    const recordCopy = { ...r };
+
+    // 1. Nominal Thickness Normalization
+    const resolvedNomThk = getRecordNominalThickness(r);
+    if (resolvedNomThk !== "-") {
+        const curNom = inspData.nominal_thickness;
+        if (curNom === undefined || curNom === null || curNom === "" || curNom === "-") {
+            inspData.nominal_thickness = resolvedNomThk;
+            recordCopy.nominal_thickness = resolvedNomThk;
+            modified = true;
+        }
+    }
+
+    // 2. Incomplete Reason for findings/description (priority: incomplete_reason, fallback: inspection finding)
+    const isStatusIncomplete = 
+        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
+        String(inspData.status || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(inspData.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
+        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+
+    const incReason = (
+        r.incomplete_reason || 
+        r.incompleteReason || 
+        inspData.incomplete_reason || 
+        inspData.incompleteReason || 
+        r.inspection_dat?.incomplete_reason ||
+        ""
+    ).toString().trim();
+
+    if (isStatusIncomplete) {
+        const desc = (r.description ?? r.findings ?? r.remarks ?? inspData.findings ?? inspData.description ?? "").toString().trim();
+        const effectiveText = incReason || (!desc || desc === "No significant findings" || desc === "N/A" || desc === "—" || desc === "-" ? "Incomplete" : desc);
+        inspData.description = effectiveText;
+        inspData.findings = effectiveText;
+        inspData.remarks = effectiveText;
+        inspData.finding = effectiveText;
+        recordCopy.description = effectiveText;
+        recordCopy.findings = effectiveText;
+        recordCopy.remarks = effectiveText;
+        modified = true;
+    }
+
+    if (modified) {
+        recordCopy.inspection_data = inspData;
+        recordCopy.inspection_dat = inspData;
+        return recordCopy;
+    }
+    return r;
+};
+
+/**
+ * Normalizes an array of inspection records for all report templates.
+ */
+export const normalizeReportRecords = (records: any[]): any[] => {
+    if (!Array.isArray(records)) return [];
+    return records.map(normalizeRecordFindings);
+};
+
+export { getInspectionDateRange } from "./date-range-utils";
+export { sortScourFaceRecords } from "./scour-sorting-utils";
+export {
+    getRecordStatusInfo,
+    formatReportFindingText,
+    applyRecordCellStyling,
+    REPORT_COLORS,
+    type RecordStatusType,
+    type RecordStatusInfo
+} from "./finding-color-helper";
