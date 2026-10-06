@@ -214,6 +214,125 @@ export interface ReportConfig {
   showSignatures?: boolean;
 }
 
+interface Draw3SectionHeaderOptions {
+  pageWidth: number;
+  companySettings?: CompanySettings;
+  config?: ReportConfig;
+  reportTitle: string;
+  reportNo?: string;
+  isPrintFriendly?: boolean;
+  headerBlue?: [number, number, number];
+}
+
+const draw3SectionHeader = async (
+  doc: any,
+  options: Draw3SectionHeaderOptions
+) => {
+  const {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle,
+    reportNo,
+    isPrintFriendly = false,
+    headerBlue = [26, 54, 93],
+  } = options;
+
+  const headerHeight = 28;
+  const colWidth = 28;
+  const middleWidth = pageWidth - colWidth * 2;
+
+  // 1. Left Square Column (Contractor Logo)
+  doc.setFillColor(255, 255, 255);
+  if (isPrintFriendly) {
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.rect(0, 0, colWidth, headerHeight, "FD");
+  } else {
+    doc.rect(0, 0, colWidth, headerHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.rect(0, 0, colWidth, headerHeight, "S");
+  }
+
+  // Load & Draw Contractor Logo
+  const contractorLogoUrl = config?.contractorLogoUrl || (config as any)?.contractorLogo;
+  if (config?.showContractorLogo !== false && contractorLogoUrl) {
+    try {
+      const contractorLogoData = await loadLogo(contractorLogoUrl);
+      if (contractorLogoData) {
+        drawLogo(doc, contractorLogoData, 20, 20, 4, 4, 'center', 'center');
+      }
+    } catch (err) {
+      console.warn("Error loading contractor logo in structure report:", err);
+    }
+  }
+
+  // 2. Middle Section (Report Info - Blue Banner)
+  if (isPrintFriendly) {
+    doc.setFillColor(255, 255, 255);
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.rect(colWidth, 0, middleWidth, headerHeight, "FD");
+  } else {
+    doc.setFillColor(...headerBlue);
+    doc.rect(colWidth, 0, middleWidth, headerHeight, "F");
+  }
+
+  // Middle Text (Company Name, Department, Report Title, Report No)
+  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
+
+  // Company Name - SAME size as Report Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
+  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
+
+  // Department Name (Sub-header) - Slightly increased font size (centered)
+  doc.setFontSize(8.5);
+  doc.setFont("helvetica", "normal");
+  const deptName = companySettings?.department_name || "Technical Inspection Division";
+  doc.text(deptName, pageWidth / 2, 12, { align: "center" });
+
+  // Report Title - SAME size as Company Title (centered)
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "bold");
+  doc.text(reportTitle, pageWidth / 2, 17.5, { align: "center" });
+
+  // Report No - Centered below Report Title
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  const reportNoStr = reportNo || (config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : ""));
+  if (reportNoStr) {
+    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
+  }
+
+  // 3. Right Square Column (Client / Company Logo)
+  doc.setFillColor(255, 255, 255);
+  if (isPrintFriendly) {
+    doc.setDrawColor(180, 180, 180);
+    doc.setLineWidth(0.3);
+    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "FD");
+  } else {
+    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "F");
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "S");
+  }
+
+  // Load & Draw Client / Company Logo
+  if (companySettings?.logo_url) {
+    try {
+      const logoData = await loadLogo(companySettings.logo_url);
+      if (logoData) {
+        drawLogo(doc, logoData, 20, 20, pageWidth - colWidth + 4, 4, 'center', 'center');
+      }
+    } catch (error) {
+      console.error("Error loading company logo in structure report:", error);
+    }
+  }
+};
+
 export const generateStructureReport = async (
   structure: StructureData,
   companySettings?: CompanySettings,
@@ -252,61 +371,15 @@ const generatePipelineReport = async (
   const sectionBlue: [number, number, number] = [44, 82, 130];
   const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER WITH LOGO =====
-  if (isPrintFriendly) {
-    // Print-Friendly: White background with light gray border
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(0, 0, pageWidth, 28);
-  } else {
-    doc.setFillColor(...headerBlue);
-    doc.rect(0, 0, pageWidth, 28, "F");
-  }
-
-  // Logo area (right side)
-  if (companySettings?.logo_url) {
-    try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    }
-  }
-
-  // Company Name - SAME size as Report Title (centered)
-  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
-
-  // Department Name (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Pipeline Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No - Centered below Report Title
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Pipeline Specifications Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   let yPos = 32;
 
@@ -608,60 +681,15 @@ const generatePlatformReport = async (
   const sectionBlue: [number, number, number] = [44, 82, 130];
   const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER WITH LOGO =====
-  if (isPrintFriendly) {
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(0, 0, pageWidth, 28);
-  } else {
-    doc.setFillColor(...headerBlue);
-    doc.rect(0, 0, pageWidth, 28, "F");
-  }
-
-  // Logo area (right side) - Bigger Square layout
-  if (companySettings?.logo_url) {
-    try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    }
-  }
-
-  // Company Name - SAME size as Report Title (centered)
-  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
-
-  // Department Name (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Platform Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No - Centered below Report Title
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Platform Specifications Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   let yPos = 32;
 
@@ -1934,50 +1962,17 @@ export const generateComponentSummaryReport = async (
   const headerBlue: [number, number, number] = [26, 54, 93];
   const sectionBlue: [number, number, number] = [44, 82, 130];
   const lightBlue: [number, number, number] = [235, 242, 250];
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
-
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  // Company Headings - SAME size as Report Title (centered)
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-
-  // Department (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Component Summary Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Subtitle
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoSummary = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (reportNoSummary) {
-    doc.text(reportNoSummary, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Component Summary Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   // Subtitle
   doc.setFontSize(9);
@@ -2533,45 +2528,17 @@ export const generateComponentSpecReport = async (
   const headerBlue: [number, number, number] = [26, 54, 93];
   const sectionBlue: [number, number, number] = [44, 82, 130];
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Component Data Sheet", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Context
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const compReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (compReportNo) {
-    doc.text(compReportNo, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Component Data Sheet",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   // Subheader: Structure Context
   doc.setFontSize(9);
@@ -2819,46 +2786,17 @@ export const generateTechnicalSpecsReport = async (
   // Colors
   const headerBlue: [number, number, number] = [26, 54, 93];
   const sectionBlue: [number, number, number] = [44, 82, 130];
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
-
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Technical Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Subtitle
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const techReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (techReportNo) {
-    doc.text(techReportNo, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Technical Specifications Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
