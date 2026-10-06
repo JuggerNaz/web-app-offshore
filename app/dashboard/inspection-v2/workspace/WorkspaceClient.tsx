@@ -593,22 +593,16 @@ function V10PreviewLayout() {
           ...(Array.isArray(parsed?.borders) ? parsed.borders.flatMap(getComponentsInNode) : []),
         ];
 
-        // Ensure all core inspection panels exist in the restored layout
-        const requiredComps = ["form", "events", "components", "opsLog"];
-        const hasAllRequired = requiredComps.every((c) => existingComps.includes(c));
-
-        if (!hasAllRequired) {
-          console.warn("[Workspace] Stored layout is missing essential panels, resetting to default layout.", {
-            existingComps,
-            requiredComps,
-          });
+        // Only reset layout if it is completely empty/corrupted (at least 1 component must exist)
+        if (existingComps.length === 0 || !parsed?.layout?.children || parsed.layout.children.length === 0) {
+          console.warn("[Workspace] Stored layout is corrupted or empty, resetting to default layout.");
           localStorage.removeItem(storageKey);
           localStorage.removeItem("inspection-workspace-layout-v2");
           localStorage.removeItem("pipeline-workspace-layout-v2");
         } else if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
           if (!parsed.global) parsed.global = {};
-          parsed.global.tabEnableClose = false;
+          parsed.global.tabEnableClose = true;
           parsed.global.tabSetEnableMaximize = true;
           parsed.global.enableEdgeDock = true;
           if (!parsed.borders) {
@@ -629,7 +623,7 @@ function V10PreviewLayout() {
     console.log("[DEBUG] Using default layout model");
     const defaultModel: IJsonModel = {
       global: { 
-        tabEnableClose: false, 
+        tabEnableClose: true, 
         tabSetEnableMaximize: true,
         tabSetEnableDivide: true,
         tabSetEnableDrop: true,
@@ -9431,6 +9425,22 @@ function V10PreviewLayout() {
       .flexlayout__tabset_header { background-color: #1e293b !important; color: #94a3b8 !important; }
       .flexlayout__tab_button { background-color: transparent !important; color: #94a3b8 !important; }
       .flexlayout__tab_button--selected { background-color: #334155 !important; color: #fff !important; }
+      .flexlayout__tab_button_trailing {
+        margin-left: 6px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        opacity: 0.65 !important;
+        border-radius: 4px !important;
+        padding: 2px !important;
+        transition: all 0.15s ease-in-out !important;
+        cursor: pointer !important;
+      }
+      .flexlayout__tab_button_trailing:hover {
+        opacity: 1 !important;
+        background-color: rgba(239, 68, 68, 0.25) !important;
+        color: #f87171 !important;
+      }
       .flexlayout__splitter { background-color: #334155 !important; }
       .flexlayout__tab { background-color: #0f172a !important; overflow: hidden; border: 1px solid #334155 !important; }
       .custom-scrollbar::-webkit-scrollbar { width: 6px; }

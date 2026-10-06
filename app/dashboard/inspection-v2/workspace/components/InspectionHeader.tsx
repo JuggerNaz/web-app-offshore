@@ -494,10 +494,56 @@ export const InspectionHeader: React.FC<InspectionHeaderProps> = ({
                                 <DropdownMenuContent align="end" className="w-64 bg-slate-900 border-slate-700 text-slate-200 shadow-xl">
                                     <div className="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-slate-400 border-b border-slate-800 flex items-center justify-between">
                                         <span>Dock Station Controls</span>
+                                        {closedPanels && closedPanels.length > 0 ? (
+                                            <span className="text-[9px] text-amber-400 font-bold">{closedPanels.length} Closed</span>
+                                        ) : (
+                                            <span className="text-[9px] text-emerald-400 font-bold">All Open</span>
+                                        )}
                                     </div>
+                                    
+                                    {closedPanels && closedPanels.length > 0 ? (
+                                        <>
+                                            <div className="px-3 pt-2 pb-1 text-[9px] font-bold uppercase tracking-wider text-cyan-400 flex items-center justify-between">
+                                                <span>Reopen Closed Windows ({closedPanels.length})</span>
+                                                {closedPanels.length > 1 && onRestoreAllPanels && (
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onRestoreAllPanels();
+                                                        }}
+                                                        className="text-[9px] text-blue-400 hover:text-blue-300 font-bold normal-case tracking-normal hover:underline"
+                                                    >
+                                                        Restore All
+                                                    </button>
+                                                )}
+                                            </div>
+                                            {closedPanels.map((panel) => (
+                                                <DropdownMenuItem
+                                                    key={panel.id}
+                                                    onClick={() => onRestorePanel?.(panel.id)}
+                                                    className="text-xs font-medium hover:bg-slate-800 focus:bg-slate-800 cursor-pointer text-slate-200 flex items-center justify-between py-1.5 px-3"
+                                                >
+                                                    <span className="flex items-center gap-2">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                                                        {panel.name}
+                                                    </span>
+                                                    <span className="text-[9px] font-bold uppercase text-cyan-400 bg-cyan-950/60 border border-cyan-800 px-1.5 py-0.5 rounded hover:bg-cyan-900">
+                                                        Open
+                                                    </span>
+                                                </DropdownMenuItem>
+                                            ))}
+                                            <div className="my-1 border-t border-slate-800" />
+                                        </>
+                                    ) : (
+                                        <div className="px-3 py-2 text-[10px] text-slate-400 flex items-center gap-2 border-b border-slate-800/60">
+                                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                                            <span>All workspace panels are open</span>
+                                        </div>
+                                    )}
+
                                     <DropdownMenuItem 
                                         onClick={onResetLayout}
-                                        className="text-xs font-semibold hover:bg-slate-800 cursor-pointer text-slate-200 py-2 px-3"
+                                        className="text-xs font-semibold hover:bg-slate-800 focus:bg-slate-800 cursor-pointer text-slate-200 py-2 px-3"
                                     >
                                         <RotateCcw className="w-3.5 h-3.5 mr-2 text-amber-400" />
                                         <span>Reset All Windows</span>
