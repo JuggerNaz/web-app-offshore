@@ -8,6 +8,7 @@ import {
     CheckCircle2, 
     FileText, 
     AlertCircle, 
+    AlertTriangle,
     Clock, 
     Save, 
     Trash2,
@@ -28,6 +29,14 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter
+} from "@/components/ui/dialog";
 import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
 import { VoiceInspectionAssistant } from "@/components/inspection/VoiceInspectionAssistant";
@@ -96,7 +105,7 @@ interface InspectionFormProps {
     setPrevRefNo: (val: string) => void;
     criteriaRules?: any[];
     onVoiceActionCommand?: (actionIntent: any) => void;
-    calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
+    calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null) => number | null;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -162,7 +171,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     onVoiceActionCommand,
     calculateAutoCounter
 }) => {
+    const currentDiveJobId = dynamicProps?.dive_job_id ?? dynamicProps?.rov_job_id ?? (isEditing ? (originalRecordContext?.dive_job_id ?? originalRecordContext?.rov_job_id) : activeDep?.id);
+
     const displayDiveNo = (() => {
+        if (dynamicProps?.dive_no) return String(dynamicProps.dive_no);
+        if (currentDiveJobId) {
+            const found = deployments?.find((d: any) => String(d.id) === String(currentDiveJobId) || String(d.raw?.dive_job_id) === String(currentDiveJobId) || String(d.raw?.rov_job_id) === String(currentDiveJobId));
+            if (found) return found.jobNo || found.id;
+        }
         if (isEditing && originalRecordContext) {
             return (
                 originalRecordContext.dive_no ||
@@ -182,7 +198,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         return activeDep?.deployment_no || activeDep?.dive_no || activeDep?.job_no || "-";
     })();
 
+    const currentTapeId = dynamicProps?.tape_id ?? (isEditing ? (originalRecordContext?.tape_id ?? originalRecordContext?.raw?.tape_id) : tapeId);
+
     const displayTapeNo = (() => {
+        if (dynamicProps?.tape_no) return String(dynamicProps.tape_no);
+        if (currentTapeId) {
+            const found = jobTapes?.find((t: any) => String(t.tape_id) === String(currentTapeId));
+            if (found?.tape_no) return found.tape_no;
+        }
         if (isEditing && originalRecordContext) {
             return (
                 originalRecordContext.tape_no ||
@@ -196,6 +219,13 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     })();
 
     const displayChapter = (() => {
+        if (dynamicProps?.chapter_no !== undefined && dynamicProps?.chapter_no !== null && dynamicProps?.chapter_no !== "") {
+            return String(dynamicProps.chapter_no);
+        }
+        if (currentTapeId) {
+            const found = jobTapes?.find((t: any) => String(t.tape_id) === String(currentTapeId));
+            if (found?.chapter_no !== undefined && found?.chapter_no !== null) return String(found.chapter_no);
+        }
         if (isEditing && originalRecordContext) {
             const ch = (
                 originalRecordContext.chapter_no ??
@@ -209,6 +239,178 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
         return activeChapter !== undefined && activeChapter !== null ? String(activeChapter) : "1";
     })();
+
+    interface PendingAssignmentChange {
+        type: 'DIVE' | 'TAPE';
+        oldDiveNo: string;
+        newDiveNo: string;
+        newDiveId: string | number;
+        oldTapeNo: string;
+        newTapeNo: string;
+        newTapeId: string | number;
+        oldChapter: string | number;
+        newChapter: string | number;
+        recommendedDate?: string;
+        recommendedTime?: string;
+        recommendedCounter?: string;
+    }
+
+    const [pendingAssignmentChange, setPendingAssignmentChange] = React.useState<PendingAssignmentChange | null>(null);
+
+    const handleDiveSelectionChange = (newDiveId: string) => {
+        if (!newDiveId || newDiveId === String(currentDiveJobId)) return;
+
+        const targetDep = deployments?.find((d: any) => String(d.id) === String(newDiveId) || String(d.raw?.dive_job_id) === String(newDiveId) || String(d.raw?.rov_job_id) === String(newDiveId));
+        const newDiveNo = targetDep?.jobNo || targetDep?.id || newDiveId;
+
+        // Find tapes linked to this dive/deployment
+        const matchingTapes = (jobTapes || []).filter((t: any) => 
+            String(t.dive_job_id || t.rov_job_id || t.raw?.dive_job_id || t.raw?.rov_job_id || t.deployment_id) === String(newDiveId)
+        );
+
+        const targetTape = matchingTapes[0] || (jobTapes && jobTapes.find((t: any) => String(t.tape_id) === String(currentTapeId))) || (jobTapes && jobTapes[0]) || null;
+        const newTapeNo = targetTape?.tape_no || displayTapeNo;
+        const newTapeId = targetTape?.tape_id || currentTapeId || "";
+        const newChapter = targetTape?.chapter_no || displayChapter || 1;
+
+        // Auto-recommend date & time from deployment or tape
+        let recDate = dynamicProps?.inspection_date;
+        let recTime = dynamicProps?.inspection_time;
+        const rawDate = targetDep?.raw?.dive_date || targetDep?.raw?.created_at || targetDep?.created_at;
+        if (rawDate) {
+            try {
+                const dObj = new Date(rawDate);
+                if (!isNaN(dObj.getTime())) {
+                    recDate = dObj.toISOString().split("T")[0];
+                    const hours = String(dObj.getHours()).padStart(2, "0");
+                    const mins = String(dObj.getMinutes()).padStart(2, "0");
+                    const secs = String(dObj.getSeconds()).padStart(2, "0");
+                    recTime = `${hours}:${mins}:${secs}`;
+                }
+            } catch (_) {}
+        }
+
+        // Auto-calculate counter if function available
+        let recCounter = dynamicProps?.tape_count_no || "00:00:00";
+        if (calculateAutoCounter && recDate && recTime) {
+            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id);
+            if (autoSecs !== null && autoSecs !== undefined && autoSecs >= 0) {
+                recCounter = formatTime(autoSecs);
+            }
+        }
+
+        setPendingAssignmentChange({
+            type: 'DIVE',
+            oldDiveNo: displayDiveNo,
+            newDiveNo,
+            newDiveId,
+            oldTapeNo: displayTapeNo,
+            newTapeNo,
+            newTapeId,
+            oldChapter: displayChapter,
+            newChapter,
+            recommendedDate: recDate,
+            recommendedTime: recTime,
+            recommendedCounter: recCounter,
+        });
+    };
+
+    const handleTapeSelectionChange = (newTapeId: string) => {
+        if (!newTapeId || newTapeId === String(currentTapeId)) return;
+
+        const targetTape = (jobTapes || []).find((t: any) => String(t.tape_id) === String(newTapeId));
+        const newTapeNo = targetTape?.tape_no || newTapeId;
+        const newChapter = targetTape?.chapter_no || 1;
+
+        // Check if target tape has a linked dive/deployment
+        const linkedDepId = targetTape?.dive_job_id || targetTape?.rov_job_id || targetTape?.raw?.dive_job_id || targetTape?.raw?.rov_job_id;
+        let newDiveId = currentDiveJobId;
+        let newDiveNo = displayDiveNo;
+
+        if (linkedDepId && String(linkedDepId) !== String(currentDiveJobId)) {
+            const foundDep = deployments?.find((d: any) => String(d.id) === String(linkedDepId));
+            if (foundDep) {
+                newDiveId = foundDep.id;
+                newDiveNo = foundDep.jobNo || foundDep.id;
+            }
+        }
+
+        let recDate = dynamicProps?.inspection_date;
+        let recTime = dynamicProps?.inspection_time;
+        if (targetTape?.start_time || targetTape?.created_at) {
+            const rawTime = targetTape.start_time || targetTape.created_at;
+            try {
+                const dObj = new Date(rawTime);
+                if (!isNaN(dObj.getTime())) {
+                    recDate = dObj.toISOString().split("T")[0];
+                    const hours = String(dObj.getHours()).padStart(2, "0");
+                    const mins = String(dObj.getMinutes()).padStart(2, "0");
+                    const secs = String(dObj.getSeconds()).padStart(2, "0");
+                    recTime = `${hours}:${mins}:${secs}`;
+                }
+            } catch (_) {}
+        }
+
+        let recCounter = dynamicProps?.tape_count_no || "00:00:00";
+        if (calculateAutoCounter && recDate && recTime) {
+            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id);
+            if (autoSecs !== null && autoSecs !== undefined && autoSecs >= 0) {
+                recCounter = formatTime(autoSecs);
+            }
+        }
+
+        setPendingAssignmentChange({
+            type: 'TAPE',
+            oldDiveNo: displayDiveNo,
+            newDiveNo,
+            newDiveId: newDiveId || "",
+            oldTapeNo: displayTapeNo,
+            newTapeNo,
+            newTapeId,
+            oldChapter: displayChapter,
+            newChapter,
+            recommendedDate: recDate,
+            recommendedTime: recTime,
+            recommendedCounter: recCounter,
+        });
+    };
+
+    const confirmAssignmentChange = () => {
+        if (!pendingAssignmentChange) return;
+
+        const { newDiveId, newDiveNo, newTapeId, newTapeNo, newChapter, recommendedDate, recommendedTime, recommendedCounter } = pendingAssignmentChange;
+
+        if (inspMethod === 'DIVING') {
+            handleDynamicPropChange?.('dive_job_id', newDiveId ? Number(newDiveId) : newDiveId);
+            handleDynamicPropChange?.('dive_no', newDiveNo);
+        } else {
+            handleDynamicPropChange?.('rov_job_id', newDiveId ? Number(newDiveId) : newDiveId);
+            handleDynamicPropChange?.('dive_no', newDiveNo);
+        }
+
+        if (newTapeId) {
+            handleDynamicPropChange?.('tape_id', Number(newTapeId));
+        }
+        if (newTapeNo) {
+            handleDynamicPropChange?.('tape_no', newTapeNo);
+        }
+        if (newChapter !== undefined) {
+            handleDynamicPropChange?.('chapter_no', Number(newChapter));
+        }
+        if (recommendedDate) {
+            handleDynamicPropChange?.('inspection_date', recommendedDate);
+        }
+        if (recommendedTime) {
+            handleDynamicPropChange?.('inspection_time', recommendedTime);
+        }
+        if (recommendedCounter) {
+            handleDynamicPropChange?.('tape_count_no', recommendedCounter);
+            handleDynamicPropChange?.('counter', recommendedCounter);
+        }
+
+        toast.success(`Updated: ${inspMethod === 'ROV' ? 'Dep' : 'Dive'} ${newDiveNo} | Tape ${newTapeNo} (Ch: ${newChapter})`);
+        setPendingAssignmentChange(null);
+    };
     const [activeCriteriaRules, setActiveCriteriaRules] = React.useState<any[]>(criteriaRules || []);
 
     // Sync from prop
@@ -1277,9 +1479,9 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     )}
                 </span>
                 <div className="flex items-center gap-2 flex-wrap">
-                    {/* Non-editable location badge (Dive/Dep, Tape, Chapter) */}
-                    <div className="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded border border-white/15 text-[10px] font-mono text-blue-100 shrink-0 select-none" title={`Recorded under ${inspMethod === 'ROV' ? 'ROV Deployment' : 'Dive'}: ${displayDiveNo}, Tape: ${displayTapeNo}, Chapter: ${displayChapter}`}>
-                        <span className="text-blue-200 font-bold text-[9px] uppercase">{inspMethod === 'ROV' ? 'DEP' : 'DIVE'}:</span>
+                    {/* Non-editable location badge (Dive, Tape, Chapter) */}
+                    <div className="flex items-center gap-1.5 bg-black/25 px-2 py-0.5 rounded border border-white/15 text-[10px] font-mono text-blue-100 shrink-0 select-none" title={`Recorded under Dive: ${displayDiveNo}, Tape: ${displayTapeNo}, Chapter: ${displayChapter}`}>
+                        <span className="text-blue-200 font-bold text-[9px] uppercase">DIVE:</span>
                         <span className="font-bold text-white text-[10px]">{displayDiveNo}</span>
                         <span className="text-blue-300/40">|</span>
                         <span className="text-blue-200 font-bold text-[9px] uppercase">TAPE:</span>
@@ -1444,7 +1646,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         onClick={() => {
                                                             const d = dynamicProps?.inspection_date;
                                                             const t = dynamicProps?.inspection_time;
-                                                            const secs = calculateAutoCounter(d, t);
+                                                            const secs = calculateAutoCounter(d, t, currentTapeId);
                                                             if (secs !== null && secs !== undefined && secs >= 0) {
                                                                 const fmt = formatTime(secs);
                                                                 handleDynamicPropChange?.('tape_count_no', fmt);
@@ -1462,6 +1664,74 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                 )}
                                             </div>
                                             {renderInspectionField({ name: 'tape_count_no', label: `Live: ${formatTime(vidTimer)}`, type: 'text' }, 'primary')}
+                                        </div>
+
+                                        {/* Dive Number List Box */}
+                                        <div className="space-y-0.5 flex-grow min-w-[110px] max-w-[155px]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-0.5">
+                                                    Dive No.
+                                                </span>
+                                                <span className="text-[7px] font-bold px-1 py-0.2 bg-slate-200/80 text-slate-700 dark:bg-slate-800 dark:text-slate-300 rounded font-mono">
+                                                    {displayDiveNo}
+                                                </span>
+                                            </div>
+                                            <select
+                                                value={String(currentDiveJobId || "")}
+                                                onChange={(e) => handleDiveSelectionChange(e.target.value)}
+                                                className="h-7 w-full px-1.5 text-[10px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400 truncate"
+                                                title="Select Dive No"
+                                            >
+                                                {currentDiveJobId && !deployments?.some((d: any) => String(d.id) === String(currentDiveJobId) || String(d.raw?.dive_job_id) === String(currentDiveJobId) || String(d.raw?.rov_job_id) === String(currentDiveJobId)) && (
+                                                    <option value={String(currentDiveJobId)}>
+                                                        DIVE: {displayDiveNo}
+                                                    </option>
+                                                )}
+                                                {(deployments && deployments.length > 0 ? deployments : (activeDep ? [activeDep] : [])).map((dep: any) => {
+                                                    const dId = String(dep.id || dep.raw?.id || dep.raw?.dive_job_id || dep.raw?.rov_job_id);
+                                                    const dNo = dep.jobNo || dep.deployment_no || dep.dive_no || dep.id;
+                                                    const dName = dep.name || dep.diver_name || dep.rov_operator || "";
+                                                    return (
+                                                        <option key={dId} value={dId}>
+                                                            DIVE: {dNo}{dName ? ` (${dName})` : ""}
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
+                                        </div>
+
+                                        {/* Tape No & Chapter List Box */}
+                                        <div className="space-y-0.5 flex-grow min-w-[140px] max-w-[210px]">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[8px] font-black text-slate-800 dark:text-slate-400 uppercase flex items-center gap-0.5">
+                                                    Tape No & Ch
+                                                </span>
+                                                <span className="text-[7px] font-bold px-1 py-0.2 bg-blue-100 text-blue-800 dark:bg-blue-900/60 dark:text-blue-300 rounded font-mono">
+                                                    Ch: {displayChapter}
+                                                </span>
+                                            </div>
+                                            <select
+                                                value={String(currentTapeId || "")}
+                                                onChange={(e) => handleTapeSelectionChange(e.target.value)}
+                                                className="h-7 w-full px-1.5 text-[10px] font-bold border border-slate-200 dark:border-slate-800 rounded-md bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-400 truncate"
+                                                title="Select Tape No and Chapter"
+                                            >
+                                                {currentTapeId && !jobTapes?.some((t: any) => String(t.tape_id) === String(currentTapeId)) && (
+                                                    <option value={String(currentTapeId)}>
+                                                        {displayTapeNo} (Ch: {displayChapter})
+                                                    </option>
+                                                )}
+                                                {(jobTapes && jobTapes.length > 0 ? jobTapes : []).map((t: any) => {
+                                                    const tId = String(t.tape_id);
+                                                    const tNo = t.tape_no || `Tape ${t.tape_id}`;
+                                                    const ch = t.chapter_no || 1;
+                                                    return (
+                                                        <option key={tId} value={tId}>
+                                                            {tNo} (Ch: {ch})
+                                                        </option>
+                                                    );
+                                                })}
+                                            </select>
                                         </div>
                                     </div>
                                 </div>
@@ -2353,6 +2623,94 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     </Button>
                 </div>
             </div>
+
+            {/* Security Confirmation Modal for Accidental Dive / Tape Change */}
+            <Dialog open={!!pendingAssignmentChange} onOpenChange={(open) => !open && setPendingAssignmentChange(null)}>
+                <DialogContent className="max-w-md bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl p-5 z-[9999]">
+                    <DialogHeader className="space-y-2">
+                        <div className="flex items-center gap-2.5 text-amber-600 dark:text-amber-400">
+                            <div className="p-2 bg-amber-100 dark:bg-amber-950/60 rounded-xl border border-amber-300 dark:border-amber-800">
+                                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-sm font-black uppercase tracking-wider text-slate-900 dark:text-slate-100">
+                                    Confirm Dive & Tape Assignment Change
+                                </DialogTitle>
+                                <DialogDescription className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Security guard against accidental typo or unintended modification.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    {pendingAssignmentChange && (
+                        <div className="space-y-3 py-2 text-xs">
+                            <div className="bg-amber-50/60 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 rounded-xl p-3 text-[11px] text-amber-900 dark:text-amber-200">
+                                You are modifying the <strong>{inspMethod === "ROV" ? "Deployment" : "Dive"}</strong> and/or <strong>Tape</strong> assignment for this inspection record.
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-2 text-[10px]">
+                                <div className="p-2.5 bg-slate-100 dark:bg-slate-800/60 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-1">
+                                    <span className="font-black uppercase tracking-wider text-slate-400 block text-[9px]">Current Assignment</span>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        DIVE: <span className="text-blue-600 dark:text-blue-400">{pendingAssignmentChange.oldDiveNo}</span>
+                                    </div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        TAPE: <span className="text-blue-600 dark:text-blue-400">{pendingAssignmentChange.oldTapeNo}</span>
+                                    </div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        CH: <span className="text-blue-600 dark:text-blue-400">{pendingAssignmentChange.oldChapter}</span>
+                                    </div>
+                                    <div className="text-[9px] text-slate-500 font-mono mt-1">
+                                        Date: {dynamicProps?.inspection_date || "-"} {dynamicProps?.inspection_time || "-"}
+                                    </div>
+                                </div>
+
+                                <div className="p-2.5 bg-blue-50 dark:bg-blue-950/40 rounded-xl border border-blue-200 dark:border-blue-800 space-y-1">
+                                    <span className="font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 block text-[9px]">New Assignment</span>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        DIVE: <span className="text-emerald-600 dark:text-emerald-400">{pendingAssignmentChange.newDiveNo}</span>
+                                    </div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        TAPE: <span className="text-emerald-600 dark:text-emerald-400">{pendingAssignmentChange.newTapeNo}</span>
+                                    </div>
+                                    <div className="font-bold text-slate-800 dark:text-slate-200">
+                                        CH: <span className="text-emerald-600 dark:text-emerald-400">{pendingAssignmentChange.newChapter}</span>
+                                    </div>
+                                    <div className="text-[9px] text-emerald-600 dark:text-emerald-400 font-mono mt-1">
+                                        Rec. Counter: {pendingAssignmentChange.recommendedCounter || "00:00:00"}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400 italic">
+                                Note: Confirming will also automatically synchronize the corresponding tape, chapter, inspection date/time, and calculated tape counter.
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setPendingAssignmentChange(null)}
+                            className="h-8 text-[11px] font-bold"
+                        >
+                            Cancel (Keep Current)
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={confirmAssignmentChange}
+                            className="h-8 text-[11px] font-bold bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-500/20"
+                        >
+                            Confirm & Synchronize
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </Card>
     );
 };

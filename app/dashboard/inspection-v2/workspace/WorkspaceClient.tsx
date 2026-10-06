@@ -7185,10 +7185,21 @@ function V10PreviewLayout() {
       let autoRefNo = "";
 
       if (isEditing) {
-        // When editing/modifying historical record: NEVER overwrite tape_id with active panel tape
-        tId = originalRecordContext?.tape_id !== undefined 
+        // When editing/modifying historical record: preserve original tape_id if present, otherwise resolve from jobTapes or active tape
+        const origTapeId = originalRecordContext?.tape_id !== undefined && originalRecordContext?.tape_id !== null
           ? originalRecordContext.tape_id 
           : (originalRecordContext?.raw?.tape_id ?? null);
+
+        if (origTapeId) {
+          tId = origTapeId;
+        } else {
+          const rDepId = originalRecordContext?.rov_job_id || originalRecordContext?.dive_job_id || originalRecordContext?.raw?.rov_job_id || originalRecordContext?.raw?.dive_job_id;
+          const matchedJobTape = jobTapes?.find((t: any) => 
+            (rDepId && (t.rov_job_id === rDepId || t.dive_job_id === rDepId)) ||
+            (tapeNo && t.tape_no === tapeNo)
+          );
+          tId = matchedJobTape?.tape_id || tapeId || null;
+        }
       } else if (!tId && activeDep?.id) {
         // When creating new inspection record: find or register current active tape
         const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
@@ -7498,9 +7509,11 @@ function V10PreviewLayout() {
         description: recordNotes,
         status: findingType === "Incomplete" ? "INCOMPLETE" : "COMPLETED",
         has_anomaly: findingType === "Anomaly" || findingType === "Finding",
-        tape_id: isEditing
-          ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
-          : tId,
+        tape_id: activeProps.tape_id !== undefined && activeProps.tape_id !== null && activeProps.tape_id !== ""
+          ? Number(activeProps.tape_id)
+          : (isEditing
+              ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
+              : tId),
         tape_count_no: (() => {
           const typedVal =
             activeProps.tape_count_no !== undefined &&
@@ -7558,22 +7571,31 @@ function V10PreviewLayout() {
           _meta_status: findingType,
           _mgi_profile_id: activeMGIProfile?.id || null,
           incomplete_reason: findingType === "Incomplete" ? incompleteReason : null,
-          // Preserve original chapter_no when editing; save activeChapter when inserting new
-          ...(isEditing 
-            ? (originalRecordContext?.chapter_no !== undefined 
-                ? { chapter_no: originalRecordContext.chapter_no } 
-                : (originalRecordContext?.raw?.inspection_data?.chapter_no 
-                    ? { chapter_no: originalRecordContext.raw.inspection_data.chapter_no } 
-                    : (originalRecordContext?.raw?.inspection_data?.chapter 
-                        ? { chapter: originalRecordContext.raw.inspection_data.chapter } 
-                        : {})))
-            : (activeChapter ? { chapter_no: activeChapter } : {})),
+          chapter_no: activeProps.chapter_no !== undefined && activeProps.chapter_no !== null && activeProps.chapter_no !== ""
+            ? Number(activeProps.chapter_no)
+            : (isEditing 
+                ? (originalRecordContext?.chapter_no !== undefined 
+                    ? originalRecordContext.chapter_no 
+                    : (originalRecordContext?.raw?.inspection_data?.chapter_no 
+                        ? originalRecordContext.raw.inspection_data.chapter_no 
+                        : (originalRecordContext?.raw?.inspection_data?.chapter 
+                            ? originalRecordContext.raw.inspection_data.chapter 
+                            : 1)))
+                : (activeChapter ? Number(activeChapter) : 1)),
         },
         archived_data: newArchivedData,
       };
 
-      // Set job assignment: preserve original dive_job_id / rov_job_id if editing; assign active deployment if creating new
-      if (isEditing) {
+      // Set job assignment: if user explicitly selected dive_job_id / rov_job_id in activeProps, use it; otherwise preserve original if editing or assign active deployment
+      if (activeProps.dive_job_id || activeProps.rov_job_id) {
+        if (inspMethod === "DIVING") {
+          payload.dive_job_id = activeProps.dive_job_id || activeProps.rov_job_id;
+          payload.rov_job_id = null;
+        } else {
+          payload.rov_job_id = activeProps.rov_job_id || activeProps.dive_job_id;
+          payload.dive_job_id = null;
+        }
+      } else if (isEditing) {
         if (originalRecordContext?.dive_job_id !== undefined || originalRecordContext?.raw?.dive_job_id !== undefined) {
           payload.dive_job_id = originalRecordContext?.dive_job_id ?? originalRecordContext?.raw?.dive_job_id;
         }
@@ -7850,26 +7872,29 @@ function V10PreviewLayout() {
       const finalCounterSecs = payload.tape_count_no != null ? Number(payload.tape_count_no) : vidTimer;
       const finalTimecodeStr = formatTime(finalCounterSecs);
 
-      if (editingRecordId) {
-        await supabase
-          .from("insp_video_logs")
-          .update({
+      const finalTapeId = payload.tape_id || tId;
+      if (finalTapeId) {
+        if (editingRecordId) {
+          await supabase
+            .from("insp_video_logs")
+            .update({
+              timecode_start: finalTimecodeStr,
+              tape_counter_start: finalCounterSecs,
+              event_time: finalEventTimeUtc,
+              tape_id: finalTapeId,
+            })
+            .eq("inspection_id", editingRecordId);
+        } else {
+          await supabase.from("insp_video_logs").insert({
+            inspection_id: opData.insp_id,
+            event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
+            event_time: finalEventTimeUtc,
             timecode_start: finalTimecodeStr,
             tape_counter_start: finalCounterSecs,
-            event_time: finalEventTimeUtc,
-            tape_id: tId,
-          })
-          .eq("inspection_id", editingRecordId);
-      } else {
-        await supabase.from("insp_video_logs").insert({
-          inspection_id: opData.insp_id,
-          event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
-          event_time: finalEventTimeUtc,
-          timecode_start: finalTimecodeStr,
-          tape_counter_start: finalCounterSecs,
-          tape_id: tId,
-          company_id: activeCompanyId || null,
-        });
+            tape_id: finalTapeId,
+            company_id: activeCompanyId || null,
+          });
+        }
       }
 
       // Prepare data for background processing

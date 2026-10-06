@@ -141,6 +141,22 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   throw new Error(`Failed to load image from URL: ${url}`);
 };
 
+// Helper to format dates cleanly for reports
+const formatDisplayDate = (val?: string | null): string => {
+  if (!val) return "N/A";
+  const str = String(val).trim();
+  if (!str) return "N/A";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return str;
+  const d = new Date(str.includes("T") ? str : `${str}T00:00:00`);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  return str.split("T")[0];
+};
+
 interface StructureData {
   str_id: string | number;
   str_name: string;
@@ -150,36 +166,58 @@ interface StructureData {
   photos?: Array<{ id: number; url: string; name: string }>;
   title?: string;
   description?: string;
+  pdesc?: string;
   pfield?: string;
-  depth?: number;
-  desg_life?: number;
+  depth?: number | string;
+  desg_life?: number | string;
   inst_date?: string;
-  northing?: number;
-  easting?: number;
-  true_north_angle?: number;
+  northing?: number | string;
+  easting?: number | string;
+  st_north?: number | string;
+  st_east?: number | string;
+  true_north_angle?: number | string;
+  north_angle?: number | string;
   platform_north_side?: string;
+  nleg_t1?: string;
+  nleg_t2?: string;
   ptype?: string;
   function?: string;
+  process?: string;
   material?: string;
   cp_system?: string;
   corr_ctg?: string;
   inst_contractor?: string;
-  max_leg_dia?: number;
-  max_wall_thk?: number;
-  helipad?: string;
-  manned?: string;
+  inst_ctr?: string;
+  max_leg_dia?: number | string;
+  dleg?: number | string;
+  max_wall_thk?: number | string;
+  wall_thk?: number | string;
+  helipad?: string | boolean;
+  manned?: string | boolean;
   // Extended inventory fields
   conductors?: number;
+  conduct?: number;
   internal_piles?: number;
-  slots?: string;
+  pileint?: number;
+  slots?: string | number;
+  cslot?: string | number;
+  cslota?: string | number;
   fenders?: number;
+  fender?: number;
   risers?: number;
+  riser?: number;
   sumps?: number;
+  sump?: number;
   skirt_piles?: number;
+  pileskt?: number;
   caissons?: number;
+  caisson?: number;
   anodes?: number;
+  an_qty?: number;
   cranes?: number;
+  crane?: number;
   unit_system?: string;
+  def_unit?: string;
   levels?: any[];
   legs?: any[];
   elevations?: any[];
@@ -303,9 +341,13 @@ const generatePipelineReport = async (
   // Report No - Centered below Report Title
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
+  const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
+  const repNoTrimmed = rawReportNo.toString().trim();
+  if (repNoTrimmed && repNoTrimmed !== "N/A") {
+    const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
+    doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
+  } else {
+    doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -658,9 +700,13 @@ const generatePlatformReport = async (
   // Report No - Centered below Report Title
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
+  const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
+  const repNoTrimmed = rawReportNo.toString().trim();
+  if (repNoTrimmed && repNoTrimmed !== "N/A") {
+    const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
+    doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
+  } else {
+    doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
   }
 
   let yPos = 32;
@@ -717,12 +763,12 @@ const generatePlatformReport = async (
   doc.setDrawColor(200, 200, 200);
   const genStart = col1Y;
 
-  col1Y = drawCompactField("Structure:", structure.str_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Title:", structure.title || "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Structure:", structure.str_name || structure.title || "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Install Date:", structure.inst_date || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Depth:", structure.depth ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Design Life:", structure.desg_life ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Install Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
 
   doc.rect(col1X, genStart, colWidth, col1Y - genStart);
 
@@ -732,12 +778,12 @@ const generatePlatformReport = async (
   let col2Y = yPos + 5;
   const configStart = col2Y;
 
-  col2Y = drawCompactField("Type:", structure.ptype || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Function:", structure.function || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Type:", structure.ptype || structure.str_type || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Corrosion:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Contractor:", structure.inst_contractor || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth);
 
   doc.rect(col2X, configStart, colWidth, col2Y - configStart);
 
@@ -747,12 +793,19 @@ const generatePlatformReport = async (
   let col3Y = yPos + 5;
   const locStart = col3Y;
 
-  col3Y = drawCompactField("Northing:", structure.northing ? `${structure.northing} m` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Easting:", structure.easting ? `${structure.easting} m` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("True North:", structure.true_north_angle ? `${structure.true_north_angle}°` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Leg Dia:", structure.max_leg_dia ? `${structure.max_leg_dia} mm` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Wall:", structure.max_wall_thk ? `${structure.max_wall_thk} mm` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Helipad:", structure.helipad === "YES" || structure.helipad === "Yes" ? "Yes" : "No", col3X, col3Y, colWidth);
+  const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A");
+  const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A");
+  const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A");
+  const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A");
+  const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A");
+  const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
+  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("True North:", northAngleVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Max Leg Dia:", maxLegDiaVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Max Wall:", maxWallThkVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth);
 
   doc.rect(col3X, locStart, colWidth, col3Y - locStart);
 
@@ -1653,12 +1706,12 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Structure", structure.str_name],
-      ["Title", structure.title],
-      ["Field", structure.pfield || structure.field_name],
-      ["Install Date", structure.inst_date],
-      ["Depth", structure.depth ? `${structure.depth} m` : "N/A"],
-      ["Design Life", structure.desg_life ? `${structure.desg_life} yrs` : "N/A"]
+      ["Structure", structure.str_name || structure.title || "N/A"],
+      ["Title", structure.title || structure.str_name || "N/A"],
+      ["Field", structure.pfield || structure.field_name || "N/A"],
+      ["Install Date", formatDisplayDate(structure.inst_date)],
+      ["Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
+      ["Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1677,12 +1730,12 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Type", structure.ptype],
-      ["Function", structure.function],
-      ["Material", structure.material],
-      ["CP System", structure.cp_system],
-      ["Corrosion", structure.corr_ctg],
-      ["Contractor", structure.inst_contractor]
+      ["Type", structure.ptype || structure.str_type || "N/A"],
+      ["Function", structure.function || structure.process || "N/A"],
+      ["Material", structure.material || "N/A"],
+      ["CP System", structure.cp_system || "N/A"],
+      ["Corrosion", structure.corr_ctg || "N/A"],
+      ["Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1701,12 +1754,12 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Northing", structure.northing ? `${structure.northing} m` : "N/A"],
-      ["Easting", structure.easting ? `${structure.easting} m` : "N/A"],
-      ["True North", structure.true_north_angle ? `${structure.true_north_angle}°` : "N/A"],
-      ["Max Leg Dia", structure.max_leg_dia ? `${structure.max_leg_dia} mm` : "N/A"],
-      ["Max Wall", structure.max_wall_thk ? `${structure.max_wall_thk} mm` : "N/A"],
-      ["Helipad", structure.helipad === "YES" || structure.helipad === "Yes" ? "Yes" : "No"]
+      ["Northing", (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A")],
+      ["Easting", (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A")],
+      ["True North", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
+      ["Max Leg Dia", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
+      ["Max Wall", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
+      ["Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1727,11 +1780,11 @@ const generatePlatformHTML = (
             <tbody>
               <tr style="background-color: #ffffff;">
                 ${[
-      ["Conductors", structure.conductors || 0],
-      ["Int. Piles", structure.internal_piles || 0],
-      ["Slots", structure.slots || "N/A"],
-      ["Fenders", structure.fenders || 0],
-      ["Risers", structure.risers || 0]
+      ["Conductors", structure.conductors ?? structure.conduct ?? 0],
+      ["Int. Piles", structure.internal_piles ?? structure.pileint ?? 0],
+      ["Slots", structure.slots ?? structure.cslot ?? structure.cslota ?? "N/A"],
+      ["Fenders", structure.fenders ?? structure.fender ?? 0],
+      ["Risers", structure.risers ?? structure.riser ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
@@ -1741,11 +1794,11 @@ const generatePlatformHTML = (
               </tr>
                <tr style="background-color: #f7fafc;">
                 ${[
-      ["Sumps", structure.sumps || 0],
-      ["Skirt Piles", structure.skirt_piles || 0],
-      ["Caissons", structure.caissons || 0],
-      ["Anodes", structure.anodes || 0],
-      ["Cranes", structure.cranes || 0]
+      ["Sumps", structure.sumps ?? structure.sump ?? 0],
+      ["Skirt Piles", structure.skirt_piles ?? structure.pileskt ?? 0],
+      ["Caissons", structure.caissons ?? structure.caisson ?? 0],
+      ["Anodes", structure.anodes ?? structure.an_qty ?? 0],
+      ["Cranes", structure.cranes ?? structure.crane ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
@@ -2063,12 +2116,12 @@ export const generateComponentSummaryReport = async (
       margin: { left: 10 },
       head: [['GENERAL INFO', '']],
       body: [
-        ['Structure', structure.str_name || '-'],
+        ['Structure', structure.str_name || structure.title || '-'],
         ['Title', structure.title || structure.str_name || '-'],
         ['Field', structure.field_name || structure.pfield || '-'],
-        ['Install Date', structure.inst_date || '-'],
-        ['Depth', structure.depth ? `${structure.depth} m` : '-'],
-        ['Design Life', structure.desg_life ? `${structure.desg_life} yrs` : '-']
+        ['Install Date', formatDisplayDate(structure.inst_date)],
+        ['Depth', (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : '-'],
+        ['Design Life', (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : '-']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2085,11 +2138,11 @@ export const generateComponentSummaryReport = async (
       head: [['CONFIGURATION', '']],
       body: [
         ['Type', structure.ptype || structure.str_type || '-'],
-        ['Function', structure.function || '-'],
+        ['Function', structure.function || structure.process || '-'],
         ['Material', structure.material || '-'],
         ['CP System', structure.cp_system || '-'],
         ['Corrosion', structure.corr_ctg || '-'],
-        ['Contractor', structure.inst_contractor || '-']
+        ['Contractor', structure.inst_contractor || structure.inst_ctr || '-']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2100,17 +2153,24 @@ export const generateComponentSummaryReport = async (
     });
 
     // Table 3: Location & Dims
+    const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : 'N/A');
+    const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : 'N/A');
+    const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : 'N/A');
+    const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : 'N/A');
+    const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : 'N/A');
+    const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
     autoTable(doc, {
       startY: infoY,
       margin: { left: 10 + (tableWidth + colGap) * 2 },
       head: [['LOCATION & DIMS', '']],
       body: [
-        ['Northing', structure.northing || 'N/A'],
-        ['Easting', structure.easting || 'N/A'],
-        ['True North', structure.true_north_angle || 'N/A'],
-        ['Max Leg Dia', structure.max_leg_dia || 'N/A'],
-        ['Max Wall', structure.max_wall_thk || 'N/A'],
-        ['Helipad', structure.helipad || 'No']
+        ['Northing', northingVal],
+        ['Easting', eastingVal],
+        ['True North', northAngleVal],
+        ['Max Leg Dia', maxLegDiaVal],
+        ['Max Wall', maxWallThkVal],
+        ['Helipad', isHelipad ? 'Yes' : 'No']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2368,18 +2428,25 @@ export const generateComponentSummaryHTML = (
     `;
   } else {
     // Platform Headers
+    const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : null);
+    const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : null);
+    const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : null);
+    const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : null);
+    const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : null);
+    const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
     headerContent = `
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px;">
             <div>
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">GENERAL INFO</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Structure", structure.str_name)}
+                        ${InfoRow("Structure", structure.str_name || structure.title)}
                         ${InfoRow("Title", structure.title || structure.str_name)}
                         ${InfoRow("Field", structure.field_name || structure.pfield)}
-                        ${InfoRow("Install Date", structure.inst_date)}
-                        ${InfoRow("Depth", structure.depth ? structure.depth + " m" : null)}
-                        ${InfoRow("Design Life", structure.desg_life ? structure.desg_life + " yrs" : null)}
+                        ${InfoRow("Install Date", formatDisplayDate(structure.inst_date))}
+                        ${InfoRow("Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : null)}
+                        ${InfoRow("Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : null)}
                     </tbody>
                 </table>
             </div>
@@ -2388,11 +2455,11 @@ export const generateComponentSummaryHTML = (
                     <thead><tr><th colspan="2" style="${thStyle}">CONFIGURATION</th></tr></thead>
                     <tbody>
                         ${InfoRow("Type", structure.ptype || structure.str_type)}
-                        ${InfoRow("Function", structure.function)}
+                        ${InfoRow("Function", structure.function || structure.process)}
                         ${InfoRow("Material", structure.material)}
                         ${InfoRow("CP System", structure.cp_system)}
                         ${InfoRow("Corrosion", structure.corr_ctg)}
-                        ${InfoRow("Contractor", structure.inst_contractor)}
+                        ${InfoRow("Contractor", structure.inst_contractor || structure.inst_ctr)}
                     </tbody>
                 </table>
             </div>
@@ -2400,12 +2467,12 @@ export const generateComponentSummaryHTML = (
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMS</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Northing", structure.northing)}
-                        ${InfoRow("Easting", structure.easting)}
-                        ${InfoRow("True North", structure.true_north_angle)}
-                        ${InfoRow("Max Leg Dia", structure.max_leg_dia)}
-                        ${InfoRow("Max Wall", structure.max_wall_thk)}
-                        ${InfoRow("Helipad", structure.helipad)}
+                        ${InfoRow("Northing", northingVal)}
+                        ${InfoRow("Easting", eastingVal)}
+                        ${InfoRow("True North", northAngleVal)}
+                        ${InfoRow("Max Leg Dia", maxLegDiaVal)}
+                        ${InfoRow("Max Wall", maxWallThkVal)}
+                        ${InfoRow("Helipad", isHelipad ? "Yes" : "No")}
                     </tbody>
                 </table>
             </div>
@@ -2855,9 +2922,13 @@ export const generateTechnicalSpecsReport = async (
   // Report No / Subtitle
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  const techReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (techReportNo) {
-    doc.text(techReportNo, pageWidth / 2, 22.5, { align: "center" });
+  const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
+  const repNoTrimmed = rawReportNo.toString().trim();
+  if (repNoTrimmed && repNoTrimmed !== "N/A") {
+    const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
+    doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
+  } else {
+    doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
   }
 
   doc.setFontSize(9);
@@ -2888,10 +2959,10 @@ export const generateTechnicalSpecsReport = async (
     theme: 'grid',
     head: [],
     body: [
-      ['Structure Type', structure.str_type || '-', 'Installation Date', structure.inst_date || '-'],
-      ['Function', structure.function || '-', 'Design Life', structure.desg_life ? `${structure.desg_life} Years` : '-'],
-      ['Water Depth', structure.depth ? `${structure.depth} m` : '-', 'Manned Status', structure.manned || 'Unmanned'],
-      ['Contractor', structure.inst_contractor || '-', 'Helipad', structure.helipad || 'No'],
+      ['Structure Type', structure.str_type || '-', 'Installation Date', formatDisplayDate(structure.inst_date)],
+      ['Function', structure.function || structure.process || '-', 'Design Life', structure.desg_life ? `${structure.desg_life} Years` : '-'],
+      ['Water Depth', (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : '-', 'Manned Status', (structure.manned === "YES" || structure.manned === "Yes" || structure.manned === "1" || structure.manned === true) ? 'Manned' : 'Unmanned'],
+      ['Contractor', structure.inst_contractor || structure.inst_ctr || '-', 'Helipad', (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? 'Yes' : 'No'],
     ],
     styles: { fontSize: 8, cellPadding: 3 },
     columnStyles: {
@@ -2907,15 +2978,18 @@ export const generateTechnicalSpecsReport = async (
   // 2. STRUCTURAL CONFIGURATION & MATERIALS
   yPos = drawSectionHeader("2.0 STRUCTURAL CONFIGURATION & MATERIALS", yPos);
 
+  const maxLegDiaStr = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : '-');
+  const maxWallThkStr = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : '-');
+
   autoTable(doc, {
     startY: yPos,
     theme: 'grid',
     head: [],
     body: [
-      ['Number of Legs', structure.legs ? structure.legs.length : (structure.components?.filter((c: any) => c.type === 'LEG').length || '-'), 'Max Leg Diameter', structure.max_leg_dia ? `${structure.max_leg_dia}"` : '-'],
-      ['Number of Piles', structure.skirt_piles || structure.internal_piles || (structure.components?.filter((c: any) => c.type === 'PILE').length || '-'), 'Max Wall Thickness', structure.max_wall_thk ? `${structure.max_wall_thk}"` : '-'],
+      ['Number of Legs', structure.legs ? structure.legs.length : (structure.components?.filter((c: any) => c.type === 'LEG').length || '-'), 'Max Leg Diameter', maxLegDiaStr],
+      ['Number of Piles', structure.skirt_piles || structure.internal_piles || structure.pileint || (structure.components?.filter((c: any) => c.type === 'PILE').length || '-'), 'Max Wall Thickness', maxWallThkStr],
       ['Material Grade', structure.material || 'N/A', 'Corrosion Cat.', structure.corr_ctg || '-'],
-      ['CP System', structure.cp_system || '-', 'Unit System', structure.unit_system || '-'],
+      ['CP System', structure.cp_system || '-', 'Unit System', structure.unit_system || structure.def_unit || '-'],
     ],
     styles: { fontSize: 8, cellPadding: 3 },
     columnStyles: {
@@ -3055,10 +3129,10 @@ export const generateTechnicalSpecsHTML = (
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
-                    ${Row("Structure Type", structure.str_type, "Installation Date", structure.inst_date)}
-                    ${Row("Function", structure.function, "Design Life", structure.desg_life ? structure.desg_life + " Years" : null)}
-                    ${Row("Water Depth", structure.depth ? structure.depth + " m" : null, "Manned Status", structure.manned)}
-                    ${Row("Contractor", structure.inst_contractor, "Helipad", structure.helipad)}
+                    ${Row("Structure Type", structure.str_type, "Installation Date", formatDisplayDate(structure.inst_date))}
+                    ${Row("Function", structure.function || structure.process, "Design Life", structure.desg_life ? structure.desg_life + " Years" : null)}
+                    ${Row("Water Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? structure.depth + " m" : null, "Manned Status", (structure.manned === "YES" || structure.manned === "Yes" || structure.manned === "1" || structure.manned === true) ? "Manned" : "Unmanned")}
+                    ${Row("Contractor", structure.inst_contractor || structure.inst_ctr, "Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No")}
                 </tbody>
             </table>
         </div>
@@ -3070,10 +3144,10 @@ export const generateTechnicalSpecsHTML = (
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
-                     ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", structure.max_leg_dia ? structure.max_leg_dia + '"' : null)}
-                     ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles, "Max Wall Thickness", structure.max_wall_thk ? structure.max_wall_thk + '"' : null)}
+                     ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? structure.max_leg_dia + ' mm' : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? structure.dleg + ' mm' : null))}
+                     ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles || structure.pileint, "Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? structure.max_wall_thk + ' mm' : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? structure.wall_thk + ' mm' : null))}
                      ${Row("Material Grade", structure.material, "Corrosion Cat.", structure.corr_ctg)}
-                     ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system)}
+                     ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system || structure.def_unit)}
                 </tbody>
             </table>
         </div>

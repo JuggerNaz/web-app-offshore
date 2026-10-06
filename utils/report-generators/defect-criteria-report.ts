@@ -5,16 +5,15 @@ import autoTablePlugin from "jspdf-autotable";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface ReportConfig {
+    sowReportNo?: string;
     reportNoPrefix?: string;
-    reportYear: string;
-    preparedBy: { name: string; date: string 
+    reportYear?: string;
+    preparedBy?: { name: string; date: string };
+    reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
-    reviewedBy: { name: string; date: string };
-    approvedBy: { name: string; date: string };
-    watermark: { enabled: boolean; text: string; transparency: number };
-    showContractorLogo: boolean;
-    showPageNumbers: boolean;
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
+    showContractorLogo?: boolean;
+    showPageNumbers?: boolean;
     returnBlob?: boolean;
     printFriendly?: boolean;
     procedureId?: string;
@@ -147,6 +146,18 @@ export const generateDefectCriteriaReport = async (
             doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
             doc.text("Defect Criteria Specification Report", pageWidth / 2, 17.5, { align: "center" });
+
+            // Report No - Centered below Report Title
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
+            const repNoTrimmed = rawReportNo.toString().trim();
+            if (repNoTrimmed && repNoTrimmed !== "N/A") {
+                const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
+                doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
+            } else {
+                doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
+            }
         };
 
         const addFooter = (pageNum: number, pageCount: number) => {
@@ -376,7 +387,7 @@ export const generateDefectCriteriaReport = async (
             }
             const contentWidth = pageWidth - 20;
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, name: string, date: string, lx: number) => {
+            const drawSig = (label: string, name?: string, date?: string, lx: number = 10) => {
                 doc.setDrawColor(7, 78, 136); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 2, 18);
                 if (!isPrintFriendly) {

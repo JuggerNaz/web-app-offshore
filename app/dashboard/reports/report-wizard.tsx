@@ -1794,7 +1794,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId } as any);
+            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
         }
 
         // Defect Summary Report / Findings Summary Report
@@ -6352,7 +6352,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         switch (currentTemplateId) {
             case "structure-summary":
-                return await generateStructureReport(data, companySettings, reportConfig);
+                return await generateStructureReport(data, companySettings, { ...reportConfig, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
 
             case "component-catalog":
                 // Note: generateComponentSummaryReport currently doesn't support full config object in signature based on previous view

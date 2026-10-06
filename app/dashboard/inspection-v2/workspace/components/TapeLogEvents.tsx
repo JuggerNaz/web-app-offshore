@@ -798,41 +798,83 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 setIsEditModalOpen(false);
             } else {
                 // INSERT new tape log event
-                // 1. Find or create matching tape in insp_video_tapes
+                // 1. Find or create matching tape in insp_video_tapes for the EXACT (tape_no, chapter_no)
                 let targetTapeId: number | null = null;
-                const { data: existingTape } = await supabase
-                    .from("insp_video_tapes")
-                    .select("tape_id")
-                    .eq("tape_no", effectiveTapeNo)
-                    .eq("chapter_no", effectiveChapterNo)
-                    .maybeSingle();
 
-                if (existingTape) {
-                    targetTapeId = existingTape.tape_id;
-                } else {
+                // A. Check local events first (must match BOTH tapeNo and chapterNo)
+                const localMatch = localEvents.find(ev => 
+                    (ev.tapeNo || "").trim().toUpperCase() === effectiveTapeNo.toUpperCase() && 
+                    String(ev.chapterNo || "1").trim() === String(effectiveChapterNo).trim() &&
+                    (ev.tapeId || ev.tape_id)
+                );
+                if (localMatch) {
+                    targetTapeId = Number(localMatch.tapeId || localMatch.tape_id);
+                }
+
+                // B. Query database insp_video_tapes for exact tape_no AND chapter_no
+                if (!targetTapeId) {
+                    const { data: exactTapes } = await supabase
+                        .from("insp_video_tapes")
+                        .select("tape_id, chapter_no")
+                        .eq("tape_no", effectiveTapeNo);
+
+                    if (exactTapes && exactTapes.length > 0) {
+                        const exactCh = exactTapes.find(t => String(t.chapter_no || "1").trim() === String(effectiveChapterNo).trim());
+                        if (exactCh) {
+                            targetTapeId = exactCh.tape_id;
+                        }
+                    }
+                }
+
+                // C. If no tape row exists for this specific chapter, insert a new tape record for this chapter
+                if (!targetTapeId) {
                     const user = (await supabase.auth.getUser()).data.user;
+                    const depId = activeDep?.id || (deployments && deployments[0]?.id);
+                    const jobCol = (inspMethod === "ROV") ? "rov_job_id" : "dive_job_id";
+                    
+                    const newTapePayload: any = {
+                        tape_no: effectiveTapeNo,
+                        chapter_no: String(effectiveChapterNo),
+                        tape_type: "DIGITAL - PRIMARY",
+                        status: "ACTIVE",
+                        cr_user: user?.id || "system",
+                        company_id: activeCompanyId || null,
+                    };
+                    if (depId) {
+                        newTapePayload[jobCol] = Number(depId);
+                    }
+
                     const { data: newTape, error: tapeErr } = await supabase
                         .from("insp_video_tapes")
-                        .insert({
-                            tape_no: effectiveTapeNo,
-                            chapter_no: effectiveChapterNo,
-                            tape_type: "DIGITAL - PRIMARY",
-                            status: "ACTIVE",
-                            cr_user: user?.id || "system",
-                            company_id: activeCompanyId || null,
-                        })
+                        .insert(newTapePayload)
                         .select("tape_id")
                         .single();
 
                     if (tapeErr) {
-                        console.warn("[TapeLogEvents] Could not insert new tape record, using fallback:", tapeErr.message);
+                        console.warn("[TapeLogEvents] Could not insert new tape record for chapter:", tapeErr.message);
+                        // Fallback query for exact chapter under ilike
+                        const { data: fallbackTape } = await supabase
+                            .from("insp_video_tapes")
+                            .select("tape_id")
+                            .ilike("tape_no", effectiveTapeNo)
+                            .eq("chapter_no", String(effectiveChapterNo))
+                            .limit(1)
+                            .maybeSingle();
+                        if (fallbackTape) {
+                            targetTapeId = fallbackTape.tape_id;
+                        }
                     } else if (newTape) {
                         targetTapeId = newTape.tape_id;
                     }
                 }
 
+                if (!targetTapeId) {
+                    throw new Error(`Unable to link to Tape "${effectiveTapeNo}". Please ensure the tape exists or has a valid Tape ID.`);
+                }
+
                 // 2. Insert into insp_video_logs
                 const insertPayload: any = {
+                    tape_id: targetTapeId,
                     event_type: dbEventType,
                     event_time: isoEventTime,
                     timecode_start: formTimecode,
@@ -840,7 +882,6 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                     remarks: formRemarks,
                     company_id: activeCompanyId || null,
                 };
-                if (targetTapeId) insertPayload.tape_id = targetTapeId;
 
                 const { data: insertedLog, error: logErr } = await supabase
                     .from("insp_video_logs")

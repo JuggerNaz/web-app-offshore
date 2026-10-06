@@ -135,10 +135,16 @@ export const SmartTimeInput = React.forwardRef<HTMLInputElement, SmartTimeInputP
       ? (includeSeconds ? "02:30:00 PM" : "02:30 PM")
       : (includeSeconds ? "14:30:00 or 2:30pm" : "14:30 or 2:30pm");
 
+    const rightPaddingClass = (showNowButton && showToggle && !disabled)
+      ? "pr-[52px]"
+      : ((showNowButton || showToggle) && !disabled)
+        ? "pr-8"
+        : "pr-2.5";
+
     return (
       <div className="relative flex items-center w-full group">
-        <div className="absolute left-2.5 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
-          <Clock className="w-3.5 h-3.5" />
+        <div className="absolute left-2 flex items-center pointer-events-none text-slate-400 dark:text-slate-500">
+          <Clock className="w-3 h-3" />
         </div>
 
         <input
@@ -151,22 +157,23 @@ export const SmartTimeInput = React.forwardRef<HTMLInputElement, SmartTimeInputP
           disabled={disabled}
           placeholder={placeholder || defaultPlaceholder}
           className={cn(
-            "flex h-9 w-full rounded-md border bg-slate-950/90 pl-8 pr-20 text-xs font-mono font-bold text-slate-100 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50 transition-colors",
+            "flex h-9 w-full rounded-md border bg-slate-900/90 pl-6.5 text-xs font-mono font-bold text-slate-100 placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 focus-visible:border-blue-500 disabled:cursor-not-allowed disabled:opacity-50 transition-colors",
+            rightPaddingClass,
             error ? "border-red-500 ring-red-500" : "border-slate-800 hover:border-slate-700",
             className
           )}
           {...props}
         />
 
-        <div className="absolute right-1.5 flex items-center gap-1">
+        <div className="absolute right-1 flex items-center gap-0.5 pointer-events-auto">
           {showNowButton && !disabled && (
             <button
               type="button"
               onClick={handleSetNow}
               title="Set to Current Time (NOW)"
-              className="h-6 px-1.5 rounded text-[9px] font-black uppercase tracking-wider bg-slate-800 hover:bg-cyan-950 text-cyan-400 hover:text-cyan-300 border border-slate-700 hover:border-cyan-500/50 transition-all flex items-center gap-0.5"
+              className="h-5 px-1 rounded text-[8px] font-black uppercase tracking-tight bg-slate-800/90 hover:bg-cyan-950 text-cyan-400 hover:text-cyan-300 border border-slate-700/80 hover:border-cyan-500/50 transition-all flex items-center gap-0.5 shadow-sm"
             >
-              <Sparkles className="w-2.5 h-2.5" />
+              <Sparkles className="w-2 h-2" />
               NOW
             </button>
           )}
@@ -177,10 +184,10 @@ export const SmartTimeInput = React.forwardRef<HTMLInputElement, SmartTimeInputP
               onClick={toggleFormatMode}
               title={`Switch to ${formatMode === "24" ? "12-Hour (AM/PM)" : "24-Hour"} Mode`}
               className={cn(
-                "h-6 px-1.5 rounded text-[9px] font-black tracking-wider border transition-all select-none",
+                "h-5 px-1 rounded text-[8px] font-black tracking-tight border transition-all select-none shadow-sm",
                 formatMode === "24"
-                  ? "bg-blue-950/80 text-blue-300 border-blue-600/50 hover:bg-blue-900"
-                  : "bg-purple-950/80 text-purple-300 border-purple-600/50 hover:bg-purple-900"
+                  ? "bg-blue-950/90 text-blue-300 border-blue-600/50 hover:bg-blue-900"
+                  : "bg-purple-950/90 text-purple-300 border-purple-600/50 hover:bg-purple-900"
               )}
             >
               {formatMode === "24" ? "24H" : "12H"}

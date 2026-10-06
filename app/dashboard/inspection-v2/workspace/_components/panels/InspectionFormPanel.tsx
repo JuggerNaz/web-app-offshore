@@ -72,7 +72,7 @@ interface InspectionFormPanelProps {
   setPrevRefNo: (val: string) => void;
   criteriaRules?: any[];
   onVoiceActionCommand?: (actionIntent: any) => void;
-  calculateAutoCounter?: (targetDate?: string, targetTime?: string) => number | null;
+  calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null) => number | null;
 }
 
 export function InspectionFormPanel({
@@ -144,6 +144,7 @@ export function InspectionFormPanel({
   const isEditing = Boolean(editingRecordId);
 
   const displayDiveNo = (() => {
+    if (dynamicProps?.dive_no) return String(dynamicProps.dive_no);
     if (isEditing && originalRecordContext) {
       return (
         originalRecordContext.dive_no ||
@@ -164,6 +165,7 @@ export function InspectionFormPanel({
   })();
 
   const displayTapeNo = (() => {
+    if (dynamicProps?.tape_no) return String(dynamicProps.tape_no);
     if (isEditing && originalRecordContext) {
       return (
         originalRecordContext.tape_no ||
@@ -177,6 +179,9 @@ export function InspectionFormPanel({
   })();
 
   const displayChapter = (() => {
+    if (dynamicProps?.chapter_no !== undefined && dynamicProps?.chapter_no !== null && dynamicProps?.chapter_no !== "") {
+      return String(dynamicProps.chapter_no);
+    }
     if (isEditing && originalRecordContext) {
       const ch = (
         originalRecordContext.chapter_no ??
@@ -211,16 +216,6 @@ export function InspectionFormPanel({
               <span className="truncate font-black tracking-widest text-slate-200">
                 {editingRecordId ? "EDITING RECORD" : "NEW INSPECTION"}: {selectedComp.q_id || selectedComp.name}
               </span>
-              <div className="flex items-center gap-1.5 bg-slate-800/90 text-slate-300 px-2 py-0.5 rounded border border-slate-700/60 text-[9px] font-mono shrink-0 select-none">
-                <span className="text-blue-400 font-bold">{inspMethod === "ROV" ? "DEP" : "DIVE"}:</span>
-                <span className="text-white font-semibold">{displayDiveNo}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-blue-400 font-bold">TAPE:</span>
-                <span className="text-white font-semibold max-w-[130px] truncate" title={displayTapeNo}>{displayTapeNo}</span>
-                <span className="text-slate-600">|</span>
-                <span className="text-blue-400 font-bold">CH:</span>
-                <span className="text-white font-semibold">{displayChapter}</span>
-              </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge variant="outline" className="text-[9px] h-4 px-2 font-black uppercase border-blue-500 text-blue-400 bg-blue-500/10 tracking-widest">

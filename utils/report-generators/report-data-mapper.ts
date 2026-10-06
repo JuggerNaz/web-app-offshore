@@ -309,7 +309,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
-                    { returnBlob: true, showPageNumbers: false } as any
+                    { returnBlob: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
                 const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");
@@ -567,15 +567,16 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'structure-summary') {
                 const { generateStructureReport } = await import("../pdf-generator");
                 let fullStructure = structure;
+                const structId = structure.id || structure.str_id || structure.plat_id || structure.pipe_id;
                 try {
-                    const structRes = await fetch(`/api/structures/${structure.id}`);
+                    const structRes = await fetch(`/api/structures/${structId}`);
                     if (structRes.ok) {
                         const structJson = await structRes.json();
                         if (structJson.success && structJson.data) {
                             fullStructure = structJson.data;
                             try {
                                 const strType = fullStructure.str_type?.toLowerCase() || "platform";
-                                const commentRes = await fetch(`/api/comment/${strType}/${structure.id}`);
+                                const commentRes = await fetch(`/api/comment/${strType}/${structId}`);
                                 if (commentRes.ok) {
                                     const commentJson = await commentRes.json();
                                     if (commentJson.data && Array.isArray(commentJson.data)) {
@@ -590,7 +591,7 @@ export const mapInspectionDataForDocx = async (
                 } catch (e) {
                     console.error("Error fetching full structure in docx mapper:", e);
                 }
-                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { returnBlob: true } as any)) || null;
+                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { returnBlob: true, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any)) || null;
             }
         } catch (genErr) {
             console.error(`Failed to generate PDF for template ${templateId}:`, genErr);

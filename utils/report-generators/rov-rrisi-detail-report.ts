@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -39,8 +39,9 @@ export const generateROVRRISIDetailReport = async (
     companySettings: CompanySettings,
     config: ReportConfig
 ): Promise<Blob | null | void> => {
-    records = normalizeReportRecords(records);
     const supabase = createClient();
+    records = await enrichRecordsWithTapesAndDeployments(supabase, records);
+    records = normalizeReportRecords(records);
     console.log("[ROV Riser Detail Report] Starting generation", { recordsCount: records?.length, hasHeader: !!headerData, config });
     try {
         const doc = new jsPDF({ orientation: "portrait" });

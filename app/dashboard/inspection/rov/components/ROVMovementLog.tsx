@@ -253,13 +253,13 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                             />
                         </div>
                         <div className="space-y-1.5">
-                            <Label htmlFor="movement_time" className="text-xs font-bold text-slate-700 dark:text-slate-300">Time (Local - 12h or 24h) *</Label>
+                            <Label htmlFor="movement_time" className="text-xs font-bold text-slate-700 dark:text-slate-300">Time (Local) *</Label>
                             <SmartTimeInput
                                 id="movement_time"
                                 value={newTime}
                                 onChange={(val) => setNewTime(val)}
                                 includeSeconds={true}
-                                className="h-9 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100"
+                                className="h-9"
                             />
                         </div>
                     </div>
@@ -384,12 +384,12 @@ export default function ROVMovementLog({ diveJob, onRefresh }: ROVMovementLogPro
                                                     />
                                                 </div>
                                                 <div className="space-y-1">
-                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Time (Local - 12h or 24h) *</Label>
+                                                    <Label className="text-[10px] font-bold text-slate-500 dark:text-slate-400">Time (Local) *</Label>
                                                     <SmartTimeInput
                                                         value={editTime}
                                                         onChange={(val) => setEditTime(val)}
                                                         includeSeconds={true}
-                                                        className="h-8 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-100 text-xs"
+                                                        className="h-8 text-xs"
                                                     />
                                                 </div>
                                             </div>
