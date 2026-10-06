@@ -4617,7 +4617,8 @@ function V10PreviewLayout() {
         structure_components:component_id!left(id, q_id, code, metadata),
         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-        insp_video_tapes:tape_id!left(tape_no, chapter_no)
+        insp_video_tapes:tape_id!left(tape_no, chapter_no),
+        insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id)
       `;
 
       let inspsQuery = supabase
@@ -4698,10 +4699,6 @@ function V10PreviewLayout() {
             .select("*")
             .eq(jobCol, depId)
             .order("tape_id", { ascending: false });
-
-      const anomPromise = supabase
-        .from("insp_anomalies")
-        .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id");
 
       const [movsRes, tapesRes, inspsInit, allInspsRes] = await Promise.all([
         movementsPromise,
@@ -4987,7 +4984,7 @@ function V10PreviewLayout() {
       const logsRes = tapeIds.length > 0
         ? await supabase
             .from("insp_video_logs")
-            .select("*")
+            .select("video_log_id, event_type, event_time, timecode_start, tape_counter_start, tape_id, inspection_id, remarks")
             .in("tape_id", tapeIds)
             .order("event_time", { ascending: false })
         : { data: [] };
@@ -5069,20 +5066,14 @@ function V10PreviewLayout() {
       if (finalInsps) {
         const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
 
-        // Fetch attachment counts, anomalies, and media in parallel strictly scoped to current page inspection IDs
-        const [attsRes, anomsRes, mediaRes] = await Promise.all([
+        // Fetch attachment counts and media in parallel strictly scoped to current page inspection IDs
+        const [attsRes, mediaRes] = await Promise.all([
           pageInspIds.length > 0
             ? supabase
                 .from("attachment")
                 .select("source_id, source_type")
                 .in("source_id", pageInspIds)
                 .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"])
-            : Promise.resolve({ data: [] }),
-          pageInspIds.length > 0
-            ? supabase
-                .from("insp_anomalies")
-                .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id")
-                .in("inspection_id", pageInspIds)
             : Promise.resolve({ data: [] }),
           pageInspIds.length > 0
             ? (supabase as any)
@@ -5092,20 +5083,32 @@ function V10PreviewLayout() {
             : Promise.resolve({ data: [] }),
         ]);
 
+        // Anomalies come embedded on the insp_records rows (see selectFields FK
+        // embed) instead of a separate scoped query — one less round trip, and
+        // video-timeline records beyond the current page get anomaly refs too.
         const anomMap = new Map<number, any[]>();
         const anomToInspMap = new Map<number, number>();
         const anomalyIds: number[] = [];
-
-        (anomsRes.data || []).forEach((a: any) => {
-          if (a.inspection_id) {
-            if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
-            anomMap.get(a.inspection_id)!.push(a);
-            if (a.anomaly_id) {
-              anomToInspMap.set(Number(a.anomaly_id), Number(a.inspection_id));
-              anomalyIds.push(Number(a.anomaly_id));
-            }
-          }
-        });
+        const seenAnomalyIds = new Set<number>();
+        const collectAnomalies = (rows: any[]) => {
+          (rows || []).forEach((r: any) => {
+            (r.insp_anomalies || []).forEach((a: any) => {
+              if (a.inspection_id == null && r.insp_id != null) a.inspection_id = r.insp_id;
+              if (!a.inspection_id) return;
+              // Records appear in both the page and allInspsData — dedupe by id.
+              if (a.anomaly_id != null && seenAnomalyIds.has(Number(a.anomaly_id))) return;
+              if (a.anomaly_id != null) seenAnomalyIds.add(Number(a.anomaly_id));
+              if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
+              anomMap.get(a.inspection_id)!.push(a);
+              if (a.anomaly_id != null) {
+                anomToInspMap.set(Number(a.anomaly_id), Number(a.inspection_id));
+                anomalyIds.push(Number(a.anomaly_id));
+              }
+            });
+          });
+        };
+        collectAnomalies(finalInsps);
+        collectAnomalies(allInspsData);
 
         // Also fetch any attachments attached directly to anomaly IDs
         let anomAtts: any[] = [];
