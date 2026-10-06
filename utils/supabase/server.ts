@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { Database } from "@/supabase/schema";
+import { fetchWithTimeout } from "./fetch-with-timeout";
 
 export const createClient = () => {
 
@@ -8,6 +9,9 @@ export const createClient = () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
+      // Fail fast instead of hanging when Supabase is slow/unreachable
+      // (prevents Netlify edge function timeout crashes on SSR routes).
+      global: { fetch: fetchWithTimeout },
       cookies: {
         async getAll() {
           const cookieStore = await cookies(); // Resolve the promise
@@ -44,6 +48,7 @@ export const createAdminClient = () => {
   }
 
   return createServerClient<Database>(url, key, {
+    global: { fetch: fetchWithTimeout },
     cookies: {
       getAll() {
         return [];
