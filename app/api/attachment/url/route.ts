@@ -199,10 +199,11 @@ export async function GET(request: NextRequest) {
 
     // 3. Resolve via Storage Handler for multi-cloud (Backblaze B2, S3, GDrive, Azure, Cloudinary)
     let settingsQuery = (supabase as any).from("company_settings").select("storage_provider, storage_config");
-    if (companyId) {
-      settingsQuery = settingsQuery.eq("company_id", companyId);
+    const targetCompanyId = companyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+    if (targetCompanyId) {
+      settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
     }
-    const { data: settings } = await settingsQuery.maybeSingle();
+    const { data: settings } = await settingsQuery.limit(1).maybeSingle();
 
     const activeProvider = provider || settings?.storage_provider || "Supabase";
     const handler = await getStorageHandler(activeProvider, settings?.storage_config);

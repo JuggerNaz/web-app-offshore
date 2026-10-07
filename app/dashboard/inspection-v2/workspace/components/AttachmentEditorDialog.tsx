@@ -695,7 +695,7 @@ export function AttachmentEditorDialog({ open, onOpenChange, attachment, onSave 
         }
     };
 
-    if (!open && !attachment) return null;
+    if (!open || !attachment) return null;
 
     const isVideo = replacedFileType ? replacedFileType === 'VIDEO' : (String(attachment?.type).toUpperCase() === 'VIDEO' || String(attachment?.meta?.type).toUpperCase() === 'VIDEO');
     const isDoc = replacedFileType ? replacedFileType === 'DOCUMENT' : (String(attachment?.type).toUpperCase() === 'DOCUMENT' || String(attachment?.meta?.type).toUpperCase() === 'DOCUMENT');

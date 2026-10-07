@@ -1,9 +1,8 @@
 "use client";
 
 import { createClient } from "@/utils/supabase/client";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { User } from "@supabase/supabase-js";
-import Image from "next/image";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -12,11 +11,12 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger
 } from "@/components/ui/dropdown-menu";
-import { Button } from "@/components/ui/button";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { LogOut, Settings, Bell, Sparkles, User as UserIcon } from "lucide-react";
 import { signOutAction } from "@/app/actions";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface UserMenuProps {
     isCollapsed: boolean;
@@ -24,6 +24,8 @@ interface UserMenuProps {
 
 export function UserSidebar({ isCollapsed }: UserMenuProps) {
     const [user, setUser] = useState<User | null>(null);
+    const { profile, refresh } = useUserProfile();
+    const [localAvatarUrl, setLocalAvatarUrl] = useState<string | null>(null);
     const supabase = createClient();
 
     useEffect(() => {
@@ -49,14 +51,66 @@ export function UserSidebar({ isCollapsed }: UserMenuProps) {
 
         // Subscribe to auth state changes dynamically
         const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-            if (isMounted) setUser(session?.user ?? null);
+            if (isMounted) {
+                setUser(session?.user ?? null);
+                if (session?.user?.user_metadata?.avatar_url) {
+                    setLocalAvatarUrl(session.user.user_metadata.avatar_url);
+                }
+            }
         });
+
+        // Listen for instant custom event when profile picture is updated in settings
+        const handleProfileUpdated = (event: any) => {
+            if (event.detail?.avatar_url) {
+                setLocalAvatarUrl(event.detail.avatar_url);
+            }
+            if (refresh) refresh();
+        };
+
+        window.addEventListener("userProfileUpdated", handleProfileUpdated);
 
         return () => {
             isMounted = false;
             subscription.unsubscribe();
+            window.removeEventListener("userProfileUpdated", handleProfileUpdated);
         };
-    }, []);
+    }, [refresh, supabase.auth]);
+
+    // Resolved avatar prioritizing instant local event state -> profile context -> user metadata
+    const avatarUrl = useMemo(() => {
+        return (
+            localAvatarUrl ||
+            profile?.avatar_url ||
+            (user?.user_metadata as any)?.avatar_url ||
+            ""
+        );
+    }, [localAvatarUrl, profile?.avatar_url, user?.user_metadata]);
+
+    const displayName = useMemo(() => {
+        return (
+            profile?.full_name ||
+            (user?.user_metadata as any)?.full_name ||
+            user?.email?.split('@')[0].toUpperCase() ||
+            "USER"
+        );
+    }, [profile?.full_name, user?.user_metadata, user?.email]);
+
+    const designation = useMemo(() => {
+        return (
+            profile?.designation ||
+            (user?.user_metadata as any)?.designation ||
+            "Administrator"
+        );
+    }, [profile?.designation, user?.user_metadata]);
+
+    const getInitials = (name: string, email?: string) => {
+        if (name && name !== "USER") {
+            const parts = name.trim().split(" ");
+            if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+            return name.substring(0, 2).toUpperCase();
+        }
+        return (email || "U").substring(0, 2).toUpperCase();
+    };
 
     if (!user) return null;
 
@@ -72,31 +126,35 @@ export function UserSidebar({ isCollapsed }: UserMenuProps) {
                         )}
                     >
                         <div className="relative shrink-0">
-                            <div className="h-10 w-10 rounded-xl overflow-hidden border-2 border-slate-100 dark:border-slate-800/50 shadow-sm transition-transform group-hover:scale-105 group-hover:rotate-3 duration-500">
-                                <Image
-                                    src="/placeholder-user.jpg"
-                                    width={40}
-                                    height={40}
-                                    alt="Avatar"
-                                    className="object-cover"
-                                />
-                            </div>
+                            <Avatar className="h-10 w-10 rounded-xl overflow-hidden border-2 border-slate-100 dark:border-slate-800/50 shadow-sm transition-transform group-hover:scale-105 group-hover:rotate-3 duration-500 bg-slate-100 dark:bg-slate-800">
+                                {avatarUrl ? (
+                                    <AvatarImage
+                                        key={avatarUrl}
+                                        src={avatarUrl}
+                                        alt={displayName}
+                                        className="object-cover w-full h-full"
+                                    />
+                                ) : null}
+                                <AvatarFallback className="bg-gradient-to-br from-slate-100 to-slate-200 dark:from-slate-800 dark:to-slate-900 text-slate-600 dark:text-slate-300 font-black text-xs flex items-center justify-center">
+                                    {getInitials(displayName, user.email)}
+                                </AvatarFallback>
+                            </Avatar>
                             <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-white dark:border-slate-900 bg-blue-500 shadow-sm animate-pulse" />
                         </div>
 
                         {!isCollapsed && (
                             <div className="flex flex-col items-start min-w-0 flex-1">
                                 <div className="flex items-center gap-1.5 w-full">
-                                    <span className="text-sm font-black text-slate-900 dark:text-white truncate tracking-tight">
-                                        {user.email?.split('@')[0].toUpperCase()}
+                                    <span className="text-sm font-black text-slate-900 dark:text-white truncate tracking-tight uppercase">
+                                        {displayName}
                                     </span>
-                                    <div className="h-4 w-4 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+                                    <div className="h-4 w-4 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center shrink-0">
                                         <Sparkles className="h-2.5 w-2.5 text-blue-600 dark:text-blue-400" />
                                     </div>
                                 </div>
                                 <span className="text-[10px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest truncate w-full flex items-center gap-1">
-                                    <div className="h-1 w-1 rounded-full bg-blue-500" />
-                                    Administrator
+                                    <div className="h-1 w-1 rounded-full bg-blue-500 shrink-0" />
+                                    <span className="truncate">{designation}</span>
                                 </span>
                             </div>
                         )}

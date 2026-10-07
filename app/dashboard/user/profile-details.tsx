@@ -23,6 +23,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { toast } from "sonner";
 import { createClient } from "@/utils/supabase/client";
 import { updateUserProfileAction } from "@/app/actions";
+import { useUserProfile } from "@/components/user-profile-provider";
 
 interface ProfileDetailsProps {
     user: any;
@@ -30,6 +31,7 @@ interface ProfileDetailsProps {
 
 export function ProfileDetails({ user }: ProfileDetailsProps) {
     const supabase = createClient();
+    const { refresh } = useUserProfile();
     const [isEditing, setIsEditing] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
     const [uploading, setUploading] = useState(false);
@@ -55,7 +57,6 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
             const filePath = `avatars/${fileName}`;
 
             // Upload the file to "attachments" bucket (or "avatars" if it exists)
-            // Based on previous research, "attachments" bucket's POST route exists.
             const { error: uploadError } = await supabase.storage
                 .from("attachments")
                 .upload(filePath, file);
@@ -76,6 +77,14 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
             formData.append("avatar_url", publicUrl);
             
             await updateUserProfileAction(formData);
+            if (refresh) await refresh();
+
+            // Broadcast update to sidebar and other components
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("userProfileUpdated", {
+                    detail: { avatar_url: publicUrl, full_name: fullName, designation }
+                }));
+            }
             
             toast.success("Profile photo updated successfully!");
         } catch (error: any) {
@@ -97,6 +106,15 @@ export function ProfileDetails({ user }: ProfileDetailsProps) {
 
             if (result?.error) {
                 throw new Error(result.error);
+            }
+
+            if (refresh) await refresh();
+
+            // Broadcast update to sidebar and other components
+            if (typeof window !== "undefined") {
+                window.dispatchEvent(new CustomEvent("userProfileUpdated", {
+                    detail: { avatar_url: avatarUrl, full_name: fullName, designation }
+                }));
             }
 
             toast.success("Profile updated successfully!");

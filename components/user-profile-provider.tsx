@@ -176,7 +176,15 @@ export function UserProfileProvider({
       fetchProfileSilent();
     }, 15000);
 
-    return () => clearInterval(interval);
+    const handleProfileUpdated = () => {
+      fetchProfileSilent();
+    };
+    window.addEventListener("userProfileUpdated", handleProfileUpdated);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("userProfileUpdated", handleProfileUpdated);
+    };
   }, [initialData]);
 
   const setActiveCompanyId = async (companyId: string) => {

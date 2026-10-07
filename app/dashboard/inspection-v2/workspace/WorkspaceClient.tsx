@@ -83,6 +83,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useUserProfile } from "@/components/user-profile-provider";
+import { useAttachmentRealtime } from "@/hooks/use-attachment-realtime";
 
 function formatCounter(seconds: number | string): string {
   if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
@@ -5319,6 +5320,16 @@ function V10PreviewLayout() {
     syncDeploymentState();
   }, [syncDeploymentState]);
 
+  // Realtime subscription for attachment and insp_media changes: syncs Captured Events immediately
+  useAttachmentRealtime(
+    useCallback(() => {
+      console.log("[Realtime] Attachment or insp_media changed, refreshing records and caches...");
+      syncDeploymentState();
+      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+      queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+    }, [syncDeploymentState, queryClient])
+  );
+
   const fetchHistory = useCallback(async () => {
     if (!selectedComp || !selectedComp.id || isNaN(Number(selectedComp.id)) || !structureId || isNaN(Number(structureId))) {
       setCurrentCompRecords([]);
@@ -9596,8 +9607,20 @@ function V10PreviewLayout() {
       newParams.delete("recordId");
       newParams.delete("compId");
       router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+    } else if (!recordIdParam && compIdParam && isReadyForComps && allComps.length > 0 && !hasAutoEditedRef.current) {
+      hasAutoEditedRef.current = true;
+      const targetComp = allComps.find(
+        (c: any) => String(c.id || c.comp_id) === String(compIdParam) || 
+                    (c.q_id && String(c.q_id).toUpperCase() === String(compIdParam).toUpperCase())
+      );
+      if (targetComp) {
+        setSelectedComp(targetComp);
+      }
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete("compId");
+      router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
     }
-  }, [recordIdParam, isReadyForComps, allComps, handleEditRecord, router]);
+  }, [recordIdParam, compIdParam, isReadyForComps, allComps, handleEditRecord, setSelectedComp, router]);
 
   const flexLayoutStyles = (
     <style dangerouslySetInnerHTML={{ __html: `

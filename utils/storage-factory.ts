@@ -342,6 +342,8 @@ class AWSS3StorageHandler implements StorageHandler {
       } catch (e) {
         console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
       }
+    } else if (this.bucket && key.startsWith(`${this.bucket}/`)) {
+      key = key.slice(this.bucket.length + 1);
     }
     key = key.replace(/^\/+/, "");
 
