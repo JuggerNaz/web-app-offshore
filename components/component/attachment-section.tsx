@@ -38,6 +38,8 @@ interface Attachment {
   id: number;
   name: string;
   path: string;
+  cr_date?: string;
+  updated_at?: string;
   meta: {
     title?: string;
     description?: string;
@@ -61,6 +63,11 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [selectedAttachment, setSelectedAttachment] = useState<Attachment | null>(null);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+
+  // Per-attachment cache-bust counters. Bumped only after an in-place
+  // overwrite so the editor reloads the fresh image; image URLs are otherwise
+  // stable across re-renders so the browser cache actually works.
+  const [bustCounters, setBustCounters] = useState<Record<string, number>>({});
 
   // Upload State
   const [file, setFile] = useState<File | null>(null);
@@ -186,6 +193,12 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
 
       toast.success("Image overwritten successfully");
       setIsPreviewOpen(false);
+      // In-place overwrites keep the same storage path; bump the bust counter
+      // so the next render fetches the fresh image instead of the cached one.
+      setBustCounters((prev) => ({
+        ...prev,
+        [String(selectedAttachment.id)]: (prev[String(selectedAttachment.id)] || 0) + 1,
+      }));
       fetchAttachments();
     } catch (error: any) {
       console.error("Overwrite error:", error);
@@ -193,6 +206,22 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     } finally {
       setLoading(false);
     }
+  };
+
+  // Stable, re-render-safe public image URL. The version param is derived
+  // from the attachment row (timestamp/id), NOT Date.now(), which previously
+  // forced a full image re-download on every render.
+  const buildImageUrl = (att: Attachment) => {
+    let url = att.meta?.file_url || att.path;
+    if (url && !url.startsWith("http")) {
+      const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
+      const bucket = (att.meta as any)?.bucket || "attachments";
+      url = `${baseUrl}/storage/v1/object/public/${bucket}/${url}`;
+    }
+    const version = att.cr_date || att.updated_at || att.id;
+    const bust = bustCounters[String(att.id)] || 0;
+    const sep = url.includes("?") ? "&" : "?";
+    return bust > 0 ? `${url}${sep}v=${version}&bust=${bust}` : `${url}${sep}v=${version}`;
   };
 
   const getFileIcon = (type?: string, path?: string) => {
@@ -235,12 +264,7 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     const isImage = type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/);
     
     if (isImage) {
-      let url = att.meta?.file_url || att.path;
-      if (url && !url.startsWith("http")) {
-        const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
-        url = `${baseUrl}/storage/v1/object/public/attachments/${url}`;
-      }
-      const cacheBustedUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
+      const cacheBustedUrl = buildImageUrl(att);
       
       return (
         <div className={`relative group flex items-center justify-center ${small ? "w-5 h-5" : "w-12 h-12"}`}>
@@ -318,15 +342,7 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
             const path = att.path?.toLowerCase() || "";
             const isImage = type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/);
             
-            let url = "";
-            if (isImage) {
-              url = att.meta?.file_url || att.path;
-              if (url && !url.startsWith("http")) {
-                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
-                url = `${baseUrl}/storage/v1/object/public/attachments/${url}`;
-              }
-              url = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
-            }
+            const url = isImage ? buildImageUrl(att) : "";
 
             return (
               <Card 
@@ -428,19 +444,12 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
           
           <div className="flex-1 flex items-center justify-center p-4 bg-muted/10 rounded-md overflow-auto min-h-[300px]">
             {selectedAttachment && (() => {
-              let url = selectedAttachment.meta?.file_url || selectedAttachment.path;
-              if (url && !url.startsWith("http")) {
-                const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
-                const bucket = (selectedAttachment as any).meta?.bucket || "attachments";
-                url = `${baseUrl}/storage/v1/object/public/${bucket}/${url}`;
-              }
+              const url = buildImageUrl(selectedAttachment);
               const type = selectedAttachment.meta?.file_type?.toLowerCase() || "";
               const path = selectedAttachment.path?.toLowerCase() || "";
               
               if (type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-                // Add timestamp to bypass browser cache
-                const cacheBustedUrl = url.includes('?') ? `${url}&t=${Date.now()}` : `${url}?t=${Date.now()}`;
-                return <ImageMarkupEditor imageUrl={cacheBustedUrl} onSave={handleOverwrite} />;
+                return <ImageMarkupEditor imageUrl={url} onSave={handleOverwrite} />;
               }
               if (type.startsWith("video/") || path.match(/\.(mp4|webm|ogg|mov)$/)) {
                 return <video src={url} controls className="max-w-full max-h-[50vh]" />;
