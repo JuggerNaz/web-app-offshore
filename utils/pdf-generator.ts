@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import autoTablePlugin from "jspdf-autotable";
+import { loadLogoWithTransparency } from "./report-generators/shared-logo";
 
 // Helper to load image for PDF
 const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
@@ -220,6 +221,7 @@ interface Draw3SectionHeaderOptions {
   config?: ReportConfig;
   reportTitle: string;
   reportNo?: string;
+  structureName?: string;
   isPrintFriendly?: boolean;
   headerBlue?: [number, number, number];
 }
@@ -234,103 +236,105 @@ const draw3SectionHeader = async (
     config,
     reportTitle,
     reportNo,
+    structureName,
     isPrintFriendly = false,
-    headerBlue = [26, 54, 93],
+    headerBlue = [7, 78, 136],
   } = options;
 
-  const headerHeight = 28;
-  const colWidth = 28;
-  const middleWidth = pageWidth - colWidth * 2;
+  const headerMargin = 10;
+  const headerY = 7;
+  const headerH = 25;
+  const col1W = 55; // Left: Contractor
+  const col2W = 80; // Middle: Report Title
+  const col3W = 55; // Right: Client
+  const x1 = headerMargin;
+  const x2 = x1 + col1W;
+  const x3 = x2 + col2W;
 
-  // 1. Left Square Column (Contractor Logo)
-  doc.setFillColor(255, 255, 255);
-  if (isPrintFriendly) {
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(0, 0, colWidth, headerHeight, "FD");
-  } else {
-    doc.rect(0, 0, colWidth, headerHeight, "F");
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.2);
-    doc.rect(0, 0, colWidth, headerHeight, "S");
-  }
+  const headerBorderColor: [number, number, number] = [200, 200, 200];
+  const headerLineWidth = 0.2;
+  const titleTextColor: [number, number, number] = isPrintFriendly ? [7, 78, 136] : [255, 255, 255];
+  const titleSubTextColor: [number, number, number] = isPrintFriendly ? [51, 65, 85] : [219, 234, 254];
 
-  // Load & Draw Contractor Logo
+  // Resolve Contractor Logo
   const contractorLogoUrl = config?.contractorLogoUrl || (config as any)?.contractorLogo;
+  let contractorLogoData: any = null;
   if (config?.showContractorLogo !== false && contractorLogoUrl) {
     try {
-      const contractorLogoData = await loadLogo(contractorLogoUrl);
-      if (contractorLogoData) {
-        drawLogo(doc, contractorLogoData, 20, 20, 4, 4, 'center', 'center');
-      }
+      contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
     } catch (err) {
       console.warn("Error loading contractor logo in structure report:", err);
     }
   }
 
-  // 2. Middle Section (Report Info - Blue Banner)
-  if (isPrintFriendly) {
-    doc.setFillColor(255, 255, 255);
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(colWidth, 0, middleWidth, headerHeight, "FD");
-  } else {
-    doc.setFillColor(...headerBlue);
-    doc.rect(colWidth, 0, middleWidth, headerHeight, "F");
-  }
-
-  // Middle Text (Company Name, Department, Report Title, Report No)
-  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-
-  // Company Name - SAME size as Report Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
-
-  // Department Name (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  const deptName = companySettings?.department_name || "Technical Inspection Division";
-  doc.text(deptName, pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(reportTitle, pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No - Centered below Report Title
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoStr = reportNo || (config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : ""));
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
-  }
-
-  // 3. Right Square Column (Client / Company Logo)
-  doc.setFillColor(255, 255, 255);
-  if (isPrintFriendly) {
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "FD");
-  } else {
-    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "F");
-    doc.setDrawColor(200, 200, 200);
-    doc.setLineWidth(0.2);
-    doc.rect(pageWidth - colWidth, 0, colWidth, headerHeight, "S");
-  }
-
-  // Load & Draw Client / Company Logo
+  // Resolve Client Logo
+  let clientLogoData: any = null;
   if (companySettings?.logo_url) {
     try {
-      const logoData = await loadLogo(companySettings.logo_url);
-      if (logoData) {
-        drawLogo(doc, logoData, 20, 20, pageWidth - colWidth + 4, 4, 'center', 'center');
-      }
-    } catch (error) {
-      console.error("Error loading company logo in structure report:", error);
+      clientLogoData = await loadLogoWithTransparency(companySettings.logo_url);
+    } catch (err) {
+      console.warn("Error loading company logo in structure report:", err);
     }
   }
+
+  // --- 1. LEFT BOX: CONTRACTOR (White Background + Border) ---
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x1, headerY, col1W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x1, headerY, col1W, headerH, "S");
+
+  if (contractorLogoData) {
+    drawLogo(doc, contractorLogoData, 48, 20, x1 + (col1W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
+  }
+
+  // --- 2. MIDDLE BOX: REPORT TITLE (Navy/White + Border) ---
+  if (isPrintFriendly) {
+    doc.setFillColor(255, 255, 255);
+  } else {
+    doc.setFillColor(...headerBlue);
+  }
+  doc.rect(x2, headerY, col2W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x2, headerY, col2W, headerH, "S");
+
+  const titleCenterX = x2 + col2W / 2;
+  doc.setFontSize(10.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...titleTextColor);
+  doc.text(reportTitle.toUpperCase(), titleCenterX, headerY + 8, { align: "center" });
+
+  const reportNoStr = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  if (reportNoStr) {
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...titleSubTextColor);
+    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 14, { align: "center" });
+  }
+
+  if (structureName) {
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...titleTextColor);
+    const structLines = doc.splitTextToSize(structureName, col2W - 8);
+    doc.text(structLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+  }
+
+  // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x3, headerY, col3W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x3, headerY, col3W, headerH, "S");
+
+  if (clientLogoData) {
+    drawLogo(doc, clientLogoData, 48, 20, x3 + (col3W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
+  }
+
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
 };
 
 export const generateStructureReport = async (
@@ -367,8 +371,8 @@ const generatePipelineReport = async (
 
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
@@ -376,12 +380,13 @@ const generatePipelineReport = async (
     pageWidth,
     companySettings,
     config,
-    reportTitle: "Pipeline Specifications Report",
+    reportTitle: "Structure Summary Report",
+    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
     isPrintFriendly,
     headerBlue,
   });
 
-  let yPos = 32;
+  let yPos = 35;
 
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || autoTablePlugin;
@@ -677,8 +682,8 @@ const generatePlatformReport = async (
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
@@ -686,12 +691,13 @@ const generatePlatformReport = async (
     pageWidth,
     companySettings,
     config,
-    reportTitle: "Platform Specifications Report",
+    reportTitle: "Structure Summary Report",
+    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
     isPrintFriendly,
     headerBlue,
   });
 
-  let yPos = 32;
+  let yPos = 35;
 
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || autoTablePlugin;
@@ -1093,22 +1099,53 @@ const generatePlatformReport = async (
 
     // ELEVATIONS TABLE (Left)
     if (hasElevations) {
-      drawSectionBar(10, tablesStartY, (pageWidth - 25) / 2, 5, "ELEVATIONS (m)", 12, tablesStartY + 3.5);
-
       const elevWidth = (pageWidth - 25) / 2;
       autoTable(doc, {
-        startY: tablesStartY + 5,
-        head: [['Type', 'Value (m)']],
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'ELEVATIONS (m)',
+            colSpan: 2,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Type', 'Value (m)']
+        ],
         body: (structure.elevations || []).slice(0, 6).map((elev: any) => [
           elev.orient || elev.name || elev.type || "Elevation",
           elev.elv || elev.value || elev.elevation || "N/A"
         ]),
         theme: 'grid',
-        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-        bodyStyles: { fontSize: 6, halign: 'center' },
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
         margin: { left: 10 },
         tableWidth: elevWidth,
-        styles: { cellPadding: 1 }
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
@@ -1117,23 +1154,55 @@ const generatePlatformReport = async (
     if (hasLevels) {
       // Start slightly right of center (pageWidth/2 + 2.5) to create 5mm gap
       const rightTableX = pageWidth / 2 + 2.5;
-
-      drawSectionBar(rightTableX, tablesStartY, (pageWidth - 25) / 2, 5, "PLATFORM LEVELS", rightTableX + 2, tablesStartY + 3.5);
+      const levelsWidth = (pageWidth - 25) / 2;
 
       autoTable(doc, {
-        startY: tablesStartY + 5,
-        head: [['Level', 'Start', 'End']],
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'PLATFORM LEVELS',
+            colSpan: 3,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Level', 'Start', 'End']
+        ],
         body: (structure.levels || []).slice(0, 6).map((level: any) => [
           level.level_name || "Level",
           level.elv_from || level.start_elv || 0,
           level.elv_to || level.end_elv || 0
         ]),
         theme: 'grid',
-        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-        bodyStyles: { fontSize: 6, halign: 'center' },
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
         margin: { left: rightTableX },
-        tableWidth: (pageWidth - 25) / 2,
-        styles: { cellPadding: 1 }
+        tableWidth: levelsWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
@@ -1144,23 +1213,53 @@ const generatePlatformReport = async (
   if (structure.faces && structure.faces.length > 0) {
     if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
 
-    drawSectionBar(10, yPos, pageWidth - 20, 5, "PLATFORM FACES", 12, yPos + 3.5);
-    yPos += 5;
-
     autoTable(doc, {
       startY: yPos,
-      head: [['Face Name', 'From', 'To']],
+      head: [
+        [{
+          content: 'PLATFORM FACES',
+          colSpan: 3,
+          styles: {
+            halign: 'left',
+            fontStyle: 'bold',
+            fontSize: 8,
+            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          }
+        }],
+        ['Face Name', 'From', 'To']
+      ],
       body: structure.faces.slice(0, 4).map((face: any) => [
         face.face || face.face_name || face.name || "Face",
         face.face_from || face.from || "N/A",
         face.face_to || face.to || "N/A"
       ]),
       theme: 'grid',
-      headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-      bodyStyles: { fontSize: 6, halign: 'center' },
+      styles: {
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+        cellPadding: 1.5,
+        valign: 'middle',
+      },
+      headStyles: {
+        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+        fontSize: 7,
+        halign: 'center',
+        fontStyle: 'bold',
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
+      bodyStyles: {
+        fontSize: 6.5,
+        halign: 'center',
+        textColor: [0, 0, 0],
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
       margin: { left: 10, right: 10 },
-      tableWidth: 'auto',
-      styles: { cellPadding: 1.5 }
+      tableWidth: pageWidth - 20,
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 3;
@@ -1959,8 +2058,8 @@ export const generateComponentSummaryReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
   const lightBlue: [number, number, number] = [235, 242, 250];
   const isPrintFriendly = config?.printFriendly === true;
 
@@ -2525,8 +2624,8 @@ export const generateComponentSpecReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
 
   const isPrintFriendly = config?.printFriendly === true;
 
@@ -2784,8 +2883,8 @@ export const generateTechnicalSpecsReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====

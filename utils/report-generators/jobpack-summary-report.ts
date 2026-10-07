@@ -77,73 +77,113 @@ export const generateJobPackSummaryReport = async (
     const sectionBlue: [number, number, number] = [7, 78, 136];
     const isPrintFriendly = config?.printFriendly === true;
 
-    // ===== HEADER =====
-    if (isPrintFriendly) {
-        // Print-Friendly: White background with light gray border
-        doc.setDrawColor(180, 180, 180);
-        doc.setLineWidth(0.3);
-        doc.rect(0, 0, pageWidth, 28);
-    } else {
-        doc.setFillColor(...headerBlue);
-        doc.rect(0, 0, pageWidth, 28, "F");
-    }
+    // ===== RESOLVE CONTRACTOR & LOGOS =====
+    const contractor = jobPack.metadata?.contrac
+        ? await fetchContractorDetails(jobPack.metadata.contrac)
+        : { name: "N/A", address: "", logoUrl: undefined };
 
-    // Contractor Logo (Left)
-    let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
+    let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo || contractor.logoUrl;
     if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
         try {
             const cDetails = await fetchContractorDetails(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac));
             if (cDetails?.logoUrl) contractorLogoUrl = cDetails.logoUrl;
         } catch (e) {}
     }
+
+    let contractorLogoData: any = null;
     if (contractorLogoUrl) {
         try {
-            const contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
-            if (contractorLogoData) {
-                drawLogo(doc, contractorLogoData, 16, 16, 8, 5, 'left', 'center');
-            }
+            contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
         } catch (e) {}
     }
 
-    // Company Logo (Right)
+    let clientLogoData: any = null;
     if (companySettings?.logo_url) {
         try {
-            const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-            drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-        } catch (error) {
-            if (!isPrintFriendly) {
-                // Placeholder
-                doc.setDrawColor(255, 255, 255);
-                doc.rect(pageWidth - 25, 4, 18, 18);
-                doc.setFontSize(7);
-                doc.setTextColor(255, 255, 255);
-                doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-            }
+            clientLogoData = await loadLogoWithTransparency(companySettings.logo_url);
+        } catch (e) {}
+    }
+
+    // ===== 3-BORDER HEADER (CONTRACTOR | REPORT TITLE | CLIENT) =====
+    const headerMargin = 10;
+    const headerY = 7;
+    const headerH = 25;
+    const col1W = 55; // Left: Contractor
+    const col2W = 80; // Middle: Report Title
+    const col3W = 55; // Right: Client
+    const x1 = headerMargin;
+    const x2 = x1 + col1W;
+    const x3 = x2 + col2W;
+
+    const headerBorderColor: [number, number, number] = [200, 200, 200];
+    const headerLineWidth = 0.2;
+    const titleTextColor: [number, number, number] = isPrintFriendly ? [7, 78, 136] : [255, 255, 255];
+    const titleSubTextColor: [number, number, number] = isPrintFriendly ? [51, 65, 85] : [219, 234, 254];
+
+    const drawHeader = (d: jsPDF) => {
+        // --- 1. LEFT BOX: CONTRACTOR (White Background + Border) ---
+        d.setFillColor(255, 255, 255);
+        d.rect(x1, headerY, col1W, headerH, "F");
+        d.setDrawColor(...headerBorderColor);
+        d.setLineWidth(headerLineWidth);
+        d.rect(x1, headerY, col1W, headerH, "S");
+
+        if (contractorLogoData) {
+            drawLogo(d, contractorLogoData, 48, 20, x1 + (col1W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
         }
-    }
 
-    // Company & Dept
-    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
+        // --- 2. MIDDLE BOX: REPORT TITLE (Navy/White + Border) ---
+        if (isPrintFriendly) {
+            d.setFillColor(255, 255, 255);
+        } else {
+            d.setFillColor(...headerBlue);
+        }
+        d.rect(x2, headerY, col2W, headerH, "F");
+        d.setDrawColor(...headerBorderColor);
+        d.setLineWidth(headerLineWidth);
+        d.rect(x2, headerY, col2W, headerH, "S");
 
-    doc.setFontSize(8.5);
-    doc.setFont("helvetica", "normal");
-    doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+        const titleCenterX = x2 + col2W / 2;
+        d.setFontSize(10.5);
+        d.setFont("helvetica", "bold");
+        d.setTextColor(...titleTextColor);
+        d.text("JOB PACK SUMMARY REPORT", titleCenterX, headerY + 8, { align: "center" });
 
-    // Title - SAME size as Company Title
-    doc.setFontSize(11);
-    doc.setFont("helvetica", "bold");
-    doc.text("JOB PACK SUMMARY REPORT", pageWidth / 2, 17.5, { align: "center" });
+        const reportNo = config?.reportNoPrefix
+            ? `${config.reportNoPrefix}-${config.reportYear || new Date().getFullYear()}-${jobPack.id}`
+            : (jobPack.metadata?.contract_ref || `JP-${jobPack.id}`);
 
-    // Report Number - Centered below Title
-    if (config?.reportNoPrefix) {
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        const reportNo = `${config.reportNoPrefix}-${config.reportYear}-${jobPack.id}`;
-        doc.text(`Report: ${reportNo}`, pageWidth / 2, 22.5, { align: "center" });
-    }
+        d.setFontSize(8);
+        d.setFont("helvetica", "normal");
+        d.setTextColor(...titleSubTextColor);
+        d.text(`Report No: ${reportNo}`, titleCenterX, headerY + 14, { align: "center" });
+
+        if (jobPack.name) {
+            d.setFontSize(7.5);
+            d.setFont("helvetica", "bold");
+            d.setTextColor(...titleTextColor);
+            const jpLines = d.splitTextToSize(jobPack.name, col2W - 8);
+            d.text(jpLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+        }
+
+        // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
+        d.setFillColor(255, 255, 255);
+        d.rect(x3, headerY, col3W, headerH, "F");
+        d.setDrawColor(...headerBorderColor);
+        d.setLineWidth(headerLineWidth);
+        d.rect(x3, headerY, col3W, headerH, "S");
+
+        if (clientLogoData) {
+            drawLogo(d, clientLogoData, 48, 20, x3 + (col3W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
+        }
+
+        d.setTextColor(0, 0, 0);
+        d.setDrawColor(200, 200, 200);
+        d.setLineWidth(0.2);
+    };
+
+    // Draw header on initial page
+    drawHeader(doc);
 
     let yPos = 35;
 
@@ -164,8 +204,6 @@ export const generateJobPackSummaryReport = async (
     doc.text("JOB PACK DETAILS", 12, yPos + 4);
     yPos += 10;
 
-    // Resolve details
-    const contractor = jobPack.metadata?.contrac ? await fetchContractorDetails(jobPack.metadata.contrac) : { name: "N/A", address: "" };
     const startDate = jobPack.metadata?.istart || "N/A";
     const endDate = jobPack.metadata?.iend || "TBD";
 
@@ -271,21 +309,7 @@ export const generateJobPackSummaryReport = async (
     doc.text(addressWrap, valueX, addressLabelY);
 
     const addressTextBottom = addressLabelY + (addressWrap.length * 4);
-
-    // Logo (Placed under Address Label)
-    let logoHeightUsed = 0;
-    if (contractor.logoUrl) {
-        try {
-            const cLogo = await loadLogoWithTransparency(contractor.logoUrl);
-            const lWidth = 20;
-            const lHeight = 20;
-            // Place under "Address:" label (approx Y + 5)
-            drawLogo(doc, cLogo, lWidth, lHeight, labelX, addressLabelY + 4, 'left', 'middle');
-            logoHeightUsed = lHeight + 4;
-        } catch (e) { }
-    }
-
-    const leftBottom = Math.max(addressTextBottom, addressLabelY + logoHeightUsed + 2);
+    const leftBottom = Math.max(addressTextBottom, contentStart + 14);
 
 
     // -- RIGHT COLUMN: Vessel --
@@ -365,7 +389,12 @@ export const generateJobPackSummaryReport = async (
             2: { cellWidth: 25 },
             3: { cellWidth: 'auto' }
         },
-        margin: { left: 10, right: 10 },
+        margin: { top: 35, left: 10, right: 10 },
+        didDrawPage: (data: any) => {
+            if (data.pageNumber > 1) {
+                drawHeader(doc);
+            }
+        },
         didParseCell: (data: any) => {
             if (data.section === 'body' && data.column.index === 3) {
                 const raw = data.cell.raw;
