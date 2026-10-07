@@ -93,30 +93,61 @@ export async function GET(request: NextRequest) {
 
         console.log(`[DefectSummary] Found ${anomalies?.length ?? 0} raw record(s), deduplicated to ${uniqueAnomalies.length}`);
 
-        // Enrich missing tape_no from insp_records & insp_video_tapes
-        const missingTapeInspIds = uniqueAnomalies.filter((a: any) => !a.tape_no && (a.id || a.insp_id)).map((a: any) => a.id || a.insp_id);
-        if (missingTapeInspIds.length > 0) {
+        // Enrich inspection_data, missing tape_no, and defect code/type from insp_records, insp_video_tapes & insp_anomalies
+        const allInspIds = uniqueAnomalies.map((a: any) => a.id || a.insp_id).filter(Boolean);
+        const allAnomIds = uniqueAnomalies.map((a: any) => a.anomaly_id).filter(Boolean);
+        if (allInspIds.length > 0 || allAnomIds.length > 0) {
             try {
-                const { data: recTapes } = await (supabase as any)
-                    .from("insp_records")
-                    .select("insp_id, tape_id, insp_video_tapes:tape_id(tape_no)")
-                    .in("insp_id", missingTapeInspIds);
-                if (recTapes && recTapes.length > 0) {
-                    const recTapeMap = new Map<number, string>();
-                    recTapes.forEach((rt: any) => {
-                        if (rt.insp_video_tapes?.tape_no) {
-                            recTapeMap.set(Number(rt.insp_id), rt.insp_video_tapes.tape_no);
+                const [recRes, anomRes] = await Promise.all([
+                    allInspIds.length > 0
+                        ? (supabase as any)
+                            .from("insp_records")
+                            .select("insp_id, tape_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
+                            .in("insp_id", allInspIds)
+                        : Promise.resolve({ data: [] }),
+                    allAnomIds.length > 0
+                        ? (supabase as any)
+                            .from("insp_anomalies")
+                            .select("anomaly_id, defect_type_code, defect_category_code, defect_description, priority_code, anomaly_ref_no")
+                            .in("anomaly_id", allAnomIds)
+                        : Promise.resolve({ data: [] })
+                ]);
+
+                const recMap = new Map<number, any>();
+                (recRes.data || []).forEach((rt: any) => recMap.set(Number(rt.insp_id), rt));
+
+                const anomMap = new Map<number, any>();
+                (anomRes.data || []).forEach((at: any) => anomMap.set(Number(at.anomaly_id), at));
+
+                uniqueAnomalies.forEach((a: any) => {
+                    const iId = Number(a.id || a.insp_id);
+                    const match = recMap.get(iId);
+                    if (match) {
+                        if (!a.tape_no && match.insp_video_tapes?.tape_no) {
+                            a.tape_no = match.insp_video_tapes.tape_no;
                         }
-                    });
-                    uniqueAnomalies.forEach((a: any) => {
-                        const iId = Number(a.id || a.insp_id);
-                        if (!a.tape_no && recTapeMap.has(iId)) {
-                            a.tape_no = recTapeMap.get(iId);
+                        if (!a.inspection_data && match.inspection_data) {
+                            a.inspection_data = match.inspection_data;
                         }
-                    });
-                }
-            } catch (tapeErr) {
-                console.warn("[DefectSummary] Error enriching tape_no:", tapeErr);
+                    }
+
+                    const aId = Number(a.anomaly_id);
+                    const anomMatch = anomMap.get(aId);
+                    if (anomMatch) {
+                        a.defect_code = anomMatch.defect_type_code || a.defect_type || a.defect_code || "—";
+                        a.defect_type = anomMatch.defect_category_code || a.category || a.defect_type || "—";
+                        if (anomMatch.defect_description && !a.description) {
+                            a.description = anomMatch.defect_description;
+                        }
+                    } else {
+                        const defCode = a.defect_type || a.defect_type_code || "";
+                        const defType = a.category || a.defect_category_code || "";
+                        a.defect_code = a.defect_code || defCode || "—";
+                        a.defect_type = defType || defCode || a.defect_type || "—";
+                    }
+                });
+            } catch (enrichErr) {
+                console.warn("[DefectSummary] Error enriching records:", enrichErr);
             }
         }
 
@@ -174,6 +205,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             data: uniqueAnomalies,
             priority_colors: priorityColors,
+            priority_levels: (priorityTypes || []).map((p: any) => p.lib_desc).filter(Boolean),
         });
 
     } catch (error: any) {

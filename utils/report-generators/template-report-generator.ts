@@ -448,9 +448,11 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         });
 
         // Attach image module
-        const doc = new Docxtemplater();
-        doc.attachModule(imageModule);
-        doc.loadZip(zip);
+        const doc = new Docxtemplater(zip, {
+            paragraphLoop: true,
+            linebreaks: true,
+            modules: [imageModule],
+        });
         doc.setData(finalData);
 
         onProgress?.(96, "Rendering document tables and pages...");

@@ -110,30 +110,32 @@ export async function GET(request: NextRequest) {
 
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
         
-        // Enrich missing tape_no from insp_records & insp_video_tapes
-        const missingTapeInspIds = anomalies.filter((a: any) => !a.tape_no && (a.id || a.insp_id)).map((a: any) => a.id || a.insp_id);
-        if (missingTapeInspIds.length > 0) {
+        // Enrich missing tape_no and inspection_data from insp_records & insp_video_tapes
+        const allInspIds = Array.from(new Set(anomalies.map((a: any) => a.id || a.insp_id).filter(Boolean)));
+        if (allInspIds.length > 0) {
             try {
-                const { data: recTapes } = await (supabase as any)
+                const { data: recData } = await (supabase as any)
                     .from("insp_records")
-                    .select("insp_id, tape_id, insp_video_tapes:tape_id(tape_no)")
-                    .in("insp_id", missingTapeInspIds);
-                if (recTapes && recTapes.length > 0) {
-                    const recTapeMap = new Map<number, string>();
-                    recTapes.forEach((rt: any) => {
-                        if (rt.insp_video_tapes?.tape_no) {
-                            recTapeMap.set(Number(rt.insp_id), rt.insp_video_tapes.tape_no);
-                        }
-                    });
+                    .select("insp_id, tape_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
+                    .in("insp_id", allInspIds);
+                if (recData && recData.length > 0) {
+                    const recMap = new Map<number, any>();
+                    recData.forEach((rt: any) => recMap.set(Number(rt.insp_id), rt));
                     anomalies.forEach((a: any) => {
                         const iId = Number(a.id || a.insp_id);
-                        if (!a.tape_no && recTapeMap.has(iId)) {
-                            a.tape_no = recTapeMap.get(iId);
+                        const match = recMap.get(iId);
+                        if (match) {
+                            if (!a.tape_no && match.insp_video_tapes?.tape_no) {
+                                a.tape_no = match.insp_video_tapes.tape_no;
+                            }
+                            if (!a.inspection_data && match.inspection_data) {
+                                a.inspection_data = match.inspection_data;
+                            }
                         }
                     });
                 }
-            } catch (tapeErr) {
-                console.warn("[AnomalyReport] Error enriching tape_no:", tapeErr);
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_records:", err);
             }
         }
 

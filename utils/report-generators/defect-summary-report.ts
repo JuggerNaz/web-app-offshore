@@ -156,6 +156,7 @@ export const generateDefectSummaryReport = async (
     // ── Fetch anomalies + DB priority colours ────────────────────────────────
     let anomalies: any[] = [];
     let priorityColorMap: ColorMap = {};
+    let activePriorityLevels: string[] = [];
     try {
         let url = `/api/reports/defect-summary?`;
         if (jobPack?.id) url += `jobpack_id=${jobPack.id}&`;
@@ -167,10 +168,28 @@ export const generateDefectSummaryReport = async (
         const json = await res.json();
         if (json.data) anomalies = json.data;
         if (json.priority_colors) priorityColorMap = json.priority_colors;
+        if (Array.isArray(json.priority_levels) && json.priority_levels.length > 0) {
+            activePriorityLevels = json.priority_levels;
+        }
 
-        console.log("[DefectSummary] priorityColorMap from DB:", priorityColorMap);
+        console.log("[DefectSummary] priorityColorMap from DB:", priorityColorMap, "activePriorityLevels:", activePriorityLevels);
     } catch (e) {
         console.error("[DefectSummary] Error fetching data:", e);
+    }
+
+    if (activePriorityLevels.length === 0) {
+        try {
+            const { data: prioData } = await supabase
+                .from("u_lib_list")
+                .select("lib_desc")
+                .eq("lib_code", "AMLY_TYP")
+                .or("lib_delete.is.null,lib_delete.eq.0");
+            if (prioData && prioData.length > 0) {
+                activePriorityLevels = prioData.map((p: any) => p.lib_desc).filter(Boolean);
+            }
+        } catch (e) {
+            console.warn("[DefectSummary] Fallback fetch AMLY_TYP error:", e);
+        }
     }
 
     if (anomalies.length === 0 && (config as any).isBlankReport) {
@@ -328,25 +347,26 @@ export const generateDefectSummaryReport = async (
     };
 
     const drawLegend = (d: jsPDF, y: number) => {
-        // Build legend entries from canonical library levels
-        const standardLegendKeys = [
-            "Priority 1",
-            "Priority 2",
-            "Priority 3",
-            "Observation",
-            "None",
-            "Worse",
-            "Severe",
-            "Attention required",
-        ];
+        // Build legend entries from non-deleted library levels only
+        const standardLegendKeys = (activePriorityLevels.length > 0
+            ? activePriorityLevels
+            : ["Priority 1", "Priority 2", "Priority 3", "Observation"]
+        ).filter((k) => {
+            const kl = k.toLowerCase().trim();
+            return !["none", "worse", "severe", "attention required", "attent req"].includes(kl);
+        });
+
+        // Ensure unique keys
+        const uniqueKeys = Array.from(new Set(standardLegendKeys));
 
         const allLevels = [
-            ...standardLegendKeys.map(k => ({ label: k, key: k })),
+            ...uniqueKeys.map(k => ({ label: k.toUpperCase(), key: k })),
             { label: "Rectified (R)", key: "_rect" },
         ];
 
         let x = margin;
-        const boxW = 26; // Slightly wider to fit names comfortably
+        const totalBoxCount = allLevels.length || 1;
+        const boxW = Math.min(28, Math.max(22, (contentWidth - 28) / totalBoxCount - 2));
         const boxH = 5;
         const yy = y + 3;
 
@@ -371,7 +391,7 @@ export const generateDefectSummaryReport = async (
             d.setFont("helvetica", "bold");
             d.setFontSize(6);
             d.text(lv.label, x + boxW / 2, yy + 3.5, { align: "center" });
-            x += boxW + 3;
+            x += boxW + 2.5;
         });
 
         d.setTextColor(0, 0, 0);
@@ -527,32 +547,131 @@ export const generateDefectSummaryReport = async (
     // Columns: # | Anomaly Ref | Tape No (Counter) | Defect Code | Defect Type | Priority | Inspection Findings
     const refTitle = config.isFindingsReport ? "Findings Ref No." : "Anomaly Ref No.";
     const codeTitle = config.isFindingsReport ? "Findings Code" : "Defect Code";
-    const typeTitle = config.isFindingsReport ? "Findings Type" : "Defect Type";
-    const tableHead = [["#", refTitle, "Recording\n(Counter)", codeTitle, typeTitle, "Priority", "Inspection Findings"]];
 
-    const tableBody: any[][] = anomalies.map((rec: any, idx: number) => {
+    const tableHead = [
+        [
+            "#",
+            refTitle,
+            "Tape / Counter",
+            codeTitle,
+            config.isFindingsReport ? "Findings Type" : "Defect Type",
+            "Priority",
+            "Findings / Observations",
+        ],
+    ];
+
+    const tableBody = anomalies.map((rec: any, idx: number) => {
         const priority = rec.priority || "—";
-        // Use rec.priority_color directly from the view for maximum accuracy (Pic 4 compatibility)
-        // Fallback to priorityColorMap if needed.
-        const { bg, text } = priorityStyle(priority, priorityColorMap, rec.priority_color);
-        const isRectified = rec.is_rectified === true || rec.is_rectified === "true" || rec.rectified_remarks;
+        const isRectified = Boolean(
+            rec.is_rectified ||
+            rec.rectified ||
+            rec.rectification_status === "RECTIFIED" ||
+            rec.rectified_date
+        );
 
-        // Tape no + counter
-        const tapeNo = extractRecordTapeNo(rec, "");
-        const counter = formatCounter(rec.video_ref);
-        const tapeDisplay = tapeNo ? (counter ? `${tapeNo} (${counter})` : tapeNo) : (counter || "—");
+        const { bg, text } = priorityStyle(priority, priorityColorMap);
 
-        // Defect code and type (Swapped to match UI labels and DB storage logic)
-        // Based on UI Save: defect_type_code = Defect Code, defect_category_code = Defect Type
-        const defectCode = rec.defect_type || "—";
-        const defectType = rec.category || "—";
+        // Tape / Counter
+        const tape = rec.tape_no || "—";
+        const counter = rec.counter || "";
+        const tapeDisplay = counter ? `${tape}\n(${counter})` : tape;
 
-        // Findings + optional rectification info
-        // Prioritize unified Inspection Findings over legacy anomaly description
-        let findings = rec.observations || rec.description || "—";
-        if (isRectified && rec.rectified_remarks) {
-            findings += `\n\n✓ Rectified: ${rec.rectified_remarks}`;
+        // Parse inspection data if present
+        const d = (typeof rec.inspection_data === "string" ? JSON.parse(rec.inspection_data) : rec.inspection_data) || {};
+
+        // Defect Code & Type
+        const defectCode = rec.defect_code || rec.defect_type_code || rec.defect_type || rec.code || d.defect_code || d.defect_type || "—";
+        const defectType = rec.category || rec.defect_category_code || rec.defect_category || (rec.defect_type && rec.defect_type !== defectCode ? rec.defect_type : "") || d.defect_type || d.defect_category || rec.defect_type || rec.type || "—";
+
+        // 1. General Inspection findings
+        const inspFinding = (rec.observations || d.findings || d.observation || d.remarks || rec.findings || "").toString().trim();
+
+        // 2. Anomaly Findings
+        const anomFinding = (rec.description || rec.defect_description || rec.defect_finding || d.defect_description || d.defect_desc || "").toString().trim();
+
+        // 3. Primary CP & Additional CP readings
+        const primaryCp = rec.cp_reading ?? rec.cp_rdg ?? rec.cp_reading_mv ?? rec.cp ?? d.cp_reading ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_val ?? "";
+        
+        const cpLines: string[] = [];
+        if (primaryCp !== "" && primaryCp !== null && primaryCp !== undefined && String(primaryCp).trim() !== "" && String(primaryCp).trim() !== "-") {
+            const valStr = String(primaryCp).trim();
+            const unit = valStr.toLowerCase().includes("mv") ? "" : " mV";
+            cpLines.push(`CP Reading: ${valStr}${unit}`);
         }
+
+        const rawAddCp = d.cp_rdg_additional ?? d.cp_additional ?? d.cp_readings ?? d.additional_cp ?? rec.cp_rdg_additional ?? rec.cp_additional ?? rec.cp_readings ?? rec.additional_cp;
+        if (Array.isArray(rawAddCp)) {
+            rawAddCp.forEach((item: any, i: number) => {
+                if (item === null || item === undefined) return;
+                if (typeof item === "object") {
+                    const val = item.reading ?? item.cp_rdg ?? item.value ?? item.cp ?? "";
+                    if (val !== "" && val !== null && val !== undefined && String(val).trim() !== "" && String(val).trim() !== "-") {
+                        const unit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                        const loc = item.location || item.position ? ` (${item.location || item.position})` : (rawAddCp.length > 1 ? ` #${i + 1}` : "");
+                        cpLines.push(`Additional CP${loc}: ${String(val).trim()}${unit}`);
+                    }
+                } else if (String(item).trim() !== "" && String(item).trim() !== "-") {
+                    const unit = String(item).toLowerCase().includes("mv") ? "" : " mV";
+                    const num = rawAddCp.length > 1 ? ` #${i + 1}` : "";
+                    cpLines.push(`Additional CP${num}: ${String(item).trim()}${unit}`);
+                }
+            });
+        } else if (rawAddCp && typeof rawAddCp === "object") {
+            const val = rawAddCp.reading ?? rawAddCp.cp_rdg ?? rawAddCp.value ?? "";
+            if (val !== "" && val !== null && String(val).trim() !== "" && String(val).trim() !== "-") {
+                const unit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                const loc = rawAddCp.location || rawAddCp.position ? ` (${rawAddCp.location || rawAddCp.position})` : "";
+                cpLines.push(`Additional CP${loc}: ${String(val).trim()}${unit}`);
+            }
+        } else if (rawAddCp && String(rawAddCp).trim() !== "" && String(rawAddCp).trim() !== "-") {
+            const unit = String(rawAddCp).toLowerCase().includes("mv") ? "" : " mV";
+            cpLines.push(`Additional CP: ${String(rawAddCp).trim()}${unit}`);
+        }
+
+        // Assemble Sections separated by blank lines (\n\n)
+        const findingSections: string[] = [];
+
+        // 1. Inspection findings
+        if (inspFinding && inspFinding !== "-" && inspFinding !== "—") {
+            findingSections.push(inspFinding);
+        }
+
+        // 2. Anomaly Findings
+        if (anomFinding && anomFinding !== "-" && anomFinding !== "—" && anomFinding !== inspFinding) {
+            findingSections.push(`Anomaly Findings: ${anomFinding}`);
+        } else if (findingSections.length === 0 && anomFinding && anomFinding !== "-" && anomFinding !== "—") {
+            findingSections.push(`Anomaly Findings: ${anomFinding}`);
+        }
+
+        // 3. CP Reading(s)
+        if (cpLines.length > 0) {
+            findingSections.push(cpLines.join("\n"));
+        }
+
+        // 4. Rectification (Append Rectified Remark or Findings at the end of findings column after a blank line)
+        if (isRectified) {
+            const rectRemarks = (
+                rec.rectified_remarks ||
+                rec.rectified_findings ||
+                rec.rectification_remarks ||
+                rec.rectify_remarks ||
+                rec.rectified_finding ||
+                d.rectified_remarks ||
+                d.rectification_remarks ||
+                d.rectified_findings ||
+                d.rectified_finding ||
+                rec.follow_up_notes ||
+                ""
+            ).toString().trim();
+
+            if (rectRemarks && rectRemarks !== "-" && rectRemarks !== "—") {
+                findingSections.push(`✓ Rectified: ${rectRemarks}`);
+            } else {
+                findingSections.push(`✓ Rectified`);
+            }
+        }
+
+        const findings = findingSections.length > 0 ? findingSections.join("\n\n") : "—";
 
         // Ref no
         const ref = rec.display_ref_no || rec.ref_no || `#${idx + 1}`;
