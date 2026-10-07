@@ -72,6 +72,18 @@ export function UserProfileProvider({
   );
   const [isLoading, setIsLoading] = useState(!initialData);
 
+  // Only swap the state object when the payload actually changed. The 15s
+  // silent poll returns freshly-serialized JSON each time; updating state
+  // unconditionally gives `company`/`profile` new object identities every
+  // poll, which re-triggers effects in consumers (e.g. the sidebar refetching
+  // /api/company-settings). JSON string compare is safe here: the payload is
+  // small and always produced by the same endpoint (stable key order).
+  const applyProfileData = (next: any) => {
+    setData((prev) =>
+      prev && JSON.stringify(prev) === JSON.stringify(next) ? prev : next
+    );
+  };
+
   const fetchProfileSilent = async () => {
     if (typeof window !== "undefined" && typeof navigator !== "undefined" && !navigator.onLine) {
       return;
@@ -88,7 +100,7 @@ export function UserProfileProvider({
       if (res.ok) {
         const json = await res.json();
         if (json.success && json.data) {
-          setData(json.data);
+          applyProfileData(json.data);
         }
       } else if (res.status === 403 || res.status === 401) {
         let errorMsg = "Your account has been deactivated. Please contact your administrator.";
@@ -122,7 +134,7 @@ export function UserProfileProvider({
         const json = await res.json();
         if (json.success && json.data) {
           const profileData = json.data;
-          setData(profileData);
+          applyProfileData(profileData);
           if (profileData.company) {
             setActiveCompanyIdState(profileData.company.id);
             if (typeof window !== "undefined") {
