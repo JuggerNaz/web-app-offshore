@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -106,6 +106,7 @@ export const generateROVRGVIReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = await enrichRecordsWithTapesAndDeployments(null, records);
         records = normalizeReportRecords(records);
         // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
         const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
@@ -211,11 +212,12 @@ export const generateROVRGVIReport = async (
             const elevation = r.elevation ?? d.elevation ?? "—";
 
             const diveNo =
-                r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
-                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
+                r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.name  ||
+                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name ||
+                r.dive_no || d.dive_no || d.deployment_no ||
                 r.rov_job_id || r.dive_job_id || "—";
 
-            const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
+            const tapeNo = extractRecordTapeNo(r);
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
             const addCPs: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);

@@ -171,12 +171,32 @@ export function UserProfileProvider({
       }
     }
 
-    // Set up silent polling for real-time deactivation check (every 15 seconds)
+    // Set up silent polling for real-time deactivation check. Ticks are
+    // skipped while the tab is hidden (background tabs don't need live
+    // deactivation checks) and an immediate refresh runs when the tab
+    // becomes visible again.
     const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
       fetchProfileSilent();
-    }, 15000);
+    }, 60000);
 
-    return () => clearInterval(interval);
+    const handleVisibilityChange = () => {
+      if (typeof document !== "undefined" && !document.hidden) {
+        fetchProfileSilent();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    const handleProfileUpdated = () => {
+      fetchProfileSilent();
+    };
+    window.addEventListener("userProfileUpdated", handleProfileUpdated);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("userProfileUpdated", handleProfileUpdated);
+    };
   }, [initialData]);
 
   const setActiveCompanyId = async (companyId: string) => {

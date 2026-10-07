@@ -123,12 +123,11 @@ export const generateROVPhotographyLogReport = async (
 
             // Footer
             d.setDrawColor(...colors.border); d.setLineWidth(0.1);
-            d.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
-            d.setFontSize(7); d.setFont("helvetica", "normal"); d.setTextColor(100);
-            d.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 8);
+            d.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
+            d.setFontSize(6.5); d.setFont("helvetica", "normal"); d.setTextColor(30, 41, 59);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 6);
             if (config.showPageNumbers !== false) {
-                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: "center" });
-                d.text(format(new Date(), "dd MMM yyyy HH:mm"), pageWidth - margin, pageHeight - 8, { align: "right" });
+                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: "right" });
             }
         };
 

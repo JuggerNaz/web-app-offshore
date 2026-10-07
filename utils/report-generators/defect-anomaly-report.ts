@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -452,7 +452,7 @@ export const generateDefectAnomalyReport = async (
         }
 
         // Display format: TapeNo (Time)
-        let recording = (record.tape_no || "").trim();
+        let recording = extractRecordTapeNo(record, "");
         if (videoRefTime) {
             recording += ` (${videoRefTime})`;
         }
@@ -482,6 +482,8 @@ export const generateDefectAnomalyReport = async (
 
 
         // Component & Elevation Vals
+        const isPipeline = (record.str_type || structure?.str_type || structure?.type || "").toString().toUpperCase().includes("PIPE");
+        const compLabel = isPipeline ? "Component:" : "Component QID:";
         const compVal = record.component_qid || "";
         let elevVal = "";
         let elevLabel = "Elevation:";
@@ -532,7 +534,7 @@ export const generateDefectAnomalyReport = async (
                 ],
                 [
                     { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
-                    { content: "Component:", styles: headStylesString }, { content: compVal }
+                    { content: compLabel, styles: headStylesString }, { content: compVal || "N/A" }
                 ],
                 [
                     { content: elevLabel, styles: headStylesString }, { content: elevVal },
@@ -574,16 +576,63 @@ export const generateDefectAnomalyReport = async (
         const defectTitle = anomalyDetails.defect_type || anomalyDetails.defect_type_code || "VARIATION TO SPECIFICATION";
 
         // 2. Centralized Inspection Findings
-        const findings = record.observations || "";
+        const findings = (record.observations || "").toString().trim();
 
-        // 3. Remarks (Original Defect Description) - for legacy records
-        const defectDesc = anomalyDetails.description ? `Legacy Anomaly Description: ${anomalyDetails.description}` : "";
+        // 3. Remarks (Defect Description) - without Legacy
+        const rawDesc = (anomalyDetails.description || "").toString().trim();
+        const defectDesc = rawDesc
+            ? (findings && findings !== rawDesc ? `Anomaly Description: ${rawDesc}` : rawDesc)
+            : "";
 
-        // 4. Rectified Remarks (if any)
-        const rectRemarks = anomalyDetails.rectified_remarks ? `Rectified Remarks: ${anomalyDetails.rectified_remarks}` : "";
+        // 4. Primary CP & Additional CP readings
+        const d = (typeof record.inspection_data === "string" ? JSON.parse(record.inspection_data) : record.inspection_data) || {};
+        const primaryCp = record.cp_reading ?? record.cp_rdg ?? record.cp_reading_mv ?? record.cp ?? d.cp_reading ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_val ?? "";
 
-        // Combine: Findings -> Legacy Description -> Rectified Remarks
-        const fullText = [findings, defectDesc, rectRemarks].filter(Boolean).join("\n\n");
+        const cpLines: string[] = [];
+        if (primaryCp !== "" && primaryCp !== null && primaryCp !== undefined && String(primaryCp).trim() !== "" && String(primaryCp).trim() !== "-") {
+            const valStr = String(primaryCp).trim();
+            const cpUnit = valStr.toLowerCase().includes("mv") ? "" : " mV";
+            cpLines.push(`CP Reading: ${valStr}${cpUnit}`);
+        }
+
+        const rawAddCp = d.cp_rdg_additional ?? d.cp_additional ?? d.cp_readings ?? d.additional_cp ?? record.cp_rdg_additional ?? record.cp_additional ?? record.cp_readings ?? record.additional_cp;
+        if (Array.isArray(rawAddCp)) {
+            rawAddCp.forEach((item: any, idx: number) => {
+                if (item === null || item === undefined) return;
+                if (typeof item === "object") {
+                    const val = item.reading ?? item.cp_rdg ?? item.value ?? item.cp ?? "";
+                    if (val !== "" && val !== null && val !== undefined && String(val).trim() !== "" && String(val).trim() !== "-") {
+                        const cpUnit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                        const loc = item.location || item.position ? ` (${item.location || item.position})` : (rawAddCp.length > 1 ? ` #${idx + 1}` : "");
+                        cpLines.push(`Additional CP${loc}: ${String(val).trim()}${cpUnit}`);
+                    }
+                } else if (String(item).trim() !== "" && String(item).trim() !== "-") {
+                    const cpUnit = String(item).toLowerCase().includes("mv") ? "" : " mV";
+                    const num = rawAddCp.length > 1 ? ` #${idx + 1}` : "";
+                    cpLines.push(`Additional CP${num}: ${String(item).trim()}${cpUnit}`);
+                }
+            });
+        } else if (rawAddCp && typeof rawAddCp === "object") {
+            const val = rawAddCp.reading ?? rawAddCp.cp_rdg ?? rawAddCp.value ?? "";
+            if (val !== "" && val !== null && String(val).trim() !== "" && String(val).trim() !== "-") {
+                const cpUnit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                const loc = rawAddCp.location || rawAddCp.position ? ` (${rawAddCp.location || rawAddCp.position})` : "";
+                cpLines.push(`Additional CP${loc}: ${String(val).trim()}${cpUnit}`);
+            }
+        } else if (rawAddCp && String(rawAddCp).trim() !== "" && String(rawAddCp).trim() !== "-") {
+            const cpUnit = String(rawAddCp).toLowerCase().includes("mv") ? "" : " mV";
+            cpLines.push(`Additional CP: ${String(rawAddCp).trim()}${cpUnit}`);
+        }
+
+        const cpBlock = cpLines.length > 0 ? cpLines.join("\n") : "";
+
+        // 5. Rectified Remarks (if any)
+        const rectRemarks = (anomalyDetails.rectified_remarks || (isRectified ? record.rectified_remarks : ""))
+            ? `Rectified Remarks: ${anomalyDetails.rectified_remarks || record.rectified_remarks}`
+            : "";
+
+        // Combine: Findings -> Anomaly Description -> CP Readings -> Rectified Remarks
+        const fullText = [findings, defectDesc, cpBlock, rectRemarks].filter(Boolean).join("\n\n");
 
         // Set font BEFORE splitTextToSize so width calculation matches rendering
         const descFontSize = 8;

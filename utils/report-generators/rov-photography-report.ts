@@ -290,12 +290,11 @@ export const generateROVPhotographyReport = async (
 
             // Footer
             d.setDrawColor(...colors.border); d.setLineWidth(0.1);
-            d.line(margin, pageHeight - 12, pageWidth - margin, pageHeight - 12);
-            d.setFontSize(7); d.setFont("helvetica", "normal"); d.setTextColor(100);
-            d.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 8);
+            d.line(margin, pageHeight - 9, pageWidth - margin, pageHeight - 9);
+            d.setFontSize(6.5); d.setFont("helvetica", "normal"); d.setTextColor(30, 41, 59);
+            d.text(REPORT_FOOTER_APP_TEXT, margin, pageHeight - 6);
             if (config.showPageNumbers !== false) {
-                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth / 2, pageHeight - 8, { align: "center" });
-                d.text(format(new Date(), "dd MMM yyyy HH:mm"), pageWidth - margin, pageHeight - 8, { align: "right" });
+                d.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 6, { align: "right" });
             }
         };
 
@@ -304,8 +303,8 @@ export const generateROVPhotographyReport = async (
         
         const imgGap = 6;
         const imgWidth = (contentWidth - imgGap) / 2;
-        const imgHeight = 65;
-        const rowHeight = imgHeight + 18; // 5 for title, 8 for description gap
+        const imgHeight = 52;
+        const rowHeight = 68; // 3.5 for title, 52 for image, 12.5 for description and padding
         
         let currentPhotoIdx = 0;
 
@@ -314,7 +313,7 @@ export const generateROVPhotographyReport = async (
             
             drawHeaderFooter(doc, p, totalPages);
             
-            const yPos = margin + HEADER_H + 15;
+            const yPos = margin + HEADER_H + 11;
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
                 if (currentPhotoIdx >= resolvedPhotos.length) break;
@@ -333,9 +332,9 @@ export const generateROVPhotographyReport = async (
                 }
                 
                 const title = (meta.title || photo.name || photo.file_name || `Photo ${currentPhotoIdx + 1}`).toUpperCase();
-                doc.setFontSize(7.5); doc.setFont("helvetica", "bold");
+                doc.setFontSize(7); doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
-                doc.text(title, xPos + imgWidth / 2, currentY - 2, { align: "center", maxWidth: imgWidth });
+                doc.text(title, xPos + imgWidth / 2, currentY - 1.5, { align: "center", maxWidth: imgWidth });
 
                 // 2. Image Loading & Rendering
                 try {
@@ -411,10 +410,10 @@ export const generateROVPhotographyReport = async (
                 }
                 
                 if (description) {
-                    doc.setFontSize(7); doc.setFont("helvetica", "normal");
-                    doc.setTextColor(60);
+                    doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
+                    doc.setTextColor(60, 60, 60);
                     const splitDesc = doc.splitTextToSize(description, imgWidth);
-                    doc.text(splitDesc, xPos + imgWidth / 2, currentY + imgHeight + 4, { align: "center" });
+                    doc.text(splitDesc, xPos + imgWidth / 2, currentY + imgHeight + 3.5, { align: "center" });
                 }
 
                 currentPhotoIdx++;
@@ -426,7 +425,7 @@ export const generateROVPhotographyReport = async (
             const lastPage = doc.internal.pages.length - 1;
             doc.setPage(lastPage);
             
-            const sigY = pageHeight - 35;
+            const sigY = pageHeight - 27;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);

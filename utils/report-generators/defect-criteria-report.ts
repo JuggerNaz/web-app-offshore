@@ -5,16 +5,15 @@ import autoTablePlugin from "jspdf-autotable";
 import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface ReportConfig {
+    sowReportNo?: string;
     reportNoPrefix?: string;
-    reportYear: string;
-    preparedBy: { name: string; date: string 
+    reportYear?: string;
+    preparedBy?: { name: string; date: string };
+    reviewedBy?: { name: string; date: string };
     approvedBy?: { name: string; date: string };
-    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };};
-    reviewedBy: { name: string; date: string };
-    approvedBy: { name: string; date: string };
-    watermark: { enabled: boolean; text: string; transparency: number };
-    showContractorLogo: boolean;
-    showPageNumbers: boolean;
+    watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
+    showContractorLogo?: boolean;
+    showPageNumbers?: boolean;
     returnBlob?: boolean;
     printFriendly?: boolean;
     procedureId?: string;
@@ -57,14 +56,24 @@ export const generateDefectCriteriaReport = async (
         try {
             const procRes = await fetch('/api/defect-criteria/procedures');
             if (procRes.ok) {
-                procedures = await procRes.json();
+                const allProcs: any[] = await procRes.json();
+
+                // If specific procedure selected by user in config, use that
+                if (config?.procedureId && config.procedureId !== "ALL") {
+                    procedures = allProcs.filter(p => p.id === config.procedureId);
+                } else {
+                    // Only print the active procedure(s)
+                    const activeProcs = allProcs.filter(p => String(p.status || "").trim().toLowerCase() === "active");
+                    if (activeProcs.length > 0) {
+                        procedures = activeProcs;
+                    } else {
+                        // Fallback to first/latest procedure if none explicitly marked active
+                        procedures = allProcs.slice(0, 1);
+                    }
+                }
+
                 // Sort latest first
                 procedures.sort((a, b) => new Date(b.effectiveDate).getTime() - new Date(a.effectiveDate).getTime());
-
-                // Filter if specific procedure selected
-                if (config?.procedureId && config.procedureId !== "ALL") {
-                    procedures = procedures.filter(p => p.id === config.procedureId);
-                }
             }
         } catch (e) {
             console.error("Error fetching procedures", e);
@@ -123,7 +132,7 @@ export const generateDefectCriteriaReport = async (
             if (companySettings?.logo_url) {
                 try {
                     const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
+                    drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
                 } catch (e) {
                     // fallback text
                     doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
@@ -147,26 +156,36 @@ export const generateDefectCriteriaReport = async (
             doc.setFontSize(11);
             doc.setFont("helvetica", "bold");
             doc.text("Defect Criteria Specification Report", pageWidth / 2, 17.5, { align: "center" });
+
+            // Report No - Centered below Report Title
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
+            const repNoTrimmed = rawReportNo.toString().trim();
+            if (repNoTrimmed && repNoTrimmed !== "N/A") {
+                const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
+                doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
+            } else {
+                doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
+            }
         };
 
         const addFooter = (pageNum: number, pageCount: number) => {
-            const footerY = pageHeight - 10;
-            doc.setDrawColor(200, 200, 200);
-            doc.setLineWidth(0.1);
-            doc.line(10, footerY - 5, pageWidth - 10, footerY - 5);
+            doc.setDrawColor(203, 213, 225);
+            doc.setLineWidth(0.2);
+            doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
 
-            doc.setFontSize(8);
-            doc.setTextColor(100, 100, 100);
+            doc.setFontSize(6.5);
+            doc.setTextColor(30, 41, 59);
             doc.setFont("helvetica", "normal");
 
             // System Name
-            doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
-
-            // Version / Date
-            doc.text(`Generated: ${new Date().toLocaleDateString()}`, pageWidth / 2, footerY, { align: "center" });
+            doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
 
             // Page Number
-            doc.text(`Page ${pageNum} of ${pageCount}`, pageWidth - 10, footerY, { align: "right" });
+            if (config?.showPageNumbers !== false) {
+                doc.text(`Page ${pageNum} of ${pageCount}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+            }
         };
 
         // We'll use autoTable for the content
@@ -376,7 +395,7 @@ export const generateDefectCriteriaReport = async (
             }
             const contentWidth = pageWidth - 20;
             const sigW = contentWidth / 3;
-            const drawSig = (label: string, name: string, date: string, lx: number) => {
+            const drawSig = (label: string, name?: string, date?: string, lx: number = 10) => {
                 doc.setDrawColor(7, 78, 136); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 2, 18);
                 if (!isPrintFriendly) {

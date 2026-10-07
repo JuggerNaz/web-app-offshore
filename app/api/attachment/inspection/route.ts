@@ -22,11 +22,20 @@ export async function GET(request: NextRequest) {
 
   const structureId = Number(platform_id);
 
+  const chunkArray = <T>(arr: T[], size = 300): T[][] => {
+    const chunks: T[][] = [];
+    for (let i = 0; i < arr.length; i += size) {
+      chunks.push(arr.slice(i, i + size));
+    }
+    return chunks;
+  };
+
   // 1. Get all component IDs belonging to this platform/structure
   const { data: components, error: compError } = await supabase
     .from("structure_components")
     .select("id, q_id, code")
-    .eq("structure_id", structureId);
+    .eq("structure_id", structureId)
+    .limit(10000);
 
   if (compError) {
     return handleSupabaseError(compError, "Failed to fetch structure components");
@@ -35,8 +44,10 @@ export async function GET(request: NextRequest) {
   const componentIds = (components || []).map((c: any) => c.id);
   const componentMap = new Map<number, any>((components || []).map((c: any) => [c.id, c]));
 
-  // 2. Get all insp_records for these components OR directly by structure_id
-  const { data: inspRecords, error: inspError } = await (supabase as any)
+  // 2. Get all insp_records directly by structure_id
+  const allInspRecordMap = new Map<number, any>();
+
+  const { data: directInsps, error: inspError } = await (supabase as any)
     .from("insp_records")
     .select(
       `
@@ -55,51 +66,50 @@ export async function GET(request: NextRequest) {
       inspection_type!left(id, code, name)
     `
     )
-    .or(
-      `structure_id.eq.${structureId},component_id.in.(${componentIds.length > 0 ? componentIds.join(",") : "0"})`
-    )
-    .order("inspection_date", { ascending: false });
+    .eq("structure_id", structureId)
+    .order("inspection_date", { ascending: false })
+    .limit(10000);
 
   if (inspError) {
-    console.error("Failed to fetch inspection records:", inspError);
-    // Fall back to component-based lookup if structure_id column doesn't exist
+    console.error("Failed to fetch direct inspection records:", inspError);
+  } else {
+    (directInsps || []).forEach((r: any) => allInspRecordMap.set(r.insp_id, r));
   }
 
-  // Also try component-based lookup in case structure_id isn't set
-  let componentInspRecords: any[] = [];
+  // Also fetch component-linked insp_records in chunks
   if (componentIds.length > 0) {
-    const { data: compRecords } = await (supabase as any)
-      .from("insp_records")
-      .select(
+    for (const chunk of chunkArray(componentIds)) {
+      const { data: compRecords } = await (supabase as any)
+        .from("insp_records")
+        .select(
+          `
+          insp_id,
+          component_id,
+          structure_id,
+          inspection_date,
+          inspection_time,
+          inspection_type_code,
+          status,
+          has_anomaly,
+          sow_report_no,
+          jobpack_id,
+          rov_job_id,
+          dive_job_id,
+          inspection_type!left(id, code, name)
         `
-        insp_id,
-        component_id,
-        structure_id,
-        inspection_date,
-        inspection_time,
-        inspection_type_code,
-        status,
-        has_anomaly,
-        sow_report_no,
-        jobpack_id,
-        rov_job_id,
-        dive_job_id,
-        inspection_type!left(id, code, name)
-      `
-      )
-      .in("component_id", componentIds)
-      .order("inspection_date", { ascending: false });
+        )
+        .in("component_id", chunk)
+        .order("inspection_date", { ascending: false })
+        .limit(10000);
 
-    componentInspRecords = compRecords || [];
+      (compRecords || []).forEach((r: any) => {
+        if (!allInspRecordMap.has(r.insp_id)) {
+          allInspRecordMap.set(r.insp_id, r);
+        }
+      });
+    }
   }
 
-  // Merge and deduplicate inspection records
-  const allInspRecordMap = new Map<number, any>();
-  [...(inspRecords || []), ...componentInspRecords].forEach((r) => {
-    if (!allInspRecordMap.has(r.insp_id)) {
-      allInspRecordMap.set(r.insp_id, r);
-    }
-  });
   const allInspRecords = Array.from(allInspRecordMap.values());
 
   if (allInspRecords.length === 0) {
@@ -107,52 +117,66 @@ export async function GET(request: NextRequest) {
   }
 
   const inspIds = allInspRecords.map((r) => r.insp_id);
-
-  // 3. Build inspection record lookup map (moved up for anomaly mapping)
   const inspMap = new Map<number, any>(allInspRecords.map((r) => [r.insp_id, r]));
 
-  // 3. Get all anomalies for these inspection records to include their attachments
-  const { data: anomalies } = await (supabase as any)
-    .from("insp_anomalies")
-    .select("anomaly_id, insp_id, anomaly_ref_no")
-    .in("insp_id", inspIds);
-
-  const anomalyIds = (anomalies || []).map((a: any) => a.anomaly_id).filter(Boolean);
-
-  // Map anomaly ID to its parent inspection record for enrichment later
+  // 3. Get all anomalies for these inspection records in chunks
+  const anomalyIds: number[] = [];
   const anomalyToInspMap = new Map<number, any>();
   const anomalyRefMap = new Map<number, string>();
-  (anomalies || []).forEach((a: any) => {
-    if (a.anomaly_id) {
-      anomalyToInspMap.set(a.anomaly_id, inspMap.get(a.insp_id));
-      if (a.anomaly_ref_no) anomalyRefMap.set(a.anomaly_id, a.anomaly_ref_no);
+
+  for (const chunk of chunkArray(inspIds)) {
+    const { data: anomalies } = await (supabase as any)
+      .from("insp_anomalies")
+      .select("anomaly_id, insp_id, anomaly_ref_no")
+      .in("insp_id", chunk)
+      .limit(10000);
+
+    (anomalies || []).forEach((a: any) => {
+      if (a.anomaly_id) {
+        anomalyIds.push(a.anomaly_id);
+        anomalyToInspMap.set(a.anomaly_id, inspMap.get(a.insp_id));
+        if (a.anomaly_ref_no) anomalyRefMap.set(a.anomaly_id, a.anomaly_ref_no);
+      }
+    });
+  }
+
+  // 4. Fetch attachments in chunks
+  const combinedAttList: any[] = [];
+  const fetchedAttIds = new Set<string | number>();
+
+  const allSourceIds = [...inspIds, ...anomalyIds];
+  for (const chunk of chunkArray(allSourceIds)) {
+    const { data: attachments, error: attError } = await supabase
+      .from("attachment")
+      .select("*")
+      .in("source_id", chunk)
+      .limit(10000);
+
+    if (!attError && attachments) {
+      attachments.forEach((a: any) => {
+        if (!fetchedAttIds.has(a.id)) {
+          fetchedAttIds.add(a.id);
+          combinedAttList.push(a);
+        }
+      });
     }
-  });
-
-  // 4. Get all attachments for these inspection records AND anomalies
-  // We use a more robust query that handles potential case sensitivity in source_type
-  const { data: attachments, error: attError } = await supabase
-    .from("attachment")
-    .select("*")
-    .or(
-      `and(source_type.ilike.inspection,source_id.in.(${inspIds.join(",")})),and(source_type.ilike.anomaly,source_id.in.(${anomalyIds.length > 0 ? anomalyIds.join(",") : "0"}))`
-    );
-
-  if (attError) {
-    return handleSupabaseError(attError, "Failed to fetch inspection attachments");
   }
 
-  // 5. Also fetch from insp_media (captured during inspection recording)
-  const { data: inspMedia, error: mediaError } = await (supabase as any)
-    .from("insp_media")
-    .select("*")
-    .in("inspection_id", inspIds);
+  // 5. Also fetch from insp_media in chunks
+  const inspMediaList: any[] = [];
+  for (const chunk of chunkArray(inspIds)) {
+    const { data: inspMedia, error: mediaError } = await (supabase as any)
+      .from("insp_media")
+      .select("*")
+      .in("inspection_id", chunk)
+      .limit(10000);
 
-  if (mediaError) {
-    console.error("Failed to fetch insp_media:", mediaError);
+    if (!mediaError && inspMedia) {
+      inspMedia.forEach((m: any) => inspMediaList.push(m));
+    }
   }
 
-  const normalizedMedia = (inspMedia || []).map((m: any) => ({
+  const normalizedMedia = inspMediaList.map((m: any) => ({
     id: `m-${m.media_id}`,
     name: m.file_name || `Snapshot ${m.media_id}`,
     path: m.file_path,
@@ -170,7 +194,7 @@ export async function GET(request: NextRequest) {
     },
   }));
 
-  const combinedAttachments = [...(attachments || []), ...normalizedMedia];
+  const combinedAttachments = [...combinedAttList, ...normalizedMedia];
 
   if (combinedAttachments.length === 0) {
     return apiSuccess([]);

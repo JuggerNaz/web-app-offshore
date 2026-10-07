@@ -109,6 +109,35 @@ export async function GET(request: NextRequest) {
         }
 
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
+        
+        // Enrich missing tape_no and inspection_data from insp_records & insp_video_tapes
+        const allInspIds = Array.from(new Set(anomalies.map((a: any) => a.id || a.insp_id).filter(Boolean)));
+        if (allInspIds.length > 0) {
+            try {
+                const { data: recData } = await (supabase as any)
+                    .from("insp_records")
+                    .select("insp_id, tape_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
+                    .in("insp_id", allInspIds);
+                if (recData && recData.length > 0) {
+                    const recMap = new Map<number, any>();
+                    recData.forEach((rt: any) => recMap.set(Number(rt.insp_id), rt));
+                    anomalies.forEach((a: any) => {
+                        const iId = Number(a.id || a.insp_id);
+                        const match = recMap.get(iId);
+                        if (match) {
+                            if (!a.tape_no && match.insp_video_tapes?.tape_no) {
+                                a.tape_no = match.insp_video_tapes.tape_no;
+                            }
+                            if (!a.inspection_data && match.inspection_data) {
+                                a.inspection_data = match.inspection_data;
+                            }
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_records:", err);
+            }
+        }
 
         // 2. Fetch Attachments (Both Inspection and Anomaly level)
         const inspIds = Array.from(new Set(anomalies.map((a: any) => a.id ?? a.insp_id).filter(Boolean)));

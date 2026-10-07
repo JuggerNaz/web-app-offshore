@@ -92,7 +92,7 @@ export const generateAdvancedStructureReport = async (
     addWatermark();
 
     // Header (Simplified for demo)
-    doc.setFillColor(26, 54, 93);
+    doc.setFillColor(7, 78, 136);
     doc.rect(0, 0, pageWidth, 28, "F");
 
     doc.setTextColor(255, 255, 255);

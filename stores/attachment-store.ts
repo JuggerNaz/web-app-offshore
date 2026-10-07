@@ -8,6 +8,12 @@ export interface AttachmentFilters {
     hasAttachmentsOnly?: boolean; // Added for Tree View
 }
 
+/** Optional preset target when adding a new attachment (user can still change it). */
+export interface AttachmentAddPreset {
+    sourceType: 'platform' | 'component' | 'inspection';
+    sourceId: number;
+}
+
 export interface AttachmentStore {
     // Filter State
     filters: AttachmentFilters;
@@ -25,7 +31,8 @@ export interface AttachmentStore {
     // UI State
     isSlideOverOpen: boolean;
     activeAttachment: Attachment | null;
-    openSlideOver: (attachment: Attachment | null) => void; // null for add new? or specific add mode
+    addPreset: AttachmentAddPreset | null;
+    openSlideOver: (attachment: Attachment | null, preset?: AttachmentAddPreset | null) => void; // null attachment = add new
     closeSlideOver: () => void;
 
     // Tree View State
@@ -82,8 +89,9 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
     // UI State
     isSlideOverOpen: false,
     activeAttachment: null,
-    openSlideOver: (attachment: Attachment | null) => set({ isSlideOverOpen: true, activeAttachment: attachment }),
-    closeSlideOver: () => set({ isSlideOverOpen: false, activeAttachment: null }),
+    addPreset: null,
+    openSlideOver: (attachment: Attachment | null, preset: AttachmentAddPreset | null = null) => set({ isSlideOverOpen: true, activeAttachment: attachment, addPreset: preset }),
+    closeSlideOver: () => set({ isSlideOverOpen: false, activeAttachment: null, addPreset: null }),
 
     // Tree View State
     selectedPlatformId: null,
@@ -95,14 +103,14 @@ export const useAttachmentStore = create<AttachmentStore>((set) => ({
         set({ isDeleting: true });
         try {
             const { fetcher } = await import("@/utils/utils");
-            const { mutate } = await import("swr");
+            const { refreshAttachmentCaches } = await import("@/utils/attachment-sync");
             const { toast } = await import("sonner");
 
-            await Promise.all(ids.map((id: number) => fetcher(`/api/attachment/${id}`, { method: 'DELETE' })));
+            await Promise.all(ids.map((id: number) => fetcher(`/api/attachment?id=${id}`, { method: 'DELETE' })));
 
             toast.success(`Successfully deleted ${ids.length} attachments`);
             set({ selectedItems: new Set() });
-            mutate('/api/attachment');
+            refreshAttachmentCaches();
         } catch (error) {
             console.error("Failed to delete attachments", error);
             const { toast } = await import("sonner");

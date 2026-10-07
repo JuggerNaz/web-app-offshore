@@ -53,6 +53,7 @@ import { AttachmentEditorDialog } from "./AttachmentEditorDialog";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 import { getReportHeaderData } from "@/utils/company-settings";
+import { checkTapeDuplicate } from "../utils/tape-validation";
 import { generateROVRSCORReport } from "@/utils/report-generators/rov-rscor-report";
 import { generateROVRSCORV2Report } from "@/utils/report-generators/rov-rscor-v2-report";
 import { generateROVAnodeReport } from "@/utils/report-generators/rov-anode-report";
@@ -1064,7 +1065,7 @@ export function WorkspaceDialogs({
 
             {isMovementLogOpen && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm overflow-auto py-10">
-                    <div className="bg-white dark:bg-slate-950 rounded-lg w-[800px] shadow-2xl animate-in zoom-in-95 my-auto shrink-0 relative border border-slate-200 dark:border-slate-800">
+                    <div className="bg-white dark:bg-slate-950 rounded-xl w-[920px] max-w-[96vw] shadow-2xl animate-in zoom-in-95 my-auto shrink-0 relative border border-slate-200 dark:border-slate-800">
                         <div className="flex justify-between items-center px-6 py-4 border-b border-slate-100 dark:border-slate-800 pb-4">
                             <h2 className="font-bold text-lg text-slate-800 dark:text-white flex items-center gap-2">
                                 <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" /> {inspMethod === "DIVING" ? "Dive Movements & Checklists" : "ROV Movements & Log"}
@@ -1286,7 +1287,24 @@ export function WorkspaceDialogs({
                                 const cleanTapeNo = (newTapeNo || "").replace(/\s+/g, "").toUpperCase();
                                 if (!cleanTapeNo) { toast.error("Tape number is required"); return; }
                                 if (!activeDep?.id) { toast.error("No active deployment selected"); return; }
+                                const targetChapter = parseInt(newTapeChapter) || 1;
+
                                 try {
+                                    // Check for duplicate Tape No and Chapter No under this structure / jobpack
+                                    const dupCheck = await checkTapeDuplicate(supabase, {
+                                        tapeNo: cleanTapeNo,
+                                        chapterNo: targetChapter,
+                                        jobPackId,
+                                        structureId,
+                                        activeDepId: activeDep?.id,
+                                        inspMethod,
+                                    });
+
+                                    if (dupCheck.isDuplicate) {
+                                        toast.error(dupCheck.message || `Tape "${cleanTapeNo}" with Chapter ${targetChapter} already exists in this Structure / Job Pack.`);
+                                        return;
+                                    }
+
                                     const { data: { user } } = await supabase.auth.getUser();
                                     const depCol = inspMethod === "DIVING" ? 'dive_job_id' : 'rov_job_id';
                                     const payload: any = {
@@ -1294,7 +1312,7 @@ export function WorkspaceDialogs({
                                         status: 'ACTIVE',
                                         tape_type: 'DIGITAL - PRIMARY',
                                         cr_user: user?.id || 'system',
-                                        chapter_no: parseInt(newTapeChapter) || 1,
+                                        chapter_no: targetChapter,
                                         remarks: newTapeRemarks || null,
                                         [depCol]: Number(activeDep.id),
                                     };

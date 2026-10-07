@@ -91,11 +91,16 @@ export const processAttachmentUrl = (
     }
   }
 
-  // If path looks like a filename (no http/https), construct the proper URL
-  if (fileUrl && !isCompleteUrl(fileUrl)) {
+  // If we have an ID, route through URL proxy which handles both Supabase & multi-cloud (Backblaze/S3)
+  if (attachment.id) {
+    const pathParam = fileUrl ? `&path=${encodeURIComponent(fileUrl)}` : '';
+    fileUrl = `/api/attachment/url?id=${encodeURIComponent(attachment.id)}${pathParam}`;
+  } else if (fileUrl && (fileUrl.includes("backblazeb2.com") || fileUrl.includes("amazonaws.com"))) {
+    fileUrl = `/api/attachment/download?path=${encodeURIComponent(fileUrl)}`;
+  } else if (fileUrl && !isCompleteUrl(fileUrl)) {
     // Determine bucket from meta or default to "attachments"
     const bucket = (attachment.meta && (attachment.meta as any).bucket) || "attachments";
-    fileUrl = getStoragePublicUrl(bucket, fileUrl);
+    fileUrl = `/api/attachment/download?path=${encodeURIComponent(fileUrl)}&bucket=${bucket}`;
   }
 
   return { fileUrl, fileName, isImage, fileType };

@@ -855,7 +855,12 @@ export function InspectionSummaryPanel({
     if (!open) return;
     fetchSummary();
     setActiveSection("all");
-    intervalRef.current = setInterval(fetchSummary, 30000); // refresh every 30s
+    // Skip ticks while the tab is hidden; the 30s poll hits a heavy
+    // aggregation endpoint that background tabs don't need.
+    intervalRef.current = setInterval(() => {
+      if (document.hidden) return;
+      fetchSummary();
+    }, 30000); // refresh every 30s while visible
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
     };

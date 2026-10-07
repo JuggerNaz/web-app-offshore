@@ -1,55 +1,20 @@
 import jsPDF from "jspdf";
 import autoTablePlugin from "jspdf-autotable";
+import {
+  loadLogoWithTransparency,
+  drawLogo as drawSharedLogo,
+  applyWatermarkAndSignaturesGlobal,
+  REPORT_FOOTER_APP_TEXT,
+  formatPdfDate
+} from "./report-generators/shared-logo";
 
-// Helper to load image for PDF
-const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
-  return new Promise((resolve) => {
-    if (!url || typeof url !== 'string' || !url.trim()) {
-      resolve(null);
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    const timeout = setTimeout(() => {
-      console.warn(`Logo loading timed out (3s limit) in pdf-generator for URL: ${url}`);
-      img.onload = null;
-      img.onerror = null;
-      resolve(null);
-    }, 3000);
-    img.onload = () => {
-      clearTimeout(timeout);
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
-      } else {
-        resolve(null);
-      }
-    };
-    img.onerror = () => {
-      clearTimeout(timeout);
-      console.warn(`Logo loading failed in pdf-generator for URL: ${url}`);
-      resolve(null);
-    };
-    img.src = url;
-  });
+// Helper to load image for PDF with transparency support
+const loadLogo = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+  return await loadLogoWithTransparency(url);
 };
 
 const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
-    const w = logo.width * ratio;
-    const h = logo.height * ratio;
-    let dx = x;
-    let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
-    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
+  drawSharedLogo(doc, logo, maxW, maxH, x, y, alignX, alignY);
 };
 
 const getPublicStorageUrl = (pathOrUrl: string): string => {
@@ -141,6 +106,22 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   throw new Error(`Failed to load image from URL: ${url}`);
 };
 
+// Helper to format dates cleanly for reports
+const formatDisplayDate = (val?: string | null): string => {
+  if (!val) return "N/A";
+  const str = String(val).trim();
+  if (!str) return "N/A";
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) return str;
+  const d = new Date(str.includes("T") ? str : `${str}T00:00:00`);
+  if (!isNaN(d.getTime())) {
+    const day = String(d.getDate()).padStart(2, '0');
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const year = d.getFullYear();
+    return `${day}/${month}/${year}`;
+  }
+  return str.split("T")[0];
+};
+
 interface StructureData {
   str_id: string | number;
   str_name: string;
@@ -150,36 +131,58 @@ interface StructureData {
   photos?: Array<{ id: number; url: string; name: string }>;
   title?: string;
   description?: string;
+  pdesc?: string;
   pfield?: string;
-  depth?: number;
-  desg_life?: number;
+  depth?: number | string;
+  desg_life?: number | string;
   inst_date?: string;
-  northing?: number;
-  easting?: number;
-  true_north_angle?: number;
+  northing?: number | string;
+  easting?: number | string;
+  st_north?: number | string;
+  st_east?: number | string;
+  true_north_angle?: number | string;
+  north_angle?: number | string;
   platform_north_side?: string;
+  nleg_t1?: string;
+  nleg_t2?: string;
   ptype?: string;
   function?: string;
+  process?: string;
   material?: string;
   cp_system?: string;
   corr_ctg?: string;
   inst_contractor?: string;
-  max_leg_dia?: number;
-  max_wall_thk?: number;
-  helipad?: string;
-  manned?: string;
+  inst_ctr?: string;
+  max_leg_dia?: number | string;
+  dleg?: number | string;
+  max_wall_thk?: number | string;
+  wall_thk?: number | string;
+  helipad?: string | boolean;
+  manned?: string | boolean;
   // Extended inventory fields
   conductors?: number;
+  conduct?: number;
   internal_piles?: number;
-  slots?: string;
+  pileint?: number;
+  slots?: string | number;
+  cslot?: string | number;
+  cslota?: string | number;
   fenders?: number;
+  fender?: number;
   risers?: number;
+  riser?: number;
   sumps?: number;
+  sump?: number;
   skirt_piles?: number;
+  pileskt?: number;
   caissons?: number;
+  caisson?: number;
   anodes?: number;
+  an_qty?: number;
   cranes?: number;
+  crane?: number;
   unit_system?: string;
+  def_unit?: string;
   levels?: any[];
   legs?: any[];
   elevations?: any[];
@@ -213,6 +216,128 @@ export interface ReportConfig {
   printFriendly?: boolean;
   showSignatures?: boolean;
 }
+
+interface Draw3SectionHeaderOptions {
+  pageWidth: number;
+  companySettings?: CompanySettings;
+  config?: ReportConfig;
+  reportTitle: string;
+  reportNo?: string;
+  structureName?: string;
+  isPrintFriendly?: boolean;
+  headerBlue?: [number, number, number];
+}
+
+const draw3SectionHeader = async (
+  doc: any,
+  options: Draw3SectionHeaderOptions
+) => {
+  const {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle,
+    reportNo,
+    structureName,
+    isPrintFriendly = false,
+    headerBlue = [7, 78, 136],
+  } = options;
+
+  const headerMargin = 10;
+  const headerY = 7;
+  const headerH = 25;
+  const col1W = 55; // Left: Contractor
+  const col2W = 80; // Middle: Report Title
+  const col3W = 55; // Right: Client
+  const x1 = headerMargin;
+  const x2 = x1 + col1W;
+  const x3 = x2 + col2W;
+
+  const headerBorderColor: [number, number, number] = [200, 200, 200];
+  const headerLineWidth = 0.2;
+  const titleTextColor: [number, number, number] = isPrintFriendly ? [7, 78, 136] : [255, 255, 255];
+  const titleSubTextColor: [number, number, number] = isPrintFriendly ? [51, 65, 85] : [219, 234, 254];
+
+  // Resolve Contractor Logo
+  const contractorLogoUrl = config?.contractorLogoUrl || (config as any)?.contractorLogo;
+  let contractorLogoData: any = null;
+  if (config?.showContractorLogo !== false && contractorLogoUrl) {
+    try {
+      contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
+    } catch (err) {
+      console.warn("Error loading contractor logo in structure report:", err);
+    }
+  }
+
+  // Resolve Client Logo
+  let clientLogoData: any = null;
+  if (companySettings?.logo_url) {
+    try {
+      clientLogoData = await loadLogoWithTransparency(companySettings.logo_url);
+    } catch (err) {
+      console.warn("Error loading company logo in structure report:", err);
+    }
+  }
+
+  // --- 1. LEFT BOX: CONTRACTOR (White Background + Border) ---
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x1, headerY, col1W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x1, headerY, col1W, headerH, "S");
+
+  if (contractorLogoData) {
+    drawLogo(doc, contractorLogoData, 48, 20, x1 + (col1W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
+  }
+
+  // --- 2. MIDDLE BOX: REPORT TITLE (Navy/White + Border) ---
+  if (isPrintFriendly) {
+    doc.setFillColor(255, 255, 255);
+  } else {
+    doc.setFillColor(...headerBlue);
+  }
+  doc.rect(x2, headerY, col2W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x2, headerY, col2W, headerH, "S");
+
+  const titleCenterX = x2 + col2W / 2;
+  doc.setFontSize(10.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...titleTextColor);
+  doc.text(reportTitle.toUpperCase(), titleCenterX, headerY + 8, { align: "center" });
+
+  const reportNoStr = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  if (reportNoStr) {
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...titleSubTextColor);
+    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 14, { align: "center" });
+  }
+
+  if (structureName) {
+    doc.setFontSize(7.5);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...titleTextColor);
+    const structLines = doc.splitTextToSize(structureName, col2W - 8);
+    doc.text(structLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+  }
+
+  // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
+  doc.setFillColor(255, 255, 255);
+  doc.rect(x3, headerY, col3W, headerH, "F");
+  doc.setDrawColor(...headerBorderColor);
+  doc.setLineWidth(headerLineWidth);
+  doc.rect(x3, headerY, col3W, headerH, "S");
+
+  if (clientLogoData) {
+    drawLogo(doc, clientLogoData, 48, 20, x3 + (col3W - 48) / 2, headerY + (headerH - 20) / 2, 'center', 'center');
+  }
+
+  doc.setTextColor(0, 0, 0);
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.2);
+};
 
 export const generateStructureReport = async (
   structure: StructureData,
@@ -248,67 +373,24 @@ const generatePipelineReport = async (
 
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  // Used by the print-friendly footer below (kept from dev-jitesh)
+  const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER WITH LOGO =====
-  if (isPrintFriendly) {
-    // Print-Friendly: White background with light gray border
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(0, 0, pageWidth, 28);
-  } else {
-    doc.setFillColor(...headerBlue);
-    doc.rect(0, 0, pageWidth, 28, "F");
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Pipeline Specifications Report",
+    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    isPrintFriendly,
+    headerBlue,
+  });
 
-  // Logo area (right side)
-  if (companySettings?.logo_url) {
-    try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    }
-  }
-
-  // Company Name - SAME size as Report Title (centered)
-  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
-
-  // Department Name (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Pipeline Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No - Centered below Report Title
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
-  }
-
-  let yPos = 32;
+  let yPos = 35;
 
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || autoTablePlugin;
@@ -526,64 +608,63 @@ const generatePipelineReport = async (
     doc.text(textLines.slice(0, 4), 12, yPos + 3);
   }
 
-  // ===== FOOTER =====
-  const footerY = pageHeight - 8;
-  doc.setDrawColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
-  doc.setLineWidth(0.3);
-  doc.line(10, footerY - 3, pageWidth - 10, footerY - 3);
-
-  doc.setFontSize(6);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 10, footerY);
-  doc.text("CONFIDENTIAL", pageWidth - 10, footerY, { align: "right" });
-
-  // ===== NEW CONFIGURATION FEATURES =====
-  if (config) {
-    // Watermark
-    if (config.watermark?.enabled) {
-      doc.saveGraphicsState();
-      doc.setGState(new (doc as any).GState({ opacity: config.watermark.transparency || 0.1 }));
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(60);
-      doc.text(config.watermark.text, pageWidth / 2, pageHeight / 2, { align: 'center', angle: 45 });
-      doc.restoreGraphicsState();
-    }
-
-    // Signatures
-    const hasSignatures = config.preparedBy?.name || config.reviewedBy?.name || config.approvedBy?.name;
+  // ===== SIGNATURES =====
+  if (config?.showSignatures !== false) {
+    const hasSignatures = config?.preparedBy?.name || config?.reviewedBy?.name || config?.approvedBy?.name;
     if (hasSignatures) {
-      // Create a signature block area at the bottom, shifting footer up or overlaying
-      const sigY = pageHeight - 25; // Area above footer
-
-      doc.setFontSize(7);
-      doc.setTextColor(0, 0, 0);
-
+      let sigY = pageHeight - 38;
+      if (yPos > sigY - 10) {
+        doc.addPage();
+        sigY = pageHeight - 38;
+      }
       const sigWidth = (pageWidth - 20) / 3;
+      const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(0.1);
+        doc.rect(lx, sigY, sigWidth - 4, 18);
+        if (!isPrintFriendly) {
+          doc.setFillColor(...navy);
+          doc.rect(lx, sigY, sigWidth - 4, 4.5, "F");
+          doc.setTextColor(255);
+        } else {
+          doc.setTextColor(...navy);
+        }
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, lx + 2, sigY + 3.5);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Name:", lx + 2, sigY + 10);
+        if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+        doc.text("Date:", lx + 2, sigY + 13.5);
+        if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+        doc.text("Signature:", lx + 2, sigY + 17);
+      };
 
-      if (config.preparedBy.name) {
-        doc.text("Prepared By:", 10, sigY);
-        doc.text(config.preparedBy.name, 10, sigY + 5);
-        doc.text(config.preparedBy.date || "", 10, sigY + 9);
-        doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.reviewedBy?.name) {
-        const x = 10 + sigWidth;
-        doc.text("Reviewed By:", x, sigY);
-        doc.text(config.reviewedBy.name, x, sigY + 5);
-        doc.text(config.reviewedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.approvedBy?.name) {
-        const x = 10 + (sigWidth * 2);
-        doc.text("Approved By:", x, sigY);
-        doc.text(config.approvedBy.name, x, sigY + 5);
-        doc.text(config.approvedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
+      drawSig("PREPARED BY", 10, config?.preparedBy);
+      drawSig("REVIEWED BY", 10 + sigWidth, config?.reviewedBy);
+      drawSig("APPROVED BY", 10 + (sigWidth * 2), config?.approvedBy);
     }
   }
+
+  // ===== FOOTERS (ALL PAGES) =====
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
+  }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -604,66 +685,24 @@ const generatePlatformReport = async (
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  // Used by the print-friendly footer below (kept from dev-jitesh)
+  const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER WITH LOGO =====
-  if (isPrintFriendly) {
-    doc.setDrawColor(180, 180, 180);
-    doc.setLineWidth(0.3);
-    doc.rect(0, 0, pageWidth, 28);
-  } else {
-    doc.setFillColor(...headerBlue);
-    doc.rect(0, 0, pageWidth, 28, "F");
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Platform Specifications Report",
+    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    isPrintFriendly,
+    headerBlue,
+  });
 
-  // Logo area (right side) - Bigger Square layout
-  if (companySettings?.logo_url) {
-    try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    }
-  }
-
-  // Company Name - SAME size as Report Title (centered)
-  doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  const companyName = companySettings?.company_name || "NasQuest Resources Sdn Bhd";
-  doc.text(companyName, pageWidth / 2, 7.5, { align: "center" });
-
-  // Department Name (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Platform Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No - Centered below Report Title
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoStr = config ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : "");
-  if (reportNoStr) {
-    doc.text(reportNoStr, pageWidth / 2, 22.5, { align: "center" });
-  }
-
-  let yPos = 32;
+  let yPos = 35;
 
   // Define autoTable helper for jsPDF
   const autoTable = (doc as any).autoTable || autoTablePlugin;
@@ -717,12 +756,12 @@ const generatePlatformReport = async (
   doc.setDrawColor(200, 200, 200);
   const genStart = col1Y;
 
-  col1Y = drawCompactField("Structure:", structure.str_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Title:", structure.title || "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Structure:", structure.str_name || structure.title || "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Install Date:", structure.inst_date || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Depth:", structure.depth ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Design Life:", structure.desg_life ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Install Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
+  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
 
   doc.rect(col1X, genStart, colWidth, col1Y - genStart);
 
@@ -732,12 +771,12 @@ const generatePlatformReport = async (
   let col2Y = yPos + 5;
   const configStart = col2Y;
 
-  col2Y = drawCompactField("Type:", structure.ptype || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Function:", structure.function || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Type:", structure.ptype || structure.str_type || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Corrosion:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Contractor:", structure.inst_contractor || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth);
 
   doc.rect(col2X, configStart, colWidth, col2Y - configStart);
 
@@ -747,12 +786,19 @@ const generatePlatformReport = async (
   let col3Y = yPos + 5;
   const locStart = col3Y;
 
-  col3Y = drawCompactField("Northing:", structure.northing ? `${structure.northing} m` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Easting:", structure.easting ? `${structure.easting} m` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("True North:", structure.true_north_angle ? `${structure.true_north_angle}°` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Leg Dia:", structure.max_leg_dia ? `${structure.max_leg_dia} mm` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Wall:", structure.max_wall_thk ? `${structure.max_wall_thk} mm` : "N/A", col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Helipad:", structure.helipad === "YES" || structure.helipad === "Yes" ? "Yes" : "No", col3X, col3Y, colWidth);
+  const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A");
+  const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A");
+  const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A");
+  const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A");
+  const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A");
+  const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
+  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("True North:", northAngleVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Max Leg Dia:", maxLegDiaVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Max Wall:", maxWallThkVal, col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth);
 
   doc.rect(col3X, locStart, colWidth, col3Y - locStart);
 
@@ -1065,22 +1111,53 @@ const generatePlatformReport = async (
 
     // ELEVATIONS TABLE (Left)
     if (hasElevations) {
-      drawSectionBar(10, tablesStartY, (pageWidth - 25) / 2, 5, "ELEVATIONS (m)", 12, tablesStartY + 3.5);
-
       const elevWidth = (pageWidth - 25) / 2;
       autoTable(doc, {
-        startY: tablesStartY + 5,
-        head: [['Type', 'Value (m)']],
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'ELEVATIONS (m)',
+            colSpan: 2,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Type', 'Value (m)']
+        ],
         body: (structure.elevations || []).slice(0, 6).map((elev: any) => [
           elev.orient || elev.name || elev.type || "Elevation",
           elev.elv || elev.value || elev.elevation || "N/A"
         ]),
         theme: 'grid',
-        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-        bodyStyles: { fontSize: 6, halign: 'center' },
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
         margin: { left: 10 },
         tableWidth: elevWidth,
-        styles: { cellPadding: 1 }
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
@@ -1089,23 +1166,55 @@ const generatePlatformReport = async (
     if (hasLevels) {
       // Start slightly right of center (pageWidth/2 + 2.5) to create 5mm gap
       const rightTableX = pageWidth / 2 + 2.5;
-
-      drawSectionBar(rightTableX, tablesStartY, (pageWidth - 25) / 2, 5, "PLATFORM LEVELS", rightTableX + 2, tablesStartY + 3.5);
+      const levelsWidth = (pageWidth - 25) / 2;
 
       autoTable(doc, {
-        startY: tablesStartY + 5,
-        head: [['Level', 'Start', 'End']],
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'PLATFORM LEVELS',
+            colSpan: 3,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Level', 'Start', 'End']
+        ],
         body: (structure.levels || []).slice(0, 6).map((level: any) => [
           level.level_name || "Level",
           level.elv_from || level.start_elv || 0,
           level.elv_to || level.end_elv || 0
         ]),
         theme: 'grid',
-        headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-        bodyStyles: { fontSize: 6, halign: 'center' },
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
         margin: { left: rightTableX },
-        tableWidth: (pageWidth - 25) / 2,
-        styles: { cellPadding: 1 }
+        tableWidth: levelsWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
@@ -1116,23 +1225,53 @@ const generatePlatformReport = async (
   if (structure.faces && structure.faces.length > 0) {
     if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
 
-    drawSectionBar(10, yPos, pageWidth - 20, 5, "PLATFORM FACES", 12, yPos + 3.5);
-    yPos += 5;
-
     autoTable(doc, {
       startY: yPos,
-      head: [['Face Name', 'From', 'To']],
+      head: [
+        [{
+          content: 'PLATFORM FACES',
+          colSpan: 3,
+          styles: {
+            halign: 'left',
+            fontStyle: 'bold',
+            fontSize: 8,
+            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          }
+        }],
+        ['Face Name', 'From', 'To']
+      ],
       body: structure.faces.slice(0, 4).map((face: any) => [
         face.face || face.face_name || face.name || "Face",
         face.face_from || face.from || "N/A",
         face.face_to || face.to || "N/A"
       ]),
       theme: 'grid',
-      headStyles: { fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue, textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255], fontSize: 7, halign: 'center' },
-      bodyStyles: { fontSize: 6, halign: 'center' },
+      styles: {
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+        cellPadding: 1.5,
+        valign: 'middle',
+      },
+      headStyles: {
+        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+        fontSize: 7,
+        halign: 'center',
+        fontStyle: 'bold',
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
+      bodyStyles: {
+        fontSize: 6.5,
+        halign: 'center',
+        textColor: [0, 0, 0],
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
       margin: { left: 10, right: 10 },
-      tableWidth: 'auto',
-      styles: { cellPadding: 1.5 }
+      tableWidth: pageWidth - 20,
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 3;
@@ -1265,68 +1404,63 @@ const generatePlatformReport = async (
     }
   }
 
-  // ===== FOOTER =====
-  const footerY = pageHeight - 8;
-  doc.setDrawColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
-  doc.setLineWidth(0.3);
-  doc.line(10, footerY - 3, pageWidth - 10, footerY - 3);
-
-  doc.setFontSize(6);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 10, footerY);
-  doc.text("CONFIDENTIAL", pageWidth - 10, footerY, { align: "right" });
-
-  // ===== NEW CONFIGURATION FEATURES =====
-  if (config) {
-    // Watermark
-    if (config.watermark?.enabled) {
-      doc.saveGraphicsState();
-      doc.setGState(new (doc as any).GState({ opacity: config.watermark.transparency || 0.1 }));
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(60);
-      const text = config.watermark.text;
-      // Center on page
-      const textWidth = doc.getTextWidth(text);
-      const textX = pageWidth / 2;
-      const textY = pageHeight / 2;
-      doc.text(text, textX, textY, { align: 'center', angle: 45 });
-      doc.restoreGraphicsState();
-    }
-
-    // Signatures
-    const hasSignatures = config.preparedBy?.name || config.reviewedBy?.name || config.approvedBy?.name;
+  // ===== SIGNATURES =====
+  if (config?.showSignatures !== false) {
+    const hasSignatures = config?.preparedBy?.name || config?.reviewedBy?.name || config?.approvedBy?.name;
     if (hasSignatures) {
-      const sigY = pageHeight - 25;
-
-      doc.setFontSize(7);
-      doc.setTextColor(0, 0, 0);
-
+      let sigY = pageHeight - 38;
+      if (yPos > sigY - 10) {
+        doc.addPage();
+        sigY = pageHeight - 38;
+      }
       const sigWidth = (pageWidth - 20) / 3;
+      const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(0.1);
+        doc.rect(lx, sigY, sigWidth - 4, 18);
+        if (!isPrintFriendly) {
+          doc.setFillColor(...navy);
+          doc.rect(lx, sigY, sigWidth - 4, 4.5, "F");
+          doc.setTextColor(255);
+        } else {
+          doc.setTextColor(...navy);
+        }
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, lx + 2, sigY + 3.5);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Name:", lx + 2, sigY + 10);
+        if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+        doc.text("Date:", lx + 2, sigY + 13.5);
+        if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+        doc.text("Signature:", lx + 2, sigY + 17);
+      };
 
-      if (config.preparedBy.name) {
-        doc.text("Prepared By:", 10, sigY);
-        doc.text(config.preparedBy.name, 10, sigY + 5);
-        doc.text(config.preparedBy.date || "", 10, sigY + 9);
-        doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.reviewedBy?.name) {
-        const x = 10 + sigWidth;
-        doc.text("Reviewed By:", x, sigY);
-        doc.text(config.reviewedBy.name, x, sigY + 5);
-        doc.text(config.reviewedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.approvedBy?.name) {
-        const x = 10 + (sigWidth * 2);
-        doc.text("Approved By:", x, sigY);
-        doc.text(config.approvedBy.name, x, sigY + 5);
-        doc.text(config.approvedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
+      drawSig("PREPARED BY", 10, config?.preparedBy);
+      drawSig("REVIEWED BY", 10 + sigWidth, config?.reviewedBy);
+      drawSig("APPROVED BY", 10 + (sigWidth * 2), config?.approvedBy);
     }
   }
+
+  // ===== FOOTERS (ALL PAGES) =====
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
+  }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if ((config as any)?.returnBlob) {
     return doc.output('blob');
@@ -1357,7 +1491,7 @@ const generatePipelineHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
       ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
@@ -1371,7 +1505,7 @@ const generatePipelineHTML = (
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
           <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Pipeline Specifications Report</h2>
@@ -1388,7 +1522,7 @@ const generatePipelineHTML = (
           
           <!-- Column 1: General Info -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               General Info
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1411,7 +1545,7 @@ const generatePipelineHTML = (
 
           <!-- Column 2: Technical Parameters -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Technical Parameters
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1434,7 +1568,7 @@ const generatePipelineHTML = (
 
           <!-- Column 3: Location & Path -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Location & Path
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1459,7 +1593,7 @@ const generatePipelineHTML = (
 
         <!-- Burial & Protection (Full Width) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Burial & Protection
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1480,7 +1614,7 @@ const generatePipelineHTML = (
 
         <!-- Geodetic Parameters (Two Column) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Geodetic Parameters
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #cbd5e0; border-top: none;">
@@ -1519,7 +1653,7 @@ const generatePipelineHTML = (
 
         <!-- Comments -->
         <div>
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Additional Comments
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
@@ -1529,8 +1663,8 @@ const generatePipelineHTML = (
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -1548,12 +1682,12 @@ const generatePlatformHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header with Square Logo -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
-        <!-- Logo positioned at far right - BIGGER -->
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
+        <!-- Logo positioned at far right -->
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         
@@ -1563,7 +1697,7 @@ const generatePlatformHTML = (
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
           <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
@@ -1618,7 +1752,7 @@ const generatePlatformHTML = (
 
           return `
             <div style="margin-bottom: 20px;">
-              <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
                 Structure Visuals (${uniqueItems.length})
               </div>
               <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
@@ -1647,18 +1781,18 @@ const generatePlatformHTML = (
           
           <!-- Column 1: General Info -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               General Info
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Structure", structure.str_name],
-      ["Title", structure.title],
-      ["Field", structure.pfield || structure.field_name],
-      ["Install Date", structure.inst_date],
-      ["Depth", structure.depth ? `${structure.depth} m` : "N/A"],
-      ["Design Life", structure.desg_life ? `${structure.desg_life} yrs` : "N/A"]
+      ["Structure", structure.str_name || structure.title || "N/A"],
+      ["Title", structure.title || structure.str_name || "N/A"],
+      ["Field", structure.pfield || structure.field_name || "N/A"],
+      ["Install Date", formatDisplayDate(structure.inst_date)],
+      ["Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
+      ["Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1671,18 +1805,18 @@ const generatePlatformHTML = (
 
           <!-- Column 2: Configuration -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Configuration
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Type", structure.ptype],
-      ["Function", structure.function],
-      ["Material", structure.material],
-      ["CP System", structure.cp_system],
-      ["Corrosion", structure.corr_ctg],
-      ["Contractor", structure.inst_contractor]
+      ["Type", structure.ptype || structure.str_type || "N/A"],
+      ["Function", structure.function || structure.process || "N/A"],
+      ["Material", structure.material || "N/A"],
+      ["CP System", structure.cp_system || "N/A"],
+      ["Corrosion", structure.corr_ctg || "N/A"],
+      ["Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1695,18 +1829,18 @@ const generatePlatformHTML = (
 
           <!-- Column 3: Location & Dimensions -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Location & Dims
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Northing", structure.northing ? `${structure.northing} m` : "N/A"],
-      ["Easting", structure.easting ? `${structure.easting} m` : "N/A"],
-      ["True North", structure.true_north_angle ? `${structure.true_north_angle}°` : "N/A"],
-      ["Max Leg Dia", structure.max_leg_dia ? `${structure.max_leg_dia} mm` : "N/A"],
-      ["Max Wall", structure.max_wall_thk ? `${structure.max_wall_thk} mm` : "N/A"],
-      ["Helipad", structure.helipad === "YES" || structure.helipad === "Yes" ? "Yes" : "No"]
+      ["Northing", (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A")],
+      ["Easting", (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A")],
+      ["True North", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
+      ["Max Leg Dia", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
+      ["Max Wall", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
+      ["Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
@@ -1720,36 +1854,36 @@ const generatePlatformHTML = (
 
         <!-- Inventory Statistics (Full Width) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Inventory Statistics
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
             <tbody>
               <tr style="background-color: #ffffff;">
                 ${[
-      ["Conductors", structure.conductors || 0],
-      ["Int. Piles", structure.internal_piles || 0],
-      ["Slots", structure.slots || "N/A"],
-      ["Fenders", structure.fenders || 0],
-      ["Risers", structure.risers || 0]
+      ["Conductors", structure.conductors ?? structure.conduct ?? 0],
+      ["Int. Piles", structure.internal_piles ?? structure.pileint ?? 0],
+      ["Slots", structure.slots ?? structure.cslot ?? structure.cslota ?? "N/A"],
+      ["Fenders", structure.fenders ?? structure.fender ?? 0],
+      ["Risers", structure.risers ?? structure.riser ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #2c5282;">${value}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #074e88;">${value}</div>
                   </td>
                 `).join('')}
               </tr>
                <tr style="background-color: #f7fafc;">
                 ${[
-      ["Sumps", structure.sumps || 0],
-      ["Skirt Piles", structure.skirt_piles || 0],
-      ["Caissons", structure.caissons || 0],
-      ["Anodes", structure.anodes || 0],
-      ["Cranes", structure.cranes || 0]
+      ["Sumps", structure.sumps ?? structure.sump ?? 0],
+      ["Skirt Piles", structure.skirt_piles ?? structure.pileskt ?? 0],
+      ["Caissons", structure.caissons ?? structure.caisson ?? 0],
+      ["Anodes", structure.anodes ?? structure.an_qty ?? 0],
+      ["Cranes", structure.cranes ?? structure.crane ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #2c5282;">${value}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #074e88;">${value}</div>
                   </td>
                 `).join('')}
               </tr>
@@ -1759,7 +1893,7 @@ const generatePlatformHTML = (
 
         <!-- Platform Legs (ALWAYS SHOW) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Legs ${structure.legs && structure.legs.length > 0 ? `(${structure.legs.length} Active)` : ''}
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? 'display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px;' : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
@@ -1767,7 +1901,7 @@ const generatePlatformHTML = (
       ? structure.legs.slice(0, 20).map((leg: any, idx: number) => `
                 <div style="text-align: center; padding: 5px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
                   <div style="font-size: 7px; color: #718096;">Leg ${idx + 1}</div>
-                  <div style="font-size: 10px; font-weight: 700; color: #2c5282;">${leg.leg_name || leg.designation || `L${idx + 1}`}</div>
+                  <div style="font-size: 10px; font-weight: 700; color: #074e88;">${leg.leg_name || leg.designation || `L${idx + 1}`}</div>
                 </div>
               `).join('')
       : `<div style="color: #a0aec0; font-size: 11px; font-style: italic;">No leg configuration data available</div>`
@@ -1780,7 +1914,7 @@ const generatePlatformHTML = (
           
           <!-- Elevations (ALWAYS SHOW) -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Elevations (m)
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1806,7 +1940,7 @@ const generatePlatformHTML = (
 
           <!-- Levels (ALWAYS SHOW) -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Platform Levels
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1835,7 +1969,7 @@ const generatePlatformHTML = (
 
         <!-- Faces (ALWAYS SHOW) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Faces
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1863,7 +1997,7 @@ const generatePlatformHTML = (
 
         <!-- Comments -->
         <div>
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Additional Comments
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
@@ -1873,8 +2007,8 @@ const generatePlatformHTML = (
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -1931,53 +2065,20 @@ export const generateComponentSummaryReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
   const lightBlue: [number, number, number] = [235, 242, 250];
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
-
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  // Company Headings - SAME size as Report Title (centered)
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-
-  // Department (Sub-header) - Slightly increased font size (centered)
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  // Report Title - SAME size as Company Title (centered)
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Component Summary Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Subtitle
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const reportNoSummary = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (reportNoSummary) {
-    doc.text(reportNoSummary, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Component Summary Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   // Subtitle
   doc.setFontSize(9);
@@ -2063,12 +2164,12 @@ export const generateComponentSummaryReport = async (
       margin: { left: 10 },
       head: [['GENERAL INFO', '']],
       body: [
-        ['Structure', structure.str_name || '-'],
+        ['Structure', structure.str_name || structure.title || '-'],
         ['Title', structure.title || structure.str_name || '-'],
         ['Field', structure.field_name || structure.pfield || '-'],
-        ['Install Date', structure.inst_date || '-'],
-        ['Depth', structure.depth ? `${structure.depth} m` : '-'],
-        ['Design Life', structure.desg_life ? `${structure.desg_life} yrs` : '-']
+        ['Install Date', formatDisplayDate(structure.inst_date)],
+        ['Depth', (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : '-'],
+        ['Design Life', (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : '-']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2085,11 +2186,11 @@ export const generateComponentSummaryReport = async (
       head: [['CONFIGURATION', '']],
       body: [
         ['Type', structure.ptype || structure.str_type || '-'],
-        ['Function', structure.function || '-'],
+        ['Function', structure.function || structure.process || '-'],
         ['Material', structure.material || '-'],
         ['CP System', structure.cp_system || '-'],
         ['Corrosion', structure.corr_ctg || '-'],
-        ['Contractor', structure.inst_contractor || '-']
+        ['Contractor', structure.inst_contractor || structure.inst_ctr || '-']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2100,17 +2201,24 @@ export const generateComponentSummaryReport = async (
     });
 
     // Table 3: Location & Dims
+    const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : 'N/A');
+    const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : 'N/A');
+    const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : 'N/A');
+    const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : 'N/A');
+    const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : 'N/A');
+    const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
     autoTable(doc, {
       startY: infoY,
       margin: { left: 10 + (tableWidth + colGap) * 2 },
       head: [['LOCATION & DIMS', '']],
       body: [
-        ['Northing', structure.northing || 'N/A'],
-        ['Easting', structure.easting || 'N/A'],
-        ['True North', structure.true_north_angle || 'N/A'],
-        ['Max Leg Dia', structure.max_leg_dia || 'N/A'],
-        ['Max Wall', structure.max_wall_thk || 'N/A'],
-        ['Helipad', structure.helipad || 'No']
+        ['Northing', northingVal],
+        ['Easting', eastingVal],
+        ['True North', northAngleVal],
+        ['Max Leg Dia', maxLegDiaVal],
+        ['Max Wall', maxWallThkVal],
+        ['Helipad', isHelipad ? 'Yes' : 'No']
       ],
       theme: 'grid',
       headStyles: { fillColor: sectionBlue, textColor: 255, fontSize: 8, fontStyle: 'bold', cellPadding: 2 },
@@ -2214,7 +2322,7 @@ export const generateComponentSummaryReport = async (
   doc.text("TOTAL ACTIVE", totalXPos + (colWidth / 2), yPos + 5, { align: "center" });
 
   doc.setFontSize(10);
-  doc.setTextColor(26, 54, 93);
+  doc.setTextColor(7, 78, 136);
   doc.text(String(components.length), totalXPos + (colWidth / 2), yPos + 11, { align: "center" });
 
   yPos += rowHeight + 10;
@@ -2278,12 +2386,19 @@ export const generateComponentSummaryReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -2315,7 +2430,7 @@ export const generateComponentSummaryHTML = (
   const sortedTypes = Object.keys(grouped).sort();
 
   const infoTableStyle = "width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #cbd5e0;";
-  const thStyle = "background-color: #2c5282; color: white; padding: 4px 8px; text-align: left; font-weight: bold; font-size: 10px;";
+  const thStyle = "background-color: #074e88; color: white; padding: 4px 8px; text-align: left; font-weight: bold; font-size: 10px;";
   const tdLabelStyle = "padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #4a5568; width: 35%; background-color: #f8fafc;";
   const tdValueStyle = "padding: 4px 8px; border-bottom: 1px solid #e2e8f0; color: #1a202c;";
 
@@ -2368,18 +2483,25 @@ export const generateComponentSummaryHTML = (
     `;
   } else {
     // Platform Headers
+    const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : null);
+    const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : null);
+    const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : null);
+    const maxLegDiaVal = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : null);
+    const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : null);
+    const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
+
     headerContent = `
         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 25px;">
             <div>
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">GENERAL INFO</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Structure", structure.str_name)}
+                        ${InfoRow("Structure", structure.str_name || structure.title)}
                         ${InfoRow("Title", structure.title || structure.str_name)}
                         ${InfoRow("Field", structure.field_name || structure.pfield)}
-                        ${InfoRow("Install Date", structure.inst_date)}
-                        ${InfoRow("Depth", structure.depth ? structure.depth + " m" : null)}
-                        ${InfoRow("Design Life", structure.desg_life ? structure.desg_life + " yrs" : null)}
+                        ${InfoRow("Install Date", formatDisplayDate(structure.inst_date))}
+                        ${InfoRow("Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : null)}
+                        ${InfoRow("Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : null)}
                     </tbody>
                 </table>
             </div>
@@ -2388,11 +2510,11 @@ export const generateComponentSummaryHTML = (
                     <thead><tr><th colspan="2" style="${thStyle}">CONFIGURATION</th></tr></thead>
                     <tbody>
                         ${InfoRow("Type", structure.ptype || structure.str_type)}
-                        ${InfoRow("Function", structure.function)}
+                        ${InfoRow("Function", structure.function || structure.process)}
                         ${InfoRow("Material", structure.material)}
                         ${InfoRow("CP System", structure.cp_system)}
                         ${InfoRow("Corrosion", structure.corr_ctg)}
-                        ${InfoRow("Contractor", structure.inst_contractor)}
+                        ${InfoRow("Contractor", structure.inst_contractor || structure.inst_ctr)}
                     </tbody>
                 </table>
             </div>
@@ -2400,12 +2522,12 @@ export const generateComponentSummaryHTML = (
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMS</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Northing", structure.northing)}
-                        ${InfoRow("Easting", structure.easting)}
-                        ${InfoRow("True North", structure.true_north_angle)}
-                        ${InfoRow("Max Leg Dia", structure.max_leg_dia)}
-                        ${InfoRow("Max Wall", structure.max_wall_thk)}
-                        ${InfoRow("Helipad", structure.helipad)}
+                        ${InfoRow("Northing", northingVal)}
+                        ${InfoRow("Easting", eastingVal)}
+                        ${InfoRow("True North", northAngleVal)}
+                        ${InfoRow("Max Leg Dia", maxLegDiaVal)}
+                        ${InfoRow("Max Wall", maxWallThkVal)}
+                        ${InfoRow("Helipad", isHelipad ? "Yes" : "No")}
                     </tbody>
                 </table>
             </div>
@@ -2417,7 +2539,7 @@ export const generateComponentSummaryHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
       ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
@@ -2426,8 +2548,8 @@ export const generateComponentSummaryHTML = (
         </div>
         
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
-          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Component Summary Report</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type}) | Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
@@ -2440,7 +2562,7 @@ export const generateComponentSummaryHTML = (
         
         <!-- Statistics Table (Inventory Style Grid) -->
         <div style="margin-bottom: 30px;">
-             <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               COMPONENT STATISTICS
             </div>
             
@@ -2477,7 +2599,7 @@ export const generateComponentSummaryHTML = (
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
                     <thead>
-                        <tr style="background-color: #2c5282; color: white;">
+                        <tr style="background-color: #074e88; color: white;">
                              <th style="padding: 6px; text-align: center; width: 40px;">No.</th>
                              <th style="padding: 6px; text-align: left;">Q ID</th>
                              <th style="padding: 6px; text-align: left;">Type</th>
@@ -2508,8 +2630,8 @@ export const generateComponentSummaryHTML = (
 
          <!-- Footer -->
         <div style="margin-top: 40px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -2530,48 +2652,19 @@ export const generateComponentSpecReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
-
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Component Data Sheet", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Context
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const compReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (compReportNo) {
-    doc.text(compReportNo, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Component Data Sheet",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   // Subheader: Structure Context
   doc.setFontSize(9);
@@ -2675,12 +2768,19 @@ export const generateComponentSpecReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -2700,7 +2800,7 @@ export const generateComponentSpecHTML = (
   const currentDate = new Date().toLocaleDateString();
 
   // Helper Styles
-  const thStyle = "background-color: #2c5282; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #1a365d;";
+  const thStyle = "background-color: #074e88; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #074e88;";
   const tdLabelStyle = "background-color: #f8fafc; color: #4a5568; padding: 6px 10px; font-size: 11px; font-weight: bold; border: 1px solid #e2e8f0; width: 25%;";
   const tdValueStyle = "color: #2d3748; padding: 6px 10px; font-size: 11px; border: 1px solid #e2e8f0; width: 25%;";
   const Row = (l1: string, v1: any, l2: string, v2: any) => `
@@ -2730,12 +2830,12 @@ export const generateComponentSpecHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <!-- Logo Position -->
         <div style="position: absolute; top: 15px; right: 30px;">
            ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
@@ -2750,7 +2850,7 @@ export const generateComponentSpecHTML = (
 
         <!-- 1.0 IDENTITY -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 1.0 COMPONENT IDENTITY
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -2765,7 +2865,7 @@ export const generateComponentSpecHTML = (
         <!-- 2.0 SPECS -->
         ${specs ? `
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 2.0 TECHNICAL SPECIFICATIONS
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #eee;">
@@ -2784,7 +2884,7 @@ export const generateComponentSpecHTML = (
         <!-- 3.0 LOCATION -->
         ${(meta.s_node || meta.f_node) ? `
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 3.0 LOCATION & CONNECTIVITY
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -2797,9 +2897,9 @@ export const generateComponentSpecHTML = (
             </table>
         </div>` : ''}
 
-        <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; display: flex; justify-content: space-between;">
-            <span>Generated: ${currentDate}</span>
-            <span>COMPONENT SPEC SHEET - INTERNAL USE ONLY</span>
+        <div style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 10px; font-size: 9px; color: #1e293b; display: flex; justify-content: space-between;">
+            <span>${REPORT_FOOTER_APP_TEXT}</span>
+            <span>Page 1</span>
         </div>
       </div>
     </div>
@@ -2817,48 +2917,19 @@ export const generateTechnicalSpecsReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const isPrintFriendly = config?.printFriendly === true;
 
-  // ===== HEADER =====
-  doc.setFillColor(...headerBlue);
-  doc.rect(0, 0, pageWidth, 28, "F");
-
-  // Logo
-  if (companySettings?.logo_url) {
-    try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
-      if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
-    } catch (e) { /* ignore */ }
-  }
-
-  doc.setTextColor(255, 255, 255);
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
-  doc.setFontSize(8.5);
-  doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "bold");
-  doc.text("Technical Specifications Report", pageWidth / 2, 17.5, { align: "center" });
-
-  // Report No / Subtitle
-  doc.setFontSize(8);
-  doc.setFont("helvetica", "normal");
-  const techReportNo = companySettings?.serial_no ? `Report: ${companySettings.serial_no}` : (config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "");
-  if (techReportNo) {
-    doc.text(techReportNo, pageWidth / 2, 22.5, { align: "center" });
-  }
+  // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  await draw3SectionHeader(doc, {
+    pageWidth,
+    companySettings,
+    config,
+    reportTitle: "Technical Specifications Report",
+    isPrintFriendly,
+    headerBlue,
+  });
 
   doc.setFontSize(9);
   doc.setTextColor(0, 0, 0);
@@ -2888,10 +2959,10 @@ export const generateTechnicalSpecsReport = async (
     theme: 'grid',
     head: [],
     body: [
-      ['Structure Type', structure.str_type || '-', 'Installation Date', structure.inst_date || '-'],
-      ['Function', structure.function || '-', 'Design Life', structure.desg_life ? `${structure.desg_life} Years` : '-'],
-      ['Water Depth', structure.depth ? `${structure.depth} m` : '-', 'Manned Status', structure.manned || 'Unmanned'],
-      ['Contractor', structure.inst_contractor || '-', 'Helipad', structure.helipad || 'No'],
+      ['Structure Type', structure.str_type || '-', 'Installation Date', formatDisplayDate(structure.inst_date)],
+      ['Function', structure.function || structure.process || '-', 'Design Life', structure.desg_life ? `${structure.desg_life} Years` : '-'],
+      ['Water Depth', (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : '-', 'Manned Status', (structure.manned === "YES" || structure.manned === "Yes" || structure.manned === "1" || structure.manned === true) ? 'Manned' : 'Unmanned'],
+      ['Contractor', structure.inst_contractor || structure.inst_ctr || '-', 'Helipad', (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? 'Yes' : 'No'],
     ],
     styles: { fontSize: 8, cellPadding: 3 },
     columnStyles: {
@@ -2907,15 +2978,18 @@ export const generateTechnicalSpecsReport = async (
   // 2. STRUCTURAL CONFIGURATION & MATERIALS
   yPos = drawSectionHeader("2.0 STRUCTURAL CONFIGURATION & MATERIALS", yPos);
 
+  const maxLegDiaStr = (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : '-');
+  const maxWallThkStr = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : '-');
+
   autoTable(doc, {
     startY: yPos,
     theme: 'grid',
     head: [],
     body: [
-      ['Number of Legs', structure.legs ? structure.legs.length : (structure.components?.filter((c: any) => c.type === 'LEG').length || '-'), 'Max Leg Diameter', structure.max_leg_dia ? `${structure.max_leg_dia}"` : '-'],
-      ['Number of Piles', structure.skirt_piles || structure.internal_piles || (structure.components?.filter((c: any) => c.type === 'PILE').length || '-'), 'Max Wall Thickness', structure.max_wall_thk ? `${structure.max_wall_thk}"` : '-'],
+      ['Number of Legs', structure.legs ? structure.legs.length : (structure.components?.filter((c: any) => c.type === 'LEG').length || '-'), 'Max Leg Diameter', maxLegDiaStr],
+      ['Number of Piles', structure.skirt_piles || structure.internal_piles || structure.pileint || (structure.components?.filter((c: any) => c.type === 'PILE').length || '-'), 'Max Wall Thickness', maxWallThkStr],
       ['Material Grade', structure.material || 'N/A', 'Corrosion Cat.', structure.corr_ctg || '-'],
-      ['CP System', structure.cp_system || '-', 'Unit System', structure.unit_system || '-'],
+      ['CP System', structure.cp_system || '-', 'Unit System', structure.unit_system || structure.def_unit || '-'],
     ],
     styles: { fontSize: 8, cellPadding: 3 },
     columnStyles: {
@@ -2985,12 +3059,19 @@ export const generateTechnicalSpecsReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Technical Specs Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -3006,7 +3087,7 @@ export const generateTechnicalSpecsHTML = (
   const currentDate = new Date().toLocaleDateString();
 
   // Helpers
-  const thStyle = "background-color: #2c5282; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #1a365d;";
+  const thStyle = "background-color: #074e88; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #074e88;";
   const tdLabelStyle = "background-color: #f8fafc; color: #4a5568; padding: 6px 10px; font-size: 11px; font-weight: bold; border: 1px solid #e2e8f0; width: 20%;";
   const tdValueStyle = "color: #2d3748; padding: 6px 10px; font-size: 11px; border: 1px solid #e2e8f0; width: 30%;";
 
@@ -3031,11 +3112,11 @@ export const generateTechnicalSpecsHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
@@ -3050,30 +3131,30 @@ export const generateTechnicalSpecsHTML = (
 
         <!-- 1.0 DESIGN DATA -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 1.0 DESIGN & GENERAL DATA
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
-                    ${Row("Structure Type", structure.str_type, "Installation Date", structure.inst_date)}
-                    ${Row("Function", structure.function, "Design Life", structure.desg_life ? structure.desg_life + " Years" : null)}
-                    ${Row("Water Depth", structure.depth ? structure.depth + " m" : null, "Manned Status", structure.manned)}
-                    ${Row("Contractor", structure.inst_contractor, "Helipad", structure.helipad)}
+                    ${Row("Structure Type", structure.str_type, "Installation Date", formatDisplayDate(structure.inst_date))}
+                    ${Row("Function", structure.function || structure.process, "Design Life", structure.desg_life ? structure.desg_life + " Years" : null)}
+                    ${Row("Water Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? structure.depth + " m" : null, "Manned Status", (structure.manned === "YES" || structure.manned === "Yes" || structure.manned === "1" || structure.manned === true) ? "Manned" : "Unmanned")}
+                    ${Row("Contractor", structure.inst_contractor || structure.inst_ctr, "Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No")}
                 </tbody>
             </table>
         </div>
 
         <!-- 2.0 CONFIGURATION -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 2.0 STRUCTURAL CONFIGURATION & MATERIALS
             </div>
             <table style="width: 100%; border-collapse: collapse;">
                 <tbody>
-                     ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", structure.max_leg_dia ? structure.max_leg_dia + '"' : null)}
-                     ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles, "Max Wall Thickness", structure.max_wall_thk ? structure.max_wall_thk + '"' : null)}
+                     ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? structure.max_leg_dia + ' mm' : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? structure.dleg + ' mm' : null))}
+                     ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles || structure.pileint, "Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? structure.max_wall_thk + ' mm' : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? structure.wall_thk + ' mm' : null))}
                      ${Row("Material Grade", structure.material, "Corrosion Cat.", structure.corr_ctg)}
-                     ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system)}
+                     ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system || structure.def_unit)}
                 </tbody>
             </table>
         </div>
@@ -3081,7 +3162,7 @@ export const generateTechnicalSpecsHTML = (
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <!-- 3.0 ELEVATIONS -->
             <div>
-                <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+                <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                     3.0 ELEVATION SCHEDULE
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -3104,7 +3185,7 @@ export const generateTechnicalSpecsHTML = (
 
             <!-- 4.0 INVENTORY -->
             <div>
-                 <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+                 <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                     4.0 APPURTENANCES INVENTORY
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -3126,9 +3207,9 @@ export const generateTechnicalSpecsHTML = (
             </div>
         </div>
 
-        <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; display: flex; justify-content: space-between;">
-            <span>Generated: ${currentDate}</span>
-            <span>INTERNAL ENGINEERING DATA SHEET - CONFIDENTIAL</span>
+        <div style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 10px; font-size: 9px; color: #1e293b; display: flex; justify-content: space-between;">
+            <span>${REPORT_FOOTER_APP_TEXT}</span>
+            <span>Page 1</span>
         </div>
 
       </div>

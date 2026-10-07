@@ -120,6 +120,39 @@ export async function GET(request: NextRequest) {
         }
     } catch {}
 
+    // Multi-cloud fallback (e.g. Backblaze B2, S3)
+    try {
+        const { getStorageHandler } = await import("@/utils/storage-factory");
+        const { data: settings } = await (supabase as any)
+            .from("company_settings")
+            .select("storage_provider, storage_config")
+            .limit(1)
+            .maybeSingle();
+
+        const provider = settings?.storage_provider || (path.includes("backblazeb2.com") ? "Backblaze" : null);
+        if (provider && provider !== "Supabase") {
+            const handler = await getStorageHandler(provider, settings?.storage_config);
+            const signedUrl = await handler.getSignedUrl(path, 3600);
+            if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+                const resp = await fetch(signedUrl);
+                if (resp.ok) {
+                    const buffer = await resp.arrayBuffer();
+                    return new NextResponse(buffer, {
+                        headers: {
+                            "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
+                            "Content-Length": buffer.byteLength.toString(),
+                            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        },
+                    });
+                }
+            }
+        }
+    } catch (multiCloudErr) {
+        console.warn("[Download] Multi-cloud fallback error:", multiCloudErr);
+    }
+
     console.error(`[Download] Error fetching ${storagePath} from buckets`);
     return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
 }

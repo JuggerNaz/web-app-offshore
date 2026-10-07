@@ -83,6 +83,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { useUserProfile } from "@/components/user-profile-provider";
+import { useAttachmentRealtime } from "@/hooks/use-attachment-realtime";
 
 function formatCounter(seconds: number | string): string {
   if (seconds === undefined || seconds === null || seconds === "") return "00:00:00";
@@ -107,7 +108,7 @@ function formatCounter(seconds: number | string): string {
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { toast } from "sonner";
-import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime, combineLocalDateAndTimeToUtcIso } from "@/utils/client-date";
+import { parseClientDate, toUtcIsoTimestamp, toDatetimeLocalString, formatClientTime, combineLocalDateAndTimeToUtcIso, toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { generateInspectionReport } from "@/utils/report-generators/inspection-report";
 import { generateDefectAnomalyReport } from "@/utils/report-generators/defect-anomaly-report";
 import { generateMultiInspectionReport } from "@/utils/report-generators/multi-inspection-report";
@@ -129,11 +130,23 @@ const Inspection3DViewer = dynamic(
   () => import("./_components/Inspection3DViewer").then((mod) => mod.Inspection3DViewer),
   { ssr: false }
 );
+// Both are overlay/dialog components that render nothing until opened, so they
+// are split out of the workspace's initial bundle and only fetched on first
+// open (null loading state: nothing is visible while their chunk loads).
+const InspectionSummaryPanel = dynamic(
+  () => import("./components/InspectionSummaryPanel").then((mod) => mod.InspectionSummaryPanel),
+  { ssr: false, loading: () => null }
+);
+const WorkspaceDialogs = dynamic(
+  () => import("./components/WorkspaceDialogs").then((mod) => mod.WorkspaceDialogs),
+  { ssr: false, loading: () => null }
+);
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
 import { generateROVPhotographyLogReport } from "@/utils/report-generators/rov-photography-log-report";
 import { generateSeabedSurveyReport } from "@/utils/report-generators/seabed-survey-report";
+import { checkTapeDuplicate } from "./utils/tape-validation";
 
 import { loadSettings, type WorkstationSettings } from "@/lib/video-recorder/settings-manager";
 import {
@@ -199,7 +212,6 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
-import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
 import { GeodeticParametersDialog } from "../pipeline-workspace/components/GeodeticParametersDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
@@ -208,7 +220,6 @@ import { getReportHeaderData } from "@/utils/company-settings";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
-import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
@@ -592,22 +603,16 @@ function V10PreviewLayout() {
           ...(Array.isArray(parsed?.borders) ? parsed.borders.flatMap(getComponentsInNode) : []),
         ];
 
-        // Ensure all core inspection panels exist in the restored layout
-        const requiredComps = ["form", "events", "components", "opsLog"];
-        const hasAllRequired = requiredComps.every((c) => existingComps.includes(c));
-
-        if (!hasAllRequired) {
-          console.warn("[Workspace] Stored layout is missing essential panels, resetting to default layout.", {
-            existingComps,
-            requiredComps,
-          });
+        // Only reset layout if it is completely empty/corrupted (at least 1 component must exist)
+        if (existingComps.length === 0 || !parsed?.layout?.children || parsed.layout.children.length === 0) {
+          console.warn("[Workspace] Stored layout is corrupted or empty, resetting to default layout.");
           localStorage.removeItem(storageKey);
           localStorage.removeItem("inspection-workspace-layout-v2");
           localStorage.removeItem("pipeline-workspace-layout-v2");
         } else if (parsed && parsed.layout && parsed.layout.children && parsed.layout.children.length > 0) {
           console.log("[DEBUG] Restoring layout from storage", parsed);
           if (!parsed.global) parsed.global = {};
-          parsed.global.tabEnableClose = false;
+          parsed.global.tabEnableClose = true;
           parsed.global.tabSetEnableMaximize = true;
           parsed.global.enableEdgeDock = true;
           if (!parsed.borders) {
@@ -628,7 +633,7 @@ function V10PreviewLayout() {
     console.log("[DEBUG] Using default layout model");
     const defaultModel: IJsonModel = {
       global: { 
-        tabEnableClose: false, 
+        tabEnableClose: true, 
         tabSetEnableMaximize: true,
         tabSetEnableDivide: true,
         tabSetEnableDrop: true,
@@ -1783,6 +1788,7 @@ function V10PreviewLayout() {
     componentTaskStatuses: any[];
     orphanedFields: string[];
   } | null>(null);
+  const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [originalRecordContext, setOriginalRecordContext] = useState<any>(null);
   const [archivedData, setArchivedData] = useState<Record<string, any>>({});
   const [showTaskSelector, setShowTaskSelector] = useState(false);
@@ -2029,22 +2035,75 @@ function V10PreviewLayout() {
     }
   }, [platformFacesData]);
 
-  // Helper to auto-calculate elapsed video counter from preceding events / start time (Option 1)
-  const calculateAutoCounter = useCallback((targetDate?: string, targetTime?: string, targetTapeId?: number | null): number | null => {
-    const effectiveTapeId = targetTapeId || tapeId;
+  // Helper to auto-calculate elapsed video counter from preceding events / start time matching TapeLogEvents
+  const calculateAutoCounter = useCallback((
+    targetDate?: string, 
+    targetTime?: string, 
+    targetTapeId?: number | null,
+    targetChapterNo?: number | string | null,
+    targetTapeNo?: string | null
+  ): number | null => {
+    const effectiveTapeId = targetTapeId ?? (editingRecordId ? originalRecordContext?.tape_id : null) ?? tapeId;
     const dateStr = targetDate || dynamicProps?.inspection_date;
     const timeStr = targetTime || dynamicProps?.inspection_time;
+    const effectiveChapterStr = String(
+      targetChapterNo ??
+      dynamicProps?.chapter_no ??
+      (editingRecordId ? (originalRecordContext?.chapter_no ?? originalRecordContext?.raw?.insp_video_tapes?.chapter_no ?? originalRecordContext?.raw?.chapter_no ?? originalRecordContext?.raw?.inspection_data?.chapter_no) : null) ??
+      activeChapter ??
+      "1"
+    ).trim();
 
     if (!dateStr || !timeStr) return null;
 
+    // Find tape details
+    const targetTapeObj = (jobTapes || []).find((t: any) => String(t.tape_id) === String(effectiveTapeId));
+    const effectiveTapeNo = (
+      targetTapeNo ||
+      targetTapeObj?.tape_no ||
+      dynamicProps?.tape_no ||
+      (editingRecordId ? (originalRecordContext?.tape_no ?? originalRecordContext?.raw?.insp_video_tapes?.tape_no) : null) ||
+      tapeNo ||
+      ""
+    ).trim().toUpperCase();
+
+    // Matching video events strictly by tape and chapter (exact same logic as TapeLogEvents)
     const matchingTapeLogs = (videoEvents || []).filter((ev: any) => {
-      if (effectiveTapeId) {
-        return ev.tapeId === effectiveTapeId || ev.tape_id === effectiveTapeId;
+      // Exclude the current record being edited to prevent self-referencing old timestamps
+      if (editingRecordId && (ev.realId === editingRecordId || ev.id === `insp_${editingRecordId}`)) {
+        return false;
       }
-      return ev.tapeNo && tapeNo && ev.tapeNo === tapeNo;
+
+      const evTapeNo = (ev.tapeNo || "").trim().toUpperCase();
+      const evChapter = String(ev.chapterNo != null ? ev.chapterNo : "1").trim();
+
+      // Check Tape match: by tapeId OR by tapeNo (case-insensitive substring/match)
+      const isTapeMatch = (effectiveTapeId && Number(ev.tapeId || ev.tape_id) === Number(effectiveTapeId)) ||
+        (effectiveTapeNo && evTapeNo && (evTapeNo === effectiveTapeNo || effectiveTapeNo.includes(evTapeNo) || evTapeNo.includes(effectiveTapeNo)));
+
+      if (!isTapeMatch) return false;
+
+      // Check Chapter match
+      if (effectiveChapterStr && evChapter && evChapter !== "N/A" && evChapter !== "No Chapter") {
+        if (evChapter !== effectiveChapterStr) {
+          return false;
+        }
+      }
+
+      return true;
     });
 
-    if (matchingTapeLogs.length === 0) return null;
+    if (matchingTapeLogs.length === 0) {
+      // Fallback: If no chapter-specific events found, match by tape
+      const fallbackTapeLogs = (videoEvents || []).filter((ev: any) => {
+        if (editingRecordId && (ev.realId === editingRecordId || ev.id === `insp_${editingRecordId}`)) return false;
+        const evTapeNo = (ev.tapeNo || "").trim().toUpperCase();
+        return (effectiveTapeId && Number(ev.tapeId || ev.tape_id) === Number(effectiveTapeId)) ||
+          (effectiveTapeNo && evTapeNo && (evTapeNo === effectiveTapeNo || effectiveTapeNo.includes(evTapeNo) || evTapeNo.includes(effectiveTapeNo)));
+      });
+      if (fallbackTapeLogs.length === 0) return null;
+      matchingTapeLogs.push(...fallbackTapeLogs);
+    }
 
     try {
       const formattedTime = timeStr.length === 5 ? `${timeStr}:00` : timeStr;
@@ -2064,34 +2123,40 @@ function V10PreviewLayout() {
         return parseClientDate(ev.eventTime).getTime() <= targetMillis;
       });
 
+      const parseEventCounterSecs = (evItem: any): number => {
+        if (evItem.tape_counter_start != null && !isNaN(Number(evItem.tape_counter_start))) {
+          return Number(evItem.tape_counter_start);
+        }
+        if (evItem.time) {
+          const parts = String(evItem.time).split(":").map((p: string) => parseInt(p, 10) || 0);
+          if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+          if (parts.length === 2) return parts[0] * 60 + parts[1];
+          return parseInt(evItem.time, 10) || 0;
+        }
+        return 0;
+      };
+
       if (preceding.length > 0) {
         const lastEv = preceding[preceding.length - 1];
         const lastMillis = parseClientDate(lastEv.eventTime).getTime();
-        const baseCounter = lastEv.tape_counter_start != null
-          ? Number(lastEv.tape_counter_start)
-          : (lastEv.time ? lastEv.time.split(":").reduce((acc: number, t: string) => 60 * acc + (+t || 0), 0) : 0);
+        const baseCounter = parseEventCounterSecs(lastEv);
         const diffSeconds = Math.max(0, Math.floor((targetMillis - lastMillis) / 1000));
         return baseCounter + diffSeconds;
       }
 
-      // Fallback to first event or start event
-      const startEvent = sortedLogs.find((ev: any) => 
-        (ev.action || "").toUpperCase().includes("START")
-      ) || sortedLogs[0];
-
-      if (startEvent && startEvent.eventTime) {
-        const startMillis = parseClientDate(startEvent.eventTime).getTime();
-        const baseCounter = startEvent.tape_counter_start != null
-          ? Number(startEvent.tape_counter_start)
-          : (startEvent.time ? startEvent.time.split(":").reduce((acc: number, t: string) => 60 * acc + (+t || 0), 0) : 0);
-        const diffSeconds = Math.floor((targetMillis - startMillis) / 1000);
+      // If earlier than all events in this chapter, reference the first event
+      const firstEvent = sortedLogs[0];
+      if (firstEvent && firstEvent.eventTime) {
+        const firstMillis = parseClientDate(firstEvent.eventTime).getTime();
+        const baseCounter = parseEventCounterSecs(firstEvent);
+        const diffSeconds = Math.floor((targetMillis - firstMillis) / 1000);
         return Math.max(0, baseCounter + diffSeconds);
       }
     } catch (err) {
       console.warn("[calculateAutoCounter] Date parsing failed:", err);
     }
     return null;
-  }, [tapeId, tapeNo, dynamicProps?.inspection_date, dynamicProps?.inspection_time, videoEvents]);
+  }, [tapeId, tapeNo, activeChapter, editingRecordId, originalRecordContext, jobTapes, dynamicProps?.tape_id, dynamicProps?.chapter_no, dynamicProps?.tape_no, dynamicProps?.inspection_date, dynamicProps?.inspection_time, videoEvents]);
 
   // Helper to handle prop changes and track user interaction
   const handleDynamicPropChange = (name: string, value: any) => {
@@ -2103,7 +2168,13 @@ function V10PreviewLayout() {
       if (name === "inspection_time" || name === "inspection_date") {
         const d = name === "inspection_date" ? value : (updated.inspection_date || format(new Date(), "yyyy-MM-dd"));
         const t = name === "inspection_time" ? value : (updated.inspection_time || format(new Date(), "HH:mm:ss"));
-        const autoSecs = calculateAutoCounter(d, t, tapeId);
+        
+        // Resolve tape and chapter of the record being edited
+        const targetTapeId = updated.tape_id ?? (editingRecordId ? originalRecordContext?.tape_id : null) ?? tapeId;
+        const targetChapter = updated.chapter_no ?? (editingRecordId ? (originalRecordContext?.chapter_no ?? originalRecordContext?.raw?.insp_video_tapes?.chapter_no) : null) ?? activeChapter;
+        const targetTapeNo = updated.tape_no ?? (editingRecordId ? (originalRecordContext?.tape_no ?? originalRecordContext?.raw?.insp_video_tapes?.tape_no) : null) ?? tapeNo;
+
+        const autoSecs = calculateAutoCounter(d, t, targetTapeId, targetChapter, targetTapeNo);
         if (autoSecs !== null && autoSecs >= 0) {
           const formatted = formatTime(autoSecs);
           updated.tape_count_no = formatted;
@@ -2359,8 +2430,6 @@ function V10PreviewLayout() {
     }
     filterDefectTypes();
   }, [anomalyData.defectCode, defectCodes, allDefectTypes, supabase]);
-
-  const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
 
   // Auto-assign component face details when selected component changes for a new record
   useEffect(() => {
@@ -5260,6 +5329,16 @@ function V10PreviewLayout() {
     syncDeploymentState();
   }, [syncDeploymentState]);
 
+  // Realtime subscription for attachment and insp_media changes: syncs Captured Events immediately
+  useAttachmentRealtime(
+    useCallback(() => {
+      console.log("[Realtime] Attachment or insp_media changed, refreshing records and caches...");
+      syncDeploymentState();
+      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+      queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+    }, [syncDeploymentState, queryClient])
+  );
+
   const fetchHistory = useCallback(async () => {
     if (!selectedComp || !selectedComp.id || isNaN(Number(selectedComp.id)) || !structureId || isNaN(Number(structureId))) {
       setCurrentCompRecords([]);
@@ -5505,24 +5584,46 @@ function V10PreviewLayout() {
       const jobVal = Number(activeDep?.id);
 
       if (activeDep?.id && (!tId || action === "Start Tape")) {
-        // 1. Try to find if this tape_no and chapter_no is already registered for this job
-        const { data: existingTape } = await supabase
-          .from("insp_video_tapes")
-          .select("*")
-          .eq("tape_no", tapeNo || "")
-          .eq("chapter_no", activeChapter)
-          .eq(jobCol, jobVal)
-          .maybeSingle();
+        const cleanTapeNo = (tapeNo || "").replace(/\s+/g, "").toUpperCase();
+        const targetChapter = activeChapter || 1;
 
-        if (existingTape) {
-          tId = existingTape.tape_id;
-          setTapeId(existingTape.tape_id);
-          setJobTapes((prev) => {
-            if (!prev.some((t) => t.tape_id === existingTape.tape_id)) {
-              return [existingTape, ...prev];
+        // 1. Try to find if this tape_no and chapter_no is already registered (even across different dives under the same structure/jobpack)
+        const dupCheck = await checkTapeDuplicate(supabase, {
+          tapeNo: cleanTapeNo,
+          chapterNo: targetChapter,
+          jobPackId,
+          structureId,
+          activeDepId: activeDep?.id,
+          inspMethod,
+        });
+
+        let existingTapeId = dupCheck.existingTapeId || null;
+
+        if (!existingTapeId && cleanTapeNo) {
+          const { data: existingTape } = await supabase
+            .from("insp_video_tapes")
+            .select("tape_id")
+            .ilike("tape_no", cleanTapeNo)
+            .eq("chapter_no", targetChapter)
+            .maybeSingle();
+          if (existingTape) {
+            existingTapeId = existingTape.tape_id;
+          }
+        }
+
+        if (existingTapeId) {
+          tId = existingTapeId;
+          setTapeId(existingTapeId);
+          if (!jobTapes.some((t) => t.tape_id === existingTapeId)) {
+            const { data: fetchedTape } = await supabase
+              .from("insp_video_tapes")
+              .select("*")
+              .eq("tape_id", existingTapeId)
+              .maybeSingle();
+            if (fetchedTape) {
+              setJobTapes((prev) => [fetchedTape, ...prev]);
             }
-            return prev;
-          });
+          }
         } else {
           // 2. If it is not registered, create a new record in insp_video_tapes
           const user = (await supabase.auth.getUser()).data.user;
@@ -5742,6 +5843,54 @@ function V10PreviewLayout() {
             event_time: finalEventTime,
           })
           .eq("video_log_id", editingEvent.realId);
+      } else if (editingEvent.logType === "insp") {
+        const totalSecs = finalTimecode.split(":").reduce((acc, time) => 60 * acc + +time, 0);
+        const parsedDate = finalEventTime ? parseClientDate(finalEventTime) : new Date();
+        const inspDate = toLocalDateString(parsedDate);
+        const inspTime = toLocalTimeString(parsedDate, true);
+
+        const { data: curRec } = await supabase
+          .from("insp_records")
+          .select("inspection_data")
+          .eq("insp_id", editingEvent.realId)
+          .maybeSingle();
+
+        const curData = (curRec?.inspection_data && typeof curRec.inspection_data === "object") ? { ...curRec.inspection_data } : {};
+        const updData = {
+          ...curData,
+          date: inspDate,
+          inspection_date: inspDate,
+          time: inspTime,
+          inspection_time: inspTime,
+          timecode: finalTimecode,
+          _meta_timecode: finalTimecode,
+          counter: finalTimecode,
+          tape_counter: finalTimecode,
+          tape_count_no: totalSecs,
+        };
+
+        await supabase
+          .from("insp_records")
+          .update({
+            inspection_date: inspDate,
+            inspection_time: inspTime,
+            tape_count_no: totalSecs,
+            inspection_data: updData,
+            md_date: new Date().toISOString(),
+          })
+          .eq("insp_id", editingEvent.realId);
+
+        try {
+          await supabase
+            .from("insp_anomalies")
+            .update({
+              tape_count_no: totalSecs,
+              md_date: new Date().toISOString(),
+            })
+            .eq("insp_id", editingEvent.realId);
+        } catch (anomErr) {
+          console.warn("[WorkspaceClient] Anomaly sync warning:", anomErr);
+        }
       }
 
       setEditingEvent(null);
@@ -5774,9 +5923,28 @@ function V10PreviewLayout() {
       const targetDepId = editTapeDeploymentId ? Number(editTapeDeploymentId) : (activeDep?.id ? Number(activeDep.id) : null);
 
       const cleanTapeNo = String(editTapeNo || "").replace(/\s+/g, "").toUpperCase();
+      const targetChapter = parseInt(editTapeChapter) || 1;
+
+      // Validate duplicate Tape No & Chapter No under the same structure & jobpack
+      const dupCheck = await checkTapeDuplicate(supabase, {
+        tapeNo: cleanTapeNo,
+        chapterNo: targetChapter,
+        currentTapeId: tapeId,
+        jobPackId,
+        structureId,
+        activeDepId: targetDepId || activeDep?.id,
+        inspMethod,
+      });
+
+      if (dupCheck.isDuplicate) {
+        toast.error(dupCheck.message || `Tape "${cleanTapeNo}" with Chapter ${targetChapter} already exists in this Structure / Job Pack.`);
+        setIsCommitting(false);
+        return;
+      }
+
       const updateTapePayload: any = {
         tape_no: cleanTapeNo,
-        chapter_no: parseInt(editTapeChapter) || 1,
+        chapter_no: targetChapter,
         remarks: editTapeRemarks,
         status: editTapeStatus,
       };
@@ -7146,26 +7314,55 @@ function V10PreviewLayout() {
       let autoRefNo = "";
 
       if (isEditing) {
-        // When editing/modifying historical record: NEVER overwrite tape_id with active panel tape
-        tId = originalRecordContext?.tape_id !== undefined 
+        // When editing/modifying historical record: preserve original tape_id if present, otherwise resolve from jobTapes or active tape
+        const origTapeId = originalRecordContext?.tape_id !== undefined && originalRecordContext?.tape_id !== null
           ? originalRecordContext.tape_id 
           : (originalRecordContext?.raw?.tape_id ?? null);
+
+        if (origTapeId) {
+          tId = origTapeId;
+        } else {
+          const rDepId = originalRecordContext?.rov_job_id || originalRecordContext?.dive_job_id || originalRecordContext?.raw?.rov_job_id || originalRecordContext?.raw?.dive_job_id;
+          const matchedJobTape = jobTapes?.find((t: any) => 
+            (rDepId && (t.rov_job_id === rDepId || t.dive_job_id === rDepId)) ||
+            (tapeNo && t.tape_no === tapeNo)
+          );
+          tId = matchedJobTape?.tape_id || tapeId || null;
+        }
       } else if (!tId && activeDep?.id) {
         // When creating new inspection record: find or register current active tape
         const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
         const jobVal = Number(activeDep.id);
 
-        // Try to fetch existing active tape for this deployment matching current tapeNo and activeChapter
-        const { data: existingTape } = await supabase
-          .from("insp_video_tapes")
-          .select("tape_id")
-          .eq("tape_no", tapeNo || "")
-          .eq("chapter_no", activeChapter)
-          .eq(jobCol, jobVal)
-          .maybeSingle();
+        const cleanTapeNo = (tapeNo || "").replace(/\s+/g, "").toUpperCase();
+        const targetChapter = activeChapter || 1;
 
-        if (existingTape) {
-          tId = existingTape.tape_id;
+        // Try to fetch existing active tape matching current tapeNo and activeChapter across structure/jobpack
+        const dupCheck = await checkTapeDuplicate(supabase, {
+          tapeNo: cleanTapeNo,
+          chapterNo: targetChapter,
+          jobPackId,
+          structureId,
+          activeDepId: activeDep?.id,
+          inspMethod,
+        });
+
+        let existingTapeId = dupCheck.existingTapeId || null;
+
+        if (!existingTapeId && cleanTapeNo) {
+          const { data: existingTape } = await supabase
+            .from("insp_video_tapes")
+            .select("tape_id")
+            .ilike("tape_no", cleanTapeNo)
+            .eq("chapter_no", targetChapter)
+            .maybeSingle();
+          if (existingTape) {
+            existingTapeId = existingTape.tape_id;
+          }
+        }
+
+        if (existingTapeId) {
+          tId = existingTapeId;
           setTapeId(tId);
         } else {
           // Create one if none exists
@@ -7441,9 +7638,11 @@ function V10PreviewLayout() {
         description: recordNotes,
         status: findingType === "Incomplete" ? "INCOMPLETE" : "COMPLETED",
         has_anomaly: findingType === "Anomaly" || findingType === "Finding",
-        tape_id: isEditing
-          ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
-          : tId,
+        tape_id: activeProps.tape_id !== undefined && activeProps.tape_id !== null && activeProps.tape_id !== ""
+          ? Number(activeProps.tape_id)
+          : (isEditing
+              ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
+              : tId),
         tape_count_no: (() => {
           const typedVal =
             activeProps.tape_count_no !== undefined &&
@@ -7501,22 +7700,31 @@ function V10PreviewLayout() {
           _meta_status: findingType,
           _mgi_profile_id: activeMGIProfile?.id || null,
           incomplete_reason: findingType === "Incomplete" ? incompleteReason : null,
-          // Preserve original chapter_no when editing; save activeChapter when inserting new
-          ...(isEditing 
-            ? (originalRecordContext?.chapter_no !== undefined 
-                ? { chapter_no: originalRecordContext.chapter_no } 
-                : (originalRecordContext?.raw?.inspection_data?.chapter_no 
-                    ? { chapter_no: originalRecordContext.raw.inspection_data.chapter_no } 
-                    : (originalRecordContext?.raw?.inspection_data?.chapter 
-                        ? { chapter: originalRecordContext.raw.inspection_data.chapter } 
-                        : {})))
-            : (activeChapter ? { chapter_no: activeChapter } : {})),
+          chapter_no: activeProps.chapter_no !== undefined && activeProps.chapter_no !== null && activeProps.chapter_no !== ""
+            ? Number(activeProps.chapter_no)
+            : (isEditing 
+                ? (originalRecordContext?.chapter_no !== undefined 
+                    ? originalRecordContext.chapter_no 
+                    : (originalRecordContext?.raw?.inspection_data?.chapter_no 
+                        ? originalRecordContext.raw.inspection_data.chapter_no 
+                        : (originalRecordContext?.raw?.inspection_data?.chapter 
+                            ? originalRecordContext.raw.inspection_data.chapter 
+                            : 1)))
+                : (activeChapter ? Number(activeChapter) : 1)),
         },
         archived_data: newArchivedData,
       };
 
-      // Set job assignment: preserve original dive_job_id / rov_job_id if editing; assign active deployment if creating new
-      if (isEditing) {
+      // Set job assignment: if user explicitly selected dive_job_id / rov_job_id in activeProps, use it; otherwise preserve original if editing or assign active deployment
+      if (activeProps.dive_job_id || activeProps.rov_job_id) {
+        if (inspMethod === "DIVING") {
+          payload.dive_job_id = activeProps.dive_job_id || activeProps.rov_job_id;
+          payload.rov_job_id = null;
+        } else {
+          payload.rov_job_id = activeProps.rov_job_id || activeProps.dive_job_id;
+          payload.dive_job_id = null;
+        }
+      } else if (isEditing) {
         if (originalRecordContext?.dive_job_id !== undefined || originalRecordContext?.raw?.dive_job_id !== undefined) {
           payload.dive_job_id = originalRecordContext?.dive_job_id ?? originalRecordContext?.raw?.dive_job_id;
         }
@@ -7793,26 +8001,29 @@ function V10PreviewLayout() {
       const finalCounterSecs = payload.tape_count_no != null ? Number(payload.tape_count_no) : vidTimer;
       const finalTimecodeStr = formatTime(finalCounterSecs);
 
-      if (editingRecordId) {
-        await supabase
-          .from("insp_video_logs")
-          .update({
+      const finalTapeId = payload.tape_id || tId;
+      if (finalTapeId) {
+        if (editingRecordId) {
+          await supabase
+            .from("insp_video_logs")
+            .update({
+              timecode_start: finalTimecodeStr,
+              tape_counter_start: finalCounterSecs,
+              event_time: finalEventTimeUtc,
+              tape_id: finalTapeId,
+            })
+            .eq("inspection_id", editingRecordId);
+        } else {
+          await supabase.from("insp_video_logs").insert({
+            inspection_id: opData.insp_id,
+            event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
+            event_time: finalEventTimeUtc,
             timecode_start: finalTimecodeStr,
             tape_counter_start: finalCounterSecs,
-            event_time: finalEventTimeUtc,
-            tape_id: tId,
-          })
-          .eq("inspection_id", editingRecordId);
-      } else {
-        await supabase.from("insp_video_logs").insert({
-          inspection_id: opData.insp_id,
-          event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
-          event_time: finalEventTimeUtc,
-          timecode_start: finalTimecodeStr,
-          tape_counter_start: finalCounterSecs,
-          tape_id: tId,
-          company_id: activeCompanyId || null,
-        });
+            tape_id: finalTapeId,
+            company_id: activeCompanyId || null,
+          });
+        }
       }
 
       // Prepare data for background processing
@@ -8181,24 +8392,16 @@ function V10PreviewLayout() {
     // 4. Concurrently fetch full details, anomalies, and attachments in parallel
     (async () => {
       try {
-        const needsFullRecord =
-          !record.inspection_data ||
-          !record.component_id ||
-          !record.inspection_type ||
-          (record.has_anomaly && (!record.insp_anomalies || record.insp_anomalies.length === 0));
-
         const sourceIds = [recordId];
         const initialAnomId = initialAnomalyObj?.anomaly_id || fullRecord.anomaly_id;
         if (initialAnomId && !sourceIds.includes(initialAnomId)) sourceIds.push(initialAnomId);
 
         const [fullRecRes, attsRes, mediaRes] = await Promise.all([
-          needsFullRecord
-            ? supabase
-                .from("insp_records")
-                .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator)")
-                .eq("insp_id", recordId)
-                .maybeSingle()
-            : Promise.resolve({ data: fullRecord, error: null }),
+          supabase
+            .from("insp_records")
+            .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator)")
+            .eq("insp_id", recordId)
+            .maybeSingle(),
           supabase
             .from("attachment")
             .select("*")
@@ -8210,11 +8413,84 @@ function V10PreviewLayout() {
             .in("inspection_id", [recordId]),
         ]);
 
-        // If extra anomaly data was returned by fullRecRes
+        // If fresh data was returned by fullRecRes
         if (fullRecRes.data) {
           const freshRecord = fullRecRes.data;
+
+          // Check if the record was modified compared to the initial in-memory state
+          const isModified = 
+            (freshRecord.md_date && freshRecord.md_date !== fullRecord.md_date) ||
+            String(freshRecord.tape_count_no ?? "") !== String(fullRecord.tape_count_no ?? "") ||
+            String(freshRecord.inspection_date ?? "") !== String(fullRecord.inspection_date ?? "") ||
+            String(freshRecord.inspection_time ?? "") !== String(fullRecord.inspection_time ?? "");
+
+          if (isModified) {
+            // Parse fresh inspection_data
+            let freshParsedData: Record<string, any> = {};
+            if (freshRecord.inspection_data) {
+              try {
+                let raw = typeof freshRecord.inspection_data === 'string' 
+                  ? JSON.parse(freshRecord.inspection_data) 
+                  : freshRecord.inspection_data;
+                if (Array.isArray(raw)) {
+                  const lastItem = raw[raw.length - 1];
+                  if (lastItem && typeof lastItem === 'object' && !Array.isArray(lastItem) && (lastItem.inspno || lastItem.insp_id || lastItem.scan_type || lastItem.ut_3_o_clock)) {
+                    raw = lastItem;
+                  } else {
+                    raw = {};
+                  }
+                }
+                Object.keys(raw).forEach(key => {
+                  if (/^\d+$/.test(key)) delete raw[key];
+                });
+                freshParsedData = raw;
+              } catch (e) {
+                console.error('[handleEditRecord] Failed to parse fresh inspection_data:', e);
+              }
+            }
+
+            let freshParsedArchive: Record<string, any> = {};
+            try {
+              if (freshRecord.archived_data) {
+                freshParsedArchive = typeof freshRecord.archived_data === 'string'
+                  ? JSON.parse(freshRecord.archived_data)
+                  : freshRecord.archived_data;
+                Object.keys(freshParsedArchive).forEach(key => {
+                  if (/^\d+$/.test(key)) delete freshParsedArchive[key];
+                });
+              }
+            } catch (e) {
+              console.error('[handleEditRecord] Failed to parse fresh archived_data:', e);
+            }
+
+            const freshProps: Record<string, any> = { ...freshParsedArchive, ...freshParsedData };
+            if (freshRecord.tape_count_no !== undefined && freshRecord.tape_count_no !== null) {
+              freshProps.tape_count_no = formatTime(Number(freshRecord.tape_count_no));
+            }
+            if (freshRecord.inspection_date) freshProps.inspection_date = freshRecord.inspection_date;
+            if (freshRecord.inspection_time) freshProps.inspection_time = freshRecord.inspection_time;
+
+            if (freshRecord.elevation !== undefined && freshRecord.elevation !== null && !freshProps.verification_depth) {
+              freshProps.verification_depth = String(freshRecord.elevation);
+            }
+
+            setDynamicProps((prev: any) => ({ ...prev, ...freshProps }));
+            setDebouncedProps((prev: any) => ({ ...prev, ...freshProps }));
+            setRecordNotes(freshRecord.description || freshRecord.observation || "");
+
+            // Update in-memory currentRecords list so subsequent access is instant and up to date
+            setCurrentRecords((prev: any[]) =>
+              (prev || []).map((r: any) => (r.insp_id === freshRecord.insp_id ? { ...r, ...freshRecord } : r))
+            );
+          }
+
           setOriginalRecordContext((prev: any) => ({
             ...prev,
+            insp_id: freshRecord.insp_id || prev?.insp_id,
+            component_id: freshRecord.component_id ?? prev?.component_id,
+            inspection_type_id: freshRecord.inspection_type_id ?? prev?.inspection_type_id,
+            inspection_type_code: freshRecord.inspection_type?.code || freshRecord.inspection_type_code || prev?.inspection_type_code,
+            sow_report_no: freshRecord.sow_report_no ?? prev?.sow_report_no,
             dive_job_id: freshRecord.dive_job_id ?? prev?.dive_job_id,
             rov_job_id: freshRecord.rov_job_id ?? prev?.rov_job_id,
             tape_id: freshRecord.tape_id ?? prev?.tape_id,
@@ -8224,6 +8500,7 @@ function V10PreviewLayout() {
             chapter_no: freshRecord.insp_video_tapes?.chapter_no ?? freshRecord.chapter_no ?? freshRecord.inspection_data?.chapter_no ?? freshRecord.inspection_data?.chapter ?? prev?.chapter_no,
             raw: freshRecord,
           }));
+
           const freshAnomalyObj = freshRecord.insp_anomalies?.[0] || freshRecord.anomaly_details;
           if (freshRecord.has_anomaly && freshAnomalyObj) {
             const isFinding =
@@ -9339,8 +9616,20 @@ function V10PreviewLayout() {
       newParams.delete("recordId");
       newParams.delete("compId");
       router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
+    } else if (!recordIdParam && compIdParam && isReadyForComps && allComps.length > 0 && !hasAutoEditedRef.current) {
+      hasAutoEditedRef.current = true;
+      const targetComp = allComps.find(
+        (c: any) => String(c.id || c.comp_id) === String(compIdParam) || 
+                    (c.q_id && String(c.q_id).toUpperCase() === String(compIdParam).toUpperCase())
+      );
+      if (targetComp) {
+        setSelectedComp(targetComp);
+      }
+      const newParams = new URLSearchParams(window.location.search);
+      newParams.delete("compId");
+      router.replace(`${window.location.pathname}?${newParams.toString()}`, { scroll: false });
     }
-  }, [recordIdParam, isReadyForComps, allComps, handleEditRecord, router]);
+  }, [recordIdParam, compIdParam, isReadyForComps, allComps, handleEditRecord, setSelectedComp, router]);
 
   const flexLayoutStyles = (
     <style dangerouslySetInnerHTML={{ __html: `
@@ -9349,6 +9638,22 @@ function V10PreviewLayout() {
       .flexlayout__tabset_header { background-color: #1e293b !important; color: #94a3b8 !important; }
       .flexlayout__tab_button { background-color: transparent !important; color: #94a3b8 !important; }
       .flexlayout__tab_button--selected { background-color: #334155 !important; color: #fff !important; }
+      .flexlayout__tab_button_trailing {
+        margin-left: 6px !important;
+        display: inline-flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        opacity: 0.65 !important;
+        border-radius: 4px !important;
+        padding: 2px !important;
+        transition: all 0.15s ease-in-out !important;
+        cursor: pointer !important;
+      }
+      .flexlayout__tab_button_trailing:hover {
+        opacity: 1 !important;
+        background-color: rgba(239, 68, 68, 0.25) !important;
+        color: #f87171 !important;
+      }
       .flexlayout__splitter { background-color: #334155 !important; }
       .flexlayout__tab { background-color: #0f172a !important; overflow: hidden; border: 1px solid #334155 !important; }
       .custom-scrollbar::-webkit-scrollbar { width: 6px; }

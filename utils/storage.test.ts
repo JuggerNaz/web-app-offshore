@@ -76,14 +76,37 @@ describe("Storage Utilities", () => {
       expect(result.fileName).toBe("Test File");
     });
 
-    it("should convert relative path to public URL", () => {
+    it("should route relative paths through the download proxy (multi-cloud)", () => {
       const attachment = {
         path: "uploads/file.pdf",
         name: "Test File",
       };
       const result = processAttachmentUrl(attachment);
       expect(result.fileUrl).toBe(
-        "https://test.supabase.co/storage/v1/object/public/attachments/uploads/file.pdf"
+        "/api/attachment/download?path=uploads%2Ffile.pdf&bucket=attachments"
+      );
+    });
+
+    it("should prefer the id-based URL proxy when attachment has an id", () => {
+      const attachment = {
+        id: 42,
+        path: "uploads/file.pdf",
+        name: "Test File",
+      };
+      const result = processAttachmentUrl(attachment);
+      expect(result.fileUrl).toBe(
+        "/api/attachment/url?id=42&path=uploads%2Ffile.pdf"
+      );
+    });
+
+    it("should route backblaze URLs through the download proxy", () => {
+      const attachment = {
+        path: "https://f000.backblazeb2.com/file/bucket/uploads/file.pdf",
+        name: "Test File",
+      };
+      const result = processAttachmentUrl(attachment);
+      expect(result.fileUrl).toBe(
+        "/api/attachment/download?path=https%3A%2F%2Ff000.backblazeb2.com%2Ffile%2Fbucket%2Fuploads%2Ffile.pdf"
       );
     });
 

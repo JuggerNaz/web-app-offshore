@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -39,14 +39,14 @@ export const generateROVCondReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        const supabase = createClient();
+        records = await enrichRecordsWithTapesAndDeployments(supabase, records);
         records = normalizeReportRecords(records);
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 12;
         const contentWidth = pageWidth - margin * 2;
-
-        const supabase = createClient();
 
         const colors = {
             navy: [7, 78, 136]  as [number, number, number],
@@ -222,7 +222,7 @@ export const generateROVCondReport = async (
                 r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
                 r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
                 r.rov_job_id || r.dive_job_id || "—";
-            const tapeNo = r.insp_video_tapes?.tape_no || d.tape_no || r.tape_id || "—";
+            const tapeNo = extractRecordTapeNo(r);
 
             const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
             const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);

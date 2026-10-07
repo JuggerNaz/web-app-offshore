@@ -489,8 +489,12 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
   useEffect(() => {
     if (selectedROVJob) {
       loadLatestData();
-      // Refresh latest data every 5 seconds (faster to feel live)
-      const interval = setInterval(loadLatestData, 5000);
+      // Refresh latest data every 5 seconds while the tab is visible
+      // (skip ticks in background tabs to save bandwidth)
+      const interval = setInterval(() => {
+        if (document.hidden) return;
+        loadLatestData();
+      }, 5000);
       return () => clearInterval(interval);
     } else {
       // Reset data when no job is selected

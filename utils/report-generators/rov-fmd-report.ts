@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -34,6 +34,7 @@ export const generateROVFMDReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        records = await enrichRecordsWithTapesAndDeployments(null, records);
         records = normalizeReportRecords(records);
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
@@ -145,7 +146,7 @@ export const generateROVFMDReport = async (
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
                                r.rov_job_id || r.dive_job_id || 'N/A';
-                const tapeNo = r.insp_video_tapes?.tape_no || 'N/A';
+                const tapeNo = extractRecordTapeNo(r, 'N/A');
                 
                 const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
                 const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));

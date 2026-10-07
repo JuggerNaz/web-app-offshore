@@ -265,8 +265,11 @@ export async function generateReportFromSearch(
       jobpack_id,
       structure_id,
       component_id,
+      tape_id,
+      tape_no,
       rov_job_id,
       dive_job_id,
+      insp_video_tapes:tape_id!left(tape_id, tape_no, chapter_no),
       structure_components:component_id!left(id, q_id, code)
     `)
     .eq("jobpack_id", ctx.jobpackId)
@@ -282,6 +285,10 @@ export async function generateReportFromSearch(
     console.error("Failed to fetch inspection records:", recError);
     return;
   }
+
+  // Enrich records with tape and deployment info
+  const { enrichRecordsWithTapesAndDeployments } = await import("@/utils/report-generators/shared-logo");
+  await enrichRecordsWithTapesAndDeployments(supabase, records);
 
   // 2. Fetch header data
   const settings = await getReportHeaderData();
