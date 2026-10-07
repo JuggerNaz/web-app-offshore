@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
+import useSWR from "swr";
 import { ChevronLeft, ChevronRight, LayoutPanelLeft, Compass, Settings, Search, Command } from "lucide-react";
 import { DashboardMenu } from "./menu";
 import { DashboardFooter } from "./footer";
@@ -10,15 +11,13 @@ import { Separator } from "./ui/separator";
 import { UserSidebar } from "./user-sidebar";
 import { cn } from "@/lib/utils";
 import Image from "next/image";
+import { fetcher } from "@/utils/utils";
 
 import { useUserRole } from "@/utils/hooks/use-user-role";
 import { useUserProfile } from "@/components/user-profile-provider";
 
 export function CollapsibleSidebar() {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
-  const [companyName, setCompanyName] = useState("OFFSHORE");
-  const [departmentName, setDepartmentName] = useState("Data Management");
   const { role, modules } = useUserRole();
   const { activeCompanyId, company } = useUserProfile();
 
@@ -27,50 +26,30 @@ export function CollapsibleSidebar() {
     return modules.includes(moduleName);
   };
 
-  // Load company settings from API
+  // SWR dedupes concurrent/mounting fetches for the same key and caches the
+  // result between revalidations, so every mounted sidebar/dialog does NOT hit
+  // /api/company-settings again (each request runs an expensive auth chain
+  // server-side). Revalidate on demand via companySettingsChanged below.
+  const settingsUrl = activeCompanyId
+    ? `/api/company-settings?company_id=${activeCompanyId}`
+    : "/api/company-settings";
+  const { data: settingsResponse, mutate: revalidateSettings } = useSWR(settingsUrl, fetcher, {
+    revalidateOnFocus: false,
+    dedupingInterval: 30_000,
+    keepPreviousData: true,
+  });
+
+  // Refresh when any part of the app signals a settings/company change
   useEffect(() => {
-    const loadSettings = async () => {
-      try {
-        const url = activeCompanyId
-          ? `/api/company-settings?company_id=${activeCompanyId}&t=${Date.now()}`
-          : `/api/company-settings?t=${Date.now()}`;
+    const revalidate = () => revalidateSettings();
+    window.addEventListener("companySettingsChanged", revalidate);
+    return () => window.removeEventListener("companySettingsChanged", revalidate);
+  }, [revalidateSettings]);
 
-        const response = await fetch(url, {
-          cache: "no-store",
-          headers: {
-            "Cache-Control": "no-cache",
-            ...(activeCompanyId ? { "x-company-id": activeCompanyId } : {}),
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`HTTP error! status: ${response.status}`);
-        }
-        const { data } = await response.json();
-        setCompanyLogo(data?.logo_url || null);
-        if (data?.company_name) {
-          setCompanyName(data.company_name);
-        } else if (company?.name) {
-          setCompanyName(company.name);
-        }
-        if (data?.department_name) {
-          setDepartmentName(data.department_name);
-        }
-      } catch (error) {
-        console.error("Error loading company settings:", error);
-      }
-    };
-
-    // Load on mount and whenever activeCompanyId changes
-    loadSettings();
-
-    // Listen for settings changes
-    window.addEventListener("companySettingsChanged", loadSettings);
-
-    return () => {
-      window.removeEventListener("companySettingsChanged", loadSettings);
-    };
-  }, [activeCompanyId, company]);
+  const settingsData = settingsResponse?.data;
+  const companyLogo: string | null = settingsData?.logo_url || null;
+  const companyName: string = settingsData?.company_name || company?.name || "OFFSHORE";
+  const departmentName: string = settingsData?.department_name || "Data Management";
 
   const toggleSidebar = () => {
     setIsCollapsed(!isCollapsed);
