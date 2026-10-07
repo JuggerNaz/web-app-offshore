@@ -15,6 +15,13 @@ import {
 export type { UserRole, Profile, Company, CompanyMembership };
 export { ROLE_HIERARCHY, hasMinimumRole };
 
+// Companies columns needed by API consumers: id (tenant resolution), name
+// (sidebar fallback), slug/logo_url (tenant pickers), is_active (org
+// activation filtering). Intentionally excludes the potentially large
+// `settings` JSON blob and other wide columns — /api/company-settings is the
+// dedicated source for those, so every API request no longer pays for them.
+const COMPANY_JOIN_COLUMNS = "id, name, slug, logo_url, is_active";
+
 export interface AuthenticatedRoleContext {
   params: Promise<any>;
   user: AuthUser;
@@ -35,13 +42,12 @@ type AuthenticatedRoleHandler = (
  */
 export async function getUserMembership(supabase: any, userId: string, companyId?: string | null) {
   // Profile, memberships and role are all keyed by user_id and independent —
-  // Profile, memberships and role are all keyed by user_id and independent —
   // fetch them in parallel instead of sequentially (saves 2 round trips).
   const [profileRes, membershipsRes, roleRes] = await Promise.all([
     supabase.from("profiles").select("*").eq("id", userId).single(),
     supabase
       .from("company_memberships")
-      .select("*, company:companies!company_id(*)")
+      .select(`*, company:companies!company_id(${COMPANY_JOIN_COLUMNS})`)
       .eq("user_id", userId)
       .eq("is_active", true),
     supabase.from("user_roles").select("role, modules").eq("user_id", userId).maybeSingle(),
@@ -51,30 +57,40 @@ export async function getUserMembership(supabase: any, userId: string, companyId
   let profileError = profileRes.error;
   let allMemberships = membershipsRes.data || [];
 
-  // If RLS blocked standard client query (e.g. auth.uid() session timing), fallback to admin client
+  // If RLS blocked standard client query (e.g. auth.uid() session timing), fallback to admin client.
+  // The profile retry and the joined memberships retry are independent — run
+  // them in parallel. The joinless memberships fallback only runs when the
+  // joined retry still comes back empty (rare path, kept sequential).
   if (!profile || profileError || allMemberships.length === 0) {
     try {
       const { createAdminClient } = await import("@/utils/supabase/server");
       const adminClient = createAdminClient();
-      
-      if (!profile || profileError) {
-        const adminProfileRes = await adminClient.from("profiles").select("*").eq("id", userId).maybeSingle();
+
+      const needProfile = !profile || profileError;
+      const needMemberships = allMemberships.length === 0;
+
+      if (needProfile || needMemberships) {
+        const [adminProfileRes, adminMembershipsRes] = await Promise.all([
+          needProfile
+            ? adminClient.from("profiles").select("*").eq("id", userId).maybeSingle()
+            : Promise.resolve({ data: null, error: null }),
+          needMemberships
+            ? adminClient
+                .from("company_memberships")
+                .select(`*, company:companies!company_id(${COMPANY_JOIN_COLUMNS})`)
+                .eq("user_id", userId)
+                .eq("is_active", true)
+            : Promise.resolve({ data: null, error: null }),
+        ]);
+
         if (adminProfileRes.data) {
           profile = adminProfileRes.data;
           profileError = null;
         }
-      }
-
-      if (allMemberships.length === 0) {
-        const adminMembershipsRes = await adminClient
-          .from("company_memberships")
-          .select("*, company:companies!company_id(*)")
-          .eq("user_id", userId)
-          .eq("is_active", true);
 
         if (adminMembershipsRes.data && adminMembershipsRes.data.length > 0) {
           allMemberships = adminMembershipsRes.data;
-        } else {
+        } else if (needMemberships) {
           // Direct query on company_memberships without join
           const directRes = await adminClient
             .from("company_memberships")
@@ -147,13 +163,13 @@ export async function getUserMembership(supabase: any, userId: string, companyId
 
   if (missingCompanyIds.length > 0) {
     let comps: any[] | null = null;
-    const compsRes = await supabase.from("companies").select("*").in("id", missingCompanyIds);
+    const compsRes = await supabase.from("companies").select(COMPANY_JOIN_COLUMNS).in("id", missingCompanyIds);
     comps = compsRes.data;
     if (!comps || comps.length === 0) {
       try {
         const { createAdminClient } = await import("@/utils/supabase/server");
         const adminClient = createAdminClient();
-        const adminCompsRes = await adminClient.from("companies").select("*").in("id", missingCompanyIds);
+        const adminCompsRes = await adminClient.from("companies").select(COMPANY_JOIN_COLUMNS).in("id", missingCompanyIds);
         comps = adminCompsRes.data;
       } catch (_) {}
     }

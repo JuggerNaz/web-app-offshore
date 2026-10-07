@@ -130,6 +130,17 @@ const Inspection3DViewer = dynamic(
   () => import("./_components/Inspection3DViewer").then((mod) => mod.Inspection3DViewer),
   { ssr: false }
 );
+// Both are overlay/dialog components that render nothing until opened, so they
+// are split out of the workspace's initial bundle and only fetched on first
+// open (null loading state: nothing is visible while their chunk loads).
+const InspectionSummaryPanel = dynamic(
+  () => import("./components/InspectionSummaryPanel").then((mod) => mod.InspectionSummaryPanel),
+  { ssr: false, loading: () => null }
+);
+const WorkspaceDialogs = dynamic(
+  () => import("./components/WorkspaceDialogs").then((mod) => mod.WorkspaceDialogs),
+  { ssr: false, loading: () => null }
+);
 import { generateROVCondSketchReport } from "@/utils/report-generators/rov-rcond-sketch-report";
 import { generateROVBoatlandingReport } from "@/utils/report-generators/rov-boatlanding-report";
 import { generateROVPhotographyReport } from "@/utils/report-generators/rov-photography-report";
@@ -201,7 +212,6 @@ import { TapeLogEvents } from "./components/TapeLogEvents";
 import { VideoInterface } from "./components/VideoInterface";
 import { InspectionHeader } from "./components/InspectionHeader";
 import { InspectionForm } from "./components/InspectionForm";
-import { InspectionSummaryPanel } from "./components/InspectionSummaryPanel";
 import { GeodeticParametersDialog } from "../pipeline-workspace/components/GeodeticParametersDialog";
 import { SeabedSurveyGuiInline } from "@/app/dashboard/inspection/rov/components/SeabedSurveyGuiDialog";
 import inspectionRegistry from "@/utils/types/inspection-types.json";
@@ -210,7 +220,6 @@ import { getReportHeaderData } from "@/utils/company-settings";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 
 import { useWorkspaceReports } from "./hooks/useWorkspaceReports";
-import { WorkspaceDialogs } from "./components/WorkspaceDialogs";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { WorkspaceResources } from "./components/WorkspaceResources";
 import { useROVConnection } from "@/components/rov-connection-provider";
