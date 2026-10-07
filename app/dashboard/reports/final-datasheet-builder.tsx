@@ -17,7 +17,13 @@ import {
   Sliders,
   FileCheck,
   Video,
-  Camera
+  Camera,
+  RotateCcw,
+  Filter,
+  CheckCircle2,
+  X,
+  ChevronDown,
+  ChevronUp
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -162,6 +168,10 @@ export function FinalDatasheetBuilder() {
     TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
     return allIds;
   });
+
+  const [tocSearch, setTocSearch] = useState("");
+  const [tocModeFilter, setTocModeFilter] = useState<"all" | "ROV" | "Diving" | "General" | "selected">("all");
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
   // Config State
   const [config, setConfig] = useState<ConfigState>({
@@ -343,68 +353,459 @@ export function FinalDatasheetBuilder() {
     );
   };
 
+  const allTocTemplates = useMemo(() => {
+    return TOC_SECTIONS.flatMap(sec => sec.templates);
+  }, []);
+
+  const selectAllTemplates = () => {
+    setSelectedTemplates(allTocTemplates.map(t => t.id));
+  };
+
+  const deselectAllTemplates = () => {
+    setSelectedTemplates([]);
+  };
+
+  const selectTemplatesByMode = (mode: string) => {
+    const modeTemplateIds = allTocTemplates
+      .filter(t => t.mode?.toLowerCase() === mode.toLowerCase())
+      .map(t => t.id);
+    setSelectedTemplates(prev => Array.from(new Set([...prev, ...modeTemplateIds])));
+  };
+
+  const toggleCollapseSection = (secId: number) => {
+    setCollapsedSections(prev => ({
+      ...prev,
+      [secId]: !prev[secId]
+    }));
+  };
+
+  const expandAllSections = () => {
+    setCollapsedSections({});
+  };
+
+  const collapseAllSections = () => {
+    const allCollapsed: Record<string, boolean> = {};
+    TOC_SECTIONS.forEach(s => {
+      allCollapsed[s.id] = true;
+    });
+    setCollapsedSections(allCollapsed);
+  };
+
   const renderTocSelection = () => {
+    const totalCount = allTocTemplates.length;
+    const selectedCount = selectedTemplates.length;
+    const selectionPercent = totalCount > 0 ? Math.round((selectedCount / totalCount) * 100) : 0;
+
+    const rovCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "rov").length;
+    const divingCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "diving").length;
+    const generalCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "general").length;
+
+    // Filter sections and templates based on search & mode filter
+    const filteredSections = TOC_SECTIONS.map((sec, secIdx) => {
+      const matchesSearch = (text: string) => 
+        !tocSearch.trim() || text.toLowerCase().includes(tocSearch.trim().toLowerCase());
+
+      const matchingTemplates = sec.templates.filter(t => {
+        const matchesText = matchesSearch(t.name) || matchesSearch(t.mode) || matchesSearch(sec.name) || matchesSearch(t.id);
+        if (!matchesText) return false;
+
+        if (tocModeFilter === "all") return true;
+        if (tocModeFilter === "selected") return selectedTemplates.includes(t.id);
+        return t.mode?.toLowerCase() === tocModeFilter.toLowerCase();
+      });
+
+      return {
+        ...sec,
+        originalIndex: secIdx,
+        filteredTemplates: matchingTemplates,
+        hasMatches: matchingTemplates.length > 0 || (sec.templates.length === 0 && matchesSearch(sec.name))
+      };
+    }).filter(sec => sec.hasMatches);
+
     return (
-      <div className="space-y-6 max-w-4xl mx-auto p-4">
-        <div className="text-center mb-4">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100">Table of Contents Checklist</h2>
-          <p className="text-slate-500">Pick relevant documentation sequences.</p>
+      <div className="space-y-6 max-w-5xl mx-auto p-4 pb-8">
+        {/* Header */}
+        <div className="text-center space-y-1">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-50 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300 text-xs font-semibold mb-1">
+            <FileCheck className="w-3.5 h-3.5" />
+            <span>Step 3: Document Sequencing</span>
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-slate-100 tracking-tight">
+            Table of Contents Checklist
+          </h2>
+          <p className="text-sm text-slate-500 max-w-lg mx-auto">
+            Pick relevant documentation sequences to include in your datasheet package.
+          </p>
         </div>
 
-        <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl divide-y overflow-hidden">
-          {TOC_SECTIONS.map((sec, secIdx) => {
-            const secTemplates = sec.templates.map(t => t.id);
-            const allSelected = secTemplates.every(id => selectedTemplates.includes(id)) && secTemplates.length > 0;
-            const someSelected = secTemplates.some(id => selectedTemplates.includes(id)) && !allSelected;
+        {/* Dashboard Toolbar */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm p-4 space-y-4">
+          {/* Top Row: Search & Progress Bar */}
+          <div className="flex flex-col md:flex-row gap-3 items-stretch md:items-center justify-between">
+            <div className="relative flex-1 min-w-[260px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <Input
+                placeholder="Search report name, mode, or section (e.g., 'CP', 'FMD', 'ROV')..."
+                value={tocSearch}
+                onChange={(e) => setTocSearch(e.target.value)}
+                className="pl-9 pr-9 h-10 text-sm bg-slate-50/50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 rounded-xl"
+              />
+              {tocSearch && (
+                <button
+                  onClick={() => setTocSearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
 
-            return (
-              <div key={sec.id} className="p-4 flex flex-col gap-2">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                      checked={allSelected}
-                      ref={el => {
-                        if (el) el.indeterminate = someSelected;
-                      }}
-                      onChange={(e) => toggleSectionAll(secIdx, e.target.checked)}
-                      disabled={sec.templates.length === 0}
-                    />
-                    <span className="font-semibold text-slate-900 dark:text-slate-100">{sec.name}</span>
-                  </div>
-                  {sec.templates.length === 0 && <span className="text-xs text-muted-foreground italic">No templates available yet</span>}
-                </div>
-
-                {sec.templates.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2 pl-6 mt-2">
-                    {sec.templates.map((t) => {
-                      const isSelected = selectedTemplates.includes(t.id);
-                      return (
-                        <label key={t.id} className={`flex items-center gap-3 p-2 rounded-lg cursor-pointer border transition-all ${isSelected ? "border-blue-200 bg-blue-50/30" : "border-slate-100 hover:border-slate-200"}`}>
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={() => toggleTemplate(t.id)}
-                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <div className="flex flex-col">
-                            <span className="text-sm font-medium text-slate-800 dark:text-slate-200">{t.name}</span>
-                            <span className={`text-[10px] w-fit px-1 rounded uppercase ${t.mode === 'ROV' ? 'bg-amber-100 text-amber-800' : t.mode === 'Diving' ? 'bg-indigo-100 text-indigo-800' : 'bg-slate-100 text-slate-800'}`}>{t.mode}</span>
-                          </div>
-                        </label>
-                      );
-                    })}
-                  </div>
-                )}
+            <div className="flex items-center gap-3 px-3 py-2 bg-slate-50 dark:bg-slate-950 rounded-xl border border-slate-200/80 dark:border-slate-800 justify-between md:justify-start">
+              <div className="flex flex-col">
+                <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                  Selected Items
+                </span>
+                <span className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                  <span className="text-blue-600 dark:text-blue-400">{selectedCount}</span>
+                  <span className="text-slate-400 font-normal">/</span>
+                  <span>{totalCount}</span>
+                  <span className="text-xs text-slate-400 font-normal">({selectionPercent}%)</span>
+                </span>
               </div>
-            );
-          })}
+              <div className="w-24 h-2 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden shrink-0">
+                <div
+                  className="h-full bg-blue-600 rounded-full transition-all duration-300"
+                  style={{ width: `${selectionPercent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Middle Row: Mode Filters & Global Select Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            {/* Filter Tabs */}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-xs font-medium text-slate-500 mr-1 flex items-center gap-1">
+                <Filter className="w-3.5 h-3.5" /> Filter:
+              </span>
+
+              <button
+                onClick={() => setTocModeFilter("all")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all ${
+                  tocModeFilter === "all"
+                    ? "bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200"
+                }`}
+              >
+                All ({totalCount})
+              </button>
+
+              <button
+                onClick={() => setTocModeFilter("ROV")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  tocModeFilter === "ROV"
+                    ? "bg-amber-600 text-white shadow-sm"
+                    : "bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-200/60 dark:border-amber-900/50 hover:bg-amber-100"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500"></span>
+                ROV ({rovCount})
+              </button>
+
+              <button
+                onClick={() => setTocModeFilter("Diving")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  tocModeFilter === "Diving"
+                    ? "bg-indigo-600 text-white shadow-sm"
+                    : "bg-indigo-50 dark:bg-indigo-950/40 text-indigo-800 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-900/50 hover:bg-indigo-100"
+                }`}
+              >
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                Diving ({divingCount})
+              </button>
+
+              <button
+                onClick={() => setTocModeFilter("General")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  tocModeFilter === "General"
+                    ? "bg-slate-700 text-white shadow-sm"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200"
+                }`}
+              >
+                General ({generalCount})
+              </button>
+
+              <button
+                onClick={() => setTocModeFilter("selected")}
+                className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-all flex items-center gap-1.5 ${
+                  tocModeFilter === "selected"
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-300 border border-blue-200/60 dark:border-blue-900/50 hover:bg-blue-100"
+                }`}
+              >
+                <CheckCircle2 className="w-3.5 h-3.5 text-blue-500" />
+                Selected ({selectedCount})
+              </button>
+            </div>
+
+            {/* Batch Controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={selectAllTemplates}
+                className="h-8 text-xs gap-1.5 font-medium border-slate-200 dark:border-slate-800 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200"
+              >
+                <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                Select All
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={deselectAllTemplates}
+                disabled={selectedCount === 0}
+                className="h-8 text-xs gap-1.5 font-medium border-slate-200 dark:border-slate-800 hover:bg-red-50 hover:text-red-600 hover:border-red-200 disabled:opacity-50"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Clear All
+              </Button>
+
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => {
+                  const anyCollapsed = Object.values(collapsedSections).some(Boolean);
+                  if (anyCollapsed) {
+                    expandAllSections();
+                  } else {
+                    collapseAllSections();
+                  }
+                }}
+                className="h-8 text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+              >
+                {Object.values(collapsedSections).some(Boolean) ? (
+                  <>
+                    <ChevronDown className="w-3.5 h-3.5 mr-1" /> Expand All
+                  </>
+                ) : (
+                  <>
+                    <ChevronUp className="w-3.5 h-3.5 mr-1" /> Collapse All
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
 
-        <div className="flex justify-between mt-4">
-          <Button variant="outline" onClick={handleBack}><ChevronLeft className="w-4 h-4 mr-1" /> Back</Button>
-          <Button onClick={handleNext} disabled={selectedTemplates.length === 0}>Next <ChevronRight className="w-4 h-4 ml-1" /></Button>
+        {/* Quick Select Presets Bar */}
+        <div className="flex flex-wrap items-center gap-2 px-1 text-xs text-slate-500">
+          <span className="font-semibold text-slate-700 dark:text-slate-300">Quick Select:</span>
+          <button
+            onClick={() => selectTemplatesByMode("rov")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-100/70 hover:bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 font-medium transition-colors"
+          >
+            + All ROV Reports ({rovCount})
+          </button>
+          <button
+            onClick={() => selectTemplatesByMode("diving")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-indigo-100/70 hover:bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 font-medium transition-colors"
+          >
+            + All Diving Reports ({divingCount})
+          </button>
+          <button
+            onClick={() => selectTemplatesByMode("general")}
+            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:text-slate-300 font-medium transition-colors"
+          >
+            + All General Reports ({generalCount})
+          </button>
+        </div>
+
+        {/* Main List */}
+        {filteredSections.length === 0 ? (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center space-y-3 shadow-sm">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto">
+              <Search className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">
+              No report templates found
+            </h3>
+            <p className="text-xs text-slate-500 max-w-sm mx-auto">
+              No reports match your current search query <b>"{tocSearch}"</b> or mode filter.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setTocSearch("");
+                setTocModeFilter("all");
+              }}
+              className="mt-2 text-xs"
+            >
+              Reset Search & Filters
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {filteredSections.map((sec) => {
+              const secTemplates = sec.templates.map(t => t.id);
+              const secSelectedTemplates = sec.templates.filter(t => selectedTemplates.includes(t.id));
+              const allSelected = secTemplates.length > 0 && secSelectedTemplates.length === secTemplates.length;
+              const someSelected = secSelectedTemplates.length > 0 && !allSelected;
+              const isCollapsed = !!collapsedSections[sec.id];
+
+              return (
+                <div
+                  key={sec.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm transition-all hover:border-slate-300 dark:hover:border-slate-700"
+                >
+                  {/* Section Header */}
+                  <div className="p-4 bg-slate-50/70 dark:bg-slate-900/90 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 select-none">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <input
+                        type="checkbox"
+                        id={`sec-${sec.id}`}
+                        className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                        checked={allSelected}
+                        ref={el => {
+                          if (el) el.indeterminate = someSelected;
+                        }}
+                        onChange={(e) => toggleSectionAll(sec.originalIndex, e.target.checked)}
+                        disabled={sec.templates.length === 0}
+                      />
+                      <label
+                        htmlFor={`sec-${sec.id}`}
+                        className="font-bold text-slate-900 dark:text-slate-100 text-sm md:text-base cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 truncate"
+                      >
+                        <span>{sec.name}</span>
+                      </label>
+                      <Badge
+                        variant="secondary"
+                        className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                          allSelected
+                            ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
+                            : someSelected
+                            ? "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300"
+                            : "bg-slate-200/70 text-slate-600 dark:bg-slate-800 dark:text-slate-400"
+                        }`}
+                      >
+                        {secSelectedTemplates.length}/{sec.templates.length} selected
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {sec.templates.length > 0 && (
+                        <button
+                          onClick={() => toggleSectionAll(sec.originalIndex, !allSelected)}
+                          className="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 font-medium px-2 py-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors hidden sm:inline-block"
+                        >
+                          {allSelected ? "Clear Section" : "Select All in Section"}
+                        </button>
+                      )}
+
+                      <button
+                        onClick={() => toggleCollapseSection(sec.id)}
+                        className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                        title={isCollapsed ? "Expand section" : "Collapse section"}
+                      >
+                        {isCollapsed ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronUp className="w-4 h-4" />
+                        )}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Section Item Cards */}
+                  {!isCollapsed && (
+                    <div className="p-4">
+                      {sec.templates.length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic py-2">
+                          No templates configured for this section yet.
+                        </p>
+                      ) : sec.filteredTemplates.length === 0 ? (
+                        <p className="text-xs text-muted-foreground italic py-2">
+                          No reports in this section match the current search or filter.
+                        </p>
+                      ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          {sec.filteredTemplates.map((t) => {
+                            const isSelected = selectedTemplates.includes(t.id);
+                            const isROV = t.mode?.toLowerCase() === "rov";
+                            const isDiving = t.mode?.toLowerCase() === "diving";
+
+                            return (
+                              <div
+                                key={t.id}
+                                onClick={() => toggleTemplate(t.id)}
+                                className={`group relative flex items-start gap-3 p-3.5 rounded-xl cursor-pointer border transition-all duration-200 select-none ${
+                                  isSelected
+                                    ? "border-blue-500/80 bg-blue-50/70 dark:bg-blue-950/40 shadow-sm ring-1 ring-blue-500/20"
+                                    : "border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900/60 hover:bg-slate-50/50"
+                                }`}
+                              >
+                                {/* Custom Checkbox */}
+                                <div className="pt-0.5 shrink-0">
+                                  <div
+                                    className={`w-4 h-4 rounded border flex items-center justify-center transition-all ${
+                                      isSelected
+                                        ? "bg-blue-600 border-blue-600 text-white shadow-sm"
+                                        : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-950 group-hover:border-blue-400"
+                                    }`}
+                                  >
+                                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                  </div>
+                                </div>
+
+                                {/* Item Info */}
+                                <div className="flex-1 min-w-0 space-y-1">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <span className={`text-sm font-semibold leading-tight line-clamp-2 ${
+                                      isSelected ? "text-slate-900 dark:text-white" : "text-slate-800 dark:text-slate-200"
+                                    }`}>
+                                      {t.name}
+                                    </span>
+                                    <span
+                                      className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md shrink-0 ${
+                                        isROV
+                                          ? "bg-amber-100 text-amber-800 border border-amber-200/70 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900/50"
+                                          : isDiving
+                                          ? "bg-indigo-100 text-indigo-800 border border-indigo-200/70 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-900/50"
+                                          : "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                                      }`}
+                                    >
+                                      {t.mode}
+                                    </span>
+                                  </div>
+
+                                  {t.id && (
+                                    <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500 block truncate">
+                                      ID: {t.id}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Step Navigation Controls */}
+        <div className="flex justify-between items-center pt-4 border-t border-slate-200 dark:border-slate-800">
+          <Button variant="outline" onClick={handleBack} className="gap-1.5">
+            <ChevronLeft className="w-4 h-4" /> Back
+          </Button>
+          <Button onClick={handleNext} disabled={selectedTemplates.length === 0} className="bg-blue-600 hover:bg-blue-700 gap-1.5">
+            Next <ChevronRight className="w-4 h-4" />
+          </Button>
         </div>
       </div>
     );

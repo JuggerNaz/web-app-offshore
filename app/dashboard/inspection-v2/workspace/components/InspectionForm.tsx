@@ -105,7 +105,7 @@ interface InspectionFormProps {
     setPrevRefNo: (val: string) => void;
     criteriaRules?: any[];
     onVoiceActionCommand?: (actionIntent: any) => void;
-    calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null) => number | null;
+    calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null, targetChapterNo?: number | string | null, targetTapeNo?: string | null) => number | null;
 }
 
 export const InspectionForm: React.FC<InspectionFormProps> = ({
@@ -293,7 +293,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         // Auto-calculate counter if function available
         let recCounter = dynamicProps?.tape_count_no || "00:00:00";
         if (calculateAutoCounter && recDate && recTime) {
-            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id);
+            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id, newChapter);
             if (autoSecs !== null && autoSecs !== undefined && autoSecs >= 0) {
                 recCounter = formatTime(autoSecs);
             }
@@ -353,7 +353,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
         let recCounter = dynamicProps?.tape_count_no || "00:00:00";
         if (calculateAutoCounter && recDate && recTime) {
-            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id);
+            const autoSecs = calculateAutoCounter(recDate, recTime, targetTape?.tape_id, newChapter);
             if (autoSecs !== null && autoSecs !== undefined && autoSecs >= 0) {
                 recCounter = formatTime(autoSecs);
             }
@@ -1646,7 +1646,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         onClick={() => {
                                                             const d = dynamicProps?.inspection_date;
                                                             const t = dynamicProps?.inspection_time;
-                                                            const secs = calculateAutoCounter(d, t, currentTapeId);
+                                                            const secs = calculateAutoCounter(d, t, currentTapeId, displayChapter, displayTapeNo);
                                                             if (secs !== null && secs !== undefined && secs >= 0) {
                                                                 const fmt = formatTime(secs);
                                                                 handleDynamicPropChange?.('tape_count_no', fmt);

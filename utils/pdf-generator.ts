@@ -1,55 +1,20 @@
 import jsPDF from "jspdf";
 import autoTablePlugin from "jspdf-autotable";
+import {
+  loadLogoWithTransparency,
+  drawLogo as drawSharedLogo,
+  applyWatermarkAndSignaturesGlobal,
+  REPORT_FOOTER_APP_TEXT,
+  formatPdfDate
+} from "./report-generators/shared-logo";
 
-// Helper to load image for PDF
-const loadLogo = (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
-  return new Promise((resolve) => {
-    if (!url || typeof url !== 'string' || !url.trim()) {
-      resolve(null);
-      return;
-    }
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    const timeout = setTimeout(() => {
-      console.warn(`Logo loading timed out (3s limit) in pdf-generator for URL: ${url}`);
-      img.onload = null;
-      img.onerror = null;
-      resolve(null);
-    }, 3000);
-    img.onload = () => {
-      clearTimeout(timeout);
-      const canvas = document.createElement("canvas");
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(img, 0, 0);
-        resolve({ data: canvas.toDataURL("image/png"), width: img.width, height: img.height });
-      } else {
-        resolve(null);
-      }
-    };
-    img.onerror = () => {
-      clearTimeout(timeout);
-      console.warn(`Logo loading failed in pdf-generator for URL: ${url}`);
-      resolve(null);
-    };
-    img.src = url;
-  });
+// Helper to load image for PDF with transparency support
+const loadLogo = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
+  return await loadLogoWithTransparency(url);
 };
 
 const drawLogo = (doc: any, logo: any, maxW: number, maxH: number, x: number, y: number, alignX = 'left', alignY = 'center') => {
-    if (!logo || !logo.data) return;
-    const ratio = Math.min(maxW / logo.width, maxH / logo.height);
-    const w = logo.width * ratio;
-    const h = logo.height * ratio;
-    let dx = x;
-    let dy = y;
-    if (alignX === 'right') dx = x + maxW - w;
-    if (alignX === 'center') dx = x + (maxW - w) / 2;
-    if (alignY === 'center') dy = y + (maxH - h) / 2;
-    if (alignY === 'bottom') dy = y + maxH - h;
-    doc.addImage(logo.data, 'PNG', dx, dy, w, h);
+  drawSharedLogo(doc, logo, maxW, maxH, x, y, alignX, alignY);
 };
 
 const getPublicStorageUrl = (pathOrUrl: string): string => {
@@ -286,39 +251,49 @@ const generatePipelineReport = async (
 
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER WITH LOGO =====
   if (isPrintFriendly) {
-    // Print-Friendly: White background with light gray border
-    doc.setDrawColor(180, 180, 180);
+    // Print-Friendly: White background with navy border
+    doc.setDrawColor(...navy);
     doc.setLineWidth(0.3);
     doc.rect(0, 0, pageWidth, 28);
+    doc.setTextColor(...navy);
   } else {
     doc.setFillColor(...headerBlue);
     doc.rect(0, 0, pageWidth, 28, "F");
+    doc.setTextColor(255);
   }
 
-  // Logo area (right side)
+  // Pre-load logos
+  let companyLogo: any = null;
+  let contractorLogo: any = null;
   if (companySettings?.logo_url) {
     try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
+      companyLogo = await loadLogoWithTransparency(companySettings.logo_url);
+    } catch (e) {
+      console.error("Error loading company logo:", e);
     }
+  }
+  const contractorLogoUrl = config?.contractorLogoUrl || (structure as any)?.contractorLogoUrl || (companySettings as any)?.contractor_logo_url;
+  if (contractorLogoUrl) {
+    try {
+      contractorLogo = await loadLogoWithTransparency(contractorLogoUrl);
+    } catch (e) {
+      console.error("Error loading contractor logo:", e);
+    }
+  }
+
+  // Logo rendering (18x18 max, right and left)
+  if (companyLogo) {
+    drawLogo(doc, companyLogo, 18, 18, pageWidth - 24, 4, 'right', 'center');
+  }
+  if (contractorLogo) {
+    drawLogo(doc, contractorLogo, 18, 18, 10, 4, 'left', 'center');
   }
 
   // Company Name - SAME size as Report Title (centered)
@@ -568,64 +543,63 @@ const generatePipelineReport = async (
     doc.text(textLines.slice(0, 4), 12, yPos + 3);
   }
 
-  // ===== FOOTER =====
-  const footerY = pageHeight - 8;
-  doc.setDrawColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
-  doc.setLineWidth(0.3);
-  doc.line(10, footerY - 3, pageWidth - 10, footerY - 3);
-
-  doc.setFontSize(6);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 10, footerY);
-  doc.text("CONFIDENTIAL", pageWidth - 10, footerY, { align: "right" });
-
-  // ===== NEW CONFIGURATION FEATURES =====
-  if (config) {
-    // Watermark
-    if (config.watermark?.enabled) {
-      doc.saveGraphicsState();
-      doc.setGState(new (doc as any).GState({ opacity: config.watermark.transparency || 0.1 }));
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(60);
-      doc.text(config.watermark.text, pageWidth / 2, pageHeight / 2, { align: 'center', angle: 45 });
-      doc.restoreGraphicsState();
-    }
-
-    // Signatures
-    const hasSignatures = config.preparedBy?.name || config.reviewedBy?.name || config.approvedBy?.name;
+  // ===== SIGNATURES =====
+  if (config?.showSignatures !== false) {
+    const hasSignatures = config?.preparedBy?.name || config?.reviewedBy?.name || config?.approvedBy?.name;
     if (hasSignatures) {
-      // Create a signature block area at the bottom, shifting footer up or overlaying
-      const sigY = pageHeight - 25; // Area above footer
-
-      doc.setFontSize(7);
-      doc.setTextColor(0, 0, 0);
-
+      let sigY = pageHeight - 38;
+      if (yPos > sigY - 10) {
+        doc.addPage();
+        sigY = pageHeight - 38;
+      }
       const sigWidth = (pageWidth - 20) / 3;
+      const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(0.1);
+        doc.rect(lx, sigY, sigWidth - 4, 18);
+        if (!isPrintFriendly) {
+          doc.setFillColor(...navy);
+          doc.rect(lx, sigY, sigWidth - 4, 4.5, "F");
+          doc.setTextColor(255);
+        } else {
+          doc.setTextColor(...navy);
+        }
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, lx + 2, sigY + 3.5);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Name:", lx + 2, sigY + 10);
+        if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+        doc.text("Date:", lx + 2, sigY + 13.5);
+        if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+        doc.text("Signature:", lx + 2, sigY + 17);
+      };
 
-      if (config.preparedBy.name) {
-        doc.text("Prepared By:", 10, sigY);
-        doc.text(config.preparedBy.name, 10, sigY + 5);
-        doc.text(config.preparedBy.date || "", 10, sigY + 9);
-        doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.reviewedBy?.name) {
-        const x = 10 + sigWidth;
-        doc.text("Reviewed By:", x, sigY);
-        doc.text(config.reviewedBy.name, x, sigY + 5);
-        doc.text(config.reviewedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.approvedBy?.name) {
-        const x = 10 + (sigWidth * 2);
-        doc.text("Approved By:", x, sigY);
-        doc.text(config.approvedBy.name, x, sigY + 5);
-        doc.text(config.approvedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
+      drawSig("PREPARED BY", 10, config?.preparedBy);
+      drawSig("REVIEWED BY", 10 + sigWidth, config?.reviewedBy);
+      drawSig("APPROVED BY", 10 + (sigWidth * 2), config?.approvedBy);
     }
   }
+
+  // ===== FOOTERS (ALL PAGES) =====
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
+  }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -646,38 +620,48 @@ const generatePlatformReport = async (
   const pageHeight = doc.internal.pageSize.getHeight();
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER WITH LOGO =====
   if (isPrintFriendly) {
-    doc.setDrawColor(180, 180, 180);
+    doc.setDrawColor(...navy);
     doc.setLineWidth(0.3);
     doc.rect(0, 0, pageWidth, 28);
+    doc.setTextColor(...navy);
   } else {
     doc.setFillColor(...headerBlue);
     doc.rect(0, 0, pageWidth, 28, "F");
+    doc.setTextColor(255);
   }
 
-  // Logo area (right side) - Bigger Square layout
+  // Pre-load logos
+  let companyLogo: any = null;
+  let contractorLogo: any = null;
   if (companySettings?.logo_url) {
     try {
-      // Load and add the actual logo image with padding
-      const logoData = await loadLogo(companySettings.logo_url);
-      drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-    } catch (error) {
-      console.error("Error loading company logo:", error);
-      if (!isPrintFriendly) {
-        // Fallback to placeholder box if image fails to load
-        doc.setDrawColor(255, 255, 255);
-        doc.setLineWidth(0.5);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
-      }
+      companyLogo = await loadLogoWithTransparency(companySettings.logo_url);
+    } catch (e) {
+      console.error("Error loading company logo:", e);
     }
+  }
+  const contractorLogoUrl = config?.contractorLogoUrl || (structure as any)?.contractorLogoUrl || (companySettings as any)?.contractor_logo_url;
+  if (contractorLogoUrl) {
+    try {
+      contractorLogo = await loadLogoWithTransparency(contractorLogoUrl);
+    } catch (e) {
+      console.error("Error loading contractor logo:", e);
+    }
+  }
+
+  // Logo rendering (18x18 max, right and left)
+  if (companyLogo) {
+    drawLogo(doc, companyLogo, 18, 18, pageWidth - 24, 4, 'right', 'center');
+  }
+  if (contractorLogo) {
+    drawLogo(doc, contractorLogo, 18, 18, 10, 4, 'left', 'center');
   }
 
   // Company Name - SAME size as Report Title (centered)
@@ -1318,68 +1302,63 @@ const generatePlatformReport = async (
     }
   }
 
-  // ===== FOOTER =====
-  const footerY = pageHeight - 8;
-  doc.setDrawColor(sectionBlue[0], sectionBlue[1], sectionBlue[2]);
-  doc.setLineWidth(0.3);
-  doc.line(10, footerY - 3, pageWidth - 10, footerY - 3);
-
-  doc.setFontSize(6);
-  doc.setTextColor(100, 100, 100);
-  doc.text(`Generated: ${new Date().toLocaleString()}`, 10, footerY);
-  doc.text("CONFIDENTIAL", pageWidth - 10, footerY, { align: "right" });
-
-  // ===== NEW CONFIGURATION FEATURES =====
-  if (config) {
-    // Watermark
-    if (config.watermark?.enabled) {
-      doc.saveGraphicsState();
-      doc.setGState(new (doc as any).GState({ opacity: config.watermark.transparency || 0.1 }));
-      doc.setTextColor(150, 150, 150);
-      doc.setFontSize(60);
-      const text = config.watermark.text;
-      // Center on page
-      const textWidth = doc.getTextWidth(text);
-      const textX = pageWidth / 2;
-      const textY = pageHeight / 2;
-      doc.text(text, textX, textY, { align: 'center', angle: 45 });
-      doc.restoreGraphicsState();
-    }
-
-    // Signatures
-    const hasSignatures = config.preparedBy?.name || config.reviewedBy?.name || config.approvedBy?.name;
+  // ===== SIGNATURES =====
+  if (config?.showSignatures !== false) {
+    const hasSignatures = config?.preparedBy?.name || config?.reviewedBy?.name || config?.approvedBy?.name;
     if (hasSignatures) {
-      const sigY = pageHeight - 25;
-
-      doc.setFontSize(7);
-      doc.setTextColor(0, 0, 0);
-
+      let sigY = pageHeight - 38;
+      if (yPos > sigY - 10) {
+        doc.addPage();
+        sigY = pageHeight - 38;
+      }
       const sigWidth = (pageWidth - 20) / 3;
+      const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
+        doc.setDrawColor(...navy);
+        doc.setLineWidth(0.1);
+        doc.rect(lx, sigY, sigWidth - 4, 18);
+        if (!isPrintFriendly) {
+          doc.setFillColor(...navy);
+          doc.rect(lx, sigY, sigWidth - 4, 4.5, "F");
+          doc.setTextColor(255);
+        } else {
+          doc.setTextColor(...navy);
+        }
+        doc.setFontSize(7);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, lx + 2, sigY + 3.5);
+        doc.setTextColor(30, 41, 59);
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(6.5);
+        doc.text("Name:", lx + 2, sigY + 10);
+        if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+        doc.text("Date:", lx + 2, sigY + 13.5);
+        if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+        doc.text("Signature:", lx + 2, sigY + 17);
+      };
 
-      if (config.preparedBy.name) {
-        doc.text("Prepared By:", 10, sigY);
-        doc.text(config.preparedBy.name, 10, sigY + 5);
-        doc.text(config.preparedBy.date || "", 10, sigY + 9);
-        doc.line(10, sigY + 10, 10 + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.reviewedBy?.name) {
-        const x = 10 + sigWidth;
-        doc.text("Reviewed By:", x, sigY);
-        doc.text(config.reviewedBy.name, x, sigY + 5);
-        doc.text(config.reviewedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
-
-      if (config.approvedBy?.name) {
-        const x = 10 + (sigWidth * 2);
-        doc.text("Approved By:", x, sigY);
-        doc.text(config.approvedBy.name, x, sigY + 5);
-        doc.text(config.approvedBy.date || "", x, sigY + 9);
-        doc.line(x, sigY + 10, x + sigWidth - 5, sigY + 10);
-      }
+      drawSig("PREPARED BY", 10, config?.preparedBy);
+      drawSig("REVIEWED BY", 10 + sigWidth, config?.reviewedBy);
+      drawSig("APPROVED BY", 10 + (sigWidth * 2), config?.approvedBy);
     }
   }
+
+  // ===== FOOTERS (ALL PAGES) =====
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
+  }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if ((config as any)?.returnBlob) {
     return doc.output('blob');
@@ -1410,7 +1389,7 @@ const generatePipelineHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
       ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
@@ -1424,7 +1403,7 @@ const generatePipelineHTML = (
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
           <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Pipeline Specifications Report</h2>
@@ -1441,7 +1420,7 @@ const generatePipelineHTML = (
           
           <!-- Column 1: General Info -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               General Info
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1464,7 +1443,7 @@ const generatePipelineHTML = (
 
           <!-- Column 2: Technical Parameters -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Technical Parameters
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1487,7 +1466,7 @@ const generatePipelineHTML = (
 
           <!-- Column 3: Location & Path -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Location & Path
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1512,7 +1491,7 @@ const generatePipelineHTML = (
 
         <!-- Burial & Protection (Full Width) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Burial & Protection
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1533,7 +1512,7 @@ const generatePipelineHTML = (
 
         <!-- Geodetic Parameters (Two Column) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Geodetic Parameters
           </div>
           <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0; border: 1px solid #cbd5e0; border-top: none;">
@@ -1572,7 +1551,7 @@ const generatePipelineHTML = (
 
         <!-- Comments -->
         <div>
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Additional Comments
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
@@ -1582,8 +1561,8 @@ const generatePipelineHTML = (
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -1601,12 +1580,12 @@ const generatePlatformHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header with Square Logo -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
-        <!-- Logo positioned at far right - BIGGER -->
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
+        <!-- Logo positioned at far right -->
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         
@@ -1616,7 +1595,7 @@ const generatePlatformHTML = (
           <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
           
           <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           
           <!-- Report Title - SAME size as Company Title -->
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
@@ -1671,7 +1650,7 @@ const generatePlatformHTML = (
 
           return `
             <div style="margin-bottom: 20px;">
-              <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
                 Structure Visuals (${uniqueItems.length})
               </div>
               <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
@@ -1700,7 +1679,7 @@ const generatePlatformHTML = (
           
           <!-- Column 1: General Info -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               General Info
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1724,7 +1703,7 @@ const generatePlatformHTML = (
 
           <!-- Column 2: Configuration -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Configuration
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1748,7 +1727,7 @@ const generatePlatformHTML = (
 
           <!-- Column 3: Location & Dimensions -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Location & Dims
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1773,7 +1752,7 @@ const generatePlatformHTML = (
 
         <!-- Inventory Statistics (Full Width) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Inventory Statistics
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1788,7 +1767,7 @@ const generatePlatformHTML = (
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #2c5282;">${value}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #074e88;">${value}</div>
                   </td>
                 `).join('')}
               </tr>
@@ -1802,7 +1781,7 @@ const generatePlatformHTML = (
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
                     <div style="font-weight: 600; color: #718096; font-size: 8px; text-transform: uppercase; margin-bottom: 2px;">${label}</div>
-                    <div style="font-size: 14px; font-weight: 700; color: #2c5282;">${value}</div>
+                    <div style="font-size: 14px; font-weight: 700; color: #074e88;">${value}</div>
                   </td>
                 `).join('')}
               </tr>
@@ -1812,7 +1791,7 @@ const generatePlatformHTML = (
 
         <!-- Platform Legs (ALWAYS SHOW) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Legs ${structure.legs && structure.legs.length > 0 ? `(${structure.legs.length} Active)` : ''}
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? 'display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px;' : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
@@ -1820,7 +1799,7 @@ const generatePlatformHTML = (
       ? structure.legs.slice(0, 20).map((leg: any, idx: number) => `
                 <div style="text-align: center; padding: 5px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
                   <div style="font-size: 7px; color: #718096;">Leg ${idx + 1}</div>
-                  <div style="font-size: 10px; font-weight: 700; color: #2c5282;">${leg.leg_name || leg.designation || `L${idx + 1}`}</div>
+                  <div style="font-size: 10px; font-weight: 700; color: #074e88;">${leg.leg_name || leg.designation || `L${idx + 1}`}</div>
                 </div>
               `).join('')
       : `<div style="color: #a0aec0; font-size: 11px; font-style: italic;">No leg configuration data available</div>`
@@ -1833,7 +1812,7 @@ const generatePlatformHTML = (
           
           <!-- Elevations (ALWAYS SHOW) -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Elevations (m)
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1859,7 +1838,7 @@ const generatePlatformHTML = (
 
           <!-- Levels (ALWAYS SHOW) -->
           <div>
-            <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Platform Levels
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1888,7 +1867,7 @@ const generatePlatformHTML = (
 
         <!-- Faces (ALWAYS SHOW) -->
         <div style="margin-bottom: 15px;">
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Faces
           </div>
           <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
@@ -1916,7 +1895,7 @@ const generatePlatformHTML = (
 
         <!-- Comments -->
         <div>
-          <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Additional Comments
           </div>
           <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
@@ -1926,8 +1905,8 @@ const generatePlatformHTML = (
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -1984,8 +1963,9 @@ export const generateComponentSummaryReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const navy: [number, number, number] = [7, 78, 136];
   const lightBlue: [number, number, number] = [235, 242, 250];
 
   // ===== HEADER =====
@@ -1995,15 +1975,9 @@ export const generateComponentSummaryReport = async (
   // Logo
   if (companySettings?.logo_url) {
     try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
+      const logoData = await loadLogoWithTransparency(companySettings.logo_url);
       if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+        drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
       }
     } catch (e) { /* ignore */ }
   }
@@ -2012,12 +1986,12 @@ export const generateComponentSummaryReport = async (
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
 
   // Department (Sub-header) - Slightly increased font size (centered)
   doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
   // Report Title - SAME size as Company Title (centered)
   doc.setFontSize(11);
@@ -2274,7 +2248,7 @@ export const generateComponentSummaryReport = async (
   doc.text("TOTAL ACTIVE", totalXPos + (colWidth / 2), yPos + 5, { align: "center" });
 
   doc.setFontSize(10);
-  doc.setTextColor(26, 54, 93);
+  doc.setTextColor(7, 78, 136);
   doc.text(String(components.length), totalXPos + (colWidth / 2), yPos + 11, { align: "center" });
 
   yPos += rowHeight + 10;
@@ -2338,12 +2312,19 @@ export const generateComponentSummaryReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -2375,7 +2356,7 @@ export const generateComponentSummaryHTML = (
   const sortedTypes = Object.keys(grouped).sort();
 
   const infoTableStyle = "width: 100%; border-collapse: collapse; font-size: 10px; border: 1px solid #cbd5e0;";
-  const thStyle = "background-color: #2c5282; color: white; padding: 4px 8px; text-align: left; font-weight: bold; font-size: 10px;";
+  const thStyle = "background-color: #074e88; color: white; padding: 4px 8px; text-align: left; font-weight: bold; font-size: 10px;";
   const tdLabelStyle = "padding: 4px 8px; border-bottom: 1px solid #e2e8f0; font-weight: bold; color: #4a5568; width: 35%; background-color: #f8fafc;";
   const tdValueStyle = "padding: 4px 8px; border-bottom: 1px solid #e2e8f0; color: #1a202c;";
 
@@ -2484,7 +2465,7 @@ export const generateComponentSummaryHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
       ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
@@ -2493,8 +2474,8 @@ export const generateComponentSummaryHTML = (
         </div>
         
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
-          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Company Name"}</h1>
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Engineering Department"}</p>
+          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
           <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Component Summary Report</h2>
           <p style="margin: 0; font-size: 11px; opacity: 0.85;">Structure: ${structure.str_name} (${structure.str_type}) | Report: ${companySettings?.serial_no || "N/A"}</p>
         </div>
@@ -2507,7 +2488,7 @@ export const generateComponentSummaryHTML = (
         
         <!-- Statistics Table (Inventory Style Grid) -->
         <div style="margin-bottom: 30px;">
-             <div style="background-color: #2c5282; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               COMPONENT STATISTICS
             </div>
             
@@ -2544,7 +2525,7 @@ export const generateComponentSummaryHTML = (
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
                     <thead>
-                        <tr style="background-color: #2c5282; color: white;">
+                        <tr style="background-color: #074e88; color: white;">
                              <th style="padding: 6px; text-align: center; width: 40px;">No.</th>
                              <th style="padding: 6px; text-align: left;">Q ID</th>
                              <th style="padding: 6px; text-align: left;">Type</th>
@@ -2575,8 +2556,8 @@ export const generateComponentSummaryHTML = (
 
          <!-- Footer -->
         <div style="margin-top: 40px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
-          <span>Generated: ${currentDate}</span>
-          <span style="font-weight: 600; letter-spacing: 0.5px;">CONFIDENTIAL - INTERNAL USE ONLY</span>
+          <span>${REPORT_FOOTER_APP_TEXT}</span>
+          <span style="font-weight: 600; letter-spacing: 0.5px;">Page 1</span>
         </div>
 
       </div>
@@ -2597,8 +2578,9 @@ export const generateComponentSpecReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const navy: [number, number, number] = [7, 78, 136];
 
   // ===== HEADER =====
   doc.setFillColor(...headerBlue);
@@ -2607,15 +2589,9 @@ export const generateComponentSpecReport = async (
   // Logo
   if (companySettings?.logo_url) {
     try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
+      const logoData = await loadLogoWithTransparency(companySettings.logo_url);
       if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+        drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
       }
     } catch (e) { /* ignore */ }
   }
@@ -2623,10 +2599,10 @@ export const generateComponentSpecReport = async (
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
   doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
@@ -2742,12 +2718,19 @@ export const generateComponentSpecReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -2767,7 +2750,7 @@ export const generateComponentSpecHTML = (
   const currentDate = new Date().toLocaleDateString();
 
   // Helper Styles
-  const thStyle = "background-color: #2c5282; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #1a365d;";
+  const thStyle = "background-color: #074e88; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #074e88;";
   const tdLabelStyle = "background-color: #f8fafc; color: #4a5568; padding: 6px 10px; font-size: 11px; font-weight: bold; border: 1px solid #e2e8f0; width: 25%;";
   const tdValueStyle = "color: #2d3748; padding: 6px 10px; font-size: 11px; border: 1px solid #e2e8f0; width: 25%;";
   const Row = (l1: string, v1: any, l2: string, v2: any) => `
@@ -2797,12 +2780,12 @@ export const generateComponentSpecHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <!-- Logo Position -->
         <div style="position: absolute; top: 15px; right: 30px;">
            ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
@@ -2817,7 +2800,7 @@ export const generateComponentSpecHTML = (
 
         <!-- 1.0 IDENTITY -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 1.0 COMPONENT IDENTITY
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -2832,7 +2815,7 @@ export const generateComponentSpecHTML = (
         <!-- 2.0 SPECS -->
         ${specs ? `
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 2.0 TECHNICAL SPECIFICATIONS
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 11px; border: 1px solid #eee;">
@@ -2851,7 +2834,7 @@ export const generateComponentSpecHTML = (
         <!-- 3.0 LOCATION -->
         ${(meta.s_node || meta.f_node) ? `
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 3.0 LOCATION & CONNECTIVITY
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -2864,9 +2847,9 @@ export const generateComponentSpecHTML = (
             </table>
         </div>` : ''}
 
-        <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; display: flex; justify-content: space-between;">
-            <span>Generated: ${currentDate}</span>
-            <span>COMPONENT SPEC SHEET - INTERNAL USE ONLY</span>
+        <div style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 10px; font-size: 9px; color: #1e293b; display: flex; justify-content: space-between;">
+            <span>${REPORT_FOOTER_APP_TEXT}</span>
+            <span>Page 1</span>
         </div>
       </div>
     </div>
@@ -2884,8 +2867,9 @@ export const generateTechnicalSpecsReport = async (
   const autoTable = (doc as any).autoTable || autoTablePlugin;
 
   // Colors
-  const headerBlue: [number, number, number] = [26, 54, 93];
-  const sectionBlue: [number, number, number] = [44, 82, 130];
+  const headerBlue: [number, number, number] = [7, 78, 136];
+  const sectionBlue: [number, number, number] = [7, 78, 136];
+  const navy: [number, number, number] = [7, 78, 136];
 
   // ===== HEADER =====
   doc.setFillColor(...headerBlue);
@@ -2894,15 +2878,9 @@ export const generateTechnicalSpecsReport = async (
   // Logo
   if (companySettings?.logo_url) {
     try {
-      const logoData = await loadImage(companySettings.logo_url).catch(() => null);
+      const logoData = await loadLogoWithTransparency(companySettings.logo_url);
       if (logoData) {
-        doc.addImage(logoData, 'PNG', pageWidth - 25, 4, 18, 18);
-      } else {
-        doc.setDrawColor(255, 255, 255);
-        doc.rect(pageWidth - 25, 4, 18, 18);
-        doc.setFontSize(7);
-        doc.setTextColor(255, 255, 255);
-        doc.text("LOGO", pageWidth - 16, 13.5, { align: "center" });
+        drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
       }
     } catch (e) { /* ignore */ }
   }
@@ -2910,10 +2888,10 @@ export const generateTechnicalSpecsReport = async (
   doc.setTextColor(255, 255, 255);
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
-  doc.text(companySettings?.company_name || "Company Name", pageWidth / 2, 7.5, { align: "center" });
+  doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
   doc.setFontSize(8.5);
   doc.setFont("helvetica", "normal");
-  doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
+  doc.text(companySettings?.department_name || "Technical Inspection Division", pageWidth / 2, 12, { align: "center" });
 
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
@@ -3059,12 +3037,19 @@ export const generateTechnicalSpecsReport = async (
   const pageCount = doc.getNumberOfPages();
   for (let i = 1; i <= pageCount; i++) {
     doc.setPage(i);
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`Page ${i} of ${pageCount}`, pageWidth / 2, pageHeight - 10, { align: "center" });
-    const today = new Date().toLocaleDateString();
-    doc.text(`Technical Specs Generated: ${today}`, pageWidth - 10, pageHeight - 10, { align: "right" });
+    doc.setFontSize(6.5);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(30, 41, 59);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.2);
+    doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+    doc.text(REPORT_FOOTER_APP_TEXT, 10, pageHeight - 6);
+    if (config?.showPageNumbers !== false) {
+      doc.text(`Page ${i}`, pageWidth - 10, pageHeight - 6, { align: "right" });
+    }
   }
+
+  applyWatermarkAndSignaturesGlobal(doc, config);
 
   if (config?.returnBlob) {
     return doc.output('blob');
@@ -3080,7 +3065,7 @@ export const generateTechnicalSpecsHTML = (
   const currentDate = new Date().toLocaleDateString();
 
   // Helpers
-  const thStyle = "background-color: #2c5282; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #1a365d;";
+  const thStyle = "background-color: #074e88; color: white; padding: 6px 10px; text-align: left; font-size: 11px; font-weight: bold; border: 1px solid #074e88;";
   const tdLabelStyle = "background-color: #f8fafc; color: #4a5568; padding: 6px 10px; font-size: 11px; font-weight: bold; border: 1px solid #e2e8f0; width: 20%;";
   const tdValueStyle = "color: #2d3748; padding: 6px 10px; font-size: 11px; border: 1px solid #e2e8f0; width: 30%;";
 
@@ -3105,11 +3090,11 @@ export const generateTechnicalSpecsHTML = (
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 210mm; margin: 0 auto; background: white; box-shadow: 0 0 10px rgba(0,0,0,0.1); color: #333;">
       
       <!-- Header -->
-      <div style="background-color: #1a365d; color: white; padding: 20px 30px; position: relative;">
+      <div style="background-color: #074e88; color: white; padding: 20px 30px; position: relative;">
         <div style="position: absolute; top: 15px; right: 30px;">
           ${companySettings?.logo_url
-      ? `<img src="${companySettings.logo_url}" style="width: 80px; height: 80px; object-fit: contain; border: 2px solid white; padding: 4px; background: white;" />`
-      : `<div style="border: 2px solid white; width: 80px; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold;">LOGO</div>`
+      ? `<img src="${companySettings.logo_url}" style="width: 50px; height: 50px; object-fit: contain; padding: 2px;" />`
+      : `<div style="border: 1px solid rgba(255,255,255,0.4); width: 50px; height: 50px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">LOGO</div>`
     }
         </div>
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
@@ -3124,7 +3109,7 @@ export const generateTechnicalSpecsHTML = (
 
         <!-- 1.0 DESIGN DATA -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 1.0 DESIGN & GENERAL DATA
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -3139,7 +3124,7 @@ export const generateTechnicalSpecsHTML = (
 
         <!-- 2.0 CONFIGURATION -->
         <div style="margin-bottom: 24px;">
-            <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+            <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                 2.0 STRUCTURAL CONFIGURATION & MATERIALS
             </div>
             <table style="width: 100%; border-collapse: collapse;">
@@ -3155,7 +3140,7 @@ export const generateTechnicalSpecsHTML = (
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
             <!-- 3.0 ELEVATIONS -->
             <div>
-                <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+                <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                     3.0 ELEVATION SCHEDULE
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -3178,7 +3163,7 @@ export const generateTechnicalSpecsHTML = (
 
             <!-- 4.0 INVENTORY -->
             <div>
-                 <div style="background-color: #2c5282; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
+                 <div style="background-color: #074e88; color: white; padding: 8px 12px; font-size: 12px; font-weight: bold; margin-bottom: 8px;">
                     4.0 APPURTENANCES INVENTORY
                 </div>
                 <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
@@ -3200,9 +3185,9 @@ export const generateTechnicalSpecsHTML = (
             </div>
         </div>
 
-        <div style="margin-top: 40px; border-top: 1px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #a0aec0; display: flex; justify-content: space-between;">
-            <span>Generated: ${currentDate}</span>
-            <span>INTERNAL ENGINEERING DATA SHEET - CONFIDENTIAL</span>
+        <div style="margin-top: 40px; border-top: 1px solid #cbd5e1; padding-top: 10px; font-size: 9px; color: #1e293b; display: flex; justify-content: space-between;">
+            <span>${REPORT_FOOTER_APP_TEXT}</span>
+            <span>Page 1</span>
         </div>
 
       </div>

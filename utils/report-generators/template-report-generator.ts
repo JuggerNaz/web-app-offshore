@@ -13,12 +13,13 @@ interface ReportOptions {
     data: any;
     fileName: string;
     logoUrl?: string;
+    onProgress?: (percent: number, statusText: string) => void;
 }
 
 /**
  * Normalizes double-brace text tags {{TAG}} to single-brace {TAG}
- * inside the DOCX XML, so all tags work with default delimiters.
- * Leaves image tags {%TAG} and loop tags {#TAG}{/TAG} untouched.
+ * inside the DOCX XML, cleans up whitespace, resolves known tag typos/mismatches,
+ * and auto-balances unclosed loops so docxtemplater renders seamlessly.
  */
 function normalizeDelimiters(zip: PizZip) {
     const files = zip.files;
@@ -26,33 +27,107 @@ function normalizeDelimiters(zip: PizZip) {
         if (!file.dir && relativePath.endsWith(".xml")) {
             let text = file.asText();
 
-            // Pass 1: Within each <w:t> node, collapse {{ → { and }} → }
+            // Pass 1: Collapse double braces {{ → { and }} → } within text nodes
             text = text.replace(/(<w:t[^>]*>)([^<]*)/g, (_m, tag, content) => {
                 content = content.replace(/\{\{/g, "{").replace(/\}\}/g, "}");
-                // Trim leading/trailing whitespace inside single/double braces: { #TAG } -> {#TAG}
-                content = content.replace(/\{\s*([#/\%]?)\s*([^}\s]+)\s*\}/g, "{$1$2}");
                 return tag + content;
             });
 
-            // Pass 2: Cross-node — { at end of one <w:t>, { at start of next <w:t>
-            // Remove the duplicate opening brace at the next node's start
+            // Pass 2: Merge cross-node braces and any split tags { ... }
             let changed = true;
             while (changed) {
                 const before = text;
-                text = text.replace(
-                    /\{(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\{/g,
-                    "{$1"
-                );
-                text = text.replace(
-                    /\}(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\}/g,
-                    "}$1"
-                );
+                text = text.replace(/\{(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\{/g, "{$1");
+                text = text.replace(/\}(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\}/g, "}$1");
+                // Merge tags split across XML text runs: { #TAG </w:t>...<w:t> REST_OF_TAG }
+                text = text.replace(/\{([^{}<>]*?)<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>([^{}<>]*?)\}/g, "{$1$2}");
                 changed = text !== before;
             }
 
-            // Pass 3: Clean up whitespace inside braces (even if split across XML nodes)
-            text = text.replace(/\s+(<\/w:t>.*?<w:t[^>]*>)?\}/g, "$1}");
-            text = text.replace(/\{([#/\%]?)\s+(<\/w:t>.*?<w:t[^>]*>)?/g, "{$1$2");
+            // Helper to sanitize any tag name
+            const cleanTagName = (rawTag: string) => {
+                let clean = rawTag.trim().replace(/\s+/g, "_");
+
+                // Fix singular to plural mismatches
+                if (clean.startsWith("FINDING_") && !clean.startsWith("FINDINGS_")) {
+                    clean = clean.replace(/^FINDING_/, "FINDINGS_");
+                }
+                if (clean.startsWith("ANOMALY_") && !clean.startsWith("ANOMALIES_")) {
+                    clean = clean.replace(/^ANOMALY_/, "ANOMALIES_");
+                }
+
+                // Fix caisson guard aliases
+                if (clean === "HAS_FINDINGS_CAISSON_GUARD_ABOVE_UNDERWATER") {
+                    clean = "HAS_FINDINGS_CAISSON_GUARD_UNDERWATER";
+                }
+                if (clean.startsWith("ANOMALIES_DCAISSONGUARD")) {
+                    clean = clean.replace("ANOMALIES_DCAISSONGUARD", "ANOMALIES_CAISSON_GUARD_UNDERWATER");
+                }
+                if (clean.startsWith("FINDINGS_DCAISSONGUARD")) {
+                    clean = clean.replace("FINDINGS_DCAISSONGUARD", "FINDINGS_CAISSON_GUARD_UNDERWATER");
+                }
+
+                return clean;
+            };
+
+            // Pass 3: Sanitize all tag expressions across the XML
+            text = text.replace(/\{([#/\%^!?$@]?)\s*([^{}]+?)\s*\}/g, (_all, prefix, tagBody) => {
+                const clean = cleanTagName(tagBody);
+                return `{${prefix}${clean}}`;
+            });
+
+            // Pass 4: Balance all loop blocks ({#TAG}, {^TAG}, {/TAG}) and auto-close inner loops
+            const loopTagRegex = /\{([#/\^])([A-Za-z0-9_]+)\}/g;
+            let match: RegExpExecArray | null;
+            const openStack: string[] = [];
+
+            let result = "";
+            let lastIndex = 0;
+
+            while ((match = loopTagRegex.exec(text)) !== null) {
+                const [fullMatch, type, rawTagName] = match;
+                const matchIndex = match.index;
+                const tagName = cleanTagName(rawTagName);
+
+                result += text.slice(lastIndex, matchIndex);
+
+                if (type === "#" || type === "^") {
+                    openStack.push(tagName);
+                    result += `{${type}${tagName}}`;
+                } else if (type === "/") {
+                    const stackIdx = openStack.map(t => t.toUpperCase()).lastIndexOf(tagName.toUpperCase());
+                    if (stackIdx !== -1) {
+                        // If there are unclosed inner tags between stackIdx and top of stack, auto-close them first
+                        const unclosedInner = openStack.splice(stackIdx + 1);
+                        if (unclosedInner.length > 0) {
+                            const autoCloseInner = unclosedInner.reverse().map(t => `{/${t}}`).join("");
+                            result += autoCloseInner;
+                        }
+                        const current = openStack.pop();
+                        result += `{/${current}}`;
+                    } else {
+                        // Unopened closing tag: safely omit so Docxtemplater does not throw an unopened loop error
+                        console.warn(`[ReportGen] Safely omitted unopened closing tag: {/${tagName}}`);
+                    }
+                }
+
+                lastIndex = matchIndex + fullMatch.length;
+            }
+
+            result += text.slice(lastIndex);
+            text = result;
+
+            // Pass 5: If loops remain unclosed at end of XML, auto-append closing tags
+            if (openStack.length > 0) {
+                const autoClose = openStack.reverse().map(t => `{/${t}}`).join("");
+                if (text.includes("</w:body>")) {
+                    text = text.replace("</w:body>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:body>`);
+                } else if (text.includes("</w:hdr>")) {
+                    text = text.replace("</w:hdr>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:hdr>`);
+                } else if (text.includes("</w:ftr>")) {
+                    text = text.replace("</w:ftr>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:ftr>`);
+                }
+            }
 
             zip.file(relativePath, text);
         }
@@ -160,8 +235,9 @@ async function rotateImage90Degrees(bytes: Uint8Array): Promise<Uint8Array> {
  * - Image tags: {%TAG_NAME}
  * - Loop tags: {#LOOP}...{/LOOP}
  */
-export const generateTemplateReport = async ({ templateUrl, data, fileName, logoUrl }: ReportOptions) => {
+export const generateTemplateReport = async ({ templateUrl, data, fileName, logoUrl, onProgress }: ReportOptions) => {
     try {
+        onProgress?.(80, "Fetching report template...");
         console.log(`[ReportGen] Fetching template: ${templateUrl}`);
         const response = await fetch(templateUrl);
         if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
@@ -171,6 +247,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         let logoBytes: Uint8Array | null = null;
         if (logoUrl) {
             try {
+                onProgress?.(84, "Loading company logo...");
                 console.log(`[ReportGen] Fetching logo: ${logoUrl}`);
                 const lRes = await fetch(logoUrl);
                 if (lRes.ok) {
@@ -184,6 +261,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         }
 
         // ── Image cache (tagValue → Uint8Array) ─────────────────
+        onProgress?.(88, "Processing embedded media and charts...");
         const imageCache: Record<string, Uint8Array> = {};
         if (logoBytes) {
             imageCache["CLIENT_LOGO"] = logoBytes;
@@ -302,7 +380,6 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         }
 
         // Set logo data — the image module will call getImage("CLIENT_LOGO")
-        // and we return the bytes. The tag in Word is {%CLIENT_LOGO}.
         if (logoBytes) {
             finalData["CLIENT_LOGO"] = "CLIENT_LOGO";
         }
@@ -318,6 +395,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         finalData["T_VESSELS_INVOLVED"] = finalData["VESSELS_INVOLVED"] || "";
         finalData["T_CLIENT_SHORT"] = finalData["CLIENT_SHORT"] || "";
 
+        onProgress?.(92, "Sanitizing template and compiling Word document...");
         // ── Build and render ─────────────────────────────────────
         const zip = new PizZip(content);
         normalizeDelimiters(zip);
@@ -369,19 +447,18 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             },
         });
 
-        // CRITICAL: attachModule BEFORE loadZip (per official docs)
+        // Attach image module
         const doc = new Docxtemplater();
         doc.attachModule(imageModule);
         doc.loadZip(zip);
         doc.setData(finalData);
 
+        onProgress?.(96, "Rendering document tables and pages...");
         try {
             doc.render();
             console.log("[ReportGen] Render succeeded with image module.");
-            // Render complete
-            console.log("[ReportGen] Render succeeded natively.");
         } catch (renderErr: any) {
-            console.warn("[ReportGen] Render with images failed:", renderErr.message);
+            console.warn("[ReportGen] Render with images failed, attempting fallback:", renderErr.message);
 
             // Fallback: text-only, fresh zip
             const textData = { ...finalData };
@@ -398,21 +475,25 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             doc2.setData(textData);
             doc2.render();
 
+            onProgress?.(99, "Generating final file...");
             const out2 = doc2.getZip().generate({
                 type: "blob",
                 mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             });
             saveAs(out2, fileName.endsWith(".docx") ? fileName : `${fileName}.docx`);
             console.log("[ReportGen] Saved text-only fallback.");
+            onProgress?.(100, "Done!");
             return;
         }
 
+        onProgress?.(99, "Generating final DOCX file...");
         const out = doc.getZip().generate({
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
         saveAs(out, fileName.endsWith(".docx") ? fileName : `${fileName}.docx`);
         console.log("[ReportGen] Saved with logo.");
+        onProgress?.(100, "Done!");
 
     } catch (error: any) {
         if (error.properties?.errors instanceof Array) {
@@ -420,7 +501,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
                 .map((e: any) => e.properties?.explanation || e.message)
                 .join("\n");
             console.error("[ReportGen] Template errors:\n", msgs);
-            toast.error("Template: " + msgs.substring(0, 200));
+            toast.error("Template syntax issue: " + msgs.substring(0, 200));
         } else {
             console.error("[ReportGen] Error:", error);
             toast.error(error.message || "Report generation failed");

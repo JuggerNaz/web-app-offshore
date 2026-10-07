@@ -189,6 +189,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     const [formTimecode, setFormTimecode] = useState<string>("00:00:00");
     const [formRemarks, setFormRemarks] = useState<string>("");
     const [formEditingId, setFormEditingId] = useState<{ id: string; realId: number; logType: string } | null>(null);
+    const [formEditingEvent, setFormEditingEvent] = useState<any | null>(null);
     const [isAutoDateCalculated, setIsAutoDateCalculated] = useState<boolean>(true);
 
     const formatSecondsToTimecode = (totalSeconds: number): string => {
@@ -548,7 +549,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         // Find the most recent preceding event at or before targetMillis
         const precedingEvents = sortedChronological.filter(ev => {
             if (!ev.eventTime) return false;
-            if (currentEditId && ev.id === currentEditId) return false;
+            if (currentEditId && (ev.id === currentEditId || (formEditingId?.realId && ev.realId === formEditingId.realId))) return false;
             return parseClientDate(ev.eventTime).getTime() <= targetMillis;
         });
 
@@ -563,7 +564,7 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         }
 
         // If target is earlier than all events, reference the first event
-        const firstEv = sortedChronological.find(ev => !currentEditId || ev.id !== currentEditId) || sortedChronological[0];
+        const firstEv = sortedChronological.find(ev => !currentEditId || (ev.id !== currentEditId && (!formEditingId?.realId || ev.realId !== formEditingId.realId))) || sortedChronological[0];
         if (firstEv && firstEv.eventTime) {
             const firstMillis = parseClientDate(firstEv.eventTime).getTime();
             const firstCounter = firstEv.tape_counter_start != null 
@@ -624,7 +625,9 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     // Open Edit Modal for a specific event
     const handleOpenEditModal = (ev: any) => {
-        setFormEditingId({ id: ev.id, realId: ev.realId, logType: ev.logType || "video_log" });
+        const isInspection = ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT";
+        setFormEditingId({ id: ev.id, realId: ev.realId, logType: isInspection ? "insp" : (ev.logType || "video_log") });
+        setFormEditingEvent(ev);
         setFormTapeNo(ev.tapeNo || commonTapeNo);
         setFormChapterNo(String(ev.chapterNo || "1"));
         
@@ -632,11 +635,19 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         const matched = STANDARD_ACTIONS.find(a => isActionMatch(rawAction, a));
         setFormAction(matched ? matched.value : (rawAction || "CUSTOM"));
         
-        setFormTimecode(ev.time || "00:00:00");
-        setFormRemarks(ev.remarks || "");
+        const initialTc = ev.time || (ev.tape_counter_start != null ? formatSecondsToTimecode(Number(ev.tape_counter_start)) : "00:00:00");
+        setFormTimecode(initialTc);
+        
+        const initialRemarks = ev.remarks && ev.remarks !== "-" 
+            ? ev.remarks 
+            : (ev.rawRecord?.findings || ev.rawRecord?.inspection_data?.findings || ev.rawRecord?.inspection_data?.remarks || "");
+        setFormRemarks(initialRemarks);
         setIsAutoDateCalculated(false);
 
-        if (ev.eventTime) {
+        if (ev.rawRecord?.inspection_date) {
+            setFormDate(ev.rawRecord.inspection_date);
+            setFormTime(ev.rawRecord.inspection_time || (ev.eventTime ? toLocalTimeString(parseClientDate(ev.eventTime), true) : "00:00:00"));
+        } else if (ev.eventTime) {
             const evDate = parseClientDate(ev.eventTime);
             setFormDate(toLocalDateString(evDate));
             setFormTime(toLocalTimeString(evDate, true));
@@ -683,12 +694,25 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     // Recalculate button trigger
     const triggerRecalculate = () => {
-        const computed = computeAutoDateTimeAndCounter(formTapeNo, formChapterNo, formAction);
-        setFormDate(computed.eventDate);
-        setFormTime(computed.eventTime);
-        setFormTimecode(computed.timecode);
-        setIsAutoDateCalculated(true);
-        toast.info("Auto-calculated Date & Time from Chapter timeline");
+        if (formDate && formTime) {
+            const computedCounter = calculateCounterForDateTime(
+                formTapeNo,
+                formChapterNo,
+                formDate,
+                formTime,
+                formAction,
+                formEditingId?.id
+            );
+            setFormTimecode(computedCounter);
+            toast.info(`Counter recalculated: ${computedCounter}`);
+        } else {
+            const computed = computeAutoDateTimeAndCounter(formTapeNo, formChapterNo, formAction);
+            setFormDate(computed.eventDate);
+            setFormTime(computed.eventTime);
+            setFormTimecode(computed.timecode);
+            setIsAutoDateCalculated(true);
+            toast.info("Auto-calculated Date & Time from Chapter timeline");
+        }
     };
 
     // Save Log Event (Add / Update)
@@ -786,14 +810,94 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
                     toast.success("Tape log event updated successfully");
                 } else if (formEditingId.logType === "insp") {
-                    // Forward to parent inspection edit handler
-                    onEditEvent({
-                        id: formEditingId.realId,
-                        time: formTimecode,
-                        action: formAction,
-                        eventTime: isoEventTime,
-                        remarks: formRemarks,
-                    });
+                    // Update insp_records directly in Supabase (Date, Time, Counter & inspection_data)
+                    const user = (await supabase.auth.getUser()).data.user;
+
+                    // Fetch existing record to safely preserve all other custom properties in inspection_data
+                    const { data: currentRecord } = await supabase
+                        .from("insp_records")
+                        .select("insp_id, inspection_data, tape_id")
+                        .eq("insp_id", formEditingId.realId)
+                        .maybeSingle();
+
+                    const existingData = (currentRecord?.inspection_data && typeof currentRecord.inspection_data === "object")
+                        ? { ...currentRecord.inspection_data }
+                        : {};
+
+                    const updatedData = {
+                        ...existingData,
+                        date: formDate,
+                        inspection_date: formDate,
+                        time: formTime,
+                        inspection_time: formTime,
+                        timecode: formTimecode,
+                        _meta_timecode: formTimecode,
+                        counter: formTimecode,
+                        tape_counter: formTimecode,
+                        tape_count_no: totalCounterSecs,
+                    };
+
+                    const inspPayload: any = {
+                        inspection_date: formDate,
+                        inspection_time: formTime,
+                        tape_count_no: totalCounterSecs,
+                        inspection_data: updatedData,
+                        md_date: new Date().toISOString(),
+                        md_user: user?.id || "system",
+                    };
+
+                    const { error: inspUpdErr } = await supabase
+                        .from("insp_records")
+                        .update(inspPayload)
+                        .eq("insp_id", formEditingId.realId);
+
+                    if (inspUpdErr) throw inspUpdErr;
+
+                    // Also update linked anomaly records if any exist
+                    try {
+                        await supabase
+                            .from("insp_anomalies")
+                            .update({
+                                tape_count_no: totalCounterSecs,
+                                md_date: new Date().toISOString(),
+                            })
+                            .eq("insp_id", formEditingId.realId);
+                    } catch (anomErr) {
+                        console.warn("[TapeLogEvents] Anomaly sync warning:", anomErr);
+                    }
+
+                    // Also update linked video log entry if one is linked
+                    try {
+                        await supabase
+                            .from("insp_video_logs")
+                            .update({
+                                event_time: isoEventTime,
+                                timecode_start: formTimecode,
+                                tape_counter_start: totalCounterSecs,
+                            })
+                            .eq("inspection_id", formEditingId.realId);
+                    } catch (vErr) {
+                        console.warn("[TapeLogEvents] Video log sync warning:", vErr);
+                    }
+
+                    // Update local state
+                    setLocalEvents(prev => prev.map(ev => {
+                        if (ev.id === formEditingId.id || (ev.logType === "insp" && ev.realId === formEditingId.realId)) {
+                            return {
+                                ...ev,
+                                time: formTimecode,
+                                eventTime: isoEventTime,
+                                tape_counter_start: totalCounterSecs,
+                                rawRecord: {
+                                    ...(ev.rawRecord || {}),
+                                    ...inspPayload,
+                                }
+                            };
+                        }
+                        return ev;
+                    }));
+
+                    toast.success("Inspection record updated successfully");
                 }
                 setIsEditModalOpen(false);
             } else {
@@ -918,7 +1022,9 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 setIsAddModalOpen(false);
             }
 
-            if (onRefresh) onRefresh();
+            if (onRefresh) {
+                await onRefresh();
+            }
         } catch (err: any) {
             console.error("[TapeLogEvents] Save Error:", err);
             toast.error(`Failed to save log event: ${err?.message || "Unknown error"}`);
@@ -1570,19 +1676,59 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 <DialogContent className="max-w-xl bg-slate-950 border-slate-800 text-slate-100 shadow-2xl p-0 overflow-hidden">
                     <DialogHeader className="p-4 bg-slate-900 border-b border-slate-800">
                         <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-slate-100">
-                            <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
+                            <div className={`p-1.5 rounded-lg ${isEdit && formEditingId?.logType === "insp" ? "bg-blue-500/20 text-blue-400 border border-blue-500/30" : isEdit ? "bg-amber-500/20 text-amber-400 border border-amber-500/30" : "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30"}`}>
                                 {isEdit ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                             </div>
-                            <span>{isEdit ? "Edit Tape Log Event" : "Add Missing Tape Log Event"}</span>
+                            <span>
+                                {isEdit && formEditingId?.logType === "insp"
+                                    ? "Edit Inspection Record & Video Event"
+                                    : isEdit
+                                    ? "Edit Tape Log Event"
+                                    : "Add Missing Tape Log Event"}
+                            </span>
                         </DialogTitle>
                         <p className="text-[11px] text-slate-400 mt-1">
-                            {isEdit 
+                            {isEdit && formEditingId?.logType === "insp"
+                                ? "Modify Date, Time, or Video Counter timecode. Tape, Chapter, Action type, and Findings are display-only and synchronized with the database record."
+                                : isEdit 
                                 ? "Modify video counter timecode, status action, wall-clock date & time, or remarks." 
                                 : "Select the target Tape, Chapter, standard action, and adjust the auto-calculated date & time."}
                         </p>
                     </DialogHeader>
 
                     <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
+                        {/* Inspection Context Banner */}
+                        {isEdit && formEditingId?.logType === "insp" && formEditingEvent && (
+                            <div className="p-3 rounded-xl bg-blue-950/40 border border-blue-800/60 flex items-center justify-between flex-wrap gap-2">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    {formEditingEvent.componentQid && formEditingEvent.componentQid !== "-" && (
+                                        <span className="inline-flex items-center gap-1 text-[11px] font-bold text-sky-300 bg-sky-950 px-2 py-0.5 rounded border border-sky-600/40 font-mono">
+                                            <Bookmark className="w-3 h-3 text-sky-400" />
+                                            {formEditingEvent.componentQid}
+                                        </span>
+                                    )}
+                                    {(formEditingEvent.inspTypeName || formEditingEvent.inspTypeCode) && (
+                                        <span className="text-[10px] font-bold text-indigo-300 bg-indigo-950 px-2 py-0.5 rounded border border-indigo-600/40 uppercase">
+                                            {formEditingEvent.inspTypeName || formEditingEvent.inspTypeCode}
+                                        </span>
+                                    )}
+                                    {formEditingEvent.anomalyRef && (
+                                        <span className="text-[10px] font-black text-red-200 bg-red-950 px-2 py-0.5 rounded border border-red-500/60 uppercase flex items-center gap-1">
+                                            <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                                            {formEditingEvent.anomalyRef}
+                                        </span>
+                                    )}
+                                    {formEditingEvent.defectCode && (
+                                        <span className="text-[10px] font-bold text-orange-300 bg-orange-950 px-2 py-0.5 rounded border border-orange-600/40 uppercase">
+                                            {formEditingEvent.defectCode}
+                                        </span>
+                                    )}
+                                </div>
+                                <span className="text-[10px] text-blue-400 font-mono font-bold uppercase tracking-wider bg-blue-900/40 px-2 py-0.5 rounded border border-blue-700/50">
+                                    Record #{formEditingId.realId}
+                                </span>
+                            </div>
+                        )}
                         {/* 1. Tape and Chapter Selection */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                             <div className="space-y-1.5">
@@ -1652,50 +1798,70 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                             </div>
                         </div>
 
-                        {/* 2. Action Selector (Standard List) */}
-                        <div className="space-y-2">
-                            <div className="flex items-center justify-between">
-                                <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                        {/* 2. Action Selector (Standard List or Display Only for Inspection) */}
+                        {isEdit && formEditingId?.logType === "insp" ? (
+                            <div className="space-y-1.5">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-wider flex items-center gap-1.5">
                                     <Video className="w-3.5 h-3.5 text-blue-400" />
-                                    Action / Status Event
+                                    Action / Status Event <span className="text-[9px] text-slate-500 font-normal">(Display Only)</span>
                                 </Label>
-                                {(() => {
-                                    const currentSelected = STANDARD_ACTIONS.find(a => isActionMatch(formAction, a));
-                                    const displayLabel = currentSelected ? currentSelected.label : (formAction || "Select Action");
-                                    return (
-                                        <div className="flex items-center gap-1.5 text-[10px] font-black text-white bg-blue-600 px-3 py-0.5 rounded-full shadow-md shadow-blue-500/30 border border-blue-400">
-                                            <CheckCircle2 className="w-3.5 h-3.5 text-white" />
-                                            <span>Current: {displayLabel}</span>
-                                        </div>
-                                    );
-                                })()}
+                                <div className="p-2.5 rounded-xl bg-slate-900/60 border border-slate-800 flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                        <CheckCircle2 className="w-4 h-4 text-blue-400" />
+                                        <span className="text-xs font-bold text-slate-200">
+                                            {formAction || "INSPECTION"}
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] font-mono text-slate-500 bg-slate-950 px-2 py-0.5 rounded border border-slate-800">
+                                        Fixed Event Type
+                                    </span>
+                                </div>
                             </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                {STANDARD_ACTIONS.map((act) => {
-                                    const IconComp = act.icon;
-                                    const isSelected = isActionMatch(formAction, act);
-                                    return (
-                                        <button
-                                            key={act.value}
-                                            type="button"
-                                            onClick={() => {
-                                                if (isEdit) setFormAction(act.value);
-                                                else handleAddFormChange(formTapeNo, formChapterNo, act.value);
-                                            }}
-                                            className={`p-2.5 rounded-xl text-left text-xs font-bold transition-all flex items-center gap-2 border ${
-                                                isSelected
-                                                    ? "bg-blue-600 border-blue-400 text-white font-black shadow-lg shadow-blue-500/40 ring-2 ring-blue-400 scale-[1.02]"
-                                                    : "bg-slate-900/90 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-700"
-                                            }`}
-                                        >
-                                            <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? "text-white" : "text-slate-400 opacity-80"}`} />
-                                            <span className="truncate">{act.label}</span>
-                                            {isSelected && <CheckCircle2 className="w-4 h-4 ml-auto text-white shrink-0 animate-in zoom-in-75" />}
-                                        </button>
-                                    );
-                                })}
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-[10px] font-black uppercase text-slate-300 tracking-wider flex items-center gap-1.5">
+                                        <Video className="w-3.5 h-3.5 text-blue-400" />
+                                        Action / Status Event
+                                    </Label>
+                                    {(() => {
+                                        const currentSelected = STANDARD_ACTIONS.find(a => isActionMatch(formAction, a));
+                                        const displayLabel = currentSelected ? currentSelected.label : (formAction || "Select Action");
+                                        return (
+                                            <div className="flex items-center gap-1.5 text-[10px] font-black text-white bg-blue-600 px-3 py-0.5 rounded-full shadow-md shadow-blue-500/30 border border-blue-400">
+                                                <CheckCircle2 className="w-3.5 h-3.5 text-white" />
+                                                <span>Current: {displayLabel}</span>
+                                            </div>
+                                        );
+                                    })()}
+                                </div>
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                    {STANDARD_ACTIONS.map((act) => {
+                                        const IconComp = act.icon;
+                                        const isSelected = isActionMatch(formAction, act);
+                                        return (
+                                            <button
+                                                key={act.value}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (isEdit) setFormAction(act.value);
+                                                    else handleAddFormChange(formTapeNo, formChapterNo, act.value);
+                                                }}
+                                                className={`p-2.5 rounded-xl text-left text-xs font-bold transition-all flex items-center gap-2 border ${
+                                                    isSelected
+                                                        ? "bg-blue-600 border-blue-400 text-white font-black shadow-lg shadow-blue-500/40 ring-2 ring-blue-400 scale-[1.02]"
+                                                        : "bg-slate-900/90 border-slate-800 text-slate-300 hover:bg-slate-800 hover:text-white hover:border-slate-700"
+                                                }`}
+                                            >
+                                                <IconComp className={`w-4 h-4 shrink-0 ${isSelected ? "text-white" : "text-slate-400 opacity-80"}`} />
+                                                <span className="truncate">{act.label}</span>
+                                                {isSelected && <CheckCircle2 className="w-4 h-4 ml-auto text-white shrink-0 animate-in zoom-in-75" />}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
                             </div>
-                        </div>
+                        )}
 
                         {/* 3. Wall Clock Date & Time (Separated Local Date and Local Time) */}
                         <div className="space-y-2 p-3 rounded-xl bg-slate-900/90 border border-slate-800">
@@ -1716,9 +1882,9 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                         size="sm"
                                         onClick={triggerRecalculate}
                                         className="h-6 px-1.5 text-[9px] font-bold text-blue-400 hover:text-blue-300 hover:bg-blue-950/50 rounded"
-                                        title="Recalculate Date & Time based on chapter timeline"
+                                        title="Recalculate counter from current Date & Time"
                                     >
-                                        <RefreshCw className="w-2.5 h-2.5 mr-1" /> Recalculate
+                                        <RefreshCw className="w-2.5 h-2.5 mr-1" /> Recalculate Counter
                                     </Button>
                                 </div>
                             </div>
@@ -1768,16 +1934,29 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                             />
                         </div>
 
-                        {/* 5. Remarks */}
+                        {/* 5. Remarks / Findings */}
                         <div className="space-y-1.5">
-                            <Label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">Remarks / Notes (Optional)</Label>
-                            <Textarea
-                                value={formRemarks}
-                                onChange={(e) => setFormRemarks(e.target.value)}
-                                placeholder="Add any details, reason for log entry, or notes..."
-                                rows={2}
-                                className="text-xs bg-slate-900 border-slate-800 text-slate-100 placeholder:text-slate-500 resize-none"
-                            />
+                            <div className="flex items-center justify-between">
+                                <Label className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                                    {isEdit && formEditingId?.logType === "insp" ? "Remarks / Findings (Display Only)" : "Remarks / Notes (Optional)"}
+                                </Label>
+                                {isEdit && formEditingId?.logType === "insp" && (
+                                    <span className="text-[9px] text-slate-500 font-mono">Display Only</span>
+                                )}
+                            </div>
+                            {isEdit && formEditingId?.logType === "insp" ? (
+                                <div className="p-2.5 rounded-md bg-slate-900/60 border border-slate-800 text-xs text-slate-300 font-sans min-h-[42px] whitespace-pre-wrap">
+                                    {formRemarks || "(No remarks entered)"}
+                                </div>
+                            ) : (
+                                <Textarea
+                                    value={formRemarks}
+                                    onChange={(e) => setFormRemarks(e.target.value)}
+                                    placeholder="Add any details, reason for log entry, or notes..."
+                                    rows={2}
+                                    className="text-xs bg-slate-900 border-slate-800 text-slate-100 placeholder:text-slate-500 resize-none"
+                                />
+                            )}
                         </div>
                     </div>
 

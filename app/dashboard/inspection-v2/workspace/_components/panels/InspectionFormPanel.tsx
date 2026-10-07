@@ -72,7 +72,7 @@ interface InspectionFormPanelProps {
   setPrevRefNo: (val: string) => void;
   criteriaRules?: any[];
   onVoiceActionCommand?: (actionIntent: any) => void;
-  calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null) => number | null;
+  calculateAutoCounter?: (targetDate?: string, targetTime?: string, targetTapeId?: number | null, targetChapterNo?: number | string | null, targetTapeNo?: string | null) => number | null;
 }
 
 export function InspectionFormPanel({

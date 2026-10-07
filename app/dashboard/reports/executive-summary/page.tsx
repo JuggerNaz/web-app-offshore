@@ -21,7 +21,8 @@ import {
     Settings,
     FileCheck,
     BookOpen,
-    BarChart3
+    BarChart3,
+    Loader2
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
@@ -33,6 +34,8 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
@@ -83,6 +86,17 @@ export default function ExecutiveSummaryPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+    const [exportProgress, setExportProgress] = useState<{
+        isOpen: boolean;
+        percent: number;
+        title: string;
+        status: string;
+    }>({
+        isOpen: false,
+        percent: 0,
+        title: "",
+        status: "",
+    });
 
     // Fetch context data
     const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher);
@@ -412,6 +426,13 @@ export default function ExecutiveSummaryPage() {
         }
 
         setIsGenerating(true);
+        setExportProgress({
+            isOpen: true,
+            percent: 5,
+            title: `Generating ${reportType === "preliminary" ? "Preliminary" : "Final"} Executive Summary`,
+            status: "Initializing report configuration and templates...",
+        });
+
         try {
             const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             
@@ -430,6 +451,12 @@ export default function ExecutiveSummaryPage() {
                 return sectionData;
             });
 
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 15,
+                status: "Fetching report aliases and contractor profiles...",
+            }));
+
             // Fetch Aliases
             const aliasesRes = await fetch("/api/report-aliases");
             let aliases: any[] = [];
@@ -446,6 +473,12 @@ export default function ExecutiveSummaryPage() {
                 contractors = Array.isArray(contrData?.data) ? contrData.data : [];
             }
             const activeContractor = contractors.find((c: any) => String(c.lib_id) === String(jp?.metadata?.contrac));
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 30,
+                status: "Loading and mapping detailed inspection records...",
+            }));
 
             // Fetch Detailed Records
             const recordsRes = await fetch(`/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${selections.sowReportNo}`);
@@ -1826,12 +1859,30 @@ export default function ExecutiveSummaryPage() {
                 templateUrl: template.storage_path,
                 data: reportData,
                 fileName: `${str?.str_name || "Structure"}_Executive_Summary_${reportType}.docx`,
-                logoUrl: companySettings?.data?.logo_url
+                logoUrl: companySettings?.data?.logo_url,
+                onProgress: (percent, statusText) => {
+                    setExportProgress(prev => ({
+                        ...prev,
+                        percent,
+                        status: statusText,
+                    }));
+                },
             });
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 100,
+                status: "Report generated successfully!",
+            }));
+
+            setTimeout(() => {
+                setExportProgress(prev => ({ ...prev, isOpen: false }));
+            }, 800);
 
             toast.success("Report generated successfully");
         } catch (error: any) {
             console.error("Export error:", error);
+            setExportProgress(prev => ({ ...prev, isOpen: false }));
             toast.error(error.message || "Error generating report");
         } finally {
             setIsGenerating(false);
@@ -2417,6 +2468,59 @@ export default function ExecutiveSummaryPage() {
                     vessel: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.vessel
                 }}
             />
+
+            {/* Export Progress Modal */}
+            <Dialog 
+                open={exportProgress.isOpen} 
+                onOpenChange={(open) => {
+                    if (!open && !isGenerating) {
+                        setExportProgress(prev => ({ ...prev, isOpen: false }));
+                    }
+                }}
+            >
+                <DialogContent className="sm:max-w-md border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl p-6">
+                    <DialogHeader className="space-y-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary animate-pulse">
+                                <FileText className="h-5 w-5" />
+                            </div>
+                            <div className="text-left flex-1 min-w-0">
+                                <DialogTitle className="text-base font-semibold leading-none truncate">
+                                    {exportProgress.title || "Generating Document Report"}
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                                    Compiling datasets, high-res visuals, and Word document formatting...
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="py-4 space-y-4">
+                        <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs">
+                                <span className="font-medium text-foreground flex items-center gap-2">
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                                    <span className="truncate max-w-[280px]">{exportProgress.status || "Building file..."}</span>
+                                </span>
+                                <Badge variant="secondary" className="font-mono text-xs font-semibold px-2 py-0.5">
+                                    {Math.round(exportProgress.percent)}%
+                                </Badge>
+                            </div>
+                            <Progress 
+                                value={exportProgress.percent} 
+                                className="h-2.5 w-full transition-all duration-300 bg-secondary/80" 
+                            />
+                        </div>
+
+                        <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">
+                            <Info className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
+                            <span>
+                                Please remain on this tab while your report and inspection graphics are compiled. Download will initiate automatically upon completion.
+                            </span>
+                        </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
         </div>
     );
 }
