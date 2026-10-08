@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
-import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
+import { getPaginationParams, createPaginationMeta, applyPagination, getSearchParam, buildSearchFilter } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
@@ -286,18 +286,42 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }: { use
   }
 
   // --- Default listing: includes metadata for plantype, tasktype, structures, and dates ---
-  let query = (supabase as any)
-    .from("jobpack")
-    .select("id, name, status, metadata, created_at, updated_at, company_id")
-    .order("id", { ascending: false });
+  // Optional filters (default listing path only):
+  //   ?status=OPEN|CLOSED  -> exact status match
+  //   ?q=<term>            -> sanitized ilike or-filter over name and the
+  //                           plantype/tasktype keys inside metadata
+  const statusParam = url.searchParams.get("status");
+  const q = getSearchParam(request);
+  const searchColumns = ["name", "metadata->>plantype", "metadata->>tasktype"];
 
-  if (companyId) {
-    query = query.eq("company_id", companyId);
+  const buildListingQuery = (columns: string[]) => {
+    let listingQuery: any = (supabase as any)
+      .from("jobpack")
+      .select("id, name, status, metadata, created_at, updated_at, company_id", { count: "exact" })
+      .order("id", { ascending: false });
+
+    if (companyId) {
+      listingQuery = listingQuery.eq("company_id", companyId);
+    }
+    if (statusParam) {
+      listingQuery = listingQuery.eq("status", statusParam);
+    }
+    const searchFilter = buildSearchFilter(q, columns);
+    if (searchFilter) {
+      listingQuery = listingQuery.or(searchFilter);
+    }
+    return applyPagination(listingQuery, paginationParams);
+  };
+
+  let query = buildListingQuery(searchColumns);
+  let { data, error, count } = await query;
+
+  if (error && searchColumns.length > 1) {
+    // PostgREST can reject arrow-notation json filters inside or(); retry with
+    // a plain name-only ilike so search still works.
+    query = buildListingQuery(["name"]);
+    ({ data, error, count } = await query);
   }
-
-  query = applyPagination(query, paginationParams);
-
-  const { data, error, count } = await query;
 
   if (error) {
     return handleSupabaseError(error, "Failed to fetch jobpack");

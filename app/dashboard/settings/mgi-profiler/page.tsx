@@ -55,6 +55,9 @@ import { toast } from "sonner";
 import { format } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
 import { useRouter } from "next/navigation";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 
 interface MGIProfile {
     id: number;
@@ -92,10 +95,7 @@ export default function MGIProfilerPage() {
     
     // State
     const [profiles, setProfiles] = useState<MGIProfile[]>([]);
-    const [jobPacks, setJobPacks] = useState<JobPack[]>([]);
     const [loading, setLoading] = useState(true);
-    const [jobpacksLoading, setJobpacksLoading] = useState(false);
-    const [jobpacksLoaded, setJobpacksLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
     const [viewMode, setViewMode] = useState<"PROFILES" | "JOBWISE">("PROFILES");
@@ -104,16 +104,63 @@ export default function MGIProfilerPage() {
     const [editingProfile, setEditingProfile] = useState<Partial<MGIProfile> | null>(null);
     const [selectedJobId, setSelectedJobId] = useState<number | null>(null);
     const [searchQuery, setSearchQuery] = useState("");
+    const debouncedJobSearch = useDebouncedValue(searchQuery, 300);
 
     useEffect(() => {
         fetchData();
     }, []);
 
+    // Scroll-to-load jobpack list for the JOBWISE tab. Search runs server-side
+    // (?q= over jobpack name / metadata plantype/tasktype); only fetches while
+    // the JOBWISE tab is active.
+    const {
+        items: jobPacks,
+        totalItems: jobpackTotal,
+        isLoading: jobpacksLoading,
+        error: jobpacksError,
+        hasNextPage,
+        isFetchingNextPage,
+        fetchNextPage,
+        refetch: refetchJobpacks,
+    } = useInfiniteList<JobPack>({
+        queryKey: ["mgi-profiler", "jobpacks", debouncedJobSearch],
+        getPageUrl: (page) =>
+            `/api/jobpack?page=${page}&pageSize=50${
+                debouncedJobSearch ? `&q=${encodeURIComponent(debouncedJobSearch)}` : ""
+            }`,
+        enabled: viewMode === "JOBWISE",
+    });
+
+    // /api/jobpack does not return mgi_profile_id, so keep the "MGI Profile"
+    // column working by fetching the linked profile for the loaded window in a
+    // single bounded follow-up query.
+    const [mgiProfileByJob, setMgiProfileByJob] = useState<Record<number, number | null>>({});
+
     useEffect(() => {
-        if (viewMode === "JOBWISE") {
-            fetchJobpacks();
+        if (viewMode !== "JOBWISE" || jobPacks.length === 0) {
+            setMgiProfileByJob({});
+            return;
         }
-    }, [viewMode]);
+        let cancelled = false;
+        const ids = jobPacks.map((j) => j.id);
+        (async () => {
+            const { data, error } = await supabase
+                .from("jobpack")
+                .select("id, mgi_profile_id")
+                .in("id", ids);
+            if (cancelled) return;
+            if (!error && data) {
+                const map: Record<number, number | null> = {};
+                (data as any[]).forEach((r) => {
+                    map[r.id] = r.mgi_profile_id ?? null;
+                });
+                setMgiProfileByJob(map);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, [viewMode, jobPacks]);
 
     const timeout = (ms: number) => new Promise((_, reject) => setTimeout(() => reject(new Error("Request timed out")), ms));
 
@@ -145,35 +192,10 @@ export default function MGIProfilerPage() {
         }
     }
 
-    async function fetchJobpacks(force = false) {
-        if (!force && (jobpacksLoaded || jobpacksLoading)) return;
-        console.log("[MGI Profiler] Starting fetchJobpacks...");
-        setJobpacksLoading(true);
-        try {
-            const res = await Promise.race([
-                supabase.from('jobpack')
-                    .select('id, name, status, mgi_profile_id')
-                    .order('created_at', { ascending: false }),
-                timeout(15000)
-            ]);
-
-            if (res && (res as any).data) {
-                setJobPacks((res as any).data);
-                setJobpacksLoaded(true);
-            } else if ((res as any).error) {
-                throw new Error((res as any).error.message);
-            } else {
-                console.warn("[MGI Profiler] Jobpacks response has no data field:", res);
-                toast.error("Failed to load jobpacks");
-            }
-        } catch (err: any) {
-            console.error("[MGI Profiler] Error fetching jobpacks:", err);
-            toast.error(`Failed to load jobpacks: ${err.message || err}`);
-        } finally {
-            setJobpacksLoading(false);
-        }
-    }
-
+    const filteredProfiles = profiles.filter(p => 
+        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
     const handleCreateProfile = () => {
         setEditingProfile({
@@ -241,20 +263,11 @@ export default function MGIProfilerPage() {
             toast.success("Jobpack linked successfully");
             setIsLinkDialogOpen(false);
             fetchData();
-            fetchJobpacks(true);
+            refetchJobpacks();
         } catch (error) {
             toast.error("Error linking jobpack");
         }
     };
-
-    const filteredProfiles = profiles.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const filteredJobPacks = jobPacks.filter(j => 
-        j.name.toLowerCase().includes(searchQuery.toLowerCase())
-    );
 
     return (
         <div className="flex-1 w-full p-6 overflow-y-auto bg-slate-50/50 dark:bg-slate-950">
@@ -297,10 +310,7 @@ export default function MGIProfilerPage() {
                             <Button 
                                 variant={viewMode === "JOBWISE" ? "secondary" : "ghost"}
                                 size="sm"
-                                onClick={() => {
-                                    setViewMode("JOBWISE");
-                                    fetchJobpacks();
-                                }}
+                                onClick={() => setViewMode("JOBWISE")}
                                 className="rounded-lg font-bold"
                             >
                                 <FileText className="w-4 h-4 mr-2" />
@@ -423,15 +433,15 @@ export default function MGIProfilerPage() {
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ) : filteredJobPacks.length === 0 ? (
+                                    ) : jobPacks.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={4} className="h-48 text-center text-slate-400 font-medium">
-                                                No jobpacks found
+                                                {jobpacksError || "No jobpacks found"}
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredJobPacks.map((job) => {
-                                            const profile = profiles.find(p => p.id === job.mgi_profile_id);
+                                        jobPacks.map((job) => {
+                                            const profile = profiles.find(p => p.id === mgiProfileByJob[job.id]);
                                             return (
                                                 <TableRow key={job.id} className="hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-slate-100 dark:border-slate-800">
                                                     <TableCell className="pl-6 py-4 font-bold text-slate-800 dark:text-white">
@@ -471,6 +481,16 @@ export default function MGIProfilerPage() {
                                 )}
                             </TableBody>
                         </Table>
+                        {viewMode === "JOBWISE" && jobPacks.length > 0 && (
+                            <ScrollSentinel
+                                hasNextPage={hasNextPage}
+                                isFetchingNextPage={isFetchingNextPage}
+                                onLoadMore={fetchNextPage}
+                                loadedCount={jobPacks.length}
+                                totalItems={jobpackTotal}
+                                hideWhenDone={false}
+                            />
+                        )}
                     </CardContent>
                 </Card>
 
