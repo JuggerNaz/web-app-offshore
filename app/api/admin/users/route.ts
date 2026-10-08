@@ -1,11 +1,19 @@
 import { NextRequest } from "next/server";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
-import { apiSuccess, apiError, apiCreated } from "@/utils/api-response";
+import { apiSuccess, apiError, apiCreated, apiPaginated } from "@/utils/api-response";
+import {
+  getPaginationParams,
+  createPaginationMeta,
+  applyPagination,
+  getSearchParam,
+  buildSearchFilter,
+} from "@/utils/pagination";
 
 /**
  * GET /api/admin/users
- * Returns list of members in the active company.
+ * Returns paged list of members in the active company.
+ * Query params: ?page=1&pageSize=50&q=<name / email / designation search>
  * Protected by admin roles.
  */
 export const GET = withRole(["company_admin", "super_admin"], async (request, { company, membership }) => {
@@ -20,10 +28,14 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
     } catch (_) {}
 
     const targetCompanyId = company?.id || membership?.company_id || request.headers.get("x-company-id");
-    
+
+    const paginationParams = getPaginationParams(request);
+    const q = getSearchParam(request);
+
     let query = supabase
       .from("company_memberships")
-      .select(`
+      .select(
+        `
         id,
         user_id,
         company_id,
@@ -31,14 +43,24 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
         is_active,
         created_at,
         updated_at,
-        user:profiles!user_id(*)
-      `);
+        user:profiles!user_id(id, email, full_name, designation, avatar_url)
+      `,
+        { count: "exact" }
+      );
 
     if (targetCompanyId) {
       query = query.eq("company_id", targetCompanyId);
     }
 
-    const { data: memberships, error } = await query;
+    // Search embedded profile columns (PostgREST embedded-resource filter)
+    const searchFilter = buildSearchFilter(q, ["user.email", "user.full_name", "user.designation"]);
+    if (searchFilter) {
+      query = query.or(searchFilter);
+    }
+
+    query = applyPagination(query, paginationParams);
+
+    const { data: memberships, error, count } = await query;
 
     if (error) {
       console.error("[GET /api/admin/users] DB Error:", error);
@@ -46,7 +68,7 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
     }
 
     if (!memberships || memberships.length === 0) {
-      return apiSuccess([]);
+      return apiPaginated([], createPaginationMeta(paginationParams, count || 0));
     }
 
     // Fetch user_roles for these user_ids
@@ -72,7 +94,7 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
       modules: rolesMap.get(m.user_id)?.modules || [],
     }));
 
-    return apiSuccess(mergedMemberships);
+    return apiPaginated(mergedMemberships, createPaginationMeta(paginationParams, count || 0));
   } catch (error: any) {
     console.error("[GET /api/admin/users] Error:", error);
     return apiError("Internal server error", 500);

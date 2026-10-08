@@ -113,3 +113,30 @@ export function applyPagination<T>(query: T, params: PaginationParams): T {
 
   return (query as any).range(from, to);
 }
+
+/**
+ * Read the free-text search term (`?q=`) from the request.
+ */
+export function getSearchParam(request: NextRequest): string {
+  return (request.nextUrl.searchParams.get("q") || "").trim();
+}
+
+/**
+ * Build a PostgREST `or` filter for case-insensitive substring search across
+ * the given columns. Returns null when there is no usable search term.
+ *
+ * Characters that break PostgREST filter syntax (commas, parentheses, quotes)
+ * are stripped so user input can't alter the filter structure.
+ *
+ * Usage:
+ * ```typescript
+ * const q = getSearchParam(request);
+ * const orFilter = buildSearchFilter(q, ["name", "email"]);
+ * if (orFilter) query = query.or(orFilter);
+ * ```
+ */
+export function buildSearchFilter(q: string, columns: string[]): string | null {
+  const safe = q.replace(/[,()'"\\]/g, " ").trim();
+  if (!safe || columns.length === 0) return null;
+  return columns.map((c) => `${c}.ilike.%${safe}%`).join(",");
+}

@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/utils/utils";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import { DataTable } from "@/components/data-table/data-table";
 import { inspectionPlanningColumns } from "@/components/data-table/columns";
 import { Button } from "@/components/ui/button";
@@ -10,9 +9,26 @@ import { Plus, Zap, Activity } from "lucide-react";
 import Link from "next/link";
 
 export default function PlanningListPage() {
-  const { data, isLoading, error } = useSWR("/api/inspection-planning", fetcher);
+  // Scroll-to-load planning list (server paginated). The DataTable below keeps
+  // its own client-side paging/filtering over the accumulated rows.
+  const {
+    items: plans,
+    totalItems,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteList<any>({
+    queryKey: ["inspection-planning", "list"],
+    getPageUrl: (page) => `/api/inspection-planning?page=${page}&pageSize=50`,
+  });
 
-  const plans = useMemo(() => data?.data || [], [data]);
+  // Active Protocols uses the server-side total (full dataset). The DRAFT and
+  // FINALIZED breakdowns are computed over the loaded window only.
+  const stats = [
+    { label: "Active Protocols", value: totalItems ?? plans.length, icon: Activity, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
+    { label: "Finalized Releases", value: plans.filter((p: any) => p.metadata?.status === 'FINALIZED').length, icon: Zap, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
+    { label: "Pending Drafts", value: plans.filter((p: any) => p.metadata?.status === 'DRAFT').length, icon: Plus, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-900/20" },
+  ];
 
   return (
     <div className="flex-1 w-full flex flex-col overflow-y-auto overflow-x-hidden custom-scrollbar bg-slate-50/30 dark:bg-transparent animate-in fade-in duration-700">
@@ -46,11 +62,7 @@ export default function PlanningListPage() {
 
         {/* Stats / Overview Row (Optional but high-end) */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {[
-            { label: "Active Protocols", value: plans.length, icon: Activity, color: "text-blue-500", bg: "bg-blue-50 dark:bg-blue-900/20" },
-            { label: "Finalized Releases", value: plans.filter((p: any) => p.metadata?.status === 'FINALIZED').length, icon: Zap, color: "text-emerald-500", bg: "bg-emerald-50 dark:bg-emerald-900/20" },
-            { label: "Pending Drafts", value: plans.filter((p: any) => p.metadata?.status === 'DRAFT').length, icon: Plus, color: "text-amber-500", bg: "bg-amber-50 dark:bg-amber-900/20" },
-          ].map((stat, i) => (
+          {stats.map((stat, i) => (
             <div key={i} className="bg-white dark:bg-slate-900/50 p-6 rounded-[2rem] border border-slate-100 dark:border-slate-800 shadow-sm flex items-center justify-between">
               <div>
                 <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">{stat.label}</p>
@@ -69,6 +81,15 @@ export default function PlanningListPage() {
           data={plans}
           pageSize={10}
           disableRowClick={true}
+        />
+
+        <ScrollSentinel
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={fetchNextPage}
+          loadedCount={plans.length}
+          totalItems={totalItems}
+          hideWhenDone={false}
         />
       </div>
     </div>

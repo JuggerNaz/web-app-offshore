@@ -1,33 +1,68 @@
 import { NextRequest } from "next/server";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
-import { apiSuccess, apiCreated } from "@/utils/api-response";
+import { apiSuccess, apiCreated, apiPaginated } from "@/utils/api-response";
+import {
+    getPaginationParams,
+    createPaginationMeta,
+    applyPagination,
+    getSearchParam,
+    buildSearchFilter,
+} from "@/utils/pagination";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
 
 /**
  * GET /api/inspection-planning
- * Fetch planning records (all or by ID)
+ * Fetch planning records (paginated listing with optional ?q= name search,
+ * or a single record by ID via ?id=)
+ *
+ * Query params: ?page=1&pageSize=50&q=<name search>&id=<single record>
  */
 export const GET = withAuth(async (request: NextRequest) => {
     const supabase = createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get("id");
 
-    let query: any = supabase.from("inspection_planning").select("*");
-
     if (id) {
-        query = query.eq("id", parseInt(id, 10)).single();
-    } else {
-        query = query.order("created_at", { ascending: false });
+        const { data, error } = await supabase
+            .from("inspection_planning")
+            .select("*")
+            .eq("id", parseInt(id, 10))
+            .single();
+
+        if (error) {
+            return handleSupabaseError(error, "Failed to fetch planning data");
+        }
+
+        return apiSuccess(data || []);
     }
 
-    const { data, error } = await query;
+    // Paginated listing (scroll-to-load). `name` is the only plain text column
+    // on inspection_planning, so the free-text search runs over it.
+    const paginationParams = getPaginationParams(request);
+    const q = getSearchParam(request);
+
+    let query: any = supabase
+        .from("inspection_planning")
+        .select("*", { count: "exact" })
+        .order("created_at", { ascending: false });
+
+    const searchFilter = buildSearchFilter(q, ["name"]);
+    if (searchFilter) {
+        query = query.or(searchFilter);
+    }
+
+    query = applyPagination(query, paginationParams);
+
+    const { data, error, count } = await query;
 
     if (error) {
         return handleSupabaseError(error, "Failed to fetch planning data");
     }
 
-    return apiSuccess(data || []);
+    const pagination = createPaginationMeta(paginationParams, count || 0);
+
+    return apiPaginated(data || [], pagination);
 });
 
 /**

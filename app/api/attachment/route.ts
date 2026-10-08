@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createAdminClient } from "@/utils/supabase/server";
-import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
+import { getPaginationParams, createPaginationMeta, applyPagination, getSearchParam, buildSearchFilter } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { exec } from "child_process";
@@ -52,11 +52,39 @@ export const GET = withTenant(async (request, { companyId }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
 
-  let query = (supabase as any).from("attachment").select("*", { count: "exact" }).eq("company_id", companyId);
+  // Optional ?q= search over the attachment's own text fields: the row name,
+  // and the title / description / original file name stored inside `meta`.
+  const q = getSearchParam(request);
+  const searchColumns = [
+    "name",
+    "meta->>title",
+    "meta->>description",
+    "meta->>original_file_name",
+  ];
 
-  query = applyPagination(query, paginationParams);
+  const buildAttachmentQuery = (columns: string[]) => {
+    let attachmentQuery: any = (supabase as any)
+      .from("attachment")
+      .select("*", { count: "exact" })
+      .eq("company_id", companyId);
 
-  const { data, error, count } = await query;
+    const searchFilter = buildSearchFilter(q, columns);
+    if (searchFilter) {
+      attachmentQuery = attachmentQuery.or(searchFilter);
+    }
+
+    return applyPagination(attachmentQuery, paginationParams);
+  };
+
+  let query = buildAttachmentQuery(searchColumns);
+  let { data, error, count } = await query;
+
+  if (error && searchColumns.length > 1) {
+    // PostgREST can reject arrow-notation json filters inside or(); retry with
+    // a plain name-only ilike so search still works.
+    query = buildAttachmentQuery(["name"]);
+    ({ data, error, count } = await query);
+  }
 
   if (error) {
     return handleSupabaseError(error, "Failed to fetch attachments");
