@@ -1,8 +1,6 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import useSWR from "swr";
-import { fetcher } from "@/utils/utils";
 import Link from "next/link";
 import moment from "moment";
 import { 
@@ -31,6 +29,9 @@ import {
   TableCell,
 } from "@/components/ui/table";
 import { JobpackActions } from "@/components/data-table/columns";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 
 const getJobpackDate = (jp: any): string | null => {
   const meta = jp?.metadata || {};
@@ -68,24 +69,78 @@ const getJobpackYear = (jp: any): string => {
 };
 
 export default function JobpackPage() {
-  const { data, error, isLoading } = useSWR("/api/jobpack", fetcher);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
 
-  // Auto-expand all years by default once data loads
+  // Scroll-to-load jobpack list. Search runs server-side (?q= over name and
+  // metadata plantype/tasktype); grouping and sorting below are computed over
+  // the loaded window.
+  const {
+    items: jobpacks,
+    totalItems,
+    isLoading,
+    error,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+  } = useInfiniteList<any>({
+    queryKey: ["jobpack", "list", debouncedSearch],
+    getPageUrl: (page) =>
+      `/api/jobpack?page=${page}&pageSize=50${
+        debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
+      }`,
+  });
+
+  // Header Open/Closed stats: tiny status-filtered count queries that read
+  // pagination.totalItems, so the numbers reflect the full (search-filtered)
+  // dataset instead of only the loaded window.
+  const [statusCounts, setStatusCounts] = useState<{ open: number | null; closed: number | null }>({
+    open: null,
+    closed: null,
+  });
+
   useEffect(() => {
-    if (data?.data) {
-      const years = new Set<string>();
-      data.data.forEach((jp: any) => {
-        years.add(getJobpackYear(jp));
-      });
-      const initial: Record<string, boolean> = {};
+    let cancelled = false;
+    const qParam = debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : "";
+    const loadCounts = async () => {
+      try {
+        const [openRes, closedRes] = await Promise.all([
+          fetch(`/api/jobpack?status=OPEN&pageSize=1${qParam}`),
+          fetch(`/api/jobpack?status=CLOSED&pageSize=1${qParam}`),
+        ]);
+        const [openJson, closedJson] = await Promise.all([openRes.json(), closedRes.json()]);
+        if (!cancelled) {
+          setStatusCounts({
+            open: openJson?.pagination?.totalItems ?? null,
+            closed: closedJson?.pagination?.totalItems ?? null,
+          });
+        }
+      } catch (_) {
+        if (!cancelled) setStatusCounts({ open: null, closed: null });
+      }
+    };
+    loadCounts();
+    return () => {
+      cancelled = true;
+    };
+  }, [debouncedSearch]);
+
+  // Auto-expand all years by default as pages load (preserves manual collapses)
+  useEffect(() => {
+    if (jobpacks.length === 0) return;
+    const years = new Set<string>();
+    jobpacks.forEach((jp: any) => {
+      years.add(getJobpackYear(jp));
+    });
+    setExpandedYears((prev) => {
+      const next = { ...prev };
       years.forEach((y) => {
-        initial[y] = true;
+        if (!(y in next)) next[y] = true;
       });
-      setExpandedYears(initial);
-    }
-  }, [data?.data]);
+      return next;
+    });
+  }, [jobpacks]);
 
   if (error) return (
     <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
@@ -105,34 +160,19 @@ export default function JobpackPage() {
     </div>
   );
 
-  const jobpackList = data?.data || [];
+  const jobpackList = jobpacks;
 
-  // Filter jobpacks based on search query
-  const filteredJobpacks = jobpackList.filter((jp: any) => {
-    if (!searchQuery.trim()) return true;
-    const query = searchQuery.toLowerCase();
-    const name = (jp.name || "").toLowerCase();
-    const meta = jp.metadata || {};
-    const plan = (meta.plantype || meta.plan_type || meta.planType || "").toLowerCase();
-    const task = (meta.tasktype || meta.task_type || meta.taskType || "").toLowerCase();
-    const start = (getJobpackDate(jp) || "").toLowerCase();
-    const year = getJobpackYear(jp).toLowerCase();
-    const structures = (meta.structures || meta.structure_list || []).some((s: any) => 
-      (s.title || "").toLowerCase().includes(query) ||
-      (s.name || "").toLowerCase().includes(query) ||
-      (s.code || "").toLowerCase().includes(query)
-    );
-    return name.includes(query) || plan.includes(query) || task.includes(query) || start.includes(query) || year.includes(query) || structures;
-  });
+  // Top level overall statistics. Total comes from the server pagination meta;
+  // Open/Closed come from the status count queries, falling back to the loaded
+  // window while those load.
+  const totalCount = totalItems ?? jobpackList.length;
+  const openCount = statusCounts.open ?? jobpackList.filter((jp: any) => jp.status === "OPEN").length;
+  const closedCount = statusCounts.closed ?? jobpackList.filter((jp: any) => jp.status === "CLOSED").length;
 
-  // Calculate top level overall statistics (all matching search)
-  const totalCount = filteredJobpacks.length;
-  const openCount = filteredJobpacks.filter((jp: any) => jp.status === "OPEN").length;
-  const closedCount = filteredJobpacks.filter((jp: any) => jp.status === "CLOSED").length;
-
-  // Group by year of start date
+  // Group by year of start date (over the loaded window; search already
+  // applied server-side via ?q=)
   const groupedByYear: Record<string, any[]> = {};
-  filteredJobpacks.forEach((jp: any) => {
+  jobpackList.forEach((jp: any) => {
     const year = getJobpackYear(jp);
     if (!groupedByYear[year]) {
       groupedByYear[year] = [];
@@ -479,6 +519,15 @@ export default function JobpackPage() {
               )}
             </div>
           )}
+
+          <ScrollSentinel
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={fetchNextPage}
+            loadedCount={jobpackList.length}
+            totalItems={totalItems}
+            hideWhenDone={false}
+          />
         </div>
 
       </div>
