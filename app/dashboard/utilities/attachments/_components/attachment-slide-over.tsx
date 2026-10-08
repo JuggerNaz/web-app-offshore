@@ -57,9 +57,11 @@ export function AttachmentSlideOver() {
     const isAddMode = !activeAttachment;
     const isMedia = activeAttachment ? isMediaAttachment(activeAttachment) : false;
 
-    // Components of the selected platform (add mode)
+    // Components of the selected platform (add mode, slim projection)
     const { data: componentsData } = useSWR(
-        isSlideOverOpen && isAddMode && selectedPlatformId ? `/api/structure-components/${selectedPlatformId}` : null,
+        isSlideOverOpen && isAddMode && selectedPlatformId
+            ? `/api/structure-components/lookup?structure_id=${selectedPlatformId}&pageSize=1000`
+            : null,
         fetcher
     );
     const components: any[] = componentsData?.data || [];
@@ -161,7 +163,7 @@ export function AttachmentSlideOver() {
                     return;
                 }
 
-                let sourceType: TargetType = targetType;
+                const sourceType: TargetType = targetType;
                 let sourceId: number | null = null;
                 if (targetType === "platform") sourceId = selectedPlatformId;
                 if (targetType === "component") sourceId = targetComponentId ? Number(targetComponentId) : null;
