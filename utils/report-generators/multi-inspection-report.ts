@@ -1,10 +1,9 @@
-
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -22,7 +21,7 @@ export const generateMultiInspectionReport = async (
         const doc = new jsPDF();
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
         const colors = {
             navy: [7, 78, 136] as [number, number, number],
@@ -33,6 +32,19 @@ export const generateMultiInspectionReport = async (
         };
         const sectionBlue: [number, number, number] = [7, 78, 136];
         const isPrintFriendly = config?.printFriendly === true;
+
+        // Preload logos
+        let coLogo: any = null;
+        let ctLogo: any = null;
+        if (companySettings?.logo_url) {
+            try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (e) {}
+        }
+        const contractorLogoUrl = (config as any)?.contractorLogoUrl;
+        if (contractorLogoUrl) {
+            try { ctLogo = await loadLogoWithTransparency(contractorLogoUrl); } catch (e) {}
+        }
+
+        const headerH = 25;
 
         for (let idx = 0; idx < inspectionIds.length; idx++) {
             const inspectionId = inspectionIds[idx];
@@ -91,53 +103,29 @@ export const generateMultiInspectionReport = async (
             }
             (inspection as any).attachment = attachmentsData || [];
 
+            const isAnomaly = inspection.has_anomaly;
+            const structureName = inspection.inspection_data?.structure_name || "Unknown Structure";
+
             // --- HEADER ---
-            const drawPremiumHeader = async (d: jsPDF) => {
-                const headerH = 22;
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-
-                // 1. Company Logo (Right)
-                if (companySettings?.logo_url) {
-                    try {
-                        const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                        if (logoData) {
-                            drawLogo(d, logoData, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-                        }
-                    } catch (e) {}
-                }
-
-                // 2. Contractor Logo (Left - if provided in config)
-                const contractorLogoUrl = (config as any)?.contractorLogoUrl;
-                if (contractorLogoUrl) {
-                    try {
-                        const logoData = await loadLogoWithTransparency(contractorLogoUrl);
-                        if (logoData) {
-                            drawLogo(d, logoData, 16, 16, margin + 4, margin + 3, 'left', 'center');
-                        }
-                    } catch (e) {}
-                }
-
-                d.setTextColor(255); d.setFontSize(11); d.setFont("helvetica", "bold");
-                d.text(companySettings?.company_name || 'NASQUEST RESOURCES SDN BHD', margin + (contentWidth/2), margin + 6, { align: 'center' });
-                d.setFontSize(8.5); d.setFont("helvetica", "normal");
-                d.text(companySettings?.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
-                d.setFontSize(11); d.setFont("helvetica", "bold");
-                const isAnomaly = inspection.has_anomaly;
-                d.text(isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT", margin + (contentWidth/2), margin + 16.5, { align: 'center' });
+            const drawPremiumHeader = (d: jsPDF) => {
+                draw3SectionHeader(d, {
+                    reportTitle: isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT",
+                    reportNo: inspection.sow_report_no || (config as any)?.sowReportNo || (config as any)?.reportNoPrefix || `ID-${inspection.insp_id}`,
+                    structureName: structureName,
+                    jobpackName: (config as any)?.jobpackName,
+                    companySettings,
+                    config,
+                    contractorLogoData: ctLogo,
+                    clientLogoData: coLogo,
+                    margin,
+                    headerH,
+                    headerY: 7,
+                });
             };
 
-            await drawPremiumHeader(doc);
+            drawPremiumHeader(doc);
 
-            const isAnomaly = inspection.has_anomaly;
-
-            // Subtitle / Reference
-            doc.setTextColor(...colors.text);
-            doc.setFontSize(9);
-            doc.setFont("helvetica", "normal");
-            doc.text(`Record Ref: ${inspection.insp_id}`, margin, margin + 22 + 5);
-
-            let yPos = margin + 22 + 12;
+            let yPos = margin + headerH + 5;
 
             // --- INSPECTION DETAILS ---
             const drawSectionHeader = (text: string, y: number) => {
@@ -145,20 +133,20 @@ export const generateMultiInspectionReport = async (
                     doc.setFillColor(240, 240, 240);
                     doc.setDrawColor(180, 180, 180);
                     doc.setLineWidth(0.3);
-                    doc.rect(10, y, pageWidth - 20, 7, "FD");
+                    doc.rect(margin, y, contentWidth, 7, "FD");
                     doc.setTextColor(0, 0, 0);
                 } else {
                     doc.setFillColor(...sectionBlue);
-                    doc.rect(10, y, pageWidth - 20, 7, "F");
+                    doc.rect(margin, y, contentWidth, 7, "F");
                     doc.setTextColor(255, 255, 255);
                 }
-                doc.setFontSize(10);
+                doc.setFontSize(9);
                 doc.setFont("helvetica", "bold");
+                doc.text(text, margin + 4, y + 4.8);
             };
 
             drawSectionHeader("INSPECTION DETAILS", yPos);
-            doc.text("INSPECTION DETAILS", 12, yPos + 5);
-            yPos += 10;
+            yPos += 9;
 
             const details = [
                 ['Date', new Date(inspection.inspection_date).toLocaleDateString()],
@@ -176,10 +164,13 @@ export const generateMultiInspectionReport = async (
                     details.slice(0, 3).map(d => `${d[0]}: ${d[1]}`),
                     details.slice(3).map(d => `${d[0]}: ${d[1]}`)
                 ],
-                theme: 'plain',
-                styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
-                columnStyles: { 0: { cellWidth: 60 }, 1: { cellWidth: 60 }, 2: { cellWidth: 60 } },
-                margin: { left: 10 }
+                theme: 'grid',
+                tableLineWidth: 0.1,
+                tableLineColor: [200, 200, 200],
+                styles: {fontSize: 8.5, cellPadding: 2, lineWidth: 0.1, lineColor: [200, 200, 200]},
+                columnStyles: { 0: { cellWidth: 63.33 }, 1: { cellWidth: 63.33 }, 2: { cellWidth: 63.34 } },
+                margin: { left: margin, right: margin },
+                tableWidth: contentWidth
             });
             yPos = (doc as any).lastAutoTable.finalY + 5;
 
@@ -187,8 +178,7 @@ export const generateMultiInspectionReport = async (
             if (isAnomaly && inspection.insp_anomalies && inspection.insp_anomalies.length > 0) {
                 const anomaly = inspection.insp_anomalies[0];
                 drawSectionHeader(`ANOMALY: ${anomaly.anomaly_ref_no || 'Ref N/A'}`, yPos);
-                doc.text(`ANOMALY: ${anomaly.anomaly_ref_no || 'Ref N/A'}`, 12, yPos + 5);
-                yPos += 10;
+                yPos += 9;
 
                 const anomalyData = [
                     ['Defect Code', anomaly.defect_type_code || '-'],
@@ -200,22 +190,25 @@ export const generateMultiInspectionReport = async (
                 autoTable(doc, {
                     startY: yPos,
                     body: anomalyData,
-                    theme: 'striped',
-                    headStyles: {fillColor: [200, 200, 200], textColor: 0, lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
-                    styles: {fontSize: 9, cellPadding: 2, lineWidth: 0.1, lineColor: [203, 213, 225]},
-                    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 40 } },
-                    margin: { left: 10 }
+                    theme: 'grid',
+                    tableLineWidth: 0.1,
+                    tableLineColor: [200, 200, 200],
+                    headStyles: {fillColor: [200, 200, 200], textColor: 0, lineWidth: 0.1, lineColor: [200, 200, 200]},
+                    styles: {fontSize: 8.5, cellPadding: 2, lineWidth: 0.1, lineColor: [200, 200, 200]},
+                    columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 }, 1: { cellWidth: 140 } },
+                    margin: { left: margin, right: margin },
+                    tableWidth: contentWidth
                 });
                 yPos = (doc as any).lastAutoTable.finalY + 5;
 
                 if (anomaly.description) {
-                    doc.setFontSize(9);
+                    doc.setFontSize(8.5);
                     doc.setTextColor(0, 0, 0);
                     doc.setFont("helvetica", "bold");
-                    doc.text("Description:", 10, yPos + 4);
+                    doc.text("Description:", margin, yPos + 4);
                     doc.setFont("helvetica", "normal");
-                    const splitDesc = doc.splitTextToSize(anomaly.description, pageWidth - 25);
-                    doc.text(splitDesc, 25, yPos + 4);
+                    const splitDesc = doc.splitTextToSize(anomaly.description, contentWidth - 25);
+                    doc.text(splitDesc, margin + 22, yPos + 4);
                     yPos += (splitDesc.length * 4) + 8;
                 }
             }
@@ -228,19 +221,18 @@ export const generateMultiInspectionReport = async (
             if (attachments.length > 0) {
                 if (yPos > pageHeight - 60) {
                     doc.addPage();
-                    await drawPremiumHeader(doc);
-                    yPos = margin + 22 + 6;
+                    drawPremiumHeader(doc);
+                    yPos = margin + headerH + 6;
                 }
 
                 drawSectionHeader(`ATTACHMENTS / PHOTOS (${attachments.length})`, yPos);
-                doc.text(`ATTACHMENTS / PHOTOS (${attachments.length})`, 12, yPos + 5);
                 yPos += 10;
 
                 const cols = 2;
                 const gap = 5;
-                const imgWidth = (pageWidth - 20 - (gap * (cols - 1))) / cols;
+                const imgWidth = (contentWidth - (gap * (cols - 1))) / cols;
                 const imgHeight = 80;
-                let currentX = 10;
+                let currentX = margin;
 
                 for (let i = 0; i < attachments.length; i++) {
                     const att = attachments[i];
@@ -253,8 +245,8 @@ export const generateMultiInspectionReport = async (
 
                     if (yPos + imgHeight + 25 > pageHeight - 10) {
                         doc.addPage();
-                        await drawPremiumHeader(doc);
-                        yPos = margin + 22 + 6;
+                        drawPremiumHeader(doc);
+                        yPos = margin + headerH + 6;
                     }
 
                     const url = getAttachmentUrl(att, supabase);
@@ -287,7 +279,7 @@ export const generateMultiInspectionReport = async (
                     }
 
                     if ((i + 1) % cols === 0) {
-                        currentX = 10;
+                        currentX = margin;
                         yPos += imgHeight + 25;
                     } else {
                         currentX += imgWidth + gap;
@@ -296,8 +288,6 @@ export const generateMultiInspectionReport = async (
             } // End of Attachments
         } // End of For Loop
 
-        if (config?.returnBlob) {
-            
         const totalPages = doc.getNumberOfPages();
         for (let j = 1; j <= totalPages; j++) {
             doc.setPage(j);
@@ -314,10 +304,10 @@ export const generateMultiInspectionReport = async (
         (doc as any)._footerApplied = true;
 
         applyWatermarkAndSignaturesGlobal(doc, config);
+        if (config?.returnBlob) {
             return doc.output("blob");
         }
 
-        applyWatermarkAndSignaturesGlobal(doc, config);
         doc.save(`${config?.reportNoPrefix || 'Inspection'}_Combined_Report.pdf`);
 
     } catch (e) {

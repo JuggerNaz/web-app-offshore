@@ -302,25 +302,48 @@ const draw3SectionHeader = async (
   doc.rect(x2, headerY, col2W, headerH, "S");
 
   const titleCenterX = x2 + col2W / 2;
-  doc.setFontSize(10.5);
+
+  const companyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+  const deptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+
+  // Line 1: Company Name (bold, size 8)
+  doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
-  doc.text(reportTitle.toUpperCase(), titleCenterX, headerY + 8, { align: "center" });
+  const compLines = doc.splitTextToSize(companyName, col2W - 8);
+  doc.text(compLines[0] || companyName, titleCenterX, headerY + 4.5, { align: "center" });
 
-  const reportNoStr = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
-  if (reportNoStr) {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...titleSubTextColor);
-    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 14, { align: "center" });
-  }
+  // Line 2: Department Name (no bold, size 8)
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...titleSubTextColor);
+  const deptLines = doc.splitTextToSize(deptName, col2W - 8);
+  doc.text(deptLines[0] || deptName, titleCenterX, headerY + 8.8, { align: "center" });
 
+  // Line 3: Report Title (bold, size 8)
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...titleTextColor);
+  const titleLines = doc.splitTextToSize(reportTitle, col2W - 8);
+  doc.text(titleLines[0] || reportTitle, titleCenterX, headerY + 13.2, { align: "center" });
+
+  // Line 4: Report No (no bold, size 8)
+  const rawReportNo = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  const reportNoStr = rawReportNo
+    ? (rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`)
+    : "Report No: N/A";
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...titleSubTextColor);
+  doc.text(reportNoStr, titleCenterX, headerY + 17.6, { align: "center" });
+
+  // Line 5: Platform Name / Structure Name (bold, size 8)
   if (structureName) {
-    doc.setFontSize(7.5);
+    doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(...titleTextColor);
     const structLines = doc.splitTextToSize(structureName, col2W - 8);
-    doc.text(structLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+    doc.text(structLines[0] || "", titleCenterX, headerY + 22.2, { align: "center" });
   }
 
   // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
@@ -385,7 +408,7 @@ const generatePipelineReport = async (
     companySettings,
     config,
     reportTitle: "Pipeline Specifications Report",
-    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    structureName: structure.str_name || structure.title || undefined,
     isPrintFriendly,
     headerBlue,
   });
@@ -697,7 +720,7 @@ const generatePlatformReport = async (
     companySettings,
     config,
     reportTitle: "Platform Specifications Report",
-    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    structureName: structure.str_name || structure.title || undefined,
     isPrintFriendly,
     headerBlue,
   });
@@ -727,14 +750,15 @@ const generatePlatformReport = async (
 
   // Helper function for compact field rendering
   const drawCompactField = (label: string, value: string, x: number, y: number, width: number) => {
-    doc.setFontSize(7);
+    doc.setFontSize(6.8);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(60, 60, 60);
     doc.text(label, x + 1, y + 3);
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
-    const valX = x + (width * 0.42);
+    const labelW = doc.getTextWidth(label);
+    const valX = Math.max(x + (width * 0.44), x + labelW + 2);
     doc.text(value, valX, y + 3);
 
     doc.setDrawColor(230, 230, 230);
@@ -756,7 +780,6 @@ const generatePlatformReport = async (
   doc.setDrawColor(200, 200, 200);
   const genStart = col1Y;
 
-  col1Y = drawCompactField("Structure:", structure.str_name || structure.title || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Install Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth);
@@ -775,13 +798,13 @@ const generatePlatformReport = async (
   col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Corrosion:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
+  col2Y = drawCompactField("Corrosion Coating:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
   col2Y = drawCompactField("Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth);
 
   doc.rect(col2X, configStart, colWidth, col2Y - configStart);
 
   // COLUMN 3: Location & Dimensions
-  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMS", col3X + 2, yPos + 3.5);
+  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMENSION", col3X + 2, yPos + 3.5);
 
   let col3Y = yPos + 5;
   const locStart = col3Y;
@@ -1071,29 +1094,33 @@ const generatePlatformReport = async (
     drawSectionBar(10, yPos, pageWidth - 20, 5, `PLATFORM LEGS (${structure.legs.length} Active)`, 12, yPos + 3.5);
     yPos += 5;
 
-    // Display legs in compact grid
-    const legColWidth = (pageWidth - 20) / 10;
+    // Display legs with auto and uniform column spacing across full width
+    const totalLegs = Math.min(structure.legs.length, 30);
+    const numRows = Math.ceil(totalLegs / 10);
+    const colsPerRow = Math.ceil(totalLegs / numRows);
+    const legColWidth = (pageWidth - 20) / colsPerRow;
     const legRowHeight = 9;
-    const numRows = Math.ceil(Math.min(structure.legs.length, 20) / 10);
 
     doc.setDrawColor(200, 200, 200);
     doc.rect(10, yPos, pageWidth - 20, numRows * legRowHeight);
 
-    structure.legs.slice(0, 20).forEach((leg: any, idx: number) => {
-      const col = idx % 10;
-      const row = Math.floor(idx / 10);
+    structure.legs.slice(0, totalLegs).forEach((leg: any, idx: number) => {
+      const row = Math.floor(idx / colsPerRow);
+      const col = idx % colsPerRow;
       const x = 10 + (col * legColWidth);
       const y = yPos + (row * legRowHeight);
 
       if (col > 0) doc.line(x, y, x, y + legRowHeight);
       if (row > 0) doc.line(10, y, pageWidth - 10, y);
 
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Leg ${idx + 1}`, x + legColWidth / 2, y + 3, { align: "center" });
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Leg ${idx + 1}`, x + legColWidth / 2, y + 3.2, { align: "center" });
+      doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
-      doc.text(leg.leg_name || leg.designation || `L${idx + 1}`, x + legColWidth / 2, y + 7, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+      doc.text(leg.leg_name || leg.designation || `L${idx + 1}`, x + legColWidth / 2, y + 7.2, { align: "center" });
     });
 
     yPos += (numRows * legRowHeight) + 3;
@@ -1787,7 +1814,6 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Structure", structure.str_name || structure.title || "N/A"],
       ["Title", structure.title || structure.str_name || "N/A"],
       ["Field", structure.pfield || structure.field_name || "N/A"],
       ["Install Date", formatDisplayDate(structure.inst_date)],
@@ -1815,7 +1841,7 @@ const generatePlatformHTML = (
       ["Function", structure.function || structure.process || "N/A"],
       ["Material", structure.material || "N/A"],
       ["CP System", structure.cp_system || "N/A"],
-      ["Corrosion", structure.corr_ctg || "N/A"],
+      ["Corrosion Coating", structure.corr_ctg || "N/A"],
       ["Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
@@ -1830,7 +1856,7 @@ const generatePlatformHTML = (
           <!-- Column 3: Location & Dimensions -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-              Location & Dims
+              Location & Dimension
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
@@ -1896,7 +1922,7 @@ const generatePlatformHTML = (
           <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Legs ${structure.legs && structure.legs.length > 0 ? `(${structure.legs.length} Active)` : ''}
           </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? 'display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px;' : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
+          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? `display: grid; grid-template-columns: repeat(${Math.min(structure.legs.length, 10)}, 1fr); gap: 5px;` : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
             ${structure.legs && structure.legs.length > 0
       ? structure.legs.slice(0, 20).map((leg: any, idx: number) => `
                 <div style="text-align: center; padding: 5px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
@@ -2164,7 +2190,6 @@ export const generateComponentSummaryReport = async (
       margin: { left: 10 },
       head: [['GENERAL INFO', '']],
       body: [
-        ['Structure', structure.str_name || structure.title || '-'],
         ['Title', structure.title || structure.str_name || '-'],
         ['Field', structure.field_name || structure.pfield || '-'],
         ['Install Date', formatDisplayDate(structure.inst_date)],
@@ -2189,7 +2214,7 @@ export const generateComponentSummaryReport = async (
         ['Function', structure.function || structure.process || '-'],
         ['Material', structure.material || '-'],
         ['CP System', structure.cp_system || '-'],
-        ['Corrosion', structure.corr_ctg || '-'],
+        ['Corrosion Coating', structure.corr_ctg || '-'],
         ['Contractor', structure.inst_contractor || structure.inst_ctr || '-']
       ],
       theme: 'grid',
@@ -2200,7 +2225,7 @@ export const generateComponentSummaryReport = async (
       showHead: 'firstPage'
     });
 
-    // Table 3: Location & Dims
+    // Table 3: Location & Dimension
     const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : 'N/A');
     const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : 'N/A');
     const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : 'N/A');
@@ -2211,7 +2236,7 @@ export const generateComponentSummaryReport = async (
     autoTable(doc, {
       startY: infoY,
       margin: { left: 10 + (tableWidth + colGap) * 2 },
-      head: [['LOCATION & DIMS', '']],
+      head: [['LOCATION & DIMENSION', '']],
       body: [
         ['Northing', northingVal],
         ['Easting', eastingVal],
@@ -2496,7 +2521,6 @@ export const generateComponentSummaryHTML = (
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">GENERAL INFO</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Structure", structure.str_name || structure.title)}
                         ${InfoRow("Title", structure.title || structure.str_name)}
                         ${InfoRow("Field", structure.field_name || structure.pfield)}
                         ${InfoRow("Install Date", formatDisplayDate(structure.inst_date))}
@@ -2513,14 +2537,14 @@ export const generateComponentSummaryHTML = (
                         ${InfoRow("Function", structure.function || structure.process)}
                         ${InfoRow("Material", structure.material)}
                         ${InfoRow("CP System", structure.cp_system)}
-                        ${InfoRow("Corrosion", structure.corr_ctg)}
+                        ${InfoRow("Corrosion Coating", structure.corr_ctg)}
                         ${InfoRow("Contractor", structure.inst_contractor || structure.inst_ctr)}
                     </tbody>
                 </table>
             </div>
             <div>
                 <table style="${infoTableStyle}">
-                    <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMS</th></tr></thead>
+                    <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMENSION</th></tr></thead>
                     <tbody>
                         ${InfoRow("Northing", northingVal)}
                         ${InfoRow("Easting", eastingVal)}
@@ -3153,7 +3177,7 @@ export const generateTechnicalSpecsHTML = (
                 <tbody>
                      ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? structure.max_leg_dia + ' mm' : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? structure.dleg + ' mm' : null))}
                      ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles || structure.pileint, "Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? structure.max_wall_thk + ' mm' : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? structure.wall_thk + ' mm' : null))}
-                     ${Row("Material Grade", structure.material, "Corrosion Cat.", structure.corr_ctg)}
+                     ${Row("Material Grade", structure.material, "Corrosion Coating", structure.corr_ctg)}
                      ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system || structure.def_unit)}
                 </tbody>
             </table>

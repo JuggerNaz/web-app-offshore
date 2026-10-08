@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -357,27 +357,24 @@ export const generateROVNavigReport = async (
 
     // ── 4. Drawing Header & Subheaders ───────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const headerH = 18;
-        if (isPrintFriendly) {
-            d.setDrawColor(...colors.navy); d.setLineWidth(0.3);
-            d.rect(margin, margin, contentWidth, headerH, "S");
-            d.setTextColor(...colors.navy);
-        } else {
-            d.setFillColor(...colors.navy);
-            d.rect(margin, margin, contentWidth, headerH, "F");
-            d.setTextColor(255, 255, 255);
-        }
+        const hData = config.headerData || {};
+        const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
+        const reportNo = sowReportNo || hData.sowReportNo || `${config.reportNoPrefix || "REP"}-NAVIG-01`;
 
-        if (clientLogo) drawLogo(d, clientLogo, 16, 14, pageWidth - margin - 18, margin + 2, "right", "center");
-        if (contractorLogo) drawLogo(d, contractorLogo, 16, 14, margin + 2, margin + 2, "left", "center");
-
-        d.setFontSize(11); d.setFont("helvetica", "bold");
-        d.text((companySettings.company_name || "OFFSHORE INSPECTION DIVISION").toUpperCase(), margin + (contentWidth / 2), margin + 5, { align: "center" });
-        d.setFontSize(8.5); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || "Technical Inspection & Integrity Management Division", margin + (contentWidth / 2), margin + 9.5, { align: "center" });
-
-        d.setFontSize(11); d.setFont("helvetica", "bold");
-        d.text("PIPELINE VISUAL INSPECTION REPORT", margin + (contentWidth / 2), margin + 15.5, { align: "center" });
+        draw3SectionHeader(d, {
+            reportTitle: "PIPELINE VISUAL INSPECTION REPORT",
+            reportNo,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "landscape"
+        });
     };
 
     const drawSubHeader = (d: jsPDF, startY: number): number => {
@@ -510,7 +507,7 @@ export const generateROVNavigReport = async (
 
     // ── 5. Render Page Document ──────────────────────────────────────────────
     drawHeader(doc);
-    let currentY = margin + 19.5;
+    let currentY = margin + 27;
     currentY = drawSubHeader(doc, currentY);
     currentY = drawGeodeticBlock(doc, currentY);
     currentY = drawLegendBlock(doc, currentY);

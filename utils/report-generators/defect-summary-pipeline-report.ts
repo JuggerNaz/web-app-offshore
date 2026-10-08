@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface CompanySettings {
     company_name?: string;
@@ -660,10 +660,10 @@ export const generatePipelineDefectSummaryReport = async (
     const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth(); // 297mm
     const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
-    const margin = 12;
-    const contentWidth = pageWidth - margin * 2; // 273mm
+    const margin = 10;
+    const contentWidth = pageWidth - margin * 2; // 277mm
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 26;
+    const headerH = 25;
 
     // Report Number standard formatting
     const defaultPrefix = isFindingsReport ? "FSR-PL" : "DSR-PL";
@@ -675,49 +675,22 @@ export const generatePipelineDefectSummaryReport = async (
 
     // ── Header Box ───────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const sx = margin;
-        const sy = margin;
-
-        if (isPrintFriendly) {
-            d.setDrawColor(180, 180, 180);
-            d.setLineWidth(0.3);
-            d.rect(sx, sy, contentWidth, headerH);
-        } else {
-            d.setFillColor(7, 78, 136);
-            d.rect(sx, sy, contentWidth, headerH, "F");
-        }
-
-        const logoMaxW = 20;
-        const logoMaxH = 10;
-        const logoPad = 2;
-
-        if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoMaxW, logoMaxH, sx + logoPad, sy + logoPad, "left", "center");
-        }
-
-        const titleX = sx + contentWidth / 2;
-        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
-        const compDesc = (companySettings.company_name || contractorName || "NASQUEST RESOURCES SDN BHD").toUpperCase();
-        d.text(compDesc, titleX, sy + 6, { align: "center" });
-
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8.5);
-        d.text(companySettings.department_name || "Technical Inspection Division", titleX, sy + 10.5, { align: "center" });
-
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
         const reportTitle = isFindingsReport ? "FINDING SUMMARY REPORT (PIPELINE)" : "DEFECT SUMMARY REPORT (PIPELINE)";
-        d.text(reportTitle, titleX, sy + 16.5, { align: "center" });
-
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8);
-        d.text(`Report No: ${reportNo}`, titleX, sy + 21, { align: "center" });
-
-        if (clientLogo) {
-            drawLogo(d, clientLogo, logoMaxW, logoMaxH, sx + contentWidth - logoMaxW - logoPad, sy + logoPad, "right", "center");
-        }
+        const structName = pipelineInfo?.title || pipelineInfo?.structure_name || structure?.name || structure?.title;
+        draw3SectionHeader(d, {
+            reportTitle,
+            reportNo,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "landscape"
+        });
     };
 
     // ── Subheader Details Box ────────────────────────────────────────────────
@@ -878,15 +851,17 @@ export const generatePipelineDefectSummaryReport = async (
             body: sortedLabels.map(l => {
                 const { bg, text } = priorityStyle(l, colorMap, undefined, isPrintFriendly);
                 return [
-                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
-                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} }
+                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [200, 200, 200]} },
+                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200]} }
                 ];
             }),
             theme: "grid",
-            styles: { fontSize: 7.5, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
+            styles: { fontSize: 7.5, cellPadding: 1.5, lineColor: [200, 200, 200], lineWidth: 0.1 },
             headStyles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
+                halign: "center", lineWidth: 0.1, lineColor: [200, 200, 200]},
         });
 
         return Math.max((d as any).lastAutoTable?.finalY ? (d as any).lastAutoTable.finalY + 3 : chartY + dashH + 4, chartY + dashH + 4);
@@ -1112,20 +1087,22 @@ export const generatePipelineDefectSummaryReport = async (
         ]],
         body: tableRows,
         theme: "grid",
+        tableLineWidth: 0.1,
+        tableLineColor: [200, 200, 200],
         margin: { left: margin, right: margin, bottom: 20 },
         styles: {
             fontSize: 7.5,
             cellPadding: 2,
             textColor: [30, 41, 59],
             valign: "middle",
-            lineWidth: 0.2,
-            lineColor: [203, 213, 225]
+            lineWidth: 0.1,
+            lineColor: [200, 200, 200]
         },
         headStyles: {fillColor: isPrintFriendly ? [240, 240, 240] : [7, 78, 136],
             textColor: isPrintFriendly ? [30, 41, 59] : [255, 255, 255],
             fontStyle: "bold",
             fontSize: 7.5,
-            halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
+            halign: "center", lineWidth: 0.1, lineColor: [200, 200, 200]},
         columnStyles: {
             0: { cellWidth: 10, halign: "center" },   // Item No.
             1: { cellWidth: 30, halign: "center" },   // Easting (m E)
@@ -1134,7 +1111,7 @@ export const generatePipelineDefectSummaryReport = async (
             4: { cellWidth: 48, halign: "left" },     // Event Name (Clean alignment)
             5: { cellWidth: 35, halign: "center" },   // Anomaly Code (PIPELINE SPANNING)
             6: { cellWidth: 20, halign: "center" },   // Priority
-            7: { cellWidth: 78, halign: "left" }      // Finding
+            7: { cellWidth: 82, halign: "left" }      // Finding
         },
         didParseCell: (data) => {
             if (data.section === "body" && data.column.index === 6) {

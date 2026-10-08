@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -42,7 +42,7 @@ export const generateROVRSCORReport = async (
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -66,29 +66,22 @@ export const generateROVRSCORReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const headerH = 24;
+        const headerH = 25;
         const drawHeader = (d: jsPDF) => {
-            const isPF = config.printFriendly;
-            if (isPF) {
-                d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    15, 15, pageWidth - margin - 18, margin + 4.5, 'right', 'center');
-            if (contractorLogo) drawLogo(d, contractorLogo, 15, 15, margin + 4,              margin + 4.5, 'left',  'center');
-
-            d.setFontSize(10.5); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 5.5, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 9.5, { align: 'center' });
-            d.setFontSize(10.5); d.setFont("helvetica", "bold");
-            d.text(`Scour Survey Sketch Report (ROV)`, margin + (contentWidth/2), margin + 15, { align: 'center' });
-
-            d.setFontSize(7.5); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${sowReportNo}`, margin + (contentWidth/2), margin + 19.5, { align: 'center' });
+            draw3SectionHeader(d, {
+                reportTitle: "Scour Survey Sketch Report (ROV)",
+                reportNo: sowReportNo,
+                structureName: headerData?.platformName,
+                jobpackName: headerData?.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                margin,
+                headerH,
+                headerY: 7,
+            });
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -741,7 +734,7 @@ export const generateROVRSCORReport = async (
                     2: { cellWidth: 22, halign: 'center' },
                     3: { cellWidth: 20, halign: 'center' },
                     4: { cellWidth: 22, halign: 'center' },
-                    5: { cellWidth: 'auto' },
+                    5: { cellWidth: 141 },
                 },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);

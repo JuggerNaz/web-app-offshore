@@ -3,7 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, draw3SectionHeader } from "./shared-logo";
 
 interface JobPackData {
     id: number;
@@ -116,71 +116,38 @@ export const generateWorkScopeReport = async (
     const subHeaderGrey: [number, number, number] = [240, 240, 240];
     const isPrintFriendly = config?.printFriendly === true;
 
+    // Resolve Contractor & Client Logos
+    let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
+    if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
+        try {
+            const cDetails = await fetchContractorDetails(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac));
+            if (cDetails?.logoUrl) contractorLogoUrl = cDetails.logoUrl;
+        } catch (e) {}
+    }
+    let contractorLogoData: any = null;
+    if (contractorLogoUrl) {
+        try { contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl); } catch (e) {}
+    }
+    let clientLogoData: any = null;
+    if (companySettings?.logo_url) {
+        try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (e) {}
+    }
+
     // -- HEADER GENERATION Helper --
-    const drawHeader = async (pageNo: number) => {
-        if (isPrintFriendly) {
-            // Print-Friendly: White background with light gray border
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.rect(0, 0, pageWidth, 28);
-        } else {
-            // Normal: Dark Blue Filled Background
-            doc.setFillColor(...headerBlue);
-            doc.rect(0, 0, pageWidth, 28, "F");
-        }
-
-        // Contractor Logo (Left)
-        let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
-        if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
-            try {
-                const cDetails = await fetchContractorDetails(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac));
-                if (cDetails?.logoUrl) contractorLogoUrl = cDetails.logoUrl;
-            } catch (e) {}
-        }
-        if (contractorLogoUrl) {
-            try {
-                const contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
-                if (contractorLogoData) {
-                    drawLogo(doc, contractorLogoData, 16, 16, 8, 5, 'left', 'center');
-                }
-            } catch (e) {}
-        }
-
-        // Company Logo (Right)
-        if (companySettings?.logo_url) {
-            try {
-                const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-            } catch (error) {
-                if (!isPrintFriendly) {
-                    doc.setDrawColor(255, 255, 255);
-                    doc.rect(pageWidth - 25, 4, 18, 18);
-                }
-            }
-        }
-
-        // Company & Dept
-        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
-
-        doc.setFontSize(8.5);
-        doc.setFont("helvetica", "normal");
-        doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-        // Title - SAME size as Company Title
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        doc.text("WORK SCOPE REPORT", pageWidth / 2, 17.5, { align: "center" });
-
-        // Report Number in Header - Centered below Title
-        if (config?.reportNoPrefix) {
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.text(`Report: ${config.reportNoPrefix}-${config.reportYear}`, pageWidth / 2, 22.5, { align: "center" });
-        }
+    const drawHeader = (pageNo: number) => {
+        draw3SectionHeader(doc, {
+            reportTitle: "WORK SCOPE REPORT",
+            reportNo: config?.reportNoPrefix ? `${config.reportNoPrefix}-${config.reportYear || new Date().getFullYear()}` : ((sowData as any).metadata?.contract_ref || jobPack.metadata?.contract_ref || `JP-${jobPack.id}`),
+            structureName: structure?.name ? `${structure.name}${structure.title ? ` - ${structure.title}` : ''}` : (structure?.str_name || jobPack.name),
+            companySettings,
+            config,
+            contractorLogoData,
+            clientLogoData,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+        });
 
         // Footer & Page No
         const footerY = pageHeight - 10;

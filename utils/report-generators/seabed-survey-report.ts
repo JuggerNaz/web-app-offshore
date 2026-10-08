@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     contractorLogoUrl?: string;
@@ -26,7 +26,7 @@ export const generateSeabedSurveyReport = async (
     const doc = new jsPDF("l", "mm", "a4");
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 12;
+    const margin = 10;
     const contentWidth = pageWidth - margin * 2;
 
     const colors = {
@@ -171,31 +171,28 @@ export const generateSeabedSurveyReport = async (
 
     // ── Header & Subheader Drawers ───────────────────────────────────────────
     const isPrintFriendly = config.printFriendly === true;
-    const headerH = 26;
+    const headerH = 25;
 
     const drawHeader = (d: jsPDF) => {
-        if (isPrintFriendly) {
-            d.setDrawColor(...colors.navy); d.setLineWidth(0.3); d.rect(margin, margin, contentWidth, headerH, 'S');
-            d.setTextColor(...colors.navy);
-        } else {
-            d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, headerH, 'F');
-            d.setTextColor(255);
-        }
-
-        if (clientLogo)     drawLogo(d, clientLogo,     16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-        if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
-
-        d.setFontSize(11); d.setFont("helvetica", "bold");
-        d.text((companySettings.company_name || 'OFFSHORE INSPECTION DIVISION').toUpperCase(), margin + (contentWidth/2), margin + 6, { align: 'center' });
-        d.setFontSize(8.5); d.setFont("helvetica", "normal");
-        d.text(companySettings.department_name || companySettings.departmentName || 'Engineering & Technical Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
-        
-        d.setFontSize(11); d.setFont("helvetica", "bold");
         const titleType = itemTypeFilter && itemTypeFilter.toLowerCase() !== 'all' ? itemTypeFilter.toUpperCase() : "GENERAL";
-        d.text(`SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
-        d.setFontSize(8); d.setFont("helvetica", "normal");
+        const hData = config.headerData || {};
+        const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
         const reportNo = sowReportNo || config.headerData?.sowReportNo || (config as any)?.reportNoPrefix || "N/A";
-        d.text(`Report No: ${reportNo}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
+
+        draw3SectionHeader(d, {
+            reportTitle: `SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`,
+            reportNo,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "landscape"
+        });
     };
 
     const drawSubHeader = (d: jsPDF, y: number) => {
@@ -457,15 +454,17 @@ export const generateSeabedSurveyReport = async (
             head: [["ID", "QID", "Face", "Dist.", "Material", "Dimensions", "Description"]],
             body: tableBody,
             theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
             headStyles: {
                 fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 7.5,
                 lineWidth: 0.1,
-                lineColor: [0, 0, 0]
+                lineColor: [200, 200, 200]
             },
-            styles: { fontSize: 7, cellPadding: 1.5, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            styles: { fontSize: 7, cellPadding: 1.5, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             margin: { left: tableX, right: margin, top: margin + headerH + 20 },
             tableWidth: tableW
         });
@@ -492,15 +491,17 @@ export const generateSeabedSurveyReport = async (
                 head: [["Ref ID", "QID", "Face", "Dist.", "Material", "Description"]],
                 body: compTableBody,
                 theme: "grid",
+                tableLineWidth: 0.1,
+                tableLineColor: [200, 200, 200],
                 headStyles: {
                     fillColor: [245, 158, 11],
                     textColor: [255, 255, 255],
                     fontStyle: "bold",
                     fontSize: 7,
                     lineWidth: 0.1,
-                    lineColor: [0, 0, 0]
+                    lineColor: [200, 200, 200]
                 },
-                styles: { fontSize: 6.5, cellPadding: 1.2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+                styles: { fontSize: 6.5, cellPadding: 1.2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
                 margin: { left: tableX, right: margin, top: margin + headerH + 20 },
                 tableWidth: tableW
             });

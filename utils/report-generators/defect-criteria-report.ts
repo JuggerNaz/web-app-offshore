@@ -1,8 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTablePlugin from "jspdf-autotable";
 
-// Helper to load image for PDF (reused from pdf-generator.ts logic)
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface ReportConfig {
     sowReportNo?: string;
@@ -116,58 +115,33 @@ export const generateDefectCriteriaReport = async (
             console.error("Error fetching rules", e);
         }
 
+        // Preload logos
+        let clientLogoData: any = null;
+        if (companySettings?.logo_url) {
+            try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+        }
+        let contractorLogoData: any = null;
+        if ((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo) {
+            try { contractorLogoData = await loadLogoWithTransparency((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo); } catch (_) {}
+        }
+
+        const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "N/A";
+
         // --- REPORT GENERATION helper ---
-        const addHeader = async (pageNum: number) => {
-            if (isPrintFriendly) {
-                // Print-Friendly: White background with light gray border
-                doc.setDrawColor(180, 180, 180);
-                doc.setLineWidth(0.3);
-                doc.rect(0, 0, pageWidth, 28);
-            } else {
-                doc.setFillColor(...headerBlue);
-                doc.rect(0, 0, pageWidth, 28, "F");
-            }
-
-            // Logo
-            if (companySettings?.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
-                } catch (e) {
-                    // fallback text
-                    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-                    doc.setFontSize(8);
-                    doc.text("LOGO", pageWidth - 16, 13);
-                }
-            }
-
-            // Company Name - SAME size as Report Title
-            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.setFontSize(11);
-            doc.setFont("helvetica", "bold");
-            doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
-
-            // Dept
-            doc.setFontSize(8.5);
-            doc.setFont("helvetica", "normal");
-            doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-            // Title
-            doc.setFontSize(11);
-            doc.setFont("helvetica", "bold");
-            doc.text("Defect Criteria Specification Report", pageWidth / 2, 17.5, { align: "center" });
-
-            // Report No - Centered below Report Title
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "normal");
-            const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
-            const repNoTrimmed = rawReportNo.toString().trim();
-            if (repNoTrimmed && repNoTrimmed !== "N/A") {
-                const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
-                doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
-            } else {
-                doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
-            }
+        const addHeader = (pageNum: number) => {
+            draw3SectionHeader(doc, {
+                reportTitle: "DEFECT CRITERIA SPECIFICATION REPORT",
+                reportNo: rawReportNo,
+                companySettings,
+                config,
+                contractorLogoData,
+                clientLogoData,
+                isPrintFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "portrait"
+            });
         };
 
         const addFooter = (pageNum: number, pageCount: number) => {

@@ -99,7 +99,7 @@ export const drawLogo = (
     // Capped at 50mm to prevent overlapping header title text.
     let effectiveMaxW = maxW;
     if (aspectRatio > 1.25) {
-        effectiveMaxW = Math.min(50, Math.max(maxW, maxH * aspectRatio));
+        effectiveMaxW = Math.min(maxW, Math.max(maxW * 0.8, maxH * aspectRatio));
     }
 
     const ratio = Math.min(effectiveMaxW / logo.width, maxH / logo.height);
@@ -123,6 +123,314 @@ export const drawLogo = (
 
     doc.addImage(logo.data, 'PNG', dx, dy, w, h);
 };
+
+export interface Draw3SectionHeaderOptions {
+    reportTitle: string;
+    reportNo?: string;
+    structureName?: string;
+    jobpackName?: string;
+    subtitle?: string;
+    companySettings?: {
+        company_name?: string;
+        department_name?: string;
+        departmentName?: string;
+        logo_url?: string;
+        serial_no?: string;
+    };
+    config?: {
+        reportNoPrefix?: string;
+        reportYear?: string | number;
+        contractorLogoUrl?: string;
+        contractorLogo?: string;
+        showContractorLogo?: boolean;
+        printFriendly?: boolean;
+        headerBlue?: [number, number, number];
+        [key: string]: any;
+    };
+    headerData?: {
+        contractorLogoUrl?: string;
+        sowReportNo?: string;
+        platformName?: string;
+        jobpackName?: string;
+        [key: string]: any;
+    };
+    contractorLogoData?: any;
+    clientLogoData?: any;
+    pageWidth?: number;
+    pageHeight?: number;
+    orientation?: "portrait" | "landscape";
+    margin?: number;
+    headerY?: number;
+    headerH?: number;
+    isPrintFriendly?: boolean;
+    headerBlue?: [number, number, number];
+    showCompanyInMiddle?: boolean;
+}
+
+/**
+ * Universal 3-Section Header matching Jobpack Summary Report (Contractor Box | Middle Navy Info Box | Client Box)
+ * Supports both Portrait (210mm) and Landscape (297mm) orientations with perfectly aligned borders.
+ */
+export const draw3SectionHeader = (
+    doc: any,
+    options: Draw3SectionHeaderOptions
+) => {
+    const pageWidth = options.pageWidth || doc.internal.pageSize.getWidth();
+    const pageHeight = options.pageHeight || doc.internal.pageSize.getHeight();
+    const orientation = options.orientation || (pageWidth > pageHeight ? "landscape" : "portrait");
+
+    const margin = options.margin !== undefined ? options.margin : 10;
+    const headerY = options.headerY !== undefined ? options.headerY : 7;
+    const headerH = options.headerH !== undefined ? options.headerH : 25;
+
+    const totalW = pageWidth - margin * 2;
+
+    let col1W: number;
+    let col2W: number;
+    let col3W: number;
+
+    if (orientation === "landscape") {
+        col1W = 75;
+        col3W = 75;
+        col2W = totalW - col1W - col3W;
+    } else {
+        col1W = 55;
+        col3W = 55;
+        col2W = totalW - col1W - col3W;
+    }
+
+    const x1 = margin;
+    const x2 = x1 + col1W;
+    const x3 = x2 + col2W;
+
+    const isPrintFriendly = options.isPrintFriendly ?? options.config?.printFriendly === true;
+    const headerBlue: [number, number, number] = options.headerBlue || options.config?.headerBlue || [7, 78, 136];
+    const headerBorderColor: [number, number, number] = [200, 200, 200];
+    const headerLineWidth = 0.2;
+    const titleTextColor: [number, number, number] = isPrintFriendly ? [7, 78, 136] : [255, 255, 255];
+    const titleSubTextColor: [number, number, number] = isPrintFriendly ? [51, 65, 85] : [219, 234, 254];
+
+    // --- 1. LEFT BOX: CONTRACTOR (White Background + Border) ---
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x1, headerY, col1W, headerH, "F");
+    doc.setDrawColor(...headerBorderColor);
+    doc.setLineWidth(headerLineWidth);
+    doc.rect(x1, headerY, col1W, headerH, "S");
+
+    if (options.contractorLogoData) {
+        const logoMaxW = col1W - 7;
+        const logoMaxH = headerH - 5;
+        drawLogo(doc, options.contractorLogoData, logoMaxW, logoMaxH, x1 + (col1W - logoMaxW) / 2, headerY + (headerH - logoMaxH) / 2, 'center', 'center');
+    }
+
+    // --- 2. MIDDLE BOX: REPORT TITLE (Navy/White + Border) ---
+    if (isPrintFriendly) {
+        doc.setFillColor(255, 255, 255);
+    } else {
+        doc.setFillColor(...headerBlue);
+    }
+    doc.rect(x2, headerY, col2W, headerH, "F");
+    doc.setDrawColor(...headerBorderColor);
+    doc.setLineWidth(headerLineWidth);
+    doc.rect(x2, headerY, col2W, headerH, "S");
+
+    const titleCenterX = x2 + col2W / 2;
+
+    const isStructureSummary = options.showCompanyInMiddle ||
+        (options.reportTitle && (
+            options.reportTitle.toLowerCase().includes("structure summary") ||
+            options.reportTitle.toLowerCase().includes("platform specification") ||
+            options.reportTitle.toLowerCase().includes("pipeline specification")
+        ));
+
+    if (isStructureSummary) {
+        const companyName = options.companySettings?.company_name || options.headerData?.companyName || "Petronas Carigali Sdn Bhd (SKA)";
+        const deptName = options.companySettings?.department_name || (options.companySettings as any)?.departmentName || options.headerData?.departmentName || "Technical Services Department";
+
+        // Line 1: Company Name (bold, size 8)
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...titleTextColor);
+        const compLines = doc.splitTextToSize(companyName, col2W - 8);
+        doc.text(compLines[0] || companyName, titleCenterX, headerY + 4.5, { align: "center" });
+
+        // Line 2: Department Name (no bold, size 8)
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...titleSubTextColor);
+        const deptLines = doc.splitTextToSize(deptName, col2W - 8);
+        doc.text(deptLines[0] || deptName, titleCenterX, headerY + 8.8, { align: "center" });
+
+        // Line 3: Report Title (bold, size 8)
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...titleTextColor);
+        const titleLines = doc.splitTextToSize(options.reportTitle || "Platform Specifications Report", col2W - 8);
+        doc.text(titleLines[0] || (options.reportTitle || "Platform Specifications Report"), titleCenterX, headerY + 13.2, { align: "center" });
+
+        // Line 4: Report No (no bold, size 8)
+        const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
+            (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
+            (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
+
+        doc.setFontSize(8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(...titleSubTextColor);
+        const reportNoStr = rawReportNo && rawReportNo !== "N/A"
+            ? (rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`)
+            : "Report No: N/A";
+        doc.text(reportNoStr, titleCenterX, headerY + 17.6, { align: "center" });
+
+        // Line 5: Structure Name (bold, size 8)
+        const sub = options.structureName || options.jobpackName || options.subtitle ||
+            (options.headerData?.platformName ? `${options.headerData.platformName}${options.headerData.jobpackName ? ` - ${options.headerData.jobpackName}` : ''}` : options.headerData?.jobpackName) || "";
+
+        if (sub) {
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...titleTextColor);
+            const subLines = doc.splitTextToSize(sub, col2W - 8);
+            doc.text(subLines[0] || "", titleCenterX, headerY + 22.2, { align: "center" });
+        }
+    } else {
+        // Standard 3-line format for Inspection Reports
+        const titleText = (options.reportTitle || "INSPECTION REPORT").toUpperCase();
+        let titleFontSize = orientation === "landscape" ? 11 : 10.5;
+        if (titleText.length > 34) titleFontSize = 9.5;
+        if (titleText.length > 44) titleFontSize = 8.5;
+        if (titleText.length > 54) titleFontSize = 7.5;
+
+        doc.setFontSize(titleFontSize);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...titleTextColor);
+        doc.text(titleText, titleCenterX, headerY + 8, { align: "center" });
+
+        // Report No
+        const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
+            (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
+            (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
+
+        if (rawReportNo && rawReportNo !== "N/A") {
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(...titleSubTextColor);
+            const reportNoStr = rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`;
+            doc.text(reportNoStr, titleCenterX, headerY + 14, { align: "center" });
+        }
+
+        // Subtitle / Structure / Jobpack Info
+        const sub = options.structureName || options.jobpackName || options.subtitle ||
+            (options.headerData?.platformName ? `${options.headerData.platformName}${options.headerData.jobpackName ? ` - ${options.headerData.jobpackName}` : ''}` : options.headerData?.jobpackName) || "";
+
+        if (sub) {
+            doc.setFontSize(7.5);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...titleTextColor);
+            const subLines = doc.splitTextToSize(sub, col2W - 8);
+            doc.text(subLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+        }
+    }
+
+    // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
+    doc.setFillColor(255, 255, 255);
+    doc.rect(x3, headerY, col3W, headerH, "F");
+    doc.setDrawColor(...headerBorderColor);
+    doc.setLineWidth(headerLineWidth);
+    doc.rect(x3, headerY, col3W, headerH, "S");
+
+    if (options.clientLogoData) {
+        const logoMaxW = col3W - 7;
+        const logoMaxH = headerH - 5;
+        drawLogo(doc, options.clientLogoData, logoMaxW, logoMaxH, x3 + (col3W - logoMaxW) / 2, headerY + (headerH - logoMaxH) / 2, 'center', 'center');
+    }
+
+    // Reset drawing state
+    doc.setTextColor(0, 0, 0);
+    doc.setDrawColor(200, 200, 200);
+    doc.setLineWidth(0.2);
+};
+
+/**
+ * Standard Context / Metadata Row (Structure, Vessel, Jobpack, Insp. Date Range)
+ * Aligns perfectly with margin 10 down the left and right sides without jagged edges.
+ */
+export const drawStandardContextRow = (
+    doc: any,
+    y: number,
+    data: {
+        structure?: string;
+        vessel?: string;
+        jobpack?: string;
+        dateRange?: string;
+    },
+    isPrintFriendly: boolean = false,
+    margin: number = 10
+): number => {
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const contentWidth = pageWidth - margin * 2;
+    const half = contentWidth / 2;
+    const ROW_H = 6.5;
+
+    const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
+        doc.setDrawColor(200, 200, 200);
+        doc.setLineWidth(0.1);
+        if (!isPrintFriendly) {
+            doc.setFillColor(248, 250, 252);
+            doc.rect(x, ty, w, ROW_H, "F");
+        }
+        doc.rect(x, ty, w, ROW_H, "S");
+        doc.setTextColor(30, 41, 59);
+        doc.setFontSize(7.5);
+        doc.setFont("helvetica", "bold");
+        doc.text(label, x + 2, ty + 4.5);
+        doc.setFont("helvetica", "normal");
+        const valLines = doc.splitTextToSize(String(value || "N/A"), w - 38);
+        doc.text(valLines[0] || "N/A", x + 36, ty + 4.5);
+    };
+
+    drawBox("Structure:", data.structure || "N/A", margin, half, y);
+    drawBox("Vessel:", data.vessel || "N/A", margin + half, half, y);
+    drawBox("Job Pack:", data.jobpack || "N/A", margin, half, y + ROW_H);
+    drawBox("Insp. Date Range:", data.dateRange || "N/A", margin + half, half, y + ROW_H);
+
+    return y + ROW_H * 2 + 4;
+};
+
+/**
+ * Common autoTable styling tokens to ensure uniform straight-line borders and appearance.
+ */
+export const getStandardTableStyles = (isPrintFriendly: boolean = false, margin: number = 10) => ({
+    theme: 'grid' as const,
+    tableLineWidth: 0.1,
+    tableLineColor: [200, 200, 200] as [number, number, number],
+    margin: { left: margin, right: margin },
+    styles: {
+        fontSize: 7.5,
+        cellPadding: 1.8,
+        lineColor: [200, 200, 200] as [number, number, number],
+        lineWidth: 0.1,
+        textColor: [30, 41, 59] as [number, number, number],
+        valign: 'middle' as const,
+    },
+    headStyles: isPrintFriendly ? {
+        fillColor: [255, 255, 255] as [number, number, number],
+        textColor: [7, 78, 136] as [number, number, number],
+        fontStyle: 'bold' as const,
+        lineWidth: 0.1,
+        lineColor: [200, 200, 200] as [number, number, number],
+    } : {
+        fillColor: [7, 78, 136] as [number, number, number],
+        textColor: [255, 255, 255] as [number, number, number],
+        fontStyle: 'bold' as const,
+        lineWidth: 0.1,
+        lineColor: [200, 200, 200] as [number, number, number],
+    },
+    alternateRowStyles: isPrintFriendly ? {
+        fillColor: [255, 255, 255] as [number, number, number],
+    } : {
+        fillColor: [248, 250, 252] as [number, number, number],
+    }
+});
 
 // Helper to format date as dd-mm-yyyy
 export const formatPdfDate = (dateStr?: any): string => {

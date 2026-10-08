@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -42,7 +42,7 @@ export const generateDivingBSINSReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
@@ -56,7 +56,7 @@ export const generateDivingBSINSReport = async (
             finding:   [217, 119, 6] as [number, number, number],
         };
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         // Pre-load logos
         let companyLogo: any = null;
@@ -68,29 +68,21 @@ export const generateDivingBSINSReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) { }
         }
 
-        const drawPageHeader = (d: jsPDF, pageNo: number) => {
-            const isPF = config.printFriendly;
-            if (isPF) {
-                d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Bolted Support Inspection Report (Diving)", margin + (contentWidth / 2), margin + 16.5, { align: "center" });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string | number) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `BOLTED SUPPORT INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "BOLTED SUPPORT INSPECTION REPORT (DIVING)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
         const drawPageFooter = (d: jsPDF, pageNo: number) => {

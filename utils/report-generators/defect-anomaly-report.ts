@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -122,7 +122,7 @@ export const generateDefectAnomalyReport = async (
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = 10;
     const contentWidth = pageWidth - (margin * 2);
 
     let anomalies: any[] = [];
@@ -264,69 +264,28 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Header Dimensions
-    const headerH = 26;
-    const logoSize = 16;
-    const logoPadding = 4;
-
+    const headerH = 25;
     const isPrintFriendly = config.printFriendly === true;
 
     const drawHeader = (doc: jsPDF) => {
-        const startX = margin;
-        const startY = margin;
-
-        if (isPrintFriendly) {
-            // Print-Friendly: White background with light border (matches table lines)
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.rect(startX, startY, contentWidth, headerH);
-        } else {
-            // Screen/Color: Dark Blue Filled Background
-            doc.setFillColor(7, 78, 136); // Dark Blue #1f375d
-            doc.rect(startX, startY, contentWidth, headerH, "F");
-        }
-
-        // --- Left Side: Contractor Logo + Name ---
-        const logoX = startX + logoPadding;
-
-        if (contractorLogo) {
-            drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + 3, 'left', 'center');
-        }
-
-        // --- Right Side: Client Logo ---
-        if (clientLogo) {
-            drawLogo(doc, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, startY + 3, 'right', 'center');
-        }
-
-        // --- Center: Text ---
-        // Print-Friendly: Dark text on white. Normal: White text on dark blue.
-        doc.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
-
-        // Company Name - SAME size as Report Title
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        const companyName = (companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase();
-        doc.text(companyName, pageWidth / 2, startY + 6, { align: "center" });
-
-        // Department (Sub-header) - slightly increased font size
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
-        const deptName = companySettings.department_name || companySettings.departmentName || "Technical Inspection Division";
-        doc.text(deptName, pageWidth / 2, startY + 10.5, { align: "center" });
-
-        // Report Title - SAME size as Company Title
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
         const reportTitle = config.isFindingsReport ? "FINDINGS REPORT" : "DEFECT / ANOMALY REPORT";
-        doc.text(reportTitle, pageWidth / 2, startY + 16.5, { align: "center" });
-
-        // Report No
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
         const reportNoDisplay = sowReportNo || (anomalies.length > 0 ? anomalies[0].sow_report_no : null) || (jobPack?.metadata && jobPack?.metadata?.report_no) || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
-        doc.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, startY + 21, { align: "center" });
+        const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
-        // Reset Text Color
-        doc.setTextColor(0, 0, 0);
+        draw3SectionHeader(doc, {
+            reportTitle,
+            reportNo: reportNoDisplay,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "portrait"
+        });
     };
 
     if (anomalies.length === 0) {
@@ -478,7 +437,7 @@ export const generateDefectAnomalyReport = async (
 
         const headStylesString = isPrintFriendly
             ? { fillColor: [255, 255, 255], textColor: [7, 78, 136], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] }
-            : { fillColor: [7, 78, 136], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [255, 255, 255] };
+            : { fillColor: [7, 78, 136], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] };
 
 
         // Component & Elevation Vals
@@ -518,7 +477,7 @@ export const generateDefectAnomalyReport = async (
                     { content: "Jobpack:", styles: headStylesString },
                     { content: record.jobpack_name || jobPack.name || "N/A" },
                     { content: "Priority:", styles: headStylesString },
-                    { content: priority, styles: {fillColor: priorityColor, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]} }
+                    { content: priority, styles: {fillColor: priorityColor, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [200, 200, 200]} }
                 ],
                 [
                     { content: "Field:", styles: headStylesString }, { content: field },
@@ -546,6 +505,8 @@ export const generateDefectAnomalyReport = async (
                 ]
             ] as any,
             theme: 'grid',
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
             styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: labelColWidth },

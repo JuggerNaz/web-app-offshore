@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -42,7 +42,7 @@ export const generateDivingFMDReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -69,64 +69,31 @@ export const generateDivingFMDReport = async (
         // --- 2. Calculate Date Range ---
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
-        const headerH = 26;
-        const drawHeader = (d: jsPDF) => {
-            
-            const isPF = config.printFriendly;
-            
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`Flooded Member Inspection Report (Diving)`, margin + (contentWidth / 2), margin + 16.5, { align: 'center' });
-
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
+        const headerH = 25;
+        const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `FLOODED MEMBER INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "FLOODED MEMBER INSPECTION REPORT (DIVING)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
-            const rowH = 7;
-            const tableY = y;
-            const colW = contentWidth / 2;
-            const isPF = config.printFriendly;
-            
-            const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border);
-                d.setLineWidth(0.2); 
-                if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'FD'); 
-                
-                d.setTextColor(...colors.text); d.setFontSize(7.5); d.setFont("helvetica", "bold");
-                d.text(label, x + 3, ty + 4.8); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 36, ty + 4.8);
-            };
-
-            drawBox('Structure:', headerData.platformName || 'N/A', margin, colW, tableY);
-            drawBox('Vessel / Location:', headerData.vessel || 'N/A', margin + colW, colW, tableY);
-            drawBox('Job Pack:', headerData.jobpackName || 'N/A', margin, colW, tableY + rowH);
-            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, tableY + rowH);
-
-            // Outer Bounding Box for Context Table
-            d.setDrawColor(...colors.darkBorder);
-            d.setLineWidth(0.3);
-            d.rect(margin, tableY, contentWidth, rowH * 2, 'S');
-            
-            return tableY + (rowH * 2) + 5;
+            return drawStandardContextRow(d, y, {
+                structure: headerData.platformName,
+                vessel: headerData.vessel,
+                jobpack: headerData.jobpackName,
+                dateRange: dateRangeStr,
+            }, config.printFriendly, margin);
         };
 
         drawHeader(doc);
@@ -204,7 +171,7 @@ export const generateDivingFMDReport = async (
                 lineColor: colors.border,
                 lineWidth: 0.2
             },
-            tableLineWidth: 0.3,
+            tableLineWidth: 0.1,
             tableLineColor: colors.darkBorder,
             didParseCell: (data) => {
                 if (data.section !== "body") return;

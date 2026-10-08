@@ -4,7 +4,7 @@ import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 function formatTimecode(val: any): string {
     if (!val && val !== 0) return "";
@@ -30,7 +30,7 @@ export const generateDiverLogReport = async (
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = 10;
     const contentWidth = pageWidth - margin * 2;
 
     // ── Fetch Data ──────────────────────────────────────────────────────────
@@ -78,56 +78,29 @@ export const generateDiverLogReport = async (
     }
 
     // ── Layout Constants ─────────────────────────────────────────────────────
-    const headerH = 26;
-    const logoSize = 16;
-    const logoPadding = 4;
+    const headerH = 25;
     const isPrintFriendly = config.printFriendly === true;
     const FOOTER_Y_OFFSET = 10; // distance from bottom
 
     // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const sx = margin, sy = margin;
-
-        if (isPrintFriendly) {
-            d.setDrawColor(180, 180, 180);
-            d.setLineWidth(0.3);
-            d.rect(sx, sy, contentWidth, headerH);
-        } else {
-            d.setFillColor(7, 78, 136);
-            d.rect(sx, sy, contentWidth, headerH, "F");
-        }
-
-        // Contractor logo + name (left)
-        if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + 3, 'left', 'center');
-        }
-        
-
-        // Client logo (right)
-        if (clientLogo) {
-            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
-        }
-
-        // Center text
-        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
-        d.text((companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
-
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8.5);
-        d.text(companySettings.department_name || companySettings.departmentName || "Technical Inspection Division", pageWidth / 2, sy + 10.5, { align: "center" });
-
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
-        d.text("DIVER LOG REPORT", pageWidth / 2, sy + 16.5, { align: "center" });
-
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8);
         const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
-        d.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, sy + 21, { align: "center" });
+        const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
-        d.setTextColor(0, 0, 0);
+        draw3SectionHeader(d, {
+            reportTitle: "DIVER LOG REPORT",
+            reportNo: reportNoDisplay,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "portrait"
+        });
     };
 
     // ── Summary Sub-Header Table ─────────────────────────────────────────────
@@ -147,8 +120,8 @@ export const generateDiverLogReport = async (
         const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
 
         const headStyle = isPrintFriendly
-            ? { fillColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] }
-            : { fillColor: [229, 231, 235] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [0, 0, 0] as [number, number, number] };
+            ? { fillColor: [255, 255, 255] as [number, number, number], textColor: [7, 78, 136] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200] as [number, number, number] }
+            : { fillColor: [229, 231, 235] as [number, number, number], textColor: [0, 0, 0] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200] as [number, number, number] };
 
         autoTable(d, {
             startY: margin + headerH + 2,
@@ -168,7 +141,9 @@ export const generateDiverLogReport = async (
                 ]
             ] as any,
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: labelColWidth },
                 1: { cellWidth: valueColWidth },
@@ -247,12 +222,14 @@ export const generateDiverLogReport = async (
         // Draw a filled section title bar
         if (isPrintFriendly) {
             doc.setFillColor(240, 240, 240);
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
             doc.rect(margin, currentY, contentWidth, 7, "FD");
         } else {
             doc.setFillColor(7, 78, 136);
-            doc.rect(margin, currentY, contentWidth, 7, "F");
+            doc.setDrawColor(200, 200, 200);
+            doc.setLineWidth(0.1);
+            doc.rect(margin, currentY, contentWidth, 7, "FD");
         }
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
@@ -270,7 +247,7 @@ export const generateDiverLogReport = async (
         const tableBody: any[][] = [];
 
         if (movements.length === 0) {
-            tableBody.push([{ content: "No movement records found for this deployment.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
+            tableBody.push([{ content: "No movement records found for this deployment.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [200, 200, 200]} }]);
         } else {
             movements.forEach((mov: any, idx: number) => {
                 const movDateTime = mov.movement_time
@@ -305,15 +282,17 @@ export const generateDiverLogReport = async (
             head: [["#", "Movement", "Depth", "Date & Time"]],
             body: tableBody,
             theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
             headStyles: {
                 fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
                 fontStyle: "bold",
                 fontSize: 8,
                 lineWidth: 0.1,
-                lineColor: [0, 0, 0]
+                lineColor: [200, 200, 200]
             },
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },
                 1: { cellWidth: contentWidth - 10 - 18 - 42 },

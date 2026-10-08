@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -38,7 +38,7 @@ export const generateROVCondSketchReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -172,18 +172,22 @@ export const generateROVCondSketchReport = async (
         if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
         if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
 
-        const hH = 26;
+        const hH = 25;
         const drawHeader = (d: jsPDF) => {
-             const isPF = config.printFriendly;
-            if (isPF) { d.setDrawColor(...colors.navy); d.setLineWidth(0.5); d.rect(margin, margin, contentWidth, hH, 'S'); d.setTextColor(...colors.navy); }
-            else { d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, hH, 'F'); d.setTextColor(255, 255, 255); }
-            if (coLogo) drawLogo(d, coLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-            if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
-            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 16.5, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + contentWidth/2, margin + 21, { align: 'center' });
+            draw3SectionHeader(d, {
+                reportTitle: "Conductor Survey (Sketch) Report (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData?.platformName,
+                jobpackName: headerData?.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: ctLogo,
+                clientLogoData: coLogo,
+                margin,
+                headerH: hH,
+                headerY: 7,
+            });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -240,8 +244,10 @@ export const generateROVCondSketchReport = async (
             doc.text(`CONDUCTOR QID: ${displayQid}`, margin + 5, currentY + 5);
             currentY += 10;
 
-            const gW = contentWidth * 0.38; const dW = contentWidth * 0.60;
-            const gX = margin; const dX = margin + gW + 4;
+            const gW = 75;
+            const dW = contentWidth - gW - 4;
+            const gX = margin;
+            const dX = margin + gW + 4;
 
             // --- Elev Processing ---
             const pMeta = parent?.metadata || {};

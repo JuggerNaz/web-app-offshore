@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -47,7 +47,7 @@ export const generateROVRRISIDetailReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
@@ -252,63 +252,35 @@ export const generateROVRRISIDetailReport = async (
             records: []
         }];
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
 
-        const drawPageHeader = (d: jsPDF) => {
-            const isPF = config.printFriendly;
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Riser Inspection Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `RISER INSPECTION REPORT (ROV) - ${extraTitleInfo}` : "RISER INSPECTION REPORT (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
-        const ROW_H = 7;
-        const drawContextRow = (d: jsPDF, startY: number, groupRecords: any[]) => {
-            const isPF = config.printFriendly;
-            const half = contentWidth / 2;
+        const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
-            const dateStr = getInspectionDateRange(records, headerData, config);
-
-            const drawBox = (label: string, value: string, x: number, y: number, w: number) => {
-                d.setDrawColor(...colors.border);
-                d.setLineWidth(0.1);
-                if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, y, w, ROW_H, config?.printFriendly ? "S" : "F");
-                d.rect(x, y, w, ROW_H, "S");
-
-                d.setTextColor(...colors.text);
-                d.setFontSize(7.5);
-                d.setFont("helvetica", "bold");
-                d.text(label, x + 2.5, y + 4.8);
-                d.setFont("helvetica", "normal");
-                d.text(String(value), x + 35, y + 4.8);
-            };
-
-            drawBox("Structure:", headerData.platformName || "N/A", margin, startY, half);
-            drawBox("Vessel:", headerData.vessel || "N/A", margin + half, startY, half);
-            drawBox("Job Pack:", headerData.jobpackName || "N/A", margin, startY + ROW_H, half);
-            drawBox("Date Range:", dateStr, margin + half, startY + ROW_H, half);
-
-            return startY + ROW_H * 2 + 3;
+        const drawContextRow = (d: jsPDF, y: number, groupRecords?: any[]) => {
+            return drawStandardContextRow(d, y, {
+                structure: headerData.platformName,
+                vessel: headerData.vessel,
+                jobpack: headerData.jobpackName,
+                dateRange: groupRecords ? getInspectionDateRange(groupRecords, headerData, config) : dateRangeStr,
+            }, config.printFriendly, margin);
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {

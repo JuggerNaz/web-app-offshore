@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -43,7 +43,7 @@ export const generateROVFMDReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -68,59 +68,31 @@ export const generateROVFMDReport = async (
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
-        const headerH = 26;
-        const drawHeader = (d: jsPDF) => {
-            
-            const isPF = config.printFriendly;
-            
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`Flooded Member Detection Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
-
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+        const headerH = 25;
+        const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `FMD SURVEY REPORT (ROV) - ${extraTitleInfo}` : "FMD SURVEY REPORT (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
-            const rowH = 7;
-            const tableY = y;
-            const colW = contentWidth / 2;
-            const isPF = config.printFriendly;
-            
-            const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border); d.setLineWidth(0.1); 
-                if (!isPF) d.setFillColor(...colors.lightGray);
-                d.rect(x, ty, w, rowH, config?.printFriendly ? 'S' : 'F'); 
-                if (!isPF) d.rect(x, ty, w, rowH, 'S');
-                
-                d.setTextColor(...colors.text); d.setFontSize(7); d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4.5); d.setFont("helvetica", "normal");
-                d.text(String(value), x + 35, ty + 4.5);
-            };
-
-            drawBox('Structure:', headerData.platformName, margin, colW, tableY);
-            drawBox('Vessel:', headerData.vessel || 'N/A', margin + colW, colW, tableY);
-            drawBox('Job Pack:', headerData.jobpackName, margin, colW, tableY + rowH);
-            drawBox('Insp. Date Range:', dateRangeStr, margin + colW, colW, tableY + rowH);
-            
-            return tableY + (rowH * 2) + 5;
+            return drawStandardContextRow(d, y, {
+                structure: headerData.platformName,
+                vessel: headerData.vessel,
+                jobpack: headerData.jobpackName,
+                dateRange: dateRangeStr,
+            }, config.printFriendly, margin);
         };
 
         drawHeader(doc);

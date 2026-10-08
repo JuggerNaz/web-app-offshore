@@ -40,7 +40,7 @@ interface ReportConfig {
 }
 
 // Helpers
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, draw3SectionHeader } from "./shared-logo";
 
 const fetchInspectionTypes = async (): Promise<any[]> => {
     try {
@@ -107,69 +107,45 @@ export const generateWorkScopeIncompleteReport = async (
 
     const isPrintFriendly = config?.printFriendly === true;
 
+    // Resolve Contractor & Client Logos
+    let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
+    if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
+        try {
+            const res = await fetch(`/api/library/CONTR_NAM`);
+            const json = await res.json();
+            if (json.data && Array.isArray(json.data)) {
+                const found = json.data.find((c: any) => String(c.lib_id) === String(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)));
+                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+            }
+        } catch (e) {}
+    }
+    let contractorLogoData: any = null;
+    if (contractorLogoUrl) {
+        try { contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl); } catch (e) {}
+    }
+    let clientLogoData: any = null;
+    if (companySettings?.logo_url) {
+        try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (e) {}
+    }
+
     // --- 1. Draw Header ---
-    const drawHeader = async (pageNo: number) => {
-        if (isPrintFriendly) {
-            // Print-Friendly: White background with light gray border
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.rect(0, 0, pageWidth, 28);
-        } else {
-            // Normal: Dark Blue Filled Background
-            doc.setFillColor(...headerBlue);
-            doc.rect(0, 0, pageWidth, 28, "F");
-        }
+    const drawHeader = (pageNo: number) => {
+        const reportNoStr = config?.reportNoPrefix ? `${config.reportNoPrefix}-${config.reportYear}` : (jobPack.metadata?.contract_ref || "N/A");
+        const structStr = structure?.str_name || (structure?.id === 'all' ? 'ALL STRUCTURES' : jobPack.name);
 
-        // Contractor Logo (Left)
-        let contractorLogoUrl = (config as any)?.contractorLogoUrl || (config as any)?.contractorLogo;
-        if (!contractorLogoUrl && ((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)) {
-            try {
-                const res = await fetch(`/api/library/CONTR_NAM`);
-                const json = await res.json();
-                if (json.data && Array.isArray(json.data)) {
-                    const found = json.data.find((c: any) => String(c.lib_id) === String(((jobPack as any)?.contractor_id || jobPack?.metadata?.contrac)));
-                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
-                }
-            } catch (e) {}
-        }
-        if (contractorLogoUrl) {
-            try {
-                const contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl);
-                if (contractorLogoData) {
-                    drawLogo(doc, contractorLogoData, 16, 16, 8, 5, 'left', 'center');
-                }
-            } catch (e) {}
-        }
-
-        // Company Logo (Right)
-        if (companySettings?.logo_url) {
-            try {
-                const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                drawLogo(doc, logoData, 16, 16, pageWidth - 24, 5, 'right', 'center');
-            } catch (error) { }
-        }
-
-        // Company
-        doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
-
-        doc.setFontSize(8.5);
-        doc.setFont("helvetica", "normal");
-        doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-        // Title - SAME size as Company Title
-        doc.setFontSize(11);
-        doc.setFont("helvetica", "bold");
-        doc.text("WORK SCOPE INCOMPLETE STATUS", pageWidth / 2, 17.5, { align: "center" });
-
-        // Report Number / Structure in Header - Centered below Title
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        const reportNoStr = config?.reportNoPrefix ? `Report: ${config.reportNoPrefix}-${config.reportYear}` : "";
-        const structStr = `Platform: ${structure.str_name || (structure.id === 'all' ? 'ALL STRUCTURES' : 'N/A')}`;
-        doc.text(reportNoStr ? `${structStr}  |  ${reportNoStr}` : structStr, pageWidth / 2, 22.5, { align: "center" });
+        draw3SectionHeader(doc, {
+            reportTitle: "WORK SCOPE INCOMPLETE STATUS",
+            reportNo: reportNoStr,
+            structureName: structStr,
+            companySettings,
+            config,
+            contractorLogoData,
+            clientLogoData,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+        });
 
         // Footer & Page No
         const footerY = pageHeight - 10;
@@ -181,12 +157,12 @@ export const generateWorkScopeIncompleteReport = async (
         doc.setTextColor(100, 100, 100);
         doc.text(REPORT_FOOTER_APP_TEXT, 10, footerY);
         if (config?.showPageNumbers !== false) {
-            doc.text(`Page ${pageNo}`, pageWidth - 10, footerY, { align: "right" });
+            doc.text(`Page ${doc.getNumberOfPages()}`, pageWidth - 10, footerY, { align: "right" });
         }
         (doc as any)._footerApplied = true;
     };
 
-    await drawHeader(1);
+    drawHeader(1);
     let yPos = 35;
 
     // --- 2. Calculate Statistics ---

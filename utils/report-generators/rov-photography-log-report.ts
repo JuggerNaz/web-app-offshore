@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -37,7 +37,7 @@ export const generateROVPhotographyLogReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -72,34 +72,27 @@ export const generateROVPhotographyLogReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         const drawHeaderFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
             const isPF = config.printFriendly;
-            
-            // Header
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
+            const reportNo = (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A";
+            const structName = headerData.platformName || "N/A";
 
-            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Photography Log Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+            draw3SectionHeader(d, {
+                reportTitle: "PHOTOGRAPHY LOG REPORT (ROV)",
+                reportNo,
+                structureName: structName,
+                companySettings,
+                config,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: isPF,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "portrait"
+            });
 
             // Context Row
             const rowY = margin + HEADER_H + 2;

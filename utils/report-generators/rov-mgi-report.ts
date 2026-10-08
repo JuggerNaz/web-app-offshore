@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -53,7 +53,7 @@ export const generateROVMGIGraphReport = async (
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
         
         // --- 1. Preparation ---
@@ -93,40 +93,26 @@ export const generateROVMGIGraphReport = async (
             try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
         }
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         const drawPremiumHeader = (d: jsPDF, qid: string) => {
-            const isPF = config.printFriendly;
-            
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, 'F');
-                d.setTextColor(255);
-            }
+            const reportNo = (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A";
+            const structName = headerData.platformName ? `${headerData.platformName}${qid ? ` (${qid})` : ''}` : "N/A";
 
-            // 1. Company Logo (Right)
-            if (companyLogo) {
-                drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
-            }
-
-            // 2. Contractor Logo (Left)
-            if (contractorLogo) {
-                drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 4, 'left', 'center');
-            }
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`Marine Growth Graph Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+            draw3SectionHeader(d, {
+                reportTitle: "MARINE GROWTH GRAPH REPORT (ROV)",
+                reportNo,
+                structureName: structName,
+                companySettings,
+                config,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "landscape"
+            });
         };
 
         const drawPremiumContext = (d: jsPDF, y: number, qid: string) => {

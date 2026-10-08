@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -44,7 +44,7 @@ export const generatePlatformInspectionSummaryReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth  = doc.internal.pageSize.getWidth(); // 210mm
         const pageHeight = doc.internal.pageSize.getHeight(); // 297mm
-        const margin       = 12;
+        const margin = 10;
         const contentWidth = pageWidth - margin * 2; // 186mm
 
         const colors = {
@@ -58,7 +58,7 @@ export const generatePlatformInspectionSummaryReport = async (
             red:       [220, 38,  38]  as [number, number, number],
         };
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
         const isPF = config?.printFriendly;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
@@ -72,28 +72,21 @@ export const generatePlatformInspectionSummaryReport = async (
         }
 
         // ── Synchronous Page Header ─────────────────────────────────────────────
-        const drawPageHeader = (d: jsPDF) => {
-            if (isPF) {
-                d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
-
-            d.setFontSize(11);  d.setFont("helvetica", "bold");
-            d.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || "Technical Inspection Division",  margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11);  d.setFont("helvetica", "bold");
-            d.text("Platform Inspection Summary Report", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8);   d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.sowReportNo || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `PLATFORM INSPECTION SUMMARY REPORT - ${extraTitleInfo}` : "PLATFORM INSPECTION SUMMARY REPORT",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
         // ── Context Header Grid ───────────────────────────────────────────────────
@@ -152,10 +145,12 @@ export const generatePlatformInspectionSummaryReport = async (
                 `${sow.pending || 0} (${Math.round((sow.pending / (sow.total || 1)) * 100)}%)`,
                 `${sow.completionPct || 0}%`
             ]],
-            theme: "plain",
+            theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: colors.border,
             styles: {fontSize: 8, cellPadding: 3, halign: "center", textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
-            headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
-            bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
+            headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border },
+            bodyStyles: { lineWidth: 0.1, lineColor: colors.border }
         });
         currentY = (doc as any).lastAutoTable.finalY + 6;
 
@@ -193,9 +188,11 @@ export const generatePlatformInspectionSummaryReport = async (
             margin: { left: margin, right: margin },
             head: [["Type Code", "Inspection Description", "Total Logged", "ROV Mode", "Diver Mode", "Anomalies", "Findings"]],
             body: inspTypeRows,
-            theme: "plain",
+            theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: colors.border,
             styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
-            headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
+            headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border },
             columnStyles: {
                 0: { fontStyle: "bold", halign: "center", cellWidth: 20 },
                 1: { cellWidth: 70 },
@@ -205,7 +202,7 @@ export const generatePlatformInspectionSummaryReport = async (
                 5: { halign: "center", textColor: colors.red, fontStyle: "bold" },
                 6: { halign: "center" }
             },
-            bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
+            bodyStyles: { lineWidth: 0.1, lineColor: colors.border }
         });
         currentY = (doc as any).lastAutoTable.finalY + 6;
 
@@ -272,10 +269,12 @@ export const generatePlatformInspectionSummaryReport = async (
                 margin: { left: margin, right: margin },
                 head: [["Component Group", "Component QID", "Inspection Status"]],
                 body: [["N/A", "No component breakdown data available", "-"]],
-                theme: "plain",
+                theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: colors.border,
                 styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
-                headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
-                bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
+                headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border },
+                bodyStyles: { lineWidth: 0.1, lineColor: colors.border }
             });
             currentY = (doc as any).lastAutoTable.finalY + 6;
         } else {
@@ -362,11 +361,13 @@ export const generatePlatformInspectionSummaryReport = async (
                     margin: { left: margin, right: margin },
                     head: [headers],
                     body: groupRows,
-                    theme: "plain",
+                    theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: colors.border,
                     styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
-                    headStyles: { fillColor: [241, 245, 249], textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
+                    headStyles: { fillColor: [241, 245, 249], textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border },
                     columnStyles: colStylesConfig,
-                    bodyStyles: { lineWidth: 0.1, drawColor: colors.border },
+                    bodyStyles: { lineWidth: 0.1, lineColor: colors.border },
                     didParseCell: (data: any) => {
                         if (data.section === "body" && data.column.index > 0 && data.column.index <= allInspTypes.length) {
                             const val = String(data.cell.raw || "");
@@ -429,10 +430,12 @@ export const generatePlatformInspectionSummaryReport = async (
                     ["Open Anomalies", String(anomalies.open || 0), "Outstanding"],
                     ["Rectified Anomalies", String(anomalies.rectified || 0), "Closed"]
                 ],
-                theme: "plain",
+                theme: "grid",
+            tableLineWidth: 0.1,
+            tableLineColor: colors.border,
                 styles: {fontSize: 7.5, cellPadding: 2.5, textColor: colors.text, lineWidth: 0.1, lineColor: colors.border},
-                headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, drawColor: colors.border },
-                bodyStyles: { lineWidth: 0.1, drawColor: colors.border }
+                headStyles: { fillColor: colors.lightGray, textColor: colors.navy, fontStyle: "bold", lineWidth: 0.1, lineColor: colors.border },
+                bodyStyles: { lineWidth: 0.1, lineColor: colors.border }
             });
             currentY = (doc as any).lastAutoTable.finalY + 6;
         }

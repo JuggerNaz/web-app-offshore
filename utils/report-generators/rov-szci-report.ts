@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getRecordNominalThickness, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -42,7 +42,7 @@ export const generateROVSZCIReport = async (
         const doc = new jsPDF({ orientation: "landscape" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -67,82 +67,31 @@ export const generateROVSZCIReport = async (
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
 
-        const headerH = 26;
-        const drawHeader = (d: jsPDF) => {
-            
-            const isPF = config.printFriendly;
-            
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 4, 'right', 'center');
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 4, 'left',  'center');
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth/2), margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(`Splash Zone Inspection Report (ROV)`, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
-            
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth/2), margin + 21, { align: 'center' });
+        const headerH = 25;
+        const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `SPLASH ZONE INSPECTION REPORT (ROV) - ${extraTitleInfo}` : "SPLASH ZONE INSPECTION REPORT (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
-            const rowH = 6.5;
-            const tableY = y;
-            const colW = contentWidth / 2;
-            const isPF = config.printFriendly;
-            
-            const drawFieldBox = (label: string, value: string, x: number, labelW: number, totalW: number, ty: number) => {
-                const valW = totalW - labelW;
-                
-                // 1. Label Box
-                d.setDrawColor(...colors.border);
-                d.setLineWidth(0.15);
-                if (!isPF) {
-                    d.setFillColor(241, 245, 249); // slate-100
-                    d.rect(x, ty, labelW, rowH, 'FD');
-                } else {
-                    d.rect(x, ty, labelW, rowH, 'S');
-                }
-                d.setTextColor(...colors.navy);
-                d.setFontSize(7.5);
-                d.setFont("helvetica", "bold");
-                d.text(label, x + 2.5, ty + 4.4);
-                
-                // 2. Value Box
-                const valX = x + labelW;
-                if (!isPF) {
-                    d.setFillColor(255, 255, 255);
-                    d.rect(valX, ty, valW, rowH, 'FD');
-                } else {
-                    d.rect(valX, ty, valW, rowH, 'S');
-                }
-                d.setTextColor(...colors.text);
-                d.setFontSize(7.5);
-                d.setFont("helvetica", "normal");
-                d.text(String(value || 'N/A'), valX + 2.5, ty + 4.4);
-            };
-
-            const labelWLeft = 32;
-            const labelWRight = 36;
-
-            drawFieldBox('Structure:', headerData.platformName || 'N/A', margin, labelWLeft, colW, tableY);
-            drawFieldBox('Vessel:', headerData.vessel || 'N/A', margin + colW, labelWRight, colW, tableY);
-            drawFieldBox('Job Pack:', headerData.jobpackName || 'N/A', margin, labelWLeft, colW, tableY + rowH);
-            drawFieldBox('Insp. Date Range:', dateRangeStr, margin + colW, labelWRight, colW, tableY + rowH);
-            
-            return tableY + (rowH * 2) + 4;
+            return drawStandardContextRow(d, y, {
+                structure: headerData.platformName,
+                vessel: headerData.vessel,
+                jobpack: headerData.jobpackName,
+                dateRange: dateRangeStr,
+            }, config.printFriendly, margin);
         };
 
         drawHeader(doc);
