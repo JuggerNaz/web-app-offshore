@@ -31,6 +31,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import dynamic from "next/dynamic";
 import {
     Table,
@@ -257,9 +260,59 @@ export default function Platform3DPage() {
     const [isMounted, setIsMounted] = useState(false);
     const [initialCheckDone, setInitialCheckDone] = useState(false);
 
-    // 1. Fetch Platforms
-    const { data: platformsData, isLoading: isPlatformsLoading } = useSWR("/api/platform", fetcher);
-    const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
+    // 1. Fetch Platforms (scroll-to-load; title search moves server-side via ?q=)
+    const debouncedSearch = useDebouncedValue(searchQuery, 300);
+    const {
+        items: platforms,
+        totalItems: platformsTotalItems,
+        isLoading: isPlatformsLoading,
+        hasNextPage: platformsHasNextPage,
+        isFetchingNextPage: platformsFetchingNext,
+        fetchNextPage: fetchNextPlatforms,
+    } = useInfiniteList<Platform>({
+        queryKey: ["platform-3d", "platforms", debouncedSearch],
+        getPageUrl: (page) =>
+            `/api/platform?page=${page}&pageSize=50${
+                debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
+            }`,
+    });
+
+    // When auto-restoring a platform by id (URL / localStorage) that is not in
+    // the loaded window, resolve its row via the slim ?ids= lookup.
+    const [restoredPlatform, setRestoredPlatform] = useState<Platform | null>(null);
+    const restoredIdRef = useRef<number | null>(null);
+    useEffect(() => {
+        const targetId = targetPlatformId || initialPlatformIdRef.current;
+        if (!targetId || selectedPlatform || isPlatformsLoading) return;
+        if (restoredIdRef.current === targetId) return;
+        const inWindow = platforms.some(
+            (p) => p.plat_id === targetId || String(p.plat_id) === String(targetId)
+        );
+        if (inWindow) return;
+        restoredIdRef.current = targetId;
+        let cancelled = false;
+        fetch(`/api/platform?ids=${targetId}`)
+            .then((res) => res.json())
+            .then((json) => {
+                if (cancelled) return;
+                const row = json?.data?.[0];
+                if (row) setRestoredPlatform(row as Platform);
+            })
+            .catch(() => {
+                // Restore stays pending until the platform scrolls into a page.
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [targetPlatformId, selectedPlatform, platforms, isPlatformsLoading]);
+
+    const allPlatforms = useMemo(() => {
+        if (!restoredPlatform) return platforms;
+        const exists = platforms.some(
+            (p) => p.plat_id === restoredPlatform.plat_id || String(p.plat_id) === String(restoredPlatform.plat_id)
+        );
+        return exists ? platforms : [restoredPlatform, ...platforms];
+    }, [platforms, restoredPlatform]);
 
     // Read initial target platform from URL or localStorage ONCE on client mount
     useEffect(() => {
@@ -283,16 +336,16 @@ export default function Platform3DPage() {
 
     // Auto-restore selected platform as soon as platforms array is populated
     useEffect(() => {
-        if (selectedPlatform || platforms.length === 0) return;
+        if (selectedPlatform) return;
 
         const targetId = targetPlatformId || initialPlatformIdRef.current;
         if (targetId) {
-            const matched = platforms.find((p) => p.plat_id === targetId || String(p.plat_id) === String(targetId));
+            const matched = allPlatforms.find((p) => p.plat_id === targetId || String(p.plat_id) === String(targetId));
             if (matched) {
                 setSelectedPlatform(matched);
             }
         }
-    }, [platforms, selectedPlatform, targetPlatformId]);
+    }, [allPlatforms, selectedPlatform, targetPlatformId]);
 
     // 2. Fetch Components for Selected Platform
     const { 
@@ -524,54 +577,9 @@ export default function Platform3DPage() {
         (selectedPlatform && (!componentsData || !platformDetailData))
     );
 
+    // Sort the loaded window (search moved server-side via ?q=)
     const filteredAndSortedPlatforms = useMemo(() => {
-        const rawQuery = (searchQuery || "").trim().toLowerCase();
-        const tokens = rawQuery.split(/\s+/).filter(Boolean);
-
-        const list = platforms.filter((p) => {
-            if (tokens.length === 0) return true;
-
-            const pIdStr = String(p.plat_id || "");
-            const pTitle = String(p.title || "").toLowerCase();
-            const pField = String(p.field_name || p.pfield || "").toLowerCase();
-            const pProcess = String(p.process || "").toLowerCase();
-            const pType = String(p.ptype || "").toLowerCase();
-            const pLegs = p.plegs !== null && p.plegs !== undefined ? p.plegs : null;
-
-            return tokens.every((token) => {
-                // Match "legs" or "leg" keyword
-                if (token === "legs" || token === "leg") {
-                    return pLegs !== null;
-                }
-
-                // If token is numeric (e.g. "4", "6", "8", "1202")
-                if (/^\d+$/.test(token)) {
-                    const numToken = Number(token);
-                    // 1. Match exact number of legs (e.g. 4 -> 4 legs)
-                    if (pLegs === numToken) return true;
-                    // 2. Match exact platform ID
-                    if (p.plat_id === numToken) return true;
-                    // 3. Match if number appears in Title (e.g. "B14", "SMP-4") or Field name
-                    if (pTitle.includes(token) || pField.includes(token)) return true;
-                    return false;
-                }
-
-                // If user specifically searches "plat-..." or "id:..."
-                if (token.startsWith("plat-") || token.startsWith("id:")) {
-                    const cleanId = token.replace(/^(plat-|id:)/, "");
-                    return pIdStr.includes(cleanId);
-                }
-
-                // Text search across all descriptive columns
-                return (
-                    pTitle.includes(token) ||
-                    pField.includes(token) ||
-                    pProcess.includes(token) ||
-                    pType.includes(token) ||
-                    pIdStr === token
-                );
-            });
-        });
+        const list = [...allPlatforms];
 
         list.sort((a, b) => {
             let aVal: any = a[sortField];
@@ -594,7 +602,7 @@ export default function Platform3DPage() {
         });
 
         return list;
-    }, [platforms, searchQuery, sortField, sortOrder]);
+    }, [allPlatforms, sortField, sortOrder]);
 
     const filteredComponents = useMemo(() => {
         if (!componentSearchQuery.trim()) return [];
@@ -1082,7 +1090,7 @@ export default function Platform3DPage() {
                         <div className="relative flex-1">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                             <Input
-                                placeholder="Search by name, oil field, legs, process, type..."
+                                placeholder="Search platforms by name..."
                                 className="pl-10 pr-10 h-11 bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 rounded-xl font-medium shadow-sm ring-0 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all text-xs"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
@@ -1306,6 +1314,16 @@ export default function Platform3DPage() {
                             </TableBody>
                         </Table>
                     </div>
+                )}
+
+                {!isPlatformsLoading && (
+                    <ScrollSentinel
+                        hasNextPage={platformsHasNextPage}
+                        isFetchingNextPage={platformsFetchingNext}
+                        onLoadMore={fetchNextPlatforms}
+                        loadedCount={filteredAndSortedPlatforms.length}
+                        totalItems={platformsTotalItems}
+                    />
                 )}
 
                 {filteredAndSortedPlatforms.length === 0 && !isPlatformsLoading && (
