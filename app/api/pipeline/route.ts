@@ -3,18 +3,26 @@ import { createClient } from "@/utils/supabase/server";
 import { apiSuccess, apiCreated, apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth, withOptionalAuth } from "@/utils/with-auth";
-import { getPaginationParams, createPaginationMeta, applyPagination } from "@/utils/pagination";
+import {
+  getPaginationParams,
+  createPaginationMeta,
+  applyPagination,
+  getSearchParam,
+  buildSearchFilter,
+} from "@/utils/pagination";
 
 /**
  * GET /api/pipeline
- * Fetch all pipelines with pagination and optional field filtering
- * Query params: ?page=1&pageSize=50&field=fieldId
+ * Fetch pipelines with pagination, optional field filtering and optional
+ * title search. Also supports a slim title-by-id lookup.
+ * Query params: ?page=1&pageSize=50&field=fieldId&q=<title search>&ids=1,2,3
  */
 export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   const supabase = createClient();
   const paginationParams = getPaginationParams(request);
   const { searchParams } = new URL(request.url);
   const fieldId = searchParams.get("field");
+  const q = getSearchParam(request);
   const companyId = searchParams.get("company_id") || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
 
   // Build query with count for pagination metadata
@@ -27,6 +35,26 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   // Filter by field if provided
   if (fieldId) {
     query = query.eq("pfield", fieldId);
+  }
+
+  // Optional slim lookup: ?ids=1,2,3 (title-by-id resolution for pickers,
+  // restore-by-id flows, etc.) — composes with the other filters.
+  const idsParam = searchParams.get("ids");
+  const ids = idsParam
+    ? idsParam
+        .split(",")
+        .map((s) => s.trim())
+        .filter((s) => /^\d+$/.test(s))
+        .map(Number)
+    : [];
+  if (ids.length > 0) {
+    query = query.in("pipe_id", ids);
+  }
+
+  // Free-text title search before pagination so the count reflects the filter
+  const searchFilter = buildSearchFilter(q, ["title"]);
+  if (searchFilter) {
+    query = query.or(searchFilter);
   }
 
   // Apply pagination

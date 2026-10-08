@@ -42,6 +42,9 @@ import Link from "next/link";
 
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 
 // Define types for the structure data
 interface Structure {
@@ -116,34 +119,50 @@ export default function PlanningFormPage() {
         }
     }, [existingPlan]);
 
-    const { data: platformData, isLoading: platLoading } = useSWR("/api/platform", fetcher);
-    const { data: pipelineData, isLoading: pipeLoading } = useSWR("/api/pipeline", fetcher);
     const { data: programData, isLoading: progLoading } = useSWR("/api/inspection-program", fetcher);
 
+    // Scroll-to-load fleet lists; the title search runs server-side (?q=).
+    const debouncedSearch = useDebouncedValue(searchQuery, 300);
+    const {
+        items: platformRows,
+        isLoading: platLoading,
+        hasNextPage: platHasNextPage,
+        isFetchingNextPage: platFetchingNextPage,
+        fetchNextPage: fetchNextPlatforms,
+    } = useInfiniteList<any>({
+        queryKey: ["planning", "platforms", debouncedSearch],
+        getPageUrl: (page) =>
+            `/api/platform?page=${page}&pageSize=50${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+    });
+    const {
+        items: pipelineRows,
+        isLoading: pipeLoading,
+        hasNextPage: pipeHasNextPage,
+        isFetchingNextPage: pipeFetchingNextPage,
+        fetchNextPage: fetchNextPipelines,
+    } = useInfiniteList<any>({
+        queryKey: ["planning", "pipelines", debouncedSearch],
+        getPageUrl: (page) =>
+            `/api/pipeline?page=${page}&pageSize=50${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+    });
+
     const availableStructures = useMemo(() => {
-        const platforms = platformData?.data?.map((p: any) => ({
+        const platforms = platformRows.map((p: any) => ({
             title: p.title,
             fieldName: p.pfield,
             structureType: "PLATFORM"
-        })) || [];
-        const pipelines = pipelineData?.data?.map((p: any) => ({
+        }));
+        const pipelines = pipelineRows.map((p: any) => ({
             title: p.title,
             fieldName: p.pfield,
             structureType: "PIPELINE"
-        })) || [];
+        }));
         return [...platforms, ...pipelines];
-    }, [platformData, pipelineData]);
+    }, [platformRows, pipelineRows]);
 
     const inspectionPrograms = useMemo(() => {
         return programData?.data || [];
     }, [programData]);
-
-    const filteredStructures = useMemo(() => {
-        return availableStructures.filter(s =>
-            s.title?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-            s.fieldName?.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [availableStructures, searchQuery]);
 
     const addStructure = (structure: Structure) => {
         if (planningData.selectedStructures.some(s => s.title === structure.title)) {
@@ -525,7 +544,7 @@ export default function PlanningFormPage() {
                                     <div className="relative w-full md:w-80">
                                         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                                         <Input
-                                            placeholder="Search assets..."
+                                            placeholder="Search assets by name..."
                                             className="rounded-2xl h-12 pl-12 bg-slate-50 dark:bg-slate-950 border-transparent focus:bg-white dark:focus:bg-black transition-all shadow-inner font-bold"
                                             value={searchQuery}
                                             onChange={(e) => setSearchQuery(e.target.value)}
@@ -554,8 +573,8 @@ export default function PlanningFormPage() {
                                                         </div>
                                                     </td>
                                                 </tr>
-                                            ) : filteredStructures.length > 0 ? (
-                                                filteredStructures.map((s, i) => (
+                                            ) : availableStructures.length > 0 ? (
+                                                availableStructures.map((s, i) => (
                                                     <tr key={i} className="group hover:bg-slate-50/50 dark:hover:bg-slate-800/30 transition-all">
                                                         <td className="px-8 py-5">
                                                             <div className="flex items-center gap-3">
@@ -604,6 +623,26 @@ export default function PlanningFormPage() {
                                             )}
                                         </tbody>
                                     </table>
+                                    {!platLoading && !pipeLoading && (
+                                        <>
+                                            <ScrollSentinel
+                                                hasNextPage={platHasNextPage}
+                                                isFetchingNextPage={platFetchingNextPage}
+                                                onLoadMore={fetchNextPlatforms}
+                                                loadedCount={platformRows.length}
+                                                totalItems={null}
+                                                hideWhenDone={false}
+                                            />
+                                            <ScrollSentinel
+                                                hasNextPage={pipeHasNextPage}
+                                                isFetchingNextPage={pipeFetchingNextPage}
+                                                onLoadMore={fetchNextPipelines}
+                                                loadedCount={pipelineRows.length}
+                                                totalItems={null}
+                                                hideWhenDone={false}
+                                            />
+                                        </>
+                                    )}
                                 </div>
                             </CardContent>
                         </Card>
