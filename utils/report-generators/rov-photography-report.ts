@@ -303,8 +303,8 @@ export const generateROVPhotographyReport = async (
         
         const imgGap = 6;
         const imgWidth = (contentWidth - imgGap) / 2;
-        const imgHeight = 52;
-        const rowHeight = 68; // 3.5 for title, 52 for image, 12.5 for description and padding
+        const imgHeight = 48;
+        const rowHeight = 70;
         
         let currentPhotoIdx = 0;
 
@@ -313,7 +313,8 @@ export const generateROVPhotographyReport = async (
             
             drawHeaderFooter(doc, p, totalPages);
             
-            const yPos = margin + HEADER_H + 11;
+            // Start grid below context row (context row ends at y = margin + HEADER_H + 2 + 7 = 47mm)
+            const gridStartY = margin + HEADER_H + 15; // 53mm
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
                 if (currentPhotoIdx >= resolvedPhotos.length) break;
@@ -323,20 +324,22 @@ export const generateROVPhotographyReport = async (
                 const row = Math.floor(i / 2);
                 
                 const xPos = margin + (col * (imgWidth + imgGap));
-                const currentY = yPos + (row * rowHeight);
+                const rowSlotY = gridStartY + (row * rowHeight);
                 
-                // 1. Photo Title (Top)
+                // 1. Photo Title (Top of card)
                 let meta = photo.meta || {};
                 if (typeof meta === 'string') {
                     try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
                 }
                 
                 const title = (meta.title || photo.name || photo.file_name || `Photo ${currentPhotoIdx + 1}`).toUpperCase();
-                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.setFontSize(7.5);
+                doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
-                doc.text(title, xPos + imgWidth / 2, currentY - 1.5, { align: "center", maxWidth: imgWidth });
+                doc.text(title, xPos + imgWidth / 2, rowSlotY + 3.5, { align: "center", maxWidth: imgWidth - 2 });
 
                 // 2. Image Loading & Rendering
+                const imgY = rowSlotY + 5.5;
                 try {
                     const rawPath = photo.path || photo.file_path || photo.url || photo.file_url || photo.storage_path || photo.previewUrl || "";
                     const bucket = photo.bucket_id || photo.bucket || photo.meta?.bucket || "attachments";
@@ -377,11 +380,11 @@ export const generateROVPhotographyReport = async (
                         let renderW = imgWidth;
                         let renderH = imgHeight;
                         let renderX = xPos;
-                        let renderY = currentY;
+                        let renderY = imgY;
 
                         if (imgData.aspect > boxAspect) {
                             renderH = imgWidth / imgData.aspect;
-                            renderY = currentY + (imgHeight - renderH) / 2;
+                            renderY = imgY + (imgHeight - renderH) / 2;
                         } else {
                             renderW = imgHeight * imgData.aspect;
                             renderX = xPos + (imgWidth - renderW) / 2;
@@ -389,31 +392,35 @@ export const generateROVPhotographyReport = async (
 
                         // Light border box
                         doc.setDrawColor(220, 226, 235);
-                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.setLineWidth(0.2);
+                        doc.rect(xPos, imgY, imgWidth, imgHeight);
                         doc.addImage(imgData.data, "JPEG", renderX, renderY, renderW, renderH);
                     } else {
                         doc.setDrawColor(200);
-                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.setLineWidth(0.2);
+                        doc.rect(xPos, imgY, imgWidth, imgHeight);
                         doc.setFontSize(8);
                         doc.setTextColor(150);
-                        doc.text("Image Load Failed", xPos + imgWidth / 2, currentY + imgHeight / 2, { align: "center" });
+                        doc.text("Image Load Failed", xPos + imgWidth / 2, imgY + imgHeight / 2, { align: "center" });
                     }
                 } catch (e) {
                     doc.setDrawColor(200);
-                    doc.rect(xPos, currentY, imgWidth, imgHeight);
+                    doc.rect(xPos, imgY, imgWidth, imgHeight);
                 }
 
-                // 3. Description (Bottom)
+                // 3. Description (Bottom of card)
                 let description = meta.description || photo.description || "";
                 if (photo.anomaly_ref) {
                     description = description ? `${description} (Anomaly Ref: ${photo.anomaly_ref})` : `Anomaly Ref: ${photo.anomaly_ref}`;
                 }
                 
                 if (description) {
-                    doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-                    doc.setTextColor(60, 60, 60);
-                    const splitDesc = doc.splitTextToSize(description, imgWidth);
-                    doc.text(splitDesc, xPos + imgWidth / 2, currentY + imgHeight + 3.5, { align: "center" });
+                    doc.setFontSize(6.5); 
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(51, 65, 85);
+                    const splitDesc = doc.splitTextToSize(description, imgWidth - 2);
+                    const linesToPrint = splitDesc.slice(0, 3);
+                    doc.text(linesToPrint, xPos + imgWidth / 2, imgY + imgHeight + 3.5, { align: "center" });
                 }
 
                 currentPhotoIdx++;
@@ -425,7 +432,7 @@ export const generateROVPhotographyReport = async (
             const lastPage = doc.internal.pages.length - 1;
             doc.setPage(lastPage);
             
-            const sigY = pageHeight - 27;
+            const sigY = pageHeight - 28;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);
