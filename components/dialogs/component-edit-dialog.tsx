@@ -170,11 +170,11 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
       }).filter(Boolean) as [string, { value: string; label: string }][]).values())
     : [];
 
-  // All components for association
-  const { data: allComponents } = useSWR(
-    structureId ? `/api/structure-components/${structureId}` : null,
-    fetcher
-  );
+  // All components for association (slim projection via lookup endpoint)
+  const allComponentsKey = structureId
+    ? `/api/structure-components/lookup?structure_id=${structureId}&pageSize=1000`
+    : null;
+  const { data: allComponents } = useSWR(allComponentsKey, fetcher);
 
   // Global company settings for units
   const { data: companyData } = useSWR("/api/company-settings", fetcher);
@@ -935,6 +935,9 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         mutate(listKey);
       } else if (structureId) {
         mutate(`/api/structure-components/${structureId}`);
+      }
+      if (allComponentsKey) {
+        mutate(allComponentsKey);
       }
 
       const targetStructureId = component?.structure_id || structureId;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -62,11 +62,23 @@ export default function DiveInspectionList({
         direction: 'desc'
     });
 
+    // Server-side windowing: only fetch the first PAGE_SIZE * pagesLoaded rows;
+    // "Load more" grows the window.
+    const PAGE_SIZE = 25;
+    const [totalRecords, setTotalRecords] = useState(0);
+    const [pagesLoaded, setPagesLoaded] = useState(1);
+    const pagesLoadedRef = useRef(1);
+
     useEffect(() => {
         if (diveJobId || componentId || (diveNo && jobpackId)) {
-            fetchRecords();
+            pagesLoadedRef.current = 1;
+            setPagesLoaded(1);
+            fetchRecords(1);
         } else {
             setRecords([]);
+            setTotalRecords(0);
+            pagesLoadedRef.current = 1;
+            setPagesLoaded(1);
         }
 
         // Realtime subscription setup
@@ -92,7 +104,7 @@ export default function DiveInspectionList({
         };
     }, [diveJobId, componentId, tapeId, diveNo, jobpackId, sowReportNumber, structureId, selectedType, timestamp, supabase]);
 
-    async function fetchRecords() {
+    async function fetchRecords(windowPages: number = pagesLoadedRef.current) {
         setLoading(true);
         try {
             console.log("Fetching inspection records...", { diveJobId, componentId, sowReportNumber, timestamp });
@@ -106,7 +118,7 @@ export default function DiveInspectionList({
                     insp_dive_jobs!left(dive_no, jobpack_id, job_no),
                     insp_video_tapes!left(tape_no),
                     insp_anomalies!left(anomaly_ref_no)
-                `)
+                `, { count: 'exact' })
                 .order('inspection_date', { ascending: false })
                 .order('inspection_time', { ascending: false })
                 .order('insp_id', { ascending: false });
@@ -138,9 +150,13 @@ export default function DiveInspectionList({
                 // Let's filter clientside to be safer with "selectedType" string matching either code or name
             }
 
-            const { data, error } = await query;
+            query = query.range(0, windowPages * PAGE_SIZE - 1);
+
+            const { data, error, count } = await query;
 
             if (error) throw error;
+
+            setTotalRecords(count || 0);
 
             let filtered = data || [];
             if (selectedType) {
@@ -184,6 +200,13 @@ export default function DiveInspectionList({
         } finally {
             setLoading(false);
         }
+    }
+
+    function handleLoadMore() {
+        const next = pagesLoadedRef.current + 1;
+        pagesLoadedRef.current = next;
+        setPagesLoaded(next);
+        fetchRecords(next);
     }
 
     function handlePrintAnomaly(record: any) {
@@ -403,7 +426,8 @@ export default function DiveInspectionList({
         });
     }, [sortedRecords, searchQuery]);
 
-    if (loading) {
+    // Keep the loaded list visible while more pages load; full spinner only on initial load.
+    if (loading && records.length === 0) {
         return <div className="p-4 text-center text-sm text-muted-foreground animate-pulse">Refreshing records...</div>;
     }
 
@@ -411,7 +435,7 @@ export default function DiveInspectionList({
         return (
             <div className="p-8 text-center border-t border-dashed border-slate-200 dark:border-slate-800">
                 <p className="text-sm text-muted-foreground">No inspection records found.</p>
-                <Button variant="outline" size="sm" onClick={fetchRecords} className="mt-2">Refresh List</Button>
+                <Button variant="outline" size="sm" onClick={() => fetchRecords()} className="mt-2">Refresh List</Button>
             </div>
         );
     }
@@ -646,6 +670,19 @@ export default function DiveInspectionList({
                     </tbody>
                 </table>
             </div >
+            {records.length > 0 && records.length < totalRecords && (
+                <div className="flex justify-center p-2 border-t border-slate-100 dark:border-slate-900">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleLoadMore}
+                        disabled={loading}
+                        className="text-xs"
+                    >
+                        {loading ? "Loading..." : `Load more (${records.length} of ${totalRecords})`}
+                    </Button>
+                </div>
+            )}
             <ReportPreviewDialog
                 open={previewOpen}
                 onOpenChange={setPreviewOpen}
