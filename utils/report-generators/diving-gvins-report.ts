@@ -118,7 +118,15 @@ export const generateDivingGVINSReport = async (
         const sorted = [...records].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
-            return elB - elA;
+            if (elB !== elA) return elB - elA;
+
+            const dateA = a.inspection_date ? new Date(a.inspection_date).getTime() : 0;
+            const dateB = b.inspection_date ? new Date(b.inspection_date).getTime() : 0;
+            if (dateB !== dateA) return dateB - dateA;
+
+            const idA = Number(a.insp_id || a.id || 0);
+            const idB = Number(b.insp_id || b.id || 0);
+            return idA - idB;
         });
 
         const isPF = config.printFriendly;

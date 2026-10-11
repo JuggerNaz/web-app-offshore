@@ -4113,7 +4113,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         insp_video_tapes:tape_id!left(tape_no),
                         insp_anomalies(*)
                     `)
-                    .eq("structure_id", structId);
+                    .eq("structure_id", structId)
+                    .order("inspection_date", { ascending: false })
+                    .order("insp_id", { ascending: false });
 
                 if (fetchError) {
                     alert(`Database error: ${fetchError.message}`);

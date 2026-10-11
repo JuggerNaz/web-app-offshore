@@ -345,25 +345,32 @@ export const generateROVPhotographyReport = async (
                     const bucket = photo.bucket_id || photo.bucket || photo.meta?.bucket || "attachments";
 
                     const urlCandidates: string[] = [];
-                    if (typeof rawPath === "string" && (rawPath.startsWith("http://") || rawPath.startsWith("https://") || rawPath.startsWith("data:") || rawPath.startsWith("blob:"))) {
-                        urlCandidates.push(rawPath);
-                    }
+                    // 1. Prioritize internal server proxy endpoints (immune to CORS)
                     if (photo.id) {
                         urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(photo.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ""}`);
                     }
+                    const fallbackUrl = getAttachmentUrl(photo, supabase);
+                    if (fallbackUrl && !urlCandidates.includes(fallbackUrl)) {
+                        urlCandidates.push(fallbackUrl);
+                    }
                     if (rawPath) {
                         urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+                    }
+                    // 2. Direct HTTP or Data URL
+                    if (typeof rawPath === "string" && (rawPath.startsWith("http://") || rawPath.startsWith("https://") || rawPath.startsWith("data:") || rawPath.startsWith("blob:"))) {
+                        urlCandidates.push(rawPath);
+                    }
+                    if (photo.meta?.file_url && !urlCandidates.includes(photo.meta.file_url)) {
+                        urlCandidates.push(photo.meta.file_url);
                     }
                     if (rawPath && typeof rawPath === "string" && !rawPath.startsWith("http") && !rawPath.startsWith("data:")) {
                         try {
                             const cleanStoragePath = rawPath.replace(/^attachments\//, "");
                             const pub = supabase.storage.from(bucket).getPublicUrl(cleanStoragePath);
-                            if (pub?.data?.publicUrl) urlCandidates.push(pub.data.publicUrl);
+                            if (pub?.data?.publicUrl && !urlCandidates.includes(pub.data.publicUrl)) {
+                                urlCandidates.push(pub.data.publicUrl);
+                            }
                         } catch (_) {}
-                    }
-                    const fallbackUrl = getAttachmentUrl(photo, supabase);
-                    if (fallbackUrl && !urlCandidates.includes(fallbackUrl)) {
-                        urlCandidates.push(fallbackUrl);
                     }
 
                     let imgData: LoadedPhoto | null = null;

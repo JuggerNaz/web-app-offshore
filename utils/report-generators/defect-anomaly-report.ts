@@ -698,14 +698,14 @@ export const generateDefectAnomalyReport = async (
             const bucket = att.bucket_id || att.bucket || "attachments";
 
             const urlCandidates: string[] = [];
-            if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
-                urlCandidates.push(rawPath);
-            }
             if (att.id) {
                 urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
             }
             if (rawPath) {
                 urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+            }
+            if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
+                urlCandidates.push(rawPath);
             }
 
             let loadedImgRes: LoadedImageData | null = null;

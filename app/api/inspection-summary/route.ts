@@ -51,26 +51,38 @@ export const GET = withTenant(async (request, { companyId }) => {
         const jpNum = parseInt(String(jobpackId), 10);
         const strNum = parseInt(String(structureId), 10);
 
-        // ─── 1. RESOLVE STRUCTURE METADATA & PIPELINE SPECS ─────────────────
         let structureInfo: any = null;
         let pipelineSpec: any = null;
+        let jobpackInfo: any = null;
 
-        if (!isNaN(strNum)) {
-            const [structRes, pipeRes] = await Promise.all([
-                (supabase as any)
-                    .from("u_structures")
-                    .select("id, name, code, type, metadata")
-                    .eq("id", strNum)
-                    .maybeSingle(),
-                (supabase as any)
-                    .from("u_pipeline")
-                    .select("*")
-                    .eq("pipe_id", strNum)
-                    .maybeSingle(),
+        if (!isNaN(strNum) || !isNaN(jpNum)) {
+            const [structRes, pipeRes, jpRes] = await Promise.all([
+                !isNaN(strNum)
+                    ? (supabase as any)
+                        .from("u_structures")
+                        .select("id, name, code, type, metadata")
+                        .eq("id", strNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
+                !isNaN(strNum)
+                    ? (supabase as any)
+                        .from("u_pipeline")
+                        .select("*")
+                        .eq("pipe_id", strNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
+                !isNaN(jpNum)
+                    ? (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", jpNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
             ]);
 
             if (structRes.data) structureInfo = structRes.data;
             if (pipeRes.data) pipelineSpec = pipeRes.data;
+            if (jpRes.data) jobpackInfo = jpRes.data;
         }
 
         const isPipelineStructure =
@@ -1036,19 +1048,39 @@ export const GET = withTenant(async (request, { companyId }) => {
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = (has_anomaly=true OR has insp_anomalies) AND _meta_status != "Finding"
         // Finding = (has_anomaly=true OR has insp_anomalies) AND _meta_status == "Finding"
-        const anomalyRecords = records.filter((r: any) => {
+        const candidateRecords = records.length > 0 ? records : rawRecords;
+        let anomalyRecords = candidateRecords.filter((r: any) => {
             const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
             if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus !== "finding";
         });
 
-        const findingRecords = records.filter((r: any) => {
+        // Fallback to rawRecords for the structure/jobpack if report-filtered subset yielded 0 anomalies
+        if (anomalyRecords.length === 0 && rawRecords.length > 0) {
+            anomalyRecords = rawRecords.filter((r: any) => {
+                const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+                if (!isAnomaly) return false;
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                return metaStatus !== "finding";
+            });
+        }
+
+        let findingRecords = candidateRecords.filter((r: any) => {
             const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
             if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus === "finding";
         });
+
+        if (findingRecords.length === 0 && rawRecords.length > 0) {
+            findingRecords = rawRecords.filter((r: any) => {
+                const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+                if (!isAnomaly) return false;
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                return metaStatus === "finding";
+            });
+        }
 
         // Anomaly: group by priority_code (P1, P2, P3, etc.) from insp_anomalies.priority_code
         // Records without a real priority (null / empty / "NONE" / "Unknown") are EXCLUDED
@@ -1642,96 +1674,195 @@ export const GET = withTenant(async (request, { companyId }) => {
             inspectionName: string;
             taskType: string;
             totalQid: number;
+            completedQid: number;
             incompleteQid: number;
         }>();
-
-        const defaultTaskType = (() => {
-            const hasRov = rawRecords.some((r: any) => r.rov_job_id);
-            const hasDive = rawRecords.some((r: any) => r.dive_job_id && !r.rov_job_id);
-            if (hasRov && hasDive) return "ROV / DIVE";
-            if (hasRov) return "ROV";
-            if (hasDive) return "DIVE";
-            return "ROV";
-        })();
 
         const { data: inspTypes } = await (supabase as any)
             .from("inspection_type")
             .select("id, code, name, metadata");
 
         const inspTypeMap = new Map<string, any>();
-        if (inspTypes) {
+        if (inspTypes && Array.isArray(inspTypes)) {
             inspTypes.forEach((t: any) => {
-                if (t.code) inspTypeMap.set(t.code.toUpperCase().trim(), t);
-                if (t.name) inspTypeMap.set(t.name.toUpperCase().trim(), t);
+                if (t.code) inspTypeMap.set(String(t.code).toUpperCase().trim(), t);
+                if (t.name) inspTypeMap.set(String(t.name).toUpperCase().trim(), t);
             });
         }
 
-        sowItemsToProcess.forEach((item: any) => {
-            const name = item.inspection_name || formatInspectionTypeName(item.inspection_code || "UNKNOWN");
-            const code = String(item.inspection_code || "").trim().toUpperCase();
-            const status = String(item.status || "").toLowerCase().trim();
-            const isIncomplete = status === "incomplete" || status === "pending";
+        const isJpRov = Number(jobpackInfo?.metadata?.rov) === 1 || 
+                         String(jobpackInfo?.metadata?.rov) === "1" || 
+                         jobpackInfo?.metadata?.rov === true || 
+                         (Array.isArray(jobpackInfo?.metadata?.methods) && jobpackInfo.metadata.methods.includes("ROV")) ||
+                         String(jobpackInfo?.metadata?.plantype || "").toUpperCase().includes("ROV") ||
+                         String(jobpackInfo?.metadata?.tasktype || "").toUpperCase().includes("ROV");
 
-            // Determine task type based on inspection_type metadata
-            let taskType = "ROV";
+        const isJpDiving = Boolean(jobpackInfo?.metadata?.divetyp) || 
+                            (Array.isArray(jobpackInfo?.metadata?.methods) && jobpackInfo.metadata.methods.includes("DIVE")) ||
+                            String(jobpackInfo?.metadata?.plantype || "").toUpperCase().includes("DIVE") ||
+                            String(jobpackInfo?.metadata?.tasktype || "").toUpperCase().includes("DIVE");
 
-            // Try to find the inspection type metadata
-            const inspTypeObj = inspTypeMap.get(code) || (item.inspection_name ? inspTypeMap.get(item.inspection_name.toUpperCase().trim()) : null);
+        const determineTaskType = (itemOrRecord: any, codeParam?: string, nameParam?: string): "ROV" | "Diving" => {
+            const data = itemOrRecord?.inspection_data || {};
+            const code = String(codeParam || itemOrRecord?.inspection_code || itemOrRecord?.inspection_type_code || itemOrRecord?.inspection_type?.code || "").trim().toUpperCase();
+            const name = String(nameParam || itemOrRecord?.inspection_name || itemOrRecord?.inspection_type?.name || "").trim().toUpperCase();
+
+            // 1. Direct record job identifiers
+            if (itemOrRecord?.rov_job_id || data?.rov_job_id || data?.rov_job_no) return "ROV";
+            if (itemOrRecord?.dive_job_id || data?.dive_job_id || data?.dive_job_no) return "Diving";
+
+            // 2. Dive / Run Number prefixes: R01, ROV-1 -> ROV; D01, DIVE-1 -> Diving
+            const diveNo = String(itemOrRecord?.dive_no || data?.dive_no || data?.DIVE_NO || "").trim().toUpperCase();
+            if (diveNo.startsWith("R") || diveNo.includes("ROV")) return "ROV";
+            if (diveNo.startsWith("D") || diveNo.includes("DIVE")) return "Diving";
+
+            // 3. Mode fields in inspection_data
+            const inspMode = String(data?.insp_mode || data?.mode || data?.task_type || data?.taskType || "").toUpperCase();
+            if (inspMode.includes("ROV")) return "ROV";
+            if (inspMode.includes("DIVE") || inspMode.includes("DIVING")) return "Diving";
+
+            // 4. Inspection type metadata in DB
+            const inspTypeObj = inspTypeMap.get(code) || (name ? inspTypeMap.get(name) : null);
             if (inspTypeObj && inspTypeObj.metadata) {
                 const meta = inspTypeObj.metadata;
-                if (meta.rov === 1 || meta.rov === "1" || meta.rov === true) {
-                    taskType = "ROV";
-                } else if (meta.diving === 1 || meta.diving === "1" || meta.diving === true) {
-                    taskType = "Diving";
-                } else {
-                    // fallback to name/code checking
-                    const lowerName = name.toLowerCase();
-                    const lowerCode = code.toLowerCase();
-                    if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
-                        taskType = "ROV";
-                    } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
-                        taskType = "Diving";
-                    }
-                }
-            } else {
-                // fallback to name/code checking if not found in db
-                const lowerName = name.toLowerCase();
-                const lowerCode = code.toLowerCase();
-                if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
-                    taskType = "ROV";
-                } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
-                    taskType = "Diving";
-                }
+                if (meta.rov === 1 || meta.rov === "1" || meta.rov === true || String(meta.mode || "").toUpperCase() === "ROV") return "ROV";
+                if (meta.diving === 1 || meta.diving === "1" || meta.diving === true || String(meta.mode || "").toUpperCase().includes("DIVE")) return "Diving";
             }
+
+            // 5. Code prefix conventions (RGVI, RCP, RMGI, etc. -> ROV; DGVI, DCP, DUT -> Diving)
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB" && code !== "RE") return "ROV";
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK" && code !== "DR") return "Diving";
+            if (["NAVIG", "ROVCLB", "RSEAB", "RSCO", "RSZ", "RWDI"].includes(code)) return "ROV";
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return "Diving";
+
+            // 6. Name conventions
+            if (name.includes("ROV") || name.includes("(ROV)")) return "ROV";
+            if (name.includes("DIVING") || name.includes("DIVER") || name.includes("(DIVING)")) return "Diving";
+
+            // 7. Jobpack-level default
+            if (isJpRov && !isJpDiving) return "ROV";
+            if (isJpDiving && !isJpRov) return "Diving";
+
+            return "ROV";
+        };
+
+        const itemsForSowSummary = (resolvedSowItems && resolvedSowItems.length > 0)
+            ? resolvedSowItems
+            : (sowItemsToProcess && sowItemsToProcess.length > 0 ? sowItemsToProcess : targetSowItems);
+
+        if (itemsForSowSummary && itemsForSowSummary.length > 0) {
+            itemsForSowSummary.forEach((item: any) => {
+                const code = String(item.inspection_code || "").trim().toUpperCase();
+                const name = item.inspection_name || formatInspectionTypeName(code || "UNKNOWN");
+                const status = String(item.effectiveStatus || item.status || "").toLowerCase().trim();
+                const isIncomplete = status === "incomplete" || status === "pending";
+                const isCompleted = status === "completed";
+                const taskType = determineTaskType(item, code, name);
+
+                if (!sowSummaryMap.has(name)) {
+                    sowSummaryMap.set(name, {
+                        inspectionName: name,
+                        taskType: taskType,
+                        totalQid: 0,
+                        completedQid: 0,
+                        incompleteQid: 0
+                    });
+                }
+                const group = sowSummaryMap.get(name)!;
+                group.totalQid++;
+                if (isIncomplete) {
+                    group.incompleteQid++;
+                } else if (isCompleted) {
+                    group.completedQid++;
+                }
+            });
+        }
+
+        // Also incorporate any inspection types present in inspection records for this scope
+        records.forEach((r: any) => {
+            const code = String(r.inspection_type_code || r.inspection_type?.code || "").trim().toUpperCase();
+            if (!isPipelineStructure && (code === "PL_CO" || code === "PLCO")) return;
+            const name = formatInspectionTypeName(r.inspection_type?.name || code);
+            const status = String(r.status || "").toUpperCase();
+            const taskType = determineTaskType(r, code, name);
 
             if (!sowSummaryMap.has(name)) {
                 sowSummaryMap.set(name, {
                     inspectionName: name,
                     taskType: taskType,
                     totalQid: 0,
+                    completedQid: 0,
                     incompleteQid: 0
                 });
             }
-            const group = sowSummaryMap.get(name)!;
-            group.totalQid++;
-            if (isIncomplete) {
-                group.incompleteQid++;
+            // If sowSummaryMap group didn't have items from sow_items, populate from records
+            if (itemsForSowSummary.length === 0) {
+                const group = sowSummaryMap.get(name)!;
+                group.totalQid++;
+                if (status === "INCOMPLETE") {
+                    group.incompleteQid++;
+                } else {
+                    group.completedQid++;
+                }
             }
         });
 
+        // Compute completion and incomplete percentages for all inspection types involved
         const sowSummary = Array.from(sowSummaryMap.values())
-            .filter(g => g.incompleteQid > 0)
+            .filter((g: any) => (g.totalQid || (g.completedQid + g.incompleteQid) || 0) > 0)
+            .sort((a, b) => (b.incompleteQid - a.incompleteQid) || (b.totalQid - a.totalQid) || a.inspectionName.localeCompare(b.inspectionName))
             .map((g, idx) => {
-                const incompletePctVal = g.totalQid > 0 ? (g.incompleteQid / g.totalQid) * 100 : 0;
-                const incompletePct = Number.isInteger(incompletePctVal) ? `${incompletePctVal}%` : `${incompletePctVal.toFixed(2)}%`;
+                const total = g.totalQid || (g.completedQid + g.incompleteQid) || 0;
+                const incomplete = g.incompleteQid;
+                const completed = g.completedQid || Math.max(0, total - incomplete);
+                
+                const incompletePctVal = total > 0 ? (incomplete / total) * 100 : 0;
+                const incompletePct = Number.isInteger(incompletePctVal) ? `${incompletePctVal}%` : `${incompletePctVal.toFixed(1)}%`;
+
+                const completedPctVal = total > 0 ? (completed / total) * 100 : 0;
+                const completedPct = Number.isInteger(completedPctVal) ? `${completedPctVal}%` : `${completedPctVal.toFixed(1)}%`;
+
                 return {
                     no: idx + 1,
+                    NO: idx + 1,
+                    id: idx + 1,
+                    ID: idx + 1,
                     inspectionName: g.inspectionName,
+                    inspection_name: g.inspectionName,
+                    INSPECTION_NAME: g.inspectionName,
+                    name: g.inspectionName,
+                    NAME: g.inspectionName,
                     taskType: g.taskType,
                     tasktype: g.taskType,
-                    totalQid: g.totalQid,
-                    incompleteQid: g.incompleteQid,
-                    incompletePct: incompletePct
+                    task_type: g.taskType,
+                    TASK_TYPE: g.taskType,
+                    TASKTYPE: g.taskType,
+                    totalQid: total,
+                    total_qid: total,
+                    total: total,
+                    TOTAL_QID: total,
+                    TOTAL: total,
+                    completedQid: completed,
+                    completed_qid: completed,
+                    completed: completed,
+                    COMPLETED_QID: completed,
+                    COMPLETED: completed,
+                    incompleteQid: incomplete,
+                    incomplete_qid: incomplete,
+                    incomplete: incomplete,
+                    INCOMPLETE_QID: incomplete,
+                    INCOMPLETE: incomplete,
+                    completedPct: completedPct,
+                    completed_pct: completedPct,
+                    completionPct: completedPct,
+                    completion_pct: completedPct,
+                    COMPLETED_PCT: completedPct,
+                    COMPLETION_PCT: completedPct,
+                    incompletePct: incompletePct,
+                    incomplete_pct: incompletePct,
+                    INCOMPLETE_PCT: incompletePct,
+                    completedPctVal,
+                    incompletePctVal
                 };
             });
 

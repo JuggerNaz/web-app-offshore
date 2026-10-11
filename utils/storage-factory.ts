@@ -261,18 +261,20 @@ class AWSS3StorageHandler implements StorageHandler {
   private bucket: string;
   private endpoint?: string;
 
-  constructor(config: any) {
+  constructor(config: any = {}) {
+    const safeConfig = config || {};
+    const creds = (safeConfig.accessKeyId && safeConfig.secretAccessKey)
+      ? { accessKeyId: safeConfig.accessKeyId, secretAccessKey: safeConfig.secretAccessKey }
+      : undefined;
+
     this.client = new S3Client({
-      region: config.region || "us-east-1",
-      endpoint: config.endpoint,
-      forcePathStyle: !!config.endpoint, // Needed for many S3-compatible providers
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
+      region: safeConfig.region || "us-east-1",
+      endpoint: safeConfig.endpoint,
+      forcePathStyle: !!safeConfig.endpoint, // Needed for many S3-compatible providers
+      ...(creds ? { credentials: creds } : {}),
     });
-    this.bucket = config.bucket;
-    this.endpoint = config.endpoint;
+    this.bucket = safeConfig.bucket || "web-app-offshore";
+    this.endpoint = safeConfig.endpoint;
   }
 
   async upload(file: Buffer | File, fileName: string, contentType: string) {
@@ -359,12 +361,13 @@ class AWSS3StorageHandler implements StorageHandler {
  * Backblaze B2 Storage Implementation (S3 Compatible)
  */
 class BackblazeB2StorageHandler extends AWSS3StorageHandler {
-  constructor(config: any) {
-    let region = config.region || "us-west-004";
+  constructor(config: any = {}) {
+    const safeConfig = config || {};
+    let region = safeConfig.region || "us-west-004";
     let endpoint = "";
 
     // If user pasted the full endpoint (e.g. s3.us-east-005.backblazeb2.com)
-    if (region.includes("backblazeb2.com")) {
+    if (region && region.includes("backblazeb2.com")) {
       const cleanEndpoint = region.replace(/^https?:\/\//, "");
       endpoint = `https://${cleanEndpoint}`;
       
@@ -372,10 +375,10 @@ class BackblazeB2StorageHandler extends AWSS3StorageHandler {
       const match = cleanEndpoint.match(/s3\.([^.]+)\./);
       region = match ? match[1] : region.split('.')[1] || "us-east-005";
     } else {
-      endpoint = `https://s3.${region}.backblazeb2.com`;
+      endpoint = `https://s3.${region || "us-west-004"}.backblazeb2.com`;
     }
 
-    super({ ...config, region, endpoint });
+    super({ ...safeConfig, region, endpoint });
   }
 }
 

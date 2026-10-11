@@ -54,16 +54,20 @@ These are automatically derived; you can use either form in your template:
 
 ---
 
-## 2. Image Tags
+## 2. Image Tags & Header Logos
+
+In offshore reports, standard layout places the **Contractor Logo on the Left** and the **Client Logo on the Right**.
 
 | Tag | Source | Description |
 | :--- | :--- | :--- |
-| `{%CLIENT_LOGO}` | Company Settings → logo_url | Client logo from preference settings |
+| `{%CONTRACTOR_LOGO}` | Active Contractor (`CONTR_NAM` library) | Contractor logo (Left header). Auto-scaled (max height 80px). Alias: `{%contractor_logo}` |
+| `{%CLIENT_LOGO}` | Company Settings → logo_url | Client logo (Right header). Auto-scaled (max height 80px). Aliases: `{%COMPANY_LOGO}`, `{%LOGO}` |
 | `{%MGI_GRAPH}` | Generated | Auto-generated Marine Growth profile chart |
+| `{%SEABED_GRAPH}` | Generated | Auto-generated Seabed bathymetry survey chart |
 
 > [!NOTE]
-> The image module will pre-fetch the logo from the URL set in **Settings → Company Information → Logo**.
-> If the logo cannot be loaded, the report will still generate (text-only fallback).
+> The template engine pre-fetches both the contractor logo and client logo automatically.
+> Full-page sub-report loops also utilize `{%page_image}` and `{%photo}`.
 
 ---
 
@@ -148,15 +152,43 @@ Flooded Member Detection (FMD) inspection was not conducted, or this component i
 
 ---
 
-## 6. System Report Aliases (Custom Mapping)
+## 6. Sub-Report Page Loops (Pasting Full Inspection Report Pages)
+
+Any built-in inspection sub-report can be rendered as full-page images (with contractor logo on left, client logo on right, standard headers, tables, photos, and footers):
+
+- **Page Loop Tag**: `{{#YOUR_ALIAS_PAGES}} ... {%page_image} ... {{/YOUR_ALIAS_PAGES}}`
+- **Fields Inside Loop**: `{%page_image}` (or `{%photo}`), `{{qid}}` (Page title), `{{elevation}}`, `{{description}}`
+- **Presence Condition**: `{{#HAS_YOUR_ALIAS_PAGES}} ... {{/HAS_YOUR_ALIAS_PAGES}}`
+- **Inverted Condition**: `{{#NO_YOUR_ALIAS_PAGES}} ... {{/NO_YOUR_ALIAS_PAGES}}` (or `{{^HAS_YOUR_ALIAS_PAGES}}`)
+
+### Common Built-In Page Loops:
+- `{{#RPHOTO_PAGES}}` : ROV Photography Report pages
+- `{{#RPHOTO_LOG_PAGES}}` : ROV Photography Log Report pages
+- `{{#DPHOTO_PAGES}}` : Diver Photography Report pages
+- `{{#DFT_REPORT_PAGES}}` : Defect & Anomaly Report pages
+- `{{#FND_REPORT_PAGES}}` : Findings Detail Report pages
+- `{{#DEFECT_SUMMARY_PAGES}}` : Defect Summary pages
+- `{{#RCP_PAGES}}` / `{{#CP_REPORT_PAGES}}` : ROV CP Survey Report pages
+- `{{#DCPSURV_PAGES}}` / `{{#DIVING_CP_PAGES}}` : Diver CP Survey Report pages
+- `{{#RGVI_PAGES}}` : ROV GVI Report pages
+- `{{#RMGI_PAGES}}` : ROV Marine Growth Report pages
+- `{{#RFMD_PAGES}}` : ROV Flooded Member Report pages
+- `{{#RCASN_PAGES}}`, `{{#RCOND_PAGES}}`, `{{#RBLTG_PAGES}}`, `{{#RGUARD_PAGES}}`, `{{#RRISI_PAGES}}`
+- `{{#RSEAB_PAGES}}`, `{{#RSCOR_PAGES}}`, `{{#NAVIG_PAGES}}`
+- `{{#WORK_SCOPE_STATUS_PAGES}}`, `{{#WORK_SCOPE_INCOMPLETE_PAGES}}`
+
+---
+
+## 7. System Report Aliases & Data Records (Custom Mapping)
 You can assign custom "Aliases" to built-in reports in **Settings → System Mapping** tab.
 
 - **Conditional Tag**: `{{#T_YOUR_ALIAS}} ... {{/T_YOUR_ALIAS}}`
 - **Data Loop**: `{{#YOUR_ALIAS_RECORDS}} ... {{/YOUR_ALIAS_RECORDS}}`
+- **Page Loop**: `{{#YOUR_ALIAS_PAGES}} ... {%page_image} ... {{/YOUR_ALIAS_PAGES}}`
 
 ---
 
-## 7. Data Flow
+## 8. Data Flow
 
 ```
 User selects: Job Pack → Structure → SOW Report No
@@ -176,7 +208,7 @@ Template DOCX fetched → PizZip → Docxtemplater → tag replacement → file 
 
 ---
 
-## 8. Design Tips
+## 9. Design Tips
 1. **Tables**: Ensure `{{#...}}` and `{{/...}}` are inside the same table row or wrapping the entire table.
 2. **Images**: Place `{%CLIENT_LOGO}` where you want the logo. It renders at 150×75px by default.
 3. **Empty Data**: Use `{{#HAS_...}}` conditionals to prevent empty headers/sections.

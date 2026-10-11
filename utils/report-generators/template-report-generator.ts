@@ -13,13 +13,14 @@ interface ReportOptions {
     data: any;
     fileName: string;
     logoUrl?: string;
+    contractorLogoUrl?: string;
     onProgress?: (percent: number, statusText: string) => void;
 }
 
 /**
  * Normalizes double-brace text tags {{TAG}} to single-brace {TAG}
- * inside the DOCX XML, cleans up whitespace, resolves known tag typos/mismatches,
- * and auto-balances unclosed loops so docxtemplater renders seamlessly.
+ * inside the DOCX XML text runs (<w:t>), cleans up tag whitespace,
+ * and resolves known tag aliases safely without breaking the XML tree.
  */
 function normalizeDelimiters(zip: PizZip) {
     const files = zip.files;
@@ -27,107 +28,106 @@ function normalizeDelimiters(zip: PizZip) {
         if (!file.dir && relativePath.endsWith(".xml")) {
             let text = file.asText();
 
-            // Pass 1: Collapse double braces {{ → { and }} → } within text nodes
-            text = text.replace(/(<w:t[^>]*>)([^<]*)/g, (_m, tag, content) => {
-                content = content.replace(/\{\{/g, "{").replace(/\}\}/g, "}");
-                return tag + content;
+            // 0. Strip/unwrap hyperlinks, smart tags, track changes, and Word proofing that split tags
+            text = text.replace(/<w:hyperlink\b[^>]*>([\s\S]*?)<\/w:hyperlink>/gi, (match, inner) => {
+                if (inner.includes("{") || inner.includes("}")) {
+                    return inner;
+                }
+                return match;
             });
+            text = text.replace(/<w:smartTag\b[^>]*>([\s\S]*?)<\/w:smartTag>/gi, "$1");
+            text = text.replace(/<w:ins\b[^>]*>([\s\S]*?)<\/w:ins>/gi, "$1");
+            text = text.replace(/<w:del\b[^>]*>([\s\S]*?)<\/w:del>/gi, "");
+            text = text.replace(/<w:proofErr\b[^>]*\/?>/gi, "");
+            text = text.replace(/<w:noProof\b[^>]*\/?>/gi, "");
 
-            // Pass 2: Merge cross-node braces and any split tags { ... }
-            let changed = true;
-            while (changed) {
-                const before = text;
-                text = text.replace(/\{(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\{/g, "{$1");
-                text = text.replace(/\}(<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>)\}/g, "}$1");
-                // Merge tags split across XML text runs: { #TAG </w:t>...<w:t> REST_OF_TAG }
-                text = text.replace(/\{([^{}<>]*?)<\/w:t>(?:<[^>]*>)*?<w:t[^>]*>([^{}<>]*?)\}/g, "{$1$2}");
-                changed = text !== before;
-            }
+            // 0.1 Stitch tags that Word split across multiple <w:r><w:t> nodes within the same paragraph
+            text = text.replace(/(<w:p\b[^>]*>)([\s\S]*?)(<\/w:p>)/g, (_pMatch, pOpen, pBody, pClose) => {
+                if (!pBody.includes("{")) return `${pOpen}${pBody}${pClose}`;
 
-            // Helper to sanitize any tag name
-            const cleanTagName = (rawTag: string) => {
-                let clean = rawTag.trim().replace(/\s+/g, "_");
-
-                // Fix singular to plural mismatches
-                if (clean.startsWith("FINDING_") && !clean.startsWith("FINDINGS_")) {
-                    clean = clean.replace(/^FINDING_/, "FINDINGS_");
-                }
-                if (clean.startsWith("ANOMALY_") && !clean.startsWith("ANOMALIES_")) {
-                    clean = clean.replace(/^ANOMALY_/, "ANOMALIES_");
-                }
-
-                // Fix caisson guard aliases
-                if (clean === "HAS_FINDINGS_CAISSON_GUARD_ABOVE_UNDERWATER") {
-                    clean = "HAS_FINDINGS_CAISSON_GUARD_UNDERWATER";
-                }
-                if (clean.startsWith("ANOMALIES_DCAISSONGUARD")) {
-                    clean = clean.replace("ANOMALIES_DCAISSONGUARD", "ANOMALIES_CAISSON_GUARD_UNDERWATER");
-                }
-                if (clean.startsWith("FINDINGS_DCAISSONGUARD")) {
-                    clean = clean.replace("FINDINGS_DCAISSONGUARD", "FINDINGS_CAISSON_GUARD_UNDERWATER");
+                // Extract all <w:t> nodes
+                const wtRegex = /(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g;
+                let wtMatches: { full: string; open: string; content: string; close: string; index: number }[] = [];
+                let m;
+                while ((m = wtRegex.exec(pBody)) !== null) {
+                    wtMatches.push({
+                        full: m[0],
+                        open: m[1],
+                        content: m[2],
+                        close: m[3],
+                        index: m.index,
+                    });
                 }
 
-                return clean;
-            };
+                if (wtMatches.length <= 1) return `${pOpen}${pBody}${pClose}`;
 
-            // Pass 3: Sanitize all tag expressions across the XML
-            text = text.replace(/\{([#/\%^!?$@]?)\s*([^{}]+?)\s*\}/g, (_all, prefix, tagBody) => {
-                const clean = cleanTagName(tagBody);
-                return `{${prefix}${clean}}`;
-            });
+                // Check if any `{` does not have a corresponding `}` inside the same <w:t>
+                let modified = false;
+                for (let i = 0; i < wtMatches.length; i++) {
+                    let content = wtMatches[i].content;
+                    const openBraces = (content.match(/\{/g) || []).length;
+                    const closeBraces = (content.match(/\}/g) || []).length;
 
-            // Pass 4: Balance all loop blocks ({#TAG}, {^TAG}, {/TAG}) and auto-close inner loops
-            const loopTagRegex = /\{([#/\^])([A-Za-z0-9_]+)\}/g;
-            let match: RegExpExecArray | null;
-            const openStack: string[] = [];
-
-            let result = "";
-            let lastIndex = 0;
-
-            while ((match = loopTagRegex.exec(text)) !== null) {
-                const [fullMatch, type, rawTagName] = match;
-                const matchIndex = match.index;
-                const tagName = cleanTagName(rawTagName);
-
-                result += text.slice(lastIndex, matchIndex);
-
-                if (type === "#" || type === "^") {
-                    openStack.push(tagName);
-                    result += `{${type}${tagName}}`;
-                } else if (type === "/") {
-                    const stackIdx = openStack.map(t => t.toUpperCase()).lastIndexOf(tagName.toUpperCase());
-                    if (stackIdx !== -1) {
-                        // If there are unclosed inner tags between stackIdx and top of stack, auto-close them first
-                        const unclosedInner = openStack.splice(stackIdx + 1);
-                        if (unclosedInner.length > 0) {
-                            const autoCloseInner = unclosedInner.reverse().map(t => `{/${t}}`).join("");
-                            result += autoCloseInner;
+                    if (openBraces > closeBraces) {
+                        // Unclosed brace in this <w:t>; stitch subsequent <w:t> nodes until balanced
+                        let stitched = content;
+                        let j = i + 1;
+                        while (j < wtMatches.length) {
+                            const nextContent = wtMatches[j].content;
+                            stitched += nextContent;
+                            wtMatches[j].content = "";
+                            const currentOpens = (stitched.match(/\{/g) || []).length;
+                            const currentCloses = (stitched.match(/\}/g) || []).length;
+                            j++;
+                            if (currentCloses >= currentOpens) break;
                         }
-                        const current = openStack.pop();
-                        result += `{/${current}}`;
-                    } else {
-                        // Unopened closing tag: safely omit so Docxtemplater does not throw an unopened loop error
-                        console.warn(`[ReportGen] Safely omitted unopened closing tag: {/${tagName}}`);
+                        wtMatches[i].content = stitched;
+                        modified = true;
                     }
                 }
 
-                lastIndex = matchIndex + fullMatch.length;
-            }
+                if (!modified) return `${pOpen}${pBody}${pClose}`;
 
-            result += text.slice(lastIndex);
-            text = result;
-
-            // Pass 5: If loops remain unclosed at end of XML, auto-append closing tags
-            if (openStack.length > 0) {
-                const autoClose = openStack.reverse().map(t => `{/${t}}`).join("");
-                if (text.includes("</w:body>")) {
-                    text = text.replace("</w:body>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:body>`);
-                } else if (text.includes("</w:hdr>")) {
-                    text = text.replace("</w:hdr>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:hdr>`);
-                } else if (text.includes("</w:ftr>")) {
-                    text = text.replace("</w:ftr>", `<w:p><w:r><w:t>${autoClose}</w:t></w:r></w:p></w:ftr>`);
+                // Rebuild paragraph body with stitched <w:t> nodes
+                let newBody = "";
+                let lastIndex = 0;
+                for (const wm of wtMatches) {
+                    newBody += pBody.substring(lastIndex, wm.index);
+                    newBody += `${wm.open}${wm.content}${wm.close}`;
+                    lastIndex = wm.index + wm.full.length;
                 }
-            }
+                newBody += pBody.substring(lastIndex);
+
+                return `${pOpen}${newBody}${pClose}`;
+            });
+
+            // Safe XML Text node replacer: process text inside <w:t>...</w:t>
+            text = text.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g, (_match, openTag, textContent, closeTag) => {
+                let content = textContent;
+
+                // 1. Collapse double braces {{ → { and }} → }
+                content = content.replace(/\{\{/g, "{").replace(/\}\}/g, "}");
+
+                // 2. Clean whitespace inside braces: { TAG } -> {TAG}, {# TAG } -> {#TAG}, {/ TAG } -> {/TAG}
+                content = content.replace(/\{\s*([#/\%^!?$@]?)\s*([^{}\s]+)\s*\}/g, "{$1$2}");
+
+                // 3. Fix singular to plural mismatches (for component anomaly lists like ANOMALY_ROV -> ANOMALIES_ROV, but preserving SUMMARY and STAT tags)
+                content = content.replace(/\{([#/\%^!?$@]?)FINDING_(?!(?:SUMMARY|STAT))([A-Za-z0-9_]+)\}/g, "{$1FINDINGS_$2}");
+                content = content.replace(/\{([#/\%^!?$@]?)ANOMALY_(?!(?:SUMMARY|STAT))([A-Za-z0-9_]+)\}/g, "{$1ANOMALIES_$2}");
+
+                // 4. Fix caisson guard aliases
+                content = content.replace(/\{([#/\%^!?$@]?)HAS_FINDINGS_CAISSON_GUARD_ABOVE_UNDERWATER\}/g, "{$1HAS_FINDINGS_CAISSON_GUARD_UNDERWATER}");
+                content = content.replace(/\{([#/\%^!?$@]?)ANOMALIES_DCAISSONGUARD([A-Za-z0-9_]*)\}/g, "{$1ANOMALIES_CAISSON_GUARD_UNDERWATER$2}");
+                content = content.replace(/\{([#/\%^!?$@]?)FINDINGS_DCAISSONGUARD([A-Za-z0-9_]*)\}/g, "{$1FINDINGS_CAISSON_GUARD_UNDERWATER$2}");
+
+                return `${openTag}${content}${closeTag}`;
+            });
+
+            // 5. Document-level inverted loop disambiguation:
+            // Convert {^XYZ_PAGES}...{/XYZ_PAGES} to {#NO_XYZ_PAGES}...{/NO_XYZ_PAGES} across XML runs
+            text = text.replace(/\{\^([A-Za-z0-9_]+_PAGES)\}([\s\S]*?)\{\/\1\}/g, '{#NO_$1}$2{/NO_$1}');
+            text = text.replace(/\{\^HAS_([A-Za-z0-9_]+)\}([\s\S]*?)\{\/HAS_\1\}/g, '{#NO_$1}$2{/NO_$1}');
+            text = text.replace(/\{\^([A-Za-z0-9_]+)\}([\s\S]*?)\{\/\1\}/g, '{#NO_$1}$2{/NO_$1}');
 
             zip.file(relativePath, text);
         }
@@ -230,12 +230,228 @@ async function rotateImage90Degrees(bytes: Uint8Array): Promise<Uint8Array> {
 }
 
 /**
+ * Scans the DOCX XML for anomaly/finding filter tags and automatically resolves:
+ * 1. Missing boolean opposites: NO_<TAG> = !HAS_<TAG> (or arr.length === 0)
+ * 2. Defect-specific tags: ANOMALIES_DEFECT_<DEFECT_NAME>, HAS_ANOMALIES_DEFECT_<DEFECT_NAME>, NO_ANOMALIES_DEFECT_<DEFECT_NAME>
+ * 3. Inspection-specific tags: ANOMALIES_INSP_<INSP_TYPE>, FINDINGS_INSP_<INSP_TYPE>
+ * 4. Component code tags: ANOMALIES_CODE_<COMP_CODE>, FINDINGS_CODE_<COMP_CODE>
+ * 5. General aliases and inverted checks.
+ */
+function resolveDynamicTags(finalData: Record<string, any>, zip: PizZip) {
+    // 1. First pass: ensure all existing arrays have HAS_ and NO_ flags
+    for (const [key, value] of Object.entries(finalData)) {
+        if (Array.isArray(value)) {
+            if (finalData[`HAS_${key}`] === undefined) {
+                finalData[`HAS_${key}`] = value.length > 0;
+            }
+            if (finalData[`NO_${key}`] === undefined) {
+                finalData[`NO_${key}`] = value.length === 0;
+            }
+            if (finalData[`NO_HAS_${key}`] === undefined) {
+                finalData[`NO_HAS_${key}`] = value.length === 0;
+            }
+        } else if (typeof value === "boolean") {
+            if (key.startsWith("HAS_")) {
+                const baseName = key.replace(/^HAS_/, "");
+                if (finalData[`NO_${baseName}`] === undefined) {
+                    finalData[`NO_${baseName}`] = !value;
+                }
+                if (finalData[`NO_HAS_${baseName}`] === undefined) {
+                    finalData[`NO_HAS_${baseName}`] = !value;
+                }
+            } else if (key.startsWith("NO_")) {
+                const baseName = key.replace(/^NO_/, "");
+                if (finalData[`HAS_${baseName}`] === undefined) {
+                    finalData[`HAS_${baseName}`] = !value;
+                }
+            }
+        }
+    }
+
+    // 2. Extract all raw items to filter from
+    const rawAnomalies: any[] = Array.isArray(finalData.RAW_ANOMALIES) 
+        ? finalData.RAW_ANOMALIES 
+        : (Array.isArray(finalData.ANOMALIES) ? finalData.ANOMALIES : []);
+    
+    const rawFindings: any[] = Array.isArray(finalData.RAW_FINDINGS)
+        ? finalData.RAW_FINDINGS
+        : (Array.isArray(finalData.FINDINGS) ? finalData.FINDINGS : []);
+
+    const isROV = (item: any) => {
+        const type = String(item.inspection_type_code || item.inspection_type?.code || item.inspectionType || item.method || item.type || "").toUpperCase();
+        const desc = String(item.description || item.defect_description || item.findings || "").toUpperCase();
+        return type.includes("ROV") || type.startsWith("R") || desc.includes("ROV");
+    };
+    const isDiving = (item: any) => {
+        const type = String(item.inspection_type_code || item.inspection_type?.code || item.inspectionType || item.method || item.type || "").toUpperCase();
+        const desc = String(item.description || item.defect_description || item.findings || "").toUpperCase();
+        return type.includes("DIVE") || type.includes("DIVING") || type.startsWith("D") || desc.includes("DIVER") || desc.includes("DIVING");
+    };
+
+    const normalizeTagText = (str: string) => str.toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+    // 3. Scan XML files in zip for referenced tags
+    const docTags = new Set<string>();
+    for (const [relativePath, file] of Object.entries(zip.files)) {
+        if (!file.dir && relativePath.endsWith(".xml")) {
+            const xml = file.asText();
+            const tagRegex = /\{([#/]|\^|HAS_|NO_)?([A-Za-z0-9_]+)\}/g;
+            let m;
+            while ((m = tagRegex.exec(xml)) !== null) {
+                docTags.add(m[2]);
+            }
+        }
+    }
+
+    // 4. Dynamically resolve any tags found in the template
+    docTags.forEach(tag => {
+        const cleanTag = tag.toUpperCase();
+        let targetType: "ANOMALIES" | "FINDINGS" | null = null;
+        let suffix = "";
+
+        if (cleanTag.startsWith("ANOMALIES_") || cleanTag.startsWith("ANOMALY_")) {
+            targetType = "ANOMALIES";
+            suffix = cleanTag.replace(/^(ANOMALIES_|ANOMALY_)/, "");
+        } else if (cleanTag.startsWith("FINDINGS_") || cleanTag.startsWith("FINDING_")) {
+            targetType = "FINDINGS";
+            suffix = cleanTag.replace(/^(FINDINGS_|FINDING_)/, "");
+        }
+
+        if (targetType && suffix && !finalData[tag]) {
+            const sourceList = targetType === "ANOMALIES" ? rawAnomalies : rawFindings;
+            let filterFn: ((item: any) => boolean) | null = null;
+
+            // Pattern A: DEFECT filter (e.g. DEFECT_CP, DEFECT_CATHODIC_POTENTIAL, DEFECT_ANODE_WASTAGE, DEFECT_DEBRIS, DEFECT_VARIATION_TO_SPEC, etc.)
+            if (suffix.startsWith("DEFECT_") || suffix.startsWith("FILTER_DEFECT_")) {
+                const defectTarget = suffix.replace(/^(FILTER_)?DEFECT_/, "");
+                const methodROV = defectTarget.endsWith("_ROV");
+                const methodDive = defectTarget.endsWith("_DIVE") || defectTarget.endsWith("_DIVING");
+                const pureDefect = defectTarget.replace(/_(ROV|DIVE|DIVING)$/, "");
+                const normTarget = normalizeTagText(pureDefect);
+
+                filterFn = (item: any) => {
+                    if (methodROV && !isROV(item)) return false;
+                    if (methodDive && !isDiving(item)) return false;
+
+                    const defType = normalizeTagText(String(item.defect_type_code || item.defect_type || item.defect || ""));
+                    const defCat = normalizeTagText(String(item.defect_category_code || item.defect_category || ""));
+                    const defCode = normalizeTagText(String(item.defect_code || item.defectCode || ""));
+                    const desc = normalizeTagText(String(item.defect_description || item.description || item.findings || item.comments || ""));
+
+                    // CP special case alias: if searching CP / CATHODIC_POTENTIAL, match CP, CATHODIC POTENTIAL, etc. but exclude Anodes
+                    if (normTarget === "CP" || normTarget === "CATHODICPOTENTIAL" || normTarget === "CATHODICPROTECTION" || normTarget === "RCP") {
+                        const isAnode = defType.includes("ANODE") || defCat.includes("ANODE") || defCode.includes("ANODE");
+                        if (isAnode) return false;
+                        return defType.includes("CP") || defType.includes("CATHODIC") || defType.includes("POTENTIAL") ||
+                               defCat.includes("CP") || defCat.includes("CATHODIC") || defCat.includes("POTENTIAL") ||
+                               defCode.includes("CP") || desc.includes("CATHODIC") || desc.includes("POTENTIAL");
+                    }
+
+                    return defType.includes(normTarget) || defCat.includes(normTarget) || defCode.includes(normTarget) || desc.includes(normTarget);
+                };
+            }
+            // Pattern B: COMPONENT CODE / TYPE filter (e.g. CODE_AN, CODE_BL, CODE_CA, CODE_CD, etc.)
+            else if (suffix.startsWith("CODE_") || suffix.startsWith("FILTER_CODE_") || suffix.startsWith("COMP_") || suffix.startsWith("FILTER_COMP_")) {
+                const codeTarget = suffix.replace(/^(FILTER_)?(CODE|COMP)_/, "");
+                const methodROV = codeTarget.endsWith("_ROV");
+                const methodDive = codeTarget.endsWith("_DIVE") || codeTarget.endsWith("_DIVING");
+                const pureCode = codeTarget.replace(/_(ROV|DIVE|DIVING)$/, "");
+                const normCode = normalizeTagText(pureCode);
+
+                filterFn = (item: any) => {
+                    if (methodROV && !isROV(item)) return false;
+                    if (methodDive && !isDiving(item)) return false;
+
+                    const ct = normalizeTagText(String(item.component_type || item.component_code || ""));
+                    const qid = normalizeTagText(String(item.qid || item.component_qid || ""));
+                    return ct === normCode || ct.startsWith(normCode) || qid.startsWith(normCode);
+                };
+            }
+            // Pattern C: INSPECTION TYPE filter (e.g. INSP_RCP, INSP_CPSURV, INSP_RFMD, INSP_RMGI, etc.)
+            else if (suffix.startsWith("INSP_") || suffix.startsWith("FILTER_INSP_") || suffix.startsWith("TYPE_") || suffix.startsWith("FILTER_TYPE_")) {
+                const inspTarget = suffix.replace(/^(FILTER_)?(INSP|TYPE)_/, "");
+                const normInsp = normalizeTagText(inspTarget);
+
+                filterFn = (item: any) => {
+                    const insp = normalizeTagText(String(item.inspection_type_code || item.inspectionType || item.inspection_type?.code || item.inspection_type_name || ""));
+                    return insp.includes(normInsp);
+                };
+            }
+
+            if (filterFn) {
+                const filtered = sourceList.filter(filterFn).map((item: any, idx: number) => {
+                    const refVal = item.ref || item.ref_no || item.anom_no || item.defect_ref_no || item.id || "-";
+                    const defCode = item.defect_code || item.defectCode || item.defect || item.defect_type || "-";
+                    const qidVal = item.qid || item.structure_components?.q_id || item.component_code || item.component_id || "N/A";
+                    const elvVal = item.elevation || item.elev || item.inspection_data?.elevation || "-";
+                    const descVal = item.defect_description || item.description || item.findings || item.comments || "-";
+
+                    return {
+                        ...item,
+                        no: idx + 1,
+                        NO: idx + 1,
+                        id: idx + 1,
+                        ID: idx + 1,
+                        qid: qidVal,
+                        QID: qidVal,
+                        elevation: elvVal,
+                        elev: elvVal,
+                        ELEVATION: elvVal,
+                        ELEV: elvVal,
+                        defect_code: defCode,
+                        defect: defCode,
+                        DEFECT_CODE: defCode,
+                        DEFECT: defCode,
+                        ref: refVal,
+                        ref_no: refVal,
+                        anom_no: refVal,
+                        REF: refVal,
+                        description: descVal,
+                        DESCRIPTION: descVal,
+                        defect_description: descVal,
+                        DEFECT_DESCRIPTION: descVal,
+                    };
+                });
+
+                finalData[tag] = filtered;
+                finalData[`ANOMALIES_${suffix}`] = filtered;
+                finalData[`FINDINGS_${suffix}`] = filtered;
+                finalData[`HAS_${tag}`] = filtered.length > 0;
+                finalData[`NO_${tag}`] = filtered.length === 0;
+                finalData[`HAS_ANOMALIES_${suffix}`] = filtered.length > 0;
+                finalData[`NO_ANOMALIES_${suffix}`] = filtered.length === 0;
+                finalData[`HAS_FINDINGS_${suffix}`] = filtered.length > 0;
+                finalData[`NO_FINDINGS_${suffix}`] = filtered.length === 0;
+            }
+        }
+    });
+
+    // 5. Final pass on all HAS_ and NO_ tags to ensure complete symmetry
+    for (const key of Object.keys(finalData)) {
+        if (key.startsWith("HAS_")) {
+            const base = key.substring(4);
+            if (finalData[`NO_${base}`] === undefined) {
+                finalData[`NO_${base}`] = !finalData[key];
+            }
+        }
+        if (Array.isArray(finalData[key])) {
+            if (finalData[`HAS_${key}`] === undefined) {
+                finalData[`HAS_${key}`] = finalData[key].length > 0;
+            }
+            if (finalData[`NO_${key}`] === undefined) {
+                finalData[`NO_${key}`] = finalData[key].length === 0;
+            }
+        }
+    }
+}
+
+/**
  * Generates a DOCX report from a template.
  * - Text tags: {TAG_NAME}
  * - Image tags: {%TAG_NAME}
  * - Loop tags: {#LOOP}...{/LOOP}
  */
-export const generateTemplateReport = async ({ templateUrl, data, fileName, logoUrl, onProgress }: ReportOptions) => {
+export const generateTemplateReport = async ({ templateUrl, data, fileName, logoUrl, contractorLogoUrl, onProgress }: ReportOptions) => {
     try {
         onProgress?.(80, "Fetching report template...");
         console.log(`[ReportGen] Fetching template: ${templateUrl}`);
@@ -243,13 +459,14 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
         const content = await response.arrayBuffer();
 
-        // ── Pre-fetch Logo ───────────────────────────────────────
+        // ── Pre-fetch Logos ───────────────────────────────────────
         let logoBytes: Uint8Array | null = null;
-        if (logoUrl) {
+        const resolvedLogoUrl = logoUrl || data?.CLIENT_LOGO_URL || data?.client_logo_url || data?.COMPANY_LOGO_URL || data?.company_logo_url;
+        if (resolvedLogoUrl) {
             try {
                 onProgress?.(84, "Loading company logo...");
-                console.log(`[ReportGen] Fetching logo: ${logoUrl}`);
-                const lRes = await fetch(logoUrl);
+                console.log(`[ReportGen] Fetching logo: ${resolvedLogoUrl}`);
+                const lRes = await fetch(resolvedLogoUrl);
                 if (lRes.ok) {
                     const buf = await lRes.arrayBuffer();
                     logoBytes = toUint8Array(buf);
@@ -260,11 +477,37 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             }
         }
 
+        let contractorLogoBytes: Uint8Array | null = null;
+        const resolvedContractorLogoUrl = contractorLogoUrl || data?.CONTRACTOR_LOGO_URL || data?.contractor_logo_url || (typeof data?.CONTRACTOR_LOGO === "string" && data.CONTRACTOR_LOGO.startsWith("http") ? data.CONTRACTOR_LOGO : null);
+        if (resolvedContractorLogoUrl) {
+            try {
+                onProgress?.(86, "Loading contractor logo...");
+                console.log(`[ReportGen] Fetching contractor logo: ${resolvedContractorLogoUrl}`);
+                const clRes = await fetch(resolvedContractorLogoUrl);
+                if (clRes.ok) {
+                    const buf = await clRes.arrayBuffer();
+                    contractorLogoBytes = toUint8Array(buf);
+                    console.log(`[ReportGen] Contractor logo OK: ${contractorLogoBytes.byteLength} bytes`);
+                }
+            } catch (e) {
+                console.warn("[ReportGen] Contractor logo fetch error:", e);
+            }
+        }
+
         // ── Image cache (tagValue → Uint8Array) ─────────────────
         onProgress?.(88, "Processing embedded media and charts...");
         const imageCache: Record<string, Uint8Array> = {};
         if (logoBytes) {
             imageCache["CLIENT_LOGO"] = logoBytes;
+            imageCache["client_logo"] = logoBytes;
+            imageCache["COMPANY_LOGO"] = logoBytes;
+            imageCache["company_logo"] = logoBytes;
+            imageCache["LOGO"] = logoBytes;
+            imageCache["logo"] = logoBytes;
+        }
+        if (contractorLogoBytes) {
+            imageCache["CONTRACTOR_LOGO"] = contractorLogoBytes;
+            imageCache["contractor_logo"] = contractorLogoBytes;
         }
 
         let imageCounter = 0;
@@ -379,9 +622,18 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             }
         }
 
-        // Set logo data — the image module will call getImage("CLIENT_LOGO")
+        // Set logo data — the image module will call getImage(tag)
         if (logoBytes) {
             finalData["CLIENT_LOGO"] = "CLIENT_LOGO";
+            finalData["client_logo"] = "CLIENT_LOGO";
+            finalData["COMPANY_LOGO"] = "CLIENT_LOGO";
+            finalData["company_logo"] = "CLIENT_LOGO";
+            finalData["LOGO"] = "CLIENT_LOGO";
+            finalData["logo"] = "CLIENT_LOGO";
+        }
+        if (contractorLogoBytes) {
+            finalData["CONTRACTOR_LOGO"] = "CONTRACTOR_LOGO";
+            finalData["contractor_logo"] = "CONTRACTOR_LOGO";
         }
 
         // Legacy aliases
@@ -400,13 +652,11 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         const zip = new PizZip(content);
         normalizeDelimiters(zip);
 
+        // Dynamically resolve custom filter tags and ensure NO_ and HAS_ symmetry
+        resolveDynamicTags(finalData, zip);
+
         const imageModule = new ImageModule({
-            centered: (img: any, tagValue: string, tagName: string) => {
-                if (tagName === "CLIENT_LOGO" || tagName.includes("LOGO")) {
-                    return false;
-                }
-                return true;
-            },
+            centered: false,
             getImage: (tagValue: string) => {
                 console.log("[ReportGen] getImage called for:", tagValue);
                 const cached = imageCache[tagValue];
@@ -420,15 +670,16 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
                 if (dims) {
                     const [origW, origH] = dims;
                     const ratio = origW / origH;
+                    const tagUpper = (tagName || "").toUpperCase();
                     
-                    if (tagName === "CLIENT_LOGO" || tagName.includes("LOGO")) {
+                    if (tagUpper.includes("LOGO")) {
                         // Fit to max height of 80px for logos
                         const maxH = 80;
                         const h = Math.min(origH, maxH);
                         const w = Math.round(h * ratio);
-                        console.log(`[ReportGen] Logo size: ${origW}x${origH} → ${w}x${h}`);
+                        console.log(`[ReportGen] Logo size (${tagName}): ${origW}x${origH} → ${w}x${h}`);
                         return [w, h];
-                    } else if (tagName === "page_image" || tagName.includes("page_image")) {
+                    } else if (tagUpper.includes("PAGE_IMAGE") || (tagUpper.includes("PHOTO") && origH >= 900)) {
                         // Fit inside portrait page with header table without pushing to a new page
                         console.log(`[ReportGen] Page image scaled to fit page: 680x800`);
                         return [680, 800];
@@ -452,6 +703,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             paragraphLoop: true,
             linebreaks: true,
             modules: [imageModule],
+            nullGetter: () => "",
         });
         doc.setData(finalData);
 
@@ -473,6 +725,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
             const doc2 = new Docxtemplater(zip2, {
                 paragraphLoop: true,
                 linebreaks: true,
+                nullGetter: () => "",
             });
             doc2.setData(textData);
             doc2.render();

@@ -41,9 +41,11 @@ export const SECTION_COMPONENT_FILTERS: Record<string, {
     includeCodes?: string[];
     includeQidPrefixes?: string[];
     includeInspTypes?: string[];
+    includeDefectTypes?: string[];
     excludeCodes?: string[];
     excludeQidPrefixes?: string[];
     excludeInspTypes?: string[];
+    excludeDefectTypes?: string[];
 }> = {
     // ── GVI: Main structural jacket components only ──
     // Excludes all appurtenances (Risers, Caissons, Conductors, Boat Landings, Anodes, etc.)
@@ -184,21 +186,34 @@ export const SECTION_COMPONENT_FILTERS: Record<string, {
         includeQidPrefixes: ["SG"]
     },
 
-    // ── Cathodic Potential / Anode Sections ──
+    // ── Cathodic Potential (CP) Survey Section (Strictly CP potential / survey anomalies) ──
     cp: {
-        includeCodes: ["AN", "ANODE", "CP", "IA"],
-        includeQidPrefixes: ["AN", "CP"],
-        includeInspTypes: ["ANODE", "CP", "RCP", "SANI"]
+        includeCodes: ["CP", "IA"],
+        includeQidPrefixes: ["CP"],
+        includeInspTypes: ["CP", "RCP", "CPSURV", "CPCLB", "CATHODIC", "POTENTIAL"],
+        includeDefectTypes: [
+            "CATHODIC POTENTIAL", "CP", "CP POTENTIAL", "LOW CP", "CP READING", 
+            "CATHODIC POTENTIAL OVER PROTECTED", "CATHODIC POTENTIAL UNDER PROTECTED",
+            "OVER PROTECTED", "UNDER PROTECTED", "POTENTIAL"
+        ],
+        excludeCodes: ["AN", "ANODE"],
+        excludeQidPrefixes: ["AN", "BAN"],
+        excludeDefectTypes: [
+            "ANODE WASTAGE", "ANODE NOT PRESENT", "ANODE MISSING", "ANODE CORROSION",
+            "ANODE WASTAGE ANODE BAR PARTIALLY VISIBLE"
+        ]
     },
+
+    // ── Anode Sections ──
     anode_gen: {
         includeCodes: ["AN", "ANODE", "CP", "IA"],
         includeQidPrefixes: ["AN", "CP"],
-        includeInspTypes: ["ANODE", "CP", "RGVI", "GVI"]
+        includeInspTypes: ["ANODE", "CP", "RGVI", "GVI", "RAN", "SANI", "RSANI"]
     },
     anode_sel: {
         includeCodes: ["AN", "ANODE", "CP", "IA"],
         includeQidPrefixes: ["AN", "CP"],
-        includeInspTypes: ["ANODE", "CP"]
+        includeInspTypes: ["ANODE", "CP", "SANI", "RSANI"]
     },
     anode_maint: {
         includeCodes: ["AN", "ANODE", "CP"],
@@ -243,9 +258,11 @@ export function isItemMatchingSection(item: any, sectionId: string): boolean {
     if (!config) return true; // Default (e.g. intro, anomaly_finding, incomplete) matches all
 
     const ct = String(item.component_type || item.component_code || "").toUpperCase().trim();
-    const qid = String(item.qid || "").toUpperCase().trim();
-    const insp = String(item.inspection_type_code || item.inspectionType || "").toUpperCase().trim();
-    const desc = String(item.description || "").toUpperCase();
+    const qid = String(item.qid || item.component_qid || "").toUpperCase().trim();
+    const insp = String(item.inspection_type_code || item.inspectionType || item.inspection_type?.code || "").toUpperCase().trim();
+    const defectType = String(item.defect_type_code || item.defect_type || item.defect || "").toUpperCase().trim();
+    const defectCat = String(item.defect_category_code || item.defect_category || "").toUpperCase().trim();
+    const desc = String(item.description || item.defect_description || "").toUpperCase();
 
     // 1. Check exclusions
     if (config.excludeCodes && config.excludeCodes.some(c => ct === c || ct.startsWith(c))) {
@@ -257,18 +274,38 @@ export function isItemMatchingSection(item: any, sectionId: string): boolean {
     if (config.excludeInspTypes && config.excludeInspTypes.some(t => insp.includes(t))) {
         return false;
     }
+    if (config.excludeDefectTypes && config.excludeDefectTypes.some(d => defectType === d || defectCat === d || defectType.includes(d) || defectCat.includes(d))) {
+        return false;
+    }
 
     // 2. If inclusion rules are defined, at least one must match
     const hasInclusions = (config.includeCodes && config.includeCodes.length > 0) ||
                           (config.includeQidPrefixes && config.includeQidPrefixes.length > 0) ||
-                          (config.includeInspTypes && config.includeInspTypes.length > 0);
+                          (config.includeInspTypes && config.includeInspTypes.length > 0) ||
+                          (config.includeDefectTypes && config.includeDefectTypes.length > 0);
 
     if (hasInclusions) {
         const matchesCode = config.includeCodes ? config.includeCodes.some(c => ct === c || ct.startsWith(c)) : false;
         const matchesQid = config.includeQidPrefixes ? config.includeQidPrefixes.some(p => qid.startsWith(p)) : false;
-        const matchesInsp = config.includeInspTypes ? config.includeInspTypes.some(t => insp.includes(t) || desc.includes(t)) : false;
+        const inspName = String(item.inspection_type?.name || item.inspection_type_name || "").toUpperCase();
+        const matchesInsp = config.includeInspTypes ? config.includeInspTypes.some(t => insp.includes(t) || inspName.includes(t) || desc.includes(t)) : false;
+        const matchesDefect = config.includeDefectTypes ? config.includeDefectTypes.some(d => defectType.includes(d) || defectCat.includes(d) || desc.includes(d)) : false;
 
-        return matchesCode || matchesQid || matchesInsp;
+        // CP Section special case: also match records that contain CP readings
+        let matchesReading = false;
+        if (sectionId === "cp") {
+            const d = (typeof item.inspection_data === "string" ? (() => { try { return JSON.parse(item.inspection_data); } catch { return {}; } })() : item.inspection_data) || item.inspection_dat || {};
+            const primaryCP = item.cp_reading ?? item.cp_rdg ?? item.cp_reading_mv ?? item.cp ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_reading;
+            if (primaryCP !== undefined && primaryCP !== null && String(primaryCP).trim() !== "" && String(primaryCP).trim() !== "-" && String(primaryCP).trim().toUpperCase() !== "N/A") {
+                matchesReading = true;
+            }
+            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+            if (additionals.some((a: any) => { const v = a?.reading ?? a?.cp_rdg ?? a?.cp; return v !== undefined && v !== null && String(v).trim() !== ""; })) {
+                matchesReading = true;
+            }
+        }
+
+        return matchesCode || matchesQid || matchesInsp || matchesDefect || matchesReading;
     }
 
     return true;
