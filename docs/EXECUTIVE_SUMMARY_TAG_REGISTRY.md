@@ -21,8 +21,9 @@ This document serves as the definitive reference for designing DOCX templates fo
 | `{{DATE}}` | System | Current date (DD/MM/YYYY) |
 | `{{SHORT_DATE}}` | JobPack metadata → istart | Short date with month and year from jobpack start date (e.g. Jun 2026) |
 | `{{TODAY_SHORT}}` | System | Current date formatted as dd-Mon-yyyy (e.g. 27-Jun-2026) |
-| `{{CLIENT_NAME}}` | Company Settings → company_name | Name of the client |
-| `{{CLIENT_SHORT}}` | Contractors library matching Client Name | The short name for the client (Client ID) |
+| `{{CLIENT_NAME}}` | Preferences → Company Information (`company_name`) | Full Name of the client/operator |
+| `{{CLIENT_SHORT}}` | Preferences → Company Information (`client_short`) / Contractors library fallback | The short code/abbreviation for the client (e.g. PCSB) |
+| `{{CLIENT_SHORT_UPPER}}` | Preferences (`client_short`) in uppercase | The short code for the client in uppercase (e.g. PCSB) |
 | `{{DEPARTMENT}}` | Company Settings → department_name | Department name |
 | `{{PROJECT_NAME}}` | Company Settings → project_name | Project name |
 | `{{VESSEL_NAME}}` | JobPack metadata → vessel | Inspection vessel name |

@@ -116,6 +116,19 @@ export const generateDefectCriteriaReport = async (
             console.error("Error fetching rules", e);
         }
 
+        // 4. Fetch Active MGI Profiles (Active only)
+        let activeMgiProfiles: any[] = [];
+        try {
+            const mgiRes = await fetch('/api/mgi-profiles');
+            if (mgiRes.ok) {
+                const mgiData = await mgiRes.json();
+                const allMgi = Array.isArray(mgiData) ? mgiData : (mgiData.data || []);
+                activeMgiProfiles = allMgi.filter((p: any) => p.is_active && !p.is_archived);
+            }
+        } catch (e) {
+            console.error("Error fetching MGI profiles", e);
+        }
+
         // --- REPORT GENERATION helper ---
         const addHeader = async (pageNum: number) => {
             if (isPrintFriendly) {
@@ -294,9 +307,10 @@ export const generateDefectCriteriaReport = async (
                 groupRules.forEach(rule => {
                     // Format Threshold
                     let condition = "N/A";
-                    if (rule.thresholdOperator) {
+                    if (rule.thresholdOperator || rule.thresholdText) {
+                        const op = rule.thresholdOperator || (rule.thresholdText ? 'LIKE' : '');
                         const val = rule.thresholdText || rule.thresholdValue;
-                        condition = `${rule.thresholdOperator} ${val}`;
+                        condition = `${op} ${val}`.trim();
                     }
 
                     // Format Priority
@@ -306,9 +320,13 @@ export const generateDefectCriteriaReport = async (
                     const defectTypeRaw = getLibraryLabel(libraryData.defectTypes, rule.defectTypeId);
                     const defectType = toProperCase(defectTypeRaw);
 
+                    const structureGroupDisplay = rule.structureGroup 
+                        ? rule.structureGroup.split(',').map((s: string) => s.trim()).filter(Boolean).join(', ')
+                        : "-";
+
                     tableBody.push([
                         rule.order || "-",
-                        rule.structureGroup,
+                        structureGroupDisplay,
                         defectType,
                         condition,
                         { content: prioLabel, styles: {halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]}, rawPriorityId: rule.priorityId },
@@ -341,11 +359,11 @@ export const generateDefectCriteriaReport = async (
                     valign: 'middle'
                 },
                 columnStyles: {
-                    0: { cellWidth: 12, halign: 'center' }, // Order
-                    1: { cellWidth: 30, halign: 'center' }, // Structure Group
-                    2: { cellWidth: 50, halign: 'left' },   // Defect Type (Increased)
-                    3: { cellWidth: 25, halign: 'center' }, // Condition
-                    4: { cellWidth: 25, halign: 'center' }, // Priority
+                    0: { cellWidth: 10, halign: 'center' }, // Order
+                    1: { cellWidth: 34, halign: 'center' }, // Structure Group
+                    2: { cellWidth: 46, halign: 'left' },   // Defect Type
+                    3: { cellWidth: 24, halign: 'center' }, // Condition
+                    4: { cellWidth: 24, halign: 'center' }, // Priority
                     5: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
                 },
                 didDrawPage: (data: any) => {
@@ -383,6 +401,148 @@ export const generateDefectCriteriaReport = async (
             });
 
             currentY = (doc as any).lastAutoTable.finalY + 10;
+        }
+
+        // --- SECTION: Active Marine Growth Inspection (MGI) Profile Settings ---
+        if (activeMgiProfiles.length > 0 || hasContent) {
+            // Check for page break space
+            if (currentY > pageHeight - 55) {
+                doc.addPage();
+                currentY = 35;
+            } else if (hasContent) {
+                currentY += 2;
+            }
+
+            // Section Header Banner
+            if (isPrintFriendly) {
+                doc.setFillColor(240, 240, 240);
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.rect(10, currentY, pageWidth - 20, 8, "FD");
+                doc.setTextColor(0, 0, 0);
+            } else {
+                doc.setFillColor(...sectionBlue);
+                doc.rect(10, currentY, pageWidth - 20, 8, "F");
+                doc.setTextColor(255, 255, 255);
+            }
+            doc.setFontSize(10);
+            doc.setFont("helvetica", "bold");
+            doc.text("Marine Growth Inspection (MGI) - Active Profile Settings", 12, currentY + 5.5);
+
+            doc.setFontSize(8);
+            doc.setFont("helvetica", "normal");
+            const activeProfileCountText = activeMgiProfiles.length === 1 
+                ? "1 Active Profile" 
+                : `${activeMgiProfiles.length} Active Profiles`;
+            doc.text(activeProfileCountText, pageWidth - 12, currentY + 5.5, { align: "right" });
+
+            currentY += 12;
+
+            if (activeMgiProfiles.length === 0) {
+                doc.setTextColor(100, 100, 100);
+                doc.setFontSize(8);
+                doc.setFont("helvetica", "italic");
+                doc.text("(No active MGI profiles currently configured in system settings)", 12, currentY);
+                currentY += 10;
+            } else {
+                hasContent = true;
+                for (const profile of activeMgiProfiles) {
+                    if (currentY > pageHeight - 45) {
+                        doc.addPage();
+                        currentY = 35;
+                    }
+
+                    // Profile Details Info
+                    doc.setTextColor(15, 23, 42);
+                    doc.setFontSize(9.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.text(`Profile: ${profile.name}`, 12, currentY);
+
+                    const typeBadge = profile.is_job_specific ? "Job-Specific Profile" : "Global Default Profile";
+                    doc.setFontSize(7.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...sectionBlue);
+                    doc.text(`[${typeBadge}]`, pageWidth - 12, currentY, { align: "right" });
+
+                    currentY += 4.5;
+
+                    if (profile.description) {
+                        doc.setFontSize(7.5);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(`Description: ${profile.description}`, 12, currentY);
+                        currentY += 4.5;
+                    }
+
+                    // Thresholds Table
+                    const rawThresholds = Array.isArray(profile.thresholds) ? profile.thresholds : [];
+                    const mgiTableBody: any[] = [];
+
+                    if (rawThresholds.length === 0) {
+                        mgiTableBody.push([
+                            { content: "No elevation thresholds defined for this profile", colSpan: 4, styles: { halign: 'center', textColor: [120, 120, 120] } }
+                        ]);
+                    } else {
+                        rawThresholds.forEach((t: any, idx: number) => {
+                            let elevLabel = String(t.from_elevation ?? "-").trim();
+                            if (elevLabel.toUpperCase() === "MSL") elevLabel = "MSL (0.00m)";
+                            else if (elevLabel.toUpperCase() === "MUDLINE") elevLabel = "Mudline (Seabed Level)";
+                            else if (!isNaN(Number(elevLabel))) elevLabel = `${Number(elevLabel).toFixed(2)} m`;
+
+                            const maxThick = t.max_thickness != null ? `${t.max_thickness} mm` : "N/A";
+                            const ruleDesc = idx === 0 
+                                ? "From surface level downwards to next segment"
+                                : (idx === rawThresholds.length - 1 
+                                    ? "From this elevation downwards to Mudline" 
+                                    : "Interpolated depth segment limit");
+
+                            mgiTableBody.push([
+                                idx + 1,
+                                elevLabel,
+                                maxThick,
+                                ruleDesc
+                            ]);
+                        });
+                    }
+
+                    autoTable(doc, {
+                        startY: currentY,
+                        head: [['Segment', 'From Elevation / Reference Level', 'Max Allowable Thickness', 'Application Rule']],
+                        body: mgiTableBody,
+                        theme: 'grid',
+                        headStyles: {
+                            fillColor: tableHeaderColor,
+                            textColor: [0, 0, 0],
+                            fontStyle: 'bold',
+                            lineWidth: 0.1,
+                            lineColor: [200, 200, 200],
+                            halign: 'center',
+                            valign: 'middle',
+                            minCellHeight: 8
+                        },
+                        styles: {
+                            fontSize: 7.5,
+                            cellPadding: 2,
+                            lineColor: [200, 200, 200],
+                            lineWidth: 0.1,
+                            textColor: [50, 50, 50],
+                            valign: 'middle'
+                        },
+                        columnStyles: {
+                            0: { cellWidth: 18, halign: 'center' }, // Segment
+                            1: { cellWidth: 55, halign: 'center' }, // From Elevation
+                            2: { cellWidth: 45, halign: 'center', fontStyle: 'bold' }, // Max Allowable Thickness
+                            3: { cellWidth: 'auto', halign: 'left' }  // Application Rule
+                        },
+                        didDrawPage: (data: any) => {
+                            if (data.pageNumber > 1) addHeader(data.pageNumber);
+                        },
+                        margin: { top: 35, bottom: 20, left: 10, right: 10 },
+                    });
+
+                    currentY = (doc as any).lastAutoTable.finalY + 8;
+                }
+            }
         }
 
         const finalY = (doc as any).lastAutoTable?.finalY ?? (currentY);

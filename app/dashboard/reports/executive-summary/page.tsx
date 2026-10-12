@@ -435,6 +435,39 @@ export default function ExecutiveSummaryPage() {
         });
 
         try {
+            // Step 1: Preload template early to inspect required tags and eliminate duplicate download
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 10,
+                status: "Analyzing document template structure...",
+            }));
+
+            let preloadedTemplateBuffer: ArrayBuffer | null = null;
+            const activeTemplateTags = new Set<string>();
+
+            try {
+                const tRes = await fetch(template.storage_path);
+                if (tRes.ok) {
+                    preloadedTemplateBuffer = await tRes.arrayBuffer();
+                    const PizZip = (await import("pizzip")).default || (await import("pizzip"));
+                    const zip = new PizZip(preloadedTemplateBuffer);
+                    const { normalizeDelimiters } = await import("@/utils/report-generators/template-report-generator");
+                    normalizeDelimiters(zip);
+                    preloadedTemplateBuffer = zip.generate({ type: "arraybuffer" });
+                    const docFiles = zip.file(/word\/(document|header\d*|footer\d*)\.xml/);
+                    for (const df of docFiles) {
+                        const xmlText = df.asText();
+                        const tagRegex = /\{[#/\%^!?$@]?([A-Za-z0-9_]+)\}/g;
+                        let m: RegExpExecArray | null;
+                        while ((m = tagRegex.exec(xmlText)) !== null) {
+                            activeTemplateTags.add(m[1].toUpperCase());
+                        }
+                    }
+                }
+            } catch (tErr) {
+                console.warn("[ExecutiveSummary] Could not preload/analyze template tags:", tErr);
+            }
+
             const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             
             const sections = EXECUTIVE_SUMMARY_TOC.map((s, idx) => {
@@ -501,7 +534,7 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 15,
+                percent: 20,
                 status: "Fetching report aliases and contractor profiles...",
             }));
 
@@ -541,7 +574,7 @@ export default function ExecutiveSummaryPage() {
             setExportProgress(prev => ({
                 ...prev,
                 percent: 30,
-                status: "Loading and mapping detailed inspection records...",
+                status: "Fetching detailed inspection records...",
             }));
 
             // Fetch Detailed Records
@@ -556,6 +589,12 @@ export default function ExecutiveSummaryPage() {
             const recordsData = await recordsRes.json();
             const allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
 
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 42,
+                status: "Mapping inspection data and attachments...",
+            }));
+
             // Map data for DOCX
             const mappedData = await mapInspectionDataForDocx(
                 allRecords,
@@ -563,93 +602,116 @@ export default function ExecutiveSummaryPage() {
                 jp,
                 str,
                 selections.sowReportNo,
-                companySettings?.data
+                companySettings?.data,
+                activeTemplateTags
             );
 
-            // Generate MGI Graph if applicable
-            const mgiRecords = allRecords.filter((r: any) => 
-                (r.inspection_type?.code || "").toUpperCase() === "RMGI" || 
-                (r.inspection_type?.code || "").toUpperCase() === "MGROW"
-            );
-            if (mgiRecords.length > 0) {
-                const mgiGraph = await generateMgiProfileImage(mgiRecords);
-                if (mgiGraph) {
-                    mappedData.MGI_GRAPH = {
-                        data: mgiGraph,
-                        extension: '.png'
-                    };
-                }
-            }
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 55,
+                status: "Processing visual documentation and graphs...",
+            }));
 
-            // Generate Seabed Map Graph if applicable
-            const seabedRecords = allRecords.filter((r: any) => 
-                (r.inspection_type?.code || "").toUpperCase() === "RSEAB"
-            );
-            if (seabedRecords.length > 0) {
-                const seabedGraph = await generateSeabedMapImage(seabedRecords);
-                if (seabedGraph) {
-                    mappedData.SEABED_GRAPH = {
-                        data: seabedGraph,
-                        extension: '.png'
-                    };
-                }
-            }
-
-            // Fetch Structure Visuals (Visual Documentation from Engineering Library)
-            let structureVisuals: any[] = [];
-            try {
-                const structType = (str?.str_type || "PLATFORM").toLowerCase();
-                const sourceType = `${structType}_structure_image`;
-                const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}`);
-                if (apiRes.ok) {
-                    const apiJson = await apiRes.json();
-                    const visualAtts = apiJson.data;
-
-                    if (visualAtts && Array.isArray(visualAtts)) {
-                        const { createClient } = await import("@/utils/supabase/client");
-                        const supabase = createClient();
-
-                        structureVisuals = await Promise.all(visualAtts.map(async (att: any) => {
-                            const title = att.meta?.title || att.name || "Visual Documentation";
-                            const description = att.meta?.description || att.description || "";
-
-                            let imgData: any = null;
-                            try {
-                                const { data: blob, error: downloadError } = await supabase.storage
-                                    .from("attachments")
-                                    .download(att.path);
-
-                                if (blob && !downloadError) {
-                                    const arrayBuffer = await blob.arrayBuffer();
-                                    imgData = new Uint8Array(arrayBuffer);
-                                } else if (downloadError) {
-                                    console.error("Error downloading visual attachment:", downloadError);
-                                }
-                            } catch (downloadErr) {
-                                console.error("Failed to download attachment from storage:", downloadErr);
-                            }
-
-                            if (!imgData) {
-                                imgData = `/api/attachment/url?id=${att.id}`;
-                            }
-
-                            const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
-
-                            return {
-                                title,
-                                description,
-                                photo: { data: imgData, extension: fileExt }
-                            };
-                        }));
+            // Generate MGI Graph if applicable and requested by template
+            if (!activeTemplateTags.size || activeTemplateTags.has("MGI_GRAPH") || activeTemplateTags.has("HAS_MGI_GRAPH")) {
+                const mgiRecords = allRecords.filter((r: any) => 
+                    (r.inspection_type?.code || "").toUpperCase() === "RMGI" || 
+                    (r.inspection_type?.code || "").toUpperCase() === "MGROW"
+                );
+                if (mgiRecords.length > 0) {
+                    const mgiGraph = await generateMgiProfileImage(mgiRecords);
+                    if (mgiGraph) {
+                        mappedData.MGI_GRAPH = {
+                            data: mgiGraph,
+                            extension: '.png'
+                        };
                     }
                 }
-            } catch (e) {
-                console.warn("Error fetching visual attachments:", e);
+            }
+
+            // Generate Seabed Map Graph if applicable and requested by template
+            if (!activeTemplateTags.size || activeTemplateTags.has("SEABED_GRAPH") || activeTemplateTags.has("HAS_SEABED_GRAPH")) {
+                const seabedRecords = allRecords.filter((r: any) => 
+                    (r.inspection_type?.code || "").toUpperCase() === "RSEAB"
+                );
+                if (seabedRecords.length > 0) {
+                    const seabedGraph = await generateSeabedMapImage(seabedRecords);
+                    if (seabedGraph) {
+                        mappedData.SEABED_GRAPH = {
+                            data: seabedGraph,
+                            extension: '.png'
+                        };
+                    }
+                }
+            }
+
+            // Fetch Structure Visuals only if the template actually uses them
+            let structureVisuals: any[] = [];
+            const needsVisuals = !activeTemplateTags.size || 
+                activeTemplateTags.has("STRUCTURE_VISUALS") || 
+                activeTemplateTags.has("HAS_VISUALS") || 
+                activeTemplateTags.has("VISUALS");
+
+            if (needsVisuals) {
+                try {
+                    const structType = (str?.str_type || "PLATFORM").toLowerCase();
+                    const sourceType = `${structType}_structure_image`;
+                    const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}`);
+                    if (apiRes.ok) {
+                        const apiJson = await apiRes.json();
+                        const visualAtts = Array.isArray(apiJson.data) ? apiJson.data.slice(0, 6) : [];
+
+                        if (visualAtts.length > 0) {
+                            const { createClient } = await import("@/utils/supabase/client");
+                            const supabase = createClient();
+
+                            structureVisuals = await Promise.all(visualAtts.map(async (att: any) => {
+                                const title = att.meta?.title || att.name || "Visual Documentation";
+                                const description = att.meta?.description || att.description || "";
+
+                                let imgData: any = null;
+                                try {
+                                    // 6-second timeout guard to prevent storage downloads from hanging
+                                    const downloadPromise = supabase.storage
+                                        .from("attachments")
+                                        .download(att.path);
+                                    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => 
+                                        setTimeout(() => reject(new Error("Timeout")), 6000)
+                                    );
+                                    const { data: blob, error: downloadError } = await Promise.race([downloadPromise, timeoutPromise]) as any;
+
+                                    if (blob && !downloadError) {
+                                        const arrayBuffer = await blob.arrayBuffer();
+                                        imgData = new Uint8Array(arrayBuffer);
+                                    } else if (downloadError) {
+                                        console.warn("Storage download failed, using URL fallback:", downloadError);
+                                    }
+                                } catch (downloadErr) {
+                                    console.warn("Storage download skipped or timed out, using URL fallback:", downloadErr);
+                                }
+
+                                if (!imgData) {
+                                    imgData = `/api/attachment/url?id=${att.id}`;
+                                }
+
+                                const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
+
+                                return {
+                                    title,
+                                    description,
+                                    photo: { data: imgData, extension: fileExt }
+                                };
+                            }));
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Error fetching visual attachments:", e);
+                }
             }
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 35,
+                percent: 65,
                 status: "Fetching anomaly and defect records...",
             }));
 
@@ -2064,6 +2126,10 @@ export default function ExecutiveSummaryPage() {
                 // ── Company / Client Info ────────────────────────────
                 CLIENT_NAME: companySettings?.data?.company_name || jp?.metadata?.contrac || "N/A",
                 CLIENT_SHORT: (() => {
+                    const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+                    if (customShort && String(customShort).trim()) {
+                        return String(customShort).trim();
+                    }
                     const clientName = companySettings?.data?.company_name;
                     if (!clientName) return "N/A";
                     const matched = contractors.find((c: any) => 
@@ -2805,9 +2871,16 @@ export default function ExecutiveSummaryPage() {
                 }
             });
 
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 78,
+                status: "Compiling executive summary tables and metrics...",
+            }));
+
             const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
             await generateTemplateReport({
                 templateUrl: template.storage_path,
+                preloadedTemplate: preloadedTemplateBuffer || undefined,
                 data: reportData,
                 fileName: `${str?.str_name || "Structure"}_Executive_Summary_${reportType}.docx`,
                 logoUrl: companySettings?.data?.logo_url,
@@ -2974,6 +3047,10 @@ export default function ExecutiveSummaryPage() {
 
         const clientName = companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]";
         const clientShort = (() => {
+            const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+            if (customShort && String(customShort).trim()) {
+                return String(customShort).trim();
+            }
             const clientName = companySettings?.data?.company_name;
             if (!clientName) return "[CLIENT_SHORT]";
             const matched = contractors.find((c: any) => 
@@ -3371,6 +3448,10 @@ export default function ExecutiveSummaryPage() {
                     reportNo: selections.sowReportNo,
                     client: companySettings?.data?.company_name,
                     clientShort: (() => {
+                        const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+                        if (customShort && String(customShort).trim()) {
+                            return String(customShort).trim();
+                        }
                         const clientName = companySettings?.data?.company_name;
                         if (!clientName) return "N/A";
                         const matched = contractors.find((c: any) => 

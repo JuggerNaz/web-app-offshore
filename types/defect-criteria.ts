@@ -39,7 +39,7 @@ export interface DefectCriteriaProcedure {
 // DEFECT CRITERIA RULES
 // ============================================================================
 
-export type ThresholdOperator = '>' | '<' | '>=' | '<=' | '==' | '!=';
+export type ThresholdOperator = '>' | '<' | '>=' | '<=' | '==' | '!=' | 'LIKE';
 
 export interface DefectCriteriaRule {
     id: string;                    // BIGINT from sequence (transmitted as string in JSON)

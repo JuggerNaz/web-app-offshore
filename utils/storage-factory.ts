@@ -257,14 +257,36 @@ class GoogleDriveStorageHandler implements StorageHandler {
  * AWS S3 Storage Implementation
  */
 class AWSS3StorageHandler implements StorageHandler {
-  private client: S3Client;
-  private bucket: string;
-  private endpoint?: string;
+  protected client: S3Client;
+  protected bucket: string;
+  protected endpoint?: string;
+  protected hasCredentials: boolean;
 
   constructor(config: any = {}) {
     const safeConfig = config || {};
-    const creds = (safeConfig.accessKeyId && safeConfig.secretAccessKey)
-      ? { accessKeyId: safeConfig.accessKeyId, secretAccessKey: safeConfig.secretAccessKey }
+    const accessKeyId = safeConfig.accessKeyId || 
+      safeConfig.keyId || 
+      safeConfig.b2KeyId || 
+      safeConfig.applicationKeyId || 
+      process.env.B2_APPLICATION_KEY_ID || 
+      process.env.BACKBLAZE_APPLICATION_KEY_ID || 
+      process.env.BACKBLAZE_KEY_ID || 
+      process.env.AWS_ACCESS_KEY_ID;
+
+    const secretAccessKey = safeConfig.secretAccessKey || 
+      safeConfig.applicationKey || 
+      safeConfig.secretKey || 
+      safeConfig.b2AppKey || 
+      safeConfig.appKey || 
+      process.env.B2_APPLICATION_KEY || 
+      process.env.BACKBLAZE_APPLICATION_KEY || 
+      process.env.BACKBLAZE_KEY || 
+      process.env.AWS_SECRET_ACCESS_KEY;
+
+    this.hasCredentials = Boolean(accessKeyId && secretAccessKey);
+
+    const creds = this.hasCredentials
+      ? { accessKeyId: String(accessKeyId).trim(), secretAccessKey: String(secretAccessKey).trim() }
       : undefined;
 
     this.client = new S3Client({
@@ -273,7 +295,7 @@ class AWSS3StorageHandler implements StorageHandler {
       forcePathStyle: !!safeConfig.endpoint, // Needed for many S3-compatible providers
       ...(creds ? { credentials: creds } : {}),
     });
-    this.bucket = safeConfig.bucket || "web-app-offshore";
+    this.bucket = safeConfig.bucket || process.env.B2_BUCKET_NAME || process.env.AWS_BUCKET_NAME || "web-app-offshore";
     this.endpoint = safeConfig.endpoint;
   }
 
@@ -342,18 +364,36 @@ class AWSS3StorageHandler implements StorageHandler {
           key = pathParts.join("/");
         }
       } catch (e) {
-        console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
+        console.warn(`[${this.constructor.name}] Failed to parse URL ${filePath}, using as-is`);
       }
     } else if (this.bucket && key.startsWith(`${this.bucket}/`)) {
       key = key.slice(this.bucket.length + 1);
     }
     key = key.replace(/^\/+/, "");
 
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
-    return await getSignedUrl(this.client, command, { expiresIn });
+    // If credentials are not present, do NOT invoke AWS presigner which hangs for 4.2 seconds searching IMDS
+    if (!this.hasCredentials) {
+      console.warn(`[${this.constructor.name}] No credentials configured for S3/B2. Skipping getSignedUrl.`);
+      if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+        return filePath;
+      }
+      if (this.endpoint) {
+        const urlObj = new URL(this.endpoint);
+        return `${urlObj.protocol}//${urlObj.host}/${this.bucket}/${key}`;
+      }
+      return filePath || "";
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+      });
+      return await getSignedUrl(this.client, command, { expiresIn });
+    } catch (e: any) {
+      console.warn(`[${this.constructor.name}] getSignedUrl failed:`, e?.message || e);
+      return filePath || "";
+    }
   }
 }
 
@@ -363,7 +403,7 @@ class AWSS3StorageHandler implements StorageHandler {
 class BackblazeB2StorageHandler extends AWSS3StorageHandler {
   constructor(config: any = {}) {
     const safeConfig = config || {};
-    let region = safeConfig.region || "us-west-004";
+    let region = safeConfig.region || process.env.B2_REGION || "us-east-005";
     let endpoint = "";
 
     // If user pasted the full endpoint (e.g. s3.us-east-005.backblazeb2.com)
@@ -375,10 +415,12 @@ class BackblazeB2StorageHandler extends AWSS3StorageHandler {
       const match = cleanEndpoint.match(/s3\.([^.]+)\./);
       region = match ? match[1] : region.split('.')[1] || "us-east-005";
     } else {
-      endpoint = `https://s3.${region || "us-west-004"}.backblazeb2.com`;
+      endpoint = `https://s3.${region || "us-east-005"}.backblazeb2.com`;
     }
 
-    super({ ...safeConfig, region, endpoint });
+    const bucket = safeConfig.bucket || process.env.B2_BUCKET_NAME || "web-app-offshore";
+
+    super({ ...safeConfig, region, endpoint, bucket });
   }
 }
 

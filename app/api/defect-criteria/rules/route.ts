@@ -41,7 +41,7 @@ export const GET = withTenant(async (request, { companyId }) => {
             nominalThickness: r.nominal_thickness,
             thresholdValue: r.threshold_value,
             thresholdText: r.threshold_text,
-            thresholdOperator: r.threshold_operator,
+            thresholdOperator: r.threshold_operator || (r.threshold_text && (r.custom_parameters?.operator === 'LIKE' || !r.threshold_operator) ? 'LIKE' : r.threshold_operator),
             customParameters: r.custom_parameters,
             autoFlag: r.auto_flag,
             alertMessage: r.alert_message,
@@ -98,32 +98,47 @@ export const POST = withTenant(async (request, { companyId }) => {
 
         const nextOrder = maxOrderRule ? maxOrderRule.rule_order + 1 : 1;
 
-        const { data, error } = await (supabase as any)
+        const insertPayload: any = {
+            procedure_id: procedureId,
+            structure_group: structureGroup,
+            field_name: fieldName || null,
+            priority_id: priorityId,
+            defect_code_id: defectCodeId,
+            defect_type_id: defectTypeId,
+            jobpack_type: jobpackType || null,
+            elevation_min: elevationMin || null,
+            elevation_max: elevationMax || null,
+            nominal_thickness: nominalThickness || null,
+            threshold_value: thresholdValue || null,
+            threshold_text: thresholdText || null,
+            threshold_operator: thresholdOperator || null,
+            custom_parameters: customParameters || null,
+            auto_flag: autoFlag,
+            alert_message: alertMessage,
+            rule_order: nextOrder,
+            evaluation_priority: evaluationPriority || 0,
+            findings: findings || null,
+            company_id: companyId,
+        };
+
+        let { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
-            .insert({
-                procedure_id: procedureId,
-                structure_group: structureGroup,
-                field_name: fieldName || null,
-                priority_id: priorityId,
-                defect_code_id: defectCodeId,
-                defect_type_id: defectTypeId,
-                jobpack_type: jobpackType || null,
-                elevation_min: elevationMin || null,
-                elevation_max: elevationMax || null,
-                nominal_thickness: nominalThickness || null,
-                threshold_value: thresholdValue || null,
-                threshold_text: thresholdText || null,
-                threshold_operator: thresholdOperator || null,
-                custom_parameters: customParameters || null,
-                auto_flag: autoFlag,
-                alert_message: alertMessage,
-                rule_order: nextOrder,
-                evaluation_priority: evaluationPriority || 0,
-                findings: findings || null,
-                company_id: companyId,
-            })
+            .insert(insertPayload)
             .select()
             .single();
+
+        // If DB has check constraint preventing 'LIKE', gracefully fallback to null operator with operator metadata
+        if (error && error.code === '23514' && thresholdOperator === 'LIKE') {
+            insertPayload.threshold_operator = null;
+            insertPayload.custom_parameters = { ...(customParameters || {}), operator: 'LIKE' };
+            const retry = await (supabase as any)
+                .from('defect_criteria_rules')
+                .insert(insertPayload)
+                .select()
+                .single();
+            data = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

@@ -430,12 +430,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             const { data } = await supabase
                 .from("defect_criteria_rules")
                 .select("*")
-                .or(`structure_group.eq.${group},structure_group.eq.All Structure Groups`)
                 .order("rule_order");
 
-            if (data && data.length > 0) {
+            const targetGroup = (group || "").trim().toLowerCase();
+            const matchedRules = (data || []).filter((r: any) => {
+                const sg = (r.structure_group || "").trim().toLowerCase();
+                if (!sg || sg === "all structure groups" || sg === "*") return true;
+                const groups = sg.split(",").map((s: string) => s.trim().toLowerCase());
+                return groups.includes(targetGroup);
+            });
+
+            if (matchedRules.length > 0) {
                 setActiveCriteriaRules(
-                    data.map((r: any) => ({
+                    matchedRules.map((r: any) => ({
                         id: String(r.id),
                         fieldName: r.field_name,
                         priorityId: r.priority_id,
@@ -1286,6 +1293,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         const targetText = String(rule.thresholdText).trim().toLowerCase();
                         if (rule.thresholdOperator === "==") isMatch = actualText === targetText;
                         else if (rule.thresholdOperator === "!=") isMatch = actualText !== targetText;
+                        else if (rule.thresholdOperator === "LIKE" || rule.thresholdOperator === "like") isMatch = actualText.includes(targetText);
                         else isMatch = actualText.includes(targetText);
                     }
 

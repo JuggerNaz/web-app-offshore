@@ -302,25 +302,34 @@ const draw3SectionHeader = async (
   doc.rect(x2, headerY, col2W, headerH, "S");
 
   const titleCenterX = x2 + col2W / 2;
-  doc.setFontSize(10.5);
+
+  // 1. Client Company Name (Bold)
+  const clientName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+  doc.setFontSize(8.5);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
-  doc.text(reportTitle.toUpperCase(), titleCenterX, headerY + 8, { align: "center" });
+  doc.text(clientName, titleCenterX, headerY + 5.5, { align: "center" });
 
-  const reportNoStr = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  // 2. Department Name
+  const deptName = companySettings?.department_name || "Technical Services Department";
+  doc.setFontSize(7.5);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...titleSubTextColor);
+  doc.text(deptName, titleCenterX, headerY + 10, { align: "center" });
+
+  // 3. Report Title (Bold)
+  doc.setFontSize(9.5);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...titleTextColor);
+  doc.text(reportTitle, titleCenterX, headerY + 15.5, { align: "center" });
+
+  // 4. Report No
+  const reportNoStr = reportNo || (config as any)?.sowReportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : "AM26-016-01"));
   if (reportNoStr) {
-    doc.setFontSize(8);
+    doc.setFontSize(7.5);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(...titleSubTextColor);
-    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 14, { align: "center" });
-  }
-
-  if (structureName) {
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...titleTextColor);
-    const structLines = doc.splitTextToSize(structureName, col2W - 8);
-    doc.text(structLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 20.5, { align: "center" });
   }
 
   // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
@@ -692,12 +701,13 @@ const generatePlatformReport = async (
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  const sowReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || (structure as any)?.sow_report_no || (structure as any)?.sowReportNo;
   await draw3SectionHeader(doc, {
     pageWidth,
     companySettings,
     config,
     reportTitle: "Platform Specifications Report",
-    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    reportNo: sowReportNo,
     isPrintFriendly,
     headerBlue,
   });
@@ -726,21 +736,33 @@ const generatePlatformReport = async (
   };
 
   // Helper function for compact field rendering
-  const drawCompactField = (label: string, value: string, x: number, y: number, width: number) => {
+  const drawCompactField = (label: string, value: string, x: number, y: number, width: number, customValOffset?: number, rowHeight: number = 5) => {
     doc.setFontSize(7);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(60, 60, 60);
-    doc.text(label, x + 1, y + 3);
+    doc.text(label, x + 1, y + 3.2);
+
+    const labelW = doc.getTextWidth(label);
+    const minValX = x + 1 + labelW + 1.5;
+    const defaultValX = x + (customValOffset || (width * 0.44));
+    const valX = Math.max(defaultValX, minValX);
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
-    const valX = x + (width * 0.42);
-    doc.text(value, valX, y + 3);
+    let displayVal = String(value ?? "");
+    const maxValW = (x + width - 1) - valX;
+    if (doc.getTextWidth(displayVal) > maxValW && maxValW > 5) {
+      while (displayVal.length > 3 && doc.getTextWidth(displayVal + "...") > maxValW) {
+        displayVal = displayVal.slice(0, -1);
+      }
+      displayVal += "...";
+    }
+    doc.text(displayVal, valX, y + 3.2);
 
     doc.setDrawColor(230, 230, 230);
-    doc.line(x, y + 4.5, x + width, y + 4.5);
+    doc.line(x, y + rowHeight - 0.5, x + width, y + rowHeight - 0.5);
 
-    return y + 5;
+    return y + rowHeight;
   };
 
   // ===== THREE COLUMN LAYOUT FOR COMPACTNESS =====
@@ -756,14 +778,15 @@ const generatePlatformReport = async (
   doc.setDrawColor(200, 200, 200);
   const genStart = col1Y;
 
-  col1Y = drawCompactField("Structure:", structure.str_name || structure.title || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Install Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
+  const col1Offset = 23;
+  const col1RowH = 6;
+  col1Y = drawCompactField("Structure Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Oil Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Installation Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Water Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
 
-  doc.rect(col1X, genStart, colWidth, col1Y - genStart);
+  doc.rect(col1X, genStart, colWidth, 30);
 
   // COLUMN 2: Configuration
   drawSectionBar(col2X, yPos, colWidth, 5, "CONFIGURATION", col2X + 2, yPos + 3.5);
@@ -771,14 +794,17 @@ const generatePlatformReport = async (
   let col2Y = yPos + 5;
   const configStart = col2Y;
 
-  col2Y = drawCompactField("Type:", structure.ptype || structure.str_type || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Corrosion:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth);
+  const col2Offset = 28.5;
+  const col2RowH = 5;
+  const structTypeVal = "Platform";
+  col2Y = drawCompactField("Structure Type:", structTypeVal, col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Corrosion Coating:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Installation Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
 
-  doc.rect(col2X, configStart, colWidth, col2Y - configStart);
+  doc.rect(col2X, configStart, colWidth, 30);
 
   // COLUMN 3: Location & Dimensions
   drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMS", col3X + 2, yPos + 3.5);
@@ -786,6 +812,8 @@ const generatePlatformReport = async (
   let col3Y = yPos + 5;
   const locStart = col3Y;
 
+  const col3Offset = 26.5;
+  const col3RowH = 5;
   const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A");
   const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A");
   const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A");
@@ -793,16 +821,16 @@ const generatePlatformReport = async (
   const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A");
   const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
 
-  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("True North:", northAngleVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Leg Dia:", maxLegDiaVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Wall:", maxWallThkVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("True North Angle:", northAngleVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Max Leg Diameter:", maxLegDiaVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Max Wall Thickness:", maxWallThkVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth, col3Offset, col3RowH);
 
-  doc.rect(col3X, locStart, colWidth, col3Y - locStart);
+  doc.rect(col3X, locStart, colWidth, 30);
 
-  yPos = Math.max(col1Y, col2Y, col3Y) + 5;
+  yPos = genStart + 30 + 5;
 
   // ===== STRUCTURE VISUALS =====
   interface VisualItem {
@@ -1023,7 +1051,7 @@ const generatePlatformReport = async (
     ["Conductors", structure.conductors || 0],
     ["Int. Piles", structure.internal_piles || 0],
     ["Slots", structure.slots || "N/A"],
-    ["Fenders", structure.fenders || 0],
+    ["Boatlanding", structure.fenders ?? structure.fender ?? (structure as any).boatlanding ?? 0],
     ["Risers", structure.risers || 0],
     ["Sumps", structure.sumps || 0],
     ["Skirt Piles", structure.skirt_piles || 0],
@@ -1099,19 +1127,33 @@ const generatePlatformReport = async (
     yPos += (numRows * legRowHeight) + 3;
   }
 
-  // ===== ELEVATIONS & LEVELS TABLES (Side-by-side) =====
+  // ===== ELEVATIONS, LEVELS & FACES TABLES (All 3 in One Row) =====
   const hasElevations = structure.elevations && structure.elevations.length > 0;
   const hasLevels = structure.levels && structure.levels.length > 0;
+  const hasFaces = structure.faces && structure.faces.length > 0;
 
-  if (hasElevations || hasLevels) {
+  if (hasElevations || hasLevels || hasFaces) {
     if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
 
     const tablesStartY = yPos;
     let maxTableY = yPos;
 
-    // ELEVATIONS TABLE (Left)
+    const activeSections: string[] = [];
+    if (hasElevations) activeSections.push('elevations');
+    if (hasLevels) activeSections.push('levels');
+    if (hasFaces) activeSections.push('faces');
+
+    const secCount = activeSections.length;
+    const secGap = 5;
+    const secWidth = secCount === 3 ? 60 : (secCount === 2 ? (pageWidth - 20 - secGap) / 2 : pageWidth - 20);
+
+    let secIdx = 0;
+
+    // 1. ELEVATIONS TABLE
     if (hasElevations) {
-      const elevWidth = (pageWidth - 25) / 2;
+      const elevX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
+
       autoTable(doc, {
         startY: tablesStartY,
         head: [
@@ -1156,17 +1198,20 @@ const generatePlatformReport = async (
           lineWidth: 0.2,
           lineColor: [200, 200, 200],
         },
-        margin: { left: 10 },
-        tableWidth: elevWidth,
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 28 }
+        } : undefined,
+        margin: { left: elevX },
+        tableWidth: secWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
 
-    // LEVELS TABLE (Right)
+    // 2. LEVELS TABLE
     if (hasLevels) {
-      // Start slightly right of center (pageWidth/2 + 2.5) to create 5mm gap
-      const rightTableX = pageWidth / 2 + 2.5;
-      const levelsWidth = (pageWidth - 25) / 2;
+      const levelsX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
 
       autoTable(doc, {
         startY: tablesStartY,
@@ -1213,68 +1258,79 @@ const generatePlatformReport = async (
           lineWidth: 0.2,
           lineColor: [200, 200, 200],
         },
-        margin: { left: rightTableX },
-        tableWidth: levelsWidth,
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 17 },
+          2: { cellWidth: 17 }
+        } : undefined,
+        margin: { left: levelsX },
+        tableWidth: secWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
-    yPos = maxTableY + 3;
-  }
 
-  // ===== FACES (if available) =====
-  if (structure.faces && structure.faces.length > 0) {
-    if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
+    // 3. FACES TABLE
+    if (hasFaces) {
+      const facesX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
 
-    autoTable(doc, {
-      startY: yPos,
-      head: [
-        [{
-          content: 'PLATFORM FACES',
-          colSpan: 3,
-          styles: {
-            halign: 'left',
-            fontStyle: 'bold',
-            fontSize: 8,
-            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
-          }
-        }],
-        ['Face Name', 'From', 'To']
-      ],
-      body: structure.faces.slice(0, 4).map((face: any) => [
-        face.face || face.face_name || face.name || "Face",
-        face.face_from || face.from || "N/A",
-        face.face_to || face.to || "N/A"
-      ]),
-      theme: 'grid',
-      styles: {
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-        cellPadding: 1.5,
-        valign: 'middle',
-      },
-      headStyles: {
-        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-        fontSize: 7,
-        halign: 'center',
-        fontStyle: 'bold',
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      bodyStyles: {
-        fontSize: 6.5,
-        halign: 'center',
-        textColor: [0, 0, 0],
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      margin: { left: 10, right: 10 },
-      tableWidth: pageWidth - 20,
-    });
+      autoTable(doc, {
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'PLATFORM FACES',
+            colSpan: 3,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Face Name', 'From', 'To']
+        ],
+        body: (structure.faces || []).slice(0, 6).map((face: any) => [
+          face.face || face.face_name || face.name || "Face",
+          face.face_from || face.from || "N/A",
+          face.face_to || face.to || "N/A"
+        ]),
+        theme: 'grid',
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 17 },
+          2: { cellWidth: 17 }
+        } : undefined,
+        margin: { left: facesX },
+        tableWidth: secWidth,
+      });
+      maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
+    }
 
-    yPos = (doc as any).lastAutoTable.finalY + 3;
+    yPos = maxTableY + 4;
   }
 
   // ===== DISCUSSIONS / COMMENTS =====
@@ -1693,17 +1749,17 @@ const generatePlatformHTML = (
         
         <!-- Centered title and company info -->
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
-          <!-- Company Name - SAME size as Report Title -->
-          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          <!-- Company Name -->
+          <h1 style="margin: 0 0 2px 0; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)"}</h1>
           
-          <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
+          <!-- Department Name -->
+          <p style="margin: 0 0 4px 0; font-size: 12px; opacity: 0.9;">${companySettings?.department_name || "Technical Services Department"}</p>
           
-          <!-- Report Title - SAME size as Company Title -->
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
+          <!-- Report Title -->
+          <h2 style="margin: 0 0 3px 0; font-size: 16px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
           
-          <!-- Report No - Centered below Report Title -->
-          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
+          <!-- Report No -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report No: ${(structure as any)?.sow_report_no || (structure as any)?.sowReportNo || companySettings?.serial_no || "AM26-016-01"}</p>
         </div>
       </div>
 
@@ -1787,15 +1843,14 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Structure", structure.str_name || structure.title || "N/A"],
-      ["Title", structure.title || structure.str_name || "N/A"],
-      ["Field", structure.pfield || structure.field_name || "N/A"],
-      ["Install Date", formatDisplayDate(structure.inst_date)],
-      ["Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
+      ["Structure Title", structure.title || structure.str_name || "N/A"],
+      ["Oil Field", structure.pfield || structure.field_name || "N/A"],
+      ["Installation Date", formatDisplayDate(structure.inst_date)],
+      ["Water Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
       ["Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1811,15 +1866,15 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Type", structure.ptype || structure.str_type || "N/A"],
+      ["Structure Type", "Platform"],
       ["Function", structure.function || structure.process || "N/A"],
       ["Material", structure.material || "N/A"],
       ["CP System", structure.cp_system || "N/A"],
-      ["Corrosion", structure.corr_ctg || "N/A"],
-      ["Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
+      ["Corrosion Coating", structure.corr_ctg || "N/A"],
+      ["Installation Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1837,13 +1892,13 @@ const generatePlatformHTML = (
                 ${[
       ["Northing", (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A")],
       ["Easting", (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A")],
-      ["True North", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
-      ["Max Leg Dia", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
-      ["Max Wall", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
+      ["True North Angle", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
+      ["Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
+      ["Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
       ["Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1864,7 +1919,7 @@ const generatePlatformHTML = (
       ["Conductors", structure.conductors ?? structure.conduct ?? 0],
       ["Int. Piles", structure.internal_piles ?? structure.pileint ?? 0],
       ["Slots", structure.slots ?? structure.cslot ?? structure.cslota ?? "N/A"],
-      ["Fenders", structure.fenders ?? structure.fender ?? 0],
+      ["Boatlanding", structure.fenders ?? structure.fender ?? (structure as any).boatlanding ?? 0],
       ["Risers", structure.risers ?? structure.riser ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
@@ -1909,10 +1964,10 @@ const generatePlatformHTML = (
           </div>
         </div>
 
-        <!-- Two Column: Elevations & Levels (ALWAYS SHOW) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+        <!-- Three Column: Elevations, Levels & Faces in One Row -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
           
-          <!-- Elevations (ALWAYS SHOW) -->
+          <!-- Elevations -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Elevations (m)
@@ -1938,7 +1993,7 @@ const generatePlatformHTML = (
             </table>
           </div>
 
-          <!-- Levels (ALWAYS SHOW) -->
+          <!-- Levels -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Platform Levels
@@ -1965,24 +2020,23 @@ const generatePlatformHTML = (
               </tbody>
             </table>
           </div>
-        </div>
 
-        <!-- Faces (ALWAYS SHOW) -->
-        <div style="margin-bottom: 15px;">
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Platform Faces
-          </div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
-            <thead>
-              <tr style="background-color: #edf2f7;">
-                <th style="padding: 5px; text-align: left; font-weight: 600; color: #4a5568;">Face Name</th>
-                <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">From</th>
-                <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">To</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${structure.faces && structure.faces.length > 0
-      ? structure.faces.slice(0, 4).map((face: any, i: number) => `
+          <!-- Faces -->
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Platform Faces
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
+              <thead>
+                <tr style="background-color: #edf2f7;">
+                  <th style="padding: 5px; text-align: left; font-weight: 600; color: #4a5568;">Face Name</th>
+                  <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">From</th>
+                  <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">To</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${structure.faces && structure.faces.length > 0
+      ? structure.faces.slice(0, 6).map((face: any, i: number) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px;">${face.face || face.face_name || face.name || "Face"}</td>
                     <td style="padding: 5px 8px; text-align: center;">${face.face_from || face.from || "N/A"}</td>
@@ -1991,8 +2045,9 @@ const generatePlatformHTML = (
                 `).join('')
       : `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #a0aec0; font-style: italic;">No face data available</td></tr>`
     }
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Comments -->

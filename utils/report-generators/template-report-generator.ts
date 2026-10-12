@@ -10,6 +10,7 @@ import { toast } from "sonner";
 
 interface ReportOptions {
     templateUrl: string;
+    preloadedTemplate?: ArrayBuffer;
     data: any;
     fileName: string;
     logoUrl?: string;
@@ -22,7 +23,7 @@ interface ReportOptions {
  * inside the DOCX XML text runs (<w:t>), cleans up tag whitespace,
  * and resolves known tag aliases safely without breaking the XML tree.
  */
-function normalizeDelimiters(zip: PizZip) {
+export function normalizeDelimiters(zip: PizZip) {
     const files = zip.files;
     for (const [relativePath, file] of Object.entries(files)) {
         if (!file.dir && relativePath.endsWith(".xml")) {
@@ -443,6 +444,50 @@ function resolveDynamicTags(finalData: Record<string, any>, zip: PizZip) {
             }
         }
     }
+
+    // 6. Guarantee fallbacks for any _PAGES, NO_, HAS_ tags found in docTags
+    docTags.forEach(tag => {
+        const clean = tag.toUpperCase();
+        if (clean.endsWith("_PAGES")) {
+            if (finalData[clean] === undefined) {
+                finalData[clean] = [];
+            }
+            if (finalData[`HAS_${clean}`] === undefined) {
+                finalData[`HAS_${clean}`] = false;
+            }
+            if (finalData[`NO_${clean}`] === undefined) {
+                finalData[`NO_${clean}`] = true;
+            }
+        }
+        if (clean.startsWith("NO_")) {
+            const base = clean.substring(3);
+            if (finalData[clean] === undefined) {
+                if (finalData[base] !== undefined) {
+                    finalData[clean] = Array.isArray(finalData[base]) 
+                        ? finalData[base].length === 0 
+                        : !finalData[base];
+                } else if (finalData[`HAS_${base}`] !== undefined) {
+                    finalData[clean] = !finalData[`HAS_${base}`];
+                } else {
+                    finalData[clean] = true;
+                }
+            }
+        }
+        if (clean.startsWith("HAS_")) {
+            const base = clean.substring(4);
+            if (finalData[clean] === undefined) {
+                if (finalData[base] !== undefined) {
+                    finalData[clean] = Array.isArray(finalData[base]) 
+                        ? finalData[base].length > 0 
+                        : Boolean(finalData[base]);
+                } else if (finalData[`NO_${base}`] !== undefined) {
+                    finalData[clean] = !finalData[`NO_${base}`];
+                } else {
+                    finalData[clean] = false;
+                }
+            }
+        }
+    });
 }
 
 /**
@@ -451,13 +496,18 @@ function resolveDynamicTags(finalData: Record<string, any>, zip: PizZip) {
  * - Image tags: {%TAG_NAME}
  * - Loop tags: {#LOOP}...{/LOOP}
  */
-export const generateTemplateReport = async ({ templateUrl, data, fileName, logoUrl, contractorLogoUrl, onProgress }: ReportOptions) => {
+export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, data, fileName, logoUrl, contractorLogoUrl, onProgress }: ReportOptions) => {
     try {
-        onProgress?.(80, "Fetching report template...");
-        console.log(`[ReportGen] Fetching template: ${templateUrl}`);
-        const response = await fetch(templateUrl);
-        if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
-        const content = await response.arrayBuffer();
+        let content: ArrayBuffer;
+        if (preloadedTemplate) {
+            content = preloadedTemplate;
+        } else {
+            onProgress?.(80, "Fetching report template...");
+            console.log(`[ReportGen] Fetching template: ${templateUrl}`);
+            const response = await fetch(templateUrl);
+            if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
+            content = await response.arrayBuffer();
+        }
 
         // ── Pre-fetch Logos ───────────────────────────────────────
         let logoBytes: Uint8Array | null = null;
@@ -548,7 +598,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
                 }
                 if (bytes) {
                     const dims = getImageDimensions(bytes);
-                    if (dims && dims[0] > dims[1]) {
+                    if (dims && dims[0] > dims[1] && (key.toUpperCase().includes("PAGE_IMAGE") || (imgObj as any)?.rotate)) {
                         try {
                             bytes = await rotateImage90Degrees(bytes);
                         } catch (rotErr) {
@@ -600,7 +650,7 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
                                 }
                                 if (bytes) {
                                     const dims = getImageDimensions(bytes);
-                                    if (dims && dims[0] > dims[1]) {
+                                    if (dims && dims[0] > dims[1] && (k.toUpperCase().includes("PAGE_IMAGE") || (item as any)?.is_landscape || (imgObj as any)?.rotate)) {
                                         try {
                                             bytes = await rotateImage90Degrees(bytes);
                                         } catch (rotErr) {
@@ -646,6 +696,10 @@ export const generateTemplateReport = async ({ templateUrl, data, fileName, logo
         finalData["T_INSPECTION_YEAR"] = finalData["INSPECTION_YEAR"] || "";
         finalData["T_VESSELS_INVOLVED"] = finalData["VESSELS_INVOLVED"] || "";
         finalData["T_CLIENT_SHORT"] = finalData["CLIENT_SHORT"] || "";
+        finalData["CLIENT_SHORT_UPPER"] = (finalData["CLIENT_SHORT"] || "").toUpperCase();
+        finalData["client_short_upper"] = (finalData["CLIENT_SHORT"] || "").toUpperCase();
+        finalData["client_short"] = finalData["CLIENT_SHORT"] || "";
+        finalData["client_name"] = finalData["CLIENT_NAME"] || "";
 
         onProgress?.(92, "Sanitizing template and compiling Word document...");
         // ── Build and render ─────────────────────────────────────

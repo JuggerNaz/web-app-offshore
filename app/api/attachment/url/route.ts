@@ -18,7 +18,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const supabase = createAdminClient();
+    let supabase: any;
+    try {
+      supabase = await createClient();
+    } catch {
+      supabase = createAdminClient();
+    }
     
     let filePath = fallbackPath || "";
     let fileUrl: string | null = null;
@@ -94,9 +99,14 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Check all possible candidate URLs for direct HTTP(S) access
-    const directHttpCandidates = [fileUrl, fallbackPath, filePath, targetUrlOrPath]
-      .filter((u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://")));
+    // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
+    const directHttpCandidates = Array.from(
+      new Set(
+        [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
+          (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://"))
+        )
+      )
+    );
 
     for (const remoteHttpUrl of directHttpCandidates) {
       try {
@@ -247,11 +257,13 @@ export async function GET(request: NextRequest) {
           console.warn("[AttachmentURL] Stream fetch error on signed URL:", streamErr);
         }
 
-        // Fallback: redirect if direct fetch failed
-        return NextResponse.redirect(signedUrl);
+        // Fallback: redirect if signed URL is different and direct proxy fetch failed
+        if (signedUrl !== targetUrlOrPath) {
+          return NextResponse.redirect(signedUrl);
+        }
       }
-    } catch (storageErr) {
-      console.warn("[AttachmentURL] Storage handler error:", storageErr);
+    } catch (storageErr: any) {
+      console.warn("[AttachmentURL] Storage handler error:", storageErr?.message || storageErr);
     }
 
     return NextResponse.json({ error: "Unable to retrieve attachment file" }, { status: 404 });

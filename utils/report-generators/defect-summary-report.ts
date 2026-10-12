@@ -316,8 +316,8 @@ export const generateDefectSummaryReport = async (
         const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
 
         const headSt = isPrintFriendly
-            ? { fillColor: [255, 255, 255] as [number, number, number], textColor: [7, 78, 136] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200] as [number, number, number] }
-            : { fillColor: [7, 78, 136] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [255, 255, 255] as [number, number, number] };
+            ? { fillColor: [255, 255, 255] as [number, number, number], textColor: [7, 78, 136] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225] as [number, number, number] }
+            : { fillColor: [7, 78, 136] as [number, number, number], textColor: [255, 255, 255] as [number, number, number], fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225] as [number, number, number] };
 
         autoTable(d, {
             startY,
@@ -333,7 +333,7 @@ export const generateDefectSummaryReport = async (
                 ],
             ] as any,
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1, textColor: [0, 0, 0] },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [203, 213, 225], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: labelColWidth },
                 1: { cellWidth: valueColWidth },
@@ -385,7 +385,7 @@ export const generateDefectSummaryReport = async (
                 d.setTextColor(...text);
             }
             d.rect(x, yy, boxW, boxH, "F");
-            d.setDrawColor(100, 100, 100);
+            d.setDrawColor(203, 213, 225);
             d.setLineWidth(0.1);
             d.rect(x, yy, boxW, boxH);
             d.setFont("helvetica", "bold");
@@ -417,12 +417,12 @@ export const generateDefectSummaryReport = async (
         d.setFont("helvetica", "bold");
         if (isPrintFriendly) {
             d.setFillColor(240, 240, 240);
-            d.setDrawColor(180, 180, 180);
-            d.setLineWidth(0.3);
+            d.setDrawColor(203, 213, 225);
+            d.setLineWidth(0.1);
             d.rect(margin, y, contentWidth, 7, "FD");
         } else {
             d.setFillColor(240, 240, 240);
-            d.setDrawColor(200, 200, 200);
+            d.setDrawColor(203, 213, 225);
             d.setLineWidth(0.1);
             d.rect(margin, y, contentWidth, 7, "FD");
         }
@@ -441,8 +441,8 @@ export const generateDefectSummaryReport = async (
         const scale = innerH / maxCount;
 
         // Draw Axes
-        d.setDrawColor(150);
-        d.setLineWidth(0.2);
+        d.setDrawColor(203, 213, 225);
+        d.setLineWidth(0.1);
         d.line(chartX + 15, chartY, chartX + 15, chartY + innerH); // Y axis
         d.line(chartX + 15, chartY + innerH, chartX + chartW, chartY + innerH); // X axis
 
@@ -465,7 +465,7 @@ export const generateDefectSummaryReport = async (
 
             d.setFillColor(...bg);
             d.rect(x, chartY + innerH - h, barW, h, "F");
-            d.setDrawColor(0);
+            d.setDrawColor(203, 213, 225);
             d.setLineWidth(0.1);
             d.rect(x, chartY + innerH - h, barW, h, "S");
 
@@ -496,10 +496,10 @@ export const generateDefectSummaryReport = async (
                 ];
             }),
             theme: "grid",
-            styles: { fontSize: 8, cellPadding: 2, lineColor: [0, 0, 0], lineWidth: 0.1 },
+            styles: { fontSize: 8, cellPadding: 2, lineColor: [203, 213, 225], lineWidth: 0.1 },
             headStyles: {fillColor: isPrintFriendly ? [230, 230, 230] : [7, 78, 136],
                 textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-                halign: "center", lineWidth: 0.1, lineColor: isPrintFriendly ? [203, 213, 225] : [255, 255, 255]},
+                halign: "center", lineWidth: 0.1, lineColor: [203, 213, 225]},
         });
 
         return Math.max((d as any).lastAutoTable.finalY + 5, chartY + dashH);
@@ -552,11 +552,11 @@ export const generateDefectSummaryReport = async (
         [
             "#",
             refTitle,
-            "Tape / Counter",
+            config.isFindingsReport ? "Tape / Counter" : "Recording\n(Counter)",
             codeTitle,
             config.isFindingsReport ? "Findings Type" : "Defect Type",
             "Priority",
-            "Findings / Observations",
+            config.isFindingsReport ? "Findings / Observations" : "Inspection Findings",
         ],
     ];
 
@@ -742,14 +742,14 @@ export const generateDefectSummaryReport = async (
             textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
             fontStyle: "bold",
             fontSize: 7.5,
-            lineWidth: 0.2,
-            lineColor: [0, 0, 0],
+            lineWidth: 0.1,
+            lineColor: [203, 213, 225],
             halign: "center",
         },
         styles: {
             fontSize: 7.5,
             cellPadding: 2,
-            lineColor: [0, 0, 0],
+            lineColor: [203, 213, 225],
             lineWidth: 0.1,
             textColor: [0, 0, 0],
             valign: "top",
@@ -814,7 +814,7 @@ function drawSignatories(doc: jsPDF, y: number, contentWidth: number, margin: nu
         { title: "Approved By", name: config.approvedBy?.name, date: config.approvedBy?.date },
     ];
 
-    doc.setDrawColor(0);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.1);
     doc.setFontSize(8);
 

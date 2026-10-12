@@ -44,6 +44,7 @@ import { toast } from "sonner";
 interface CompanySettingsData {
     id: number;
     company_name: string;
+    client_short?: string | null;
     department_name: string | null;
     serial_no: string | null;
     logo_path: string | null;
@@ -69,6 +70,7 @@ export default function SettingsPage() {
     );
 
     const [companyName, setCompanyName] = useState("");
+    const [clientShort, setClientShort] = useState("");
     const [departmentName, setDepartmentName] = useState("");
     const [defUnit, setDefUnit] = useState("METRIC");
     const [serialNo, setSerialNo] = useState("");
@@ -86,6 +88,7 @@ export default function SettingsPage() {
     useEffect(() => {
         if (settingsResponse?.data) {
             setCompanyName(settingsResponse.data.company_name);
+            setClientShort(settingsResponse.data.client_short || settingsResponse.data.storage_config?.client_short || "");
             setDepartmentName(settingsResponse.data.department_name || "");
             setDefUnit(settingsResponse.data.def_unit || "METRIC");
             setSerialNo(settingsResponse.data.serial_no || "");
@@ -214,6 +217,7 @@ export default function SettingsPage() {
                 },
                 body: JSON.stringify({
                     company_name: companyName,
+                    client_short: clientShort,
                     department_name: departmentName,
                     def_unit: defUnit,
                     storage_provider: storageProvider,
@@ -335,13 +339,30 @@ export default function SettingsPage() {
                     <CardContent className="space-y-6">
                         {/* Company Name */}
                         <div className="space-y-2">
-                            <Label htmlFor="companyName">Company Name</Label>
+                            <Label htmlFor="companyName">Company Name (Client Full Name)</Label>
                             <Input
                                 id="companyName"
                                 value={companyName}
                                 onChange={(e) => setCompanyName(e.target.value)}
-                                placeholder="Enter company name"
+                                placeholder="Enter company name (e.g. Petronas Carigali Sdn Bhd)"
                             />
+                            <p className="text-xs text-muted-foreground">
+                                Used for DOC template tags like {"{CLIENT_NAME}"} and {"{T_CLIENT}"}.
+                            </p>
+                        </div>
+
+                        {/* Client / Company Short Name */}
+                        <div className="space-y-2">
+                            <Label htmlFor="clientShort">Company / Client Short Name (Code)</Label>
+                            <Input
+                                id="clientShort"
+                                value={clientShort}
+                                onChange={(e) => setClientShort(e.target.value)}
+                                placeholder="e.g. PCSB"
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Short abbreviation used for DOC template tags like {"{CLIENT_SHORT}"}, {"{CLIENT_SHORT_UPPER}"}, and {"{T_CLIENT_SHORT}"}.
+                            </p>
                         </div>
 
                         {/* Department Name */}

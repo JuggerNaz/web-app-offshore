@@ -7247,6 +7247,8 @@ function V10PreviewLayout() {
               isMatch = actualText === targetText;
             } else if (rule.thresholdOperator === "!=") {
               isMatch = actualText !== targetText;
+            } else if (rule.thresholdOperator === "LIKE" || rule.thresholdOperator === "like") {
+              isMatch = actualText.includes(targetText);
             } else {
               // Default to substring match if no operator/unsupported operator
               isMatch = actualText.includes(targetText);

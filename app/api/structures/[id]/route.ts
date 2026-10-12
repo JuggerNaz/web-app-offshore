@@ -235,6 +235,7 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                     "Internal Piles": platform.pileint ?? platform.int_pile ?? 0,
                     "Slots": platform.cslot ?? platform.cslota ?? platform.slots ?? "N/A",
                     "Fenders": platform.fender || 0,
+                    "Boatlanding": platform.fender || 0,
                     "Risers": platform.riser || 0,
 
                     "Unit System": platform.def_unit ?? platform.unit ?? "METRIC",

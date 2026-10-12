@@ -88,6 +88,58 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
     }
 };
 
+export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
+    'rov-photo-report': ['RPHOTO', 'RPHOTO_REPORT', 'ROV_PHOTO', 'ROV_PHOTO_REPORT', 'PHOTO_REPORT', 'PHOTOGRAPHY_REPORT', 'PHOTO_SHEETS', 'RPHOTO_PAGES', 'PHOTO_PAGES'],
+    'rov-photo-log-report': ['RPHOTO_LOG', 'RPHOTO_LOG_REPORT', 'ROV_PHOTO_LOG', 'ROV_PHOTO_LOG_REPORT', 'PHOTO_LOG', 'PHOTO_LOG_REPORT', 'PHOTOGRAPHY_LOG', 'RPHOTO_LOG_PAGES', 'PHOTO_LOG_PAGES'],
+    'diving-photo-report': ['DPHOTO', 'DPHOTO_REPORT', 'DIVING_PHOTO', 'DIVING_PHOTO_REPORT', 'DPHOTO_PAGES'],
+    'diving-photo-log-report': ['DPHOTO_LOG', 'DPHOTO_LOG_REPORT', 'DIVING_PHOTO_LOG', 'DIVING_PHOTO_LOG_REPORT', 'DPHOTO_LOG_PAGES'],
+    'defect-anomaly-report': ['DFT_REPORT', 'DFT_ANOMALY', 'DEFECT_ANOMALY', 'DEFECT_ANOMALY_REPORT', 'ANOMALY_REPORT', 'DEFECT_REPORT', 'ANOMALIES_REPORT', 'DFT_REPORT_PAGES', 'ANOMALY_REPORT_PAGES'],
+    'findings-report': ['FND_REPORT', 'FINDINGS_REPORT', 'FINDINGS_DETAIL_REPORT', 'FND_REPORT_PAGES', 'FINDINGS_REPORT_PAGES'],
+    'defect-summary': ['DEFECT_SUMMARY', 'ANOMALIES_SUMMARY_REPORT', 'DFT_SUMMARY', 'DEFECT_SUMMARY_PAGES'],
+    'findings-summary': ['FINDINGS_SUMMARY', 'FND_SUMMARY', 'FINDINGS_SUMMARY_PAGES'],
+    'defect-summary-pipeline': ['DEFECT_SUMMARY_PIPELINE', 'DEFECT_SUMMARY_PIPELINE_REPORT', 'DEFECT_SUMMARY_PIPELINE_PAGES'],
+    'findings-summary-pipeline': ['FINDINGS_SUMMARY_PIPELINE', 'FINDINGS_SUMMARY_PIPELINE_REPORT', 'FINDINGS_SUMMARY_PIPELINE_PAGES'],
+    'rov-cp-report': ['RCP', 'RCP_REPORT', 'CP', 'CP_REPORT', 'CP_SURVEY', 'ROV_CP', 'ROV_CP_REPORT', 'CP_ROV', 'CP_ROV_REPORT', 'RECORDS_CP_ROV', 'RCP_PAGES', 'ROV_CP_PAGES', 'CP_PAGES'],
+    'diving-cpsurv-report': ['DCPSURV', 'CPSURV', 'CP', 'CP_SURVEY', 'DCP', 'DCP_REPORT', 'DIVING_CP', 'DIVING_CP_REPORT', 'CP_DIVE', 'CP_DIVE_REPORT', 'DCPSURV_REPORT', 'CPSURV_REPORT', 'RECORDS_CP_DIVE', 'DCPSURV_PAGES', 'CPSURV_PAGES'],
+    'rov-fmd-report': ['RFMD', 'FMD', 'RFMD_REPORT', 'FMD_REPORT', 'RFMD_PAGES', 'FMD_PAGES'],
+    'diving-fmd-report': ['DFMD', 'FMD', 'FLOOD', 'DFMD_REPORT', 'DFMD_PAGES', 'FLOOD_PAGES'],
+    'video-log-report': ['VDO_LOG', 'VDO_LOG_PAGES', 'VIDEO_LOG', 'VIDEO_LOG_REPORT', 'VIDEO_LOG_PAGES', 'VDO_PAGES', 'VDR_LOG', 'VDD_LOG'],
+    'diver-log-report': ['DIVER_LOG', 'DIVER_LOG_PAGES', 'DIVER_LOG_REPORT', 'DVR_LOG_PAGES'],
+    'rov-gvi-report': ['RGVI', 'GVI', 'RGVI_REPORT', 'GVI_REPORT', 'RGVI_PAGES'],
+    'rov-rgvi-report': ['RGVI', 'GVI', 'RGVI_REPORT', 'GVI_REPORT', 'RGVI_PAGES'],
+    'rov-rwdi-report': ['RWDI', 'WDI', 'RWDI_REPORT', 'WDI_REPORT', 'RWDI_PAGES'],
+    'rov-mgi-report': ['RMGI', 'MGI', 'MGROW', 'RMGI_REPORT', 'RMGI_PAGES', 'MGI_PAGES'],
+    'mgi-report': ['MGI_GRAPH', 'MGI_GRAPH_REPORT', 'MGI_GRAPH_PAGES'],
+    'diving-mgi-report': ['DMGI', 'DIVING_MGI', 'DMGI_PAGES'],
+    'rov-ricmi-report': ['RICMI', 'ICMI', 'RICMI_REPORT', 'RICMI_PAGES'],
+    'rov-seabed-report': ['RSEAB', 'SEAB', 'RSEAB_REPORT', 'RSEAB_PAGES', 'SEABED_PAGES'],
+    'rov-rseab-detail-report': ['RSEAB_DETAIL', 'RSEAB_DETAIL_REPORT', 'RSEAB_DETAIL_PAGES'],
+    'rov-rseab-gas-detail-report': ['RSEAB_GAS', 'RSEAB_GAS_REPORT', 'RSEAB_GAS_PAGES'],
+    'rov-rseab-crater-detail-report': ['RSEAB_CRATER', 'RSEAB_CRATER_REPORT', 'RSEAB_CRATER_PAGES'],
+    'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOR_REPORT', 'RSCOR_PAGES', 'SCOUR_PAGES'],
+    'rov-caisson-report': ['RCASN', 'CAISSON', 'CAISSON_SUB', 'RCASN_REPORT', 'RCASN_PAGES'],
+    'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
+    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOATLANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES'],
+    'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISERGUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES'],
+    'rov-sg-report': ['RCG', 'SG', 'CAISSONGUARD', 'CAISSONGUARD_SUB', 'RCG_REPORT', 'RCG_PAGES'],
+    'rov-cu-report': ['RCDG', 'CU', 'CONDUCTORGUARD', 'CONDUCTORGUARD_SUB', 'RCDG_REPORT', 'RCDG_PAGES'],
+    'rrisi-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT', 'RRISI_PAGES'],
+    'rov-riser-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT', 'RRISI_PAGES'],
+    'rrisi-detail-report': ['RRISI_DETAIL', 'RRISI_DETAIL_REPORT', 'RRISI_DETAIL_PAGES'],
+    'diving-rrisi-report': ['DRRISI', 'DRISI', 'RISER', 'DRRISI_REPORT', 'DRRISI_PAGES'],
+    'diving-rrisi-detail-report': ['DRRISI_DETAIL', 'DRISI_DETAIL', 'DRRISI_DETAIL_REPORT', 'DRRISI_DETAIL_PAGES'],
+    'rov-anode-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT', 'RSANI_PAGES'],
+    'rov-anode-rsani-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT', 'RSANI_PAGES'],
+    'szci-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT', 'RSZCI_PAGES'],
+    'rov-splash-zone-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT', 'RSZCI_PAGES'],
+    'rov-navig-report': ['NAVIG', 'RNAVIG', 'NAVIG_REPORT', 'NAVIG_PAGES'],
+    'work-scope-report': ['WORK_SCOPE', 'WORK_SCOPE_REPORT', 'WORK_SCOPE_PAGES', 'SOW_REPORT_PAGES'],
+    'work-scope-status-report': ['WORK_SCOPE_STATUS', 'WORK_SCOPE_STATUS_REPORT', 'WORK_SCOPE_STATUS_PAGES'],
+    'work-scope-incomplete-report': ['WORK_SCOPE_INCOMPLETE', 'WORK_SCOPE_INCOMPLETE_REPORT', 'WORK_SCOPE_INCOMPLETE_PAGES'],
+    'defect-criteria-report': ['DEFECT_CRITERIA', 'DEFECT_CRITERIA_REPORT', 'DEFECT_CRITERIA_PAGES'],
+    'structure-summary': ['STRUCTURE_SUMMARY', 'STRUCTURE_SUMMARY_REPORT', 'STRUCTURE_SUMMARY_PAGES']
+};
+
 /**
  * Maps raw inspection records into a format suitable for docxtemplater loops.
  */
@@ -97,7 +149,8 @@ export const mapInspectionDataForDocx = async (
     jobPack?: any,
     structure?: any,
     sowReportNo?: string,
-    companySettings?: any
+    companySettings?: any,
+    activeTemplateTags?: Set<string> | null
 ) => {
     records = normalizeReportRecords(records);
     const safeAliases = Array.isArray(aliases) ? aliases : [];
@@ -111,28 +164,37 @@ export const mapInspectionDataForDocx = async (
             const { createClient } = await import("@/utils/supabase/client");
             const supabase = createClient();
 
-            // Query attachments in batches of 50 to avoid URL length limitations
+            // Query attachments in parallel batches of 100 to maximize throughput and avoid URL length limitations
             const chunks: number[][] = [];
-            for (let i = 0; i < recordIds.length; i += 50) {
-                chunks.push(recordIds.slice(i, i + 50));
+            for (let i = 0; i < recordIds.length; i += 100) {
+                chunks.push(recordIds.slice(i, i + 100));
             }
 
-            for (const chunk of chunks) {
-                const { data, error } = await supabase
-                    .from('attachment')
-                    .select('*')
-                    .in('source_id', chunk);
+            const results = await Promise.all(
+                chunks.map(chunk =>
+                    supabase
+                        .from('attachment')
+                        .select('*')
+                        .in('source_id', chunk)
+                )
+            );
+
+            for (const { data, error } of results) {
                 if (!error && data && data.length > 0) {
                     attachments.push(...data);
                 }
             }
 
             if (attachments.length === 0) {
-                for (const chunk of chunks) {
-                    const { data: media } = await supabase
-                        .from('insp_media' as any)
-                        .select('*')
-                        .in('inspection_id', chunk);
+                const mediaResults = await Promise.all(
+                    chunks.map(chunk =>
+                        supabase
+                            .from('insp_media' as any)
+                            .select('*')
+                            .in('inspection_id', chunk)
+                    )
+                );
+                for (const { data: media } of mediaResults) {
                     if (media && media.length > 0) {
                         attachments.push(...media.map((m: any) => ({
                             id: m.media_id,
@@ -210,10 +272,36 @@ export const mapInspectionDataForDocx = async (
         });
     }
 
+    // GVI Table (ROV GVI Table of Results for inline Word tables)
+    const rgviRecsForTable = records.filter(r => {
+        const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+        return c === "RGVI" || c === "GVI";
+    });
+    if (rgviRecsForTable.length > 0) {
+        reportData.HAS_GVI = true;
+        reportData.HAS_RGVI = true;
+        reportData.GVI_TABLE = rgviRecsForTable.map((r, idx) => {
+            const d = r.inspection_data || r.inspection_dat || {};
+            return {
+                no: idx + 1,
+                item_no: idx + 1,
+                qid: r.structure_components?.q_id || r.component?.q_id || r.component_qid || "N/A",
+                elevation: r.elevation || "-",
+                dive_no: d.dive_no || r.dive_no || "-",
+                tape_no: d.tape_no || r.tape_no || "-",
+                cp: d.cp_reading || d.cp_rdg || d.cp_reading_mv || "-",
+                findings: r.description || d.findings || "N/A",
+                condition: d.condition || d.comp_condition || "Satisfactory"
+            };
+        });
+        reportData.RGVI_TABLE = reportData.GVI_TABLE;
+    }
+
     // 3. Handle System Aliases
     // For every alias defined in settings, we create a specific tag
     const templateCodeMap: Record<string, string[]> = {
-        'rov-gvi-report': ['RGVI'],
+        'rov-gvi-report': ['RGVI', 'GVI'],
+        'rov-rgvi-report': ['RGVI', 'GVI'],
         'rov-mgi-report': ['RMGI', 'MGROW'],
         'rov-seabed-report': ['RSEAB'],
         'rov-rseab-detail-report': ['RSEAB'],
@@ -324,15 +412,70 @@ export const mapInspectionDataForDocx = async (
         sowReportNo,
     };
 
-    for (const a of safeAliases) {
-        const alias = (a.alias || "").trim();
-        if (!alias) continue;
+    // Merge database-defined report aliases with all system default sub-report templates
+    const combinedAliases: { template_id: string; alias: string }[] = [...safeAliases];
+    for (const [tid, aliasList] of Object.entries(DEFAULT_SUB_REPORT_ALIASES)) {
+        if (!combinedAliases.some(a => (a.template_id || "").toLowerCase() === tid.toLowerCase())) {
+            combinedAliases.push({
+                template_id: tid,
+                alias: aliasList[0]
+            });
+        }
+    }
 
-        const templateId = a.template_id.toLowerCase();
+    for (const a of combinedAliases) {
+        const templateId = (a.template_id || "").toLowerCase();
+        const alias = (a.alias || "").trim();
+        if (!templateId) continue;
+
+        const targetAliases = Array.from(new Set([
+            alias,
+            ...(DEFAULT_SUB_REPORT_ALIASES[templateId] || [])
+        ])).map(x => x.trim().toUpperCase()).filter(Boolean);
+
+        // If template tags were inspected and neither this alias nor any of its page tags exist in the template, skip heavy PDF generation & page rasterization
+        if (activeTemplateTags && activeTemplateTags.size > 0) {
+            let isUsedInTemplate = false;
+            for (const cleanT of targetAliases) {
+                if (
+                    activeTemplateTags.has(cleanT) ||
+                    activeTemplateTags.has(`${cleanT}_PAGES`) ||
+                    activeTemplateTags.has(`${cleanT}_RECORDS`) ||
+                    activeTemplateTags.has(`HAS_${cleanT}`) ||
+                    activeTemplateTags.has(`HAS_${cleanT}_PAGES`) ||
+                    activeTemplateTags.has(`NO_${cleanT}`) ||
+                    activeTemplateTags.has(`NO_${cleanT}_PAGES`) ||
+                    activeTemplateTags.has(`T_${cleanT}`)
+                ) {
+                    isUsedInTemplate = true;
+                    break;
+                }
+            }
+
+            if (!isUsedInTemplate) {
+                targetAliases.forEach(cleanT => {
+                    reportData[`T_${cleanT}`] = false;
+                    reportData[`HAS_${cleanT}`] = false;
+                    reportData[`NO_${cleanT}`] = true;
+                    reportData[`HAS_${cleanT}_PAGES`] = false;
+                    reportData[`NO_${cleanT}_PAGES`] = true;
+                    reportData[`${cleanT}_PAGES`] = [];
+                    reportData[cleanT] = [];
+                    if (cleanT.endsWith('_PAGES')) {
+                        const base = cleanT.replace(/_PAGES$/, '');
+                        reportData[`${base}_PAGES`] = [];
+                        reportData[base] = [];
+                        reportData[`HAS_${base}_PAGES`] = false;
+                        reportData[`NO_${base}_PAGES`] = true;
+                    }
+                });
+                continue;
+            }
+        }
         
         // Filter records for this template first to check if there is data
         const recordsForTemplate = records.filter(r => {
-            const code = (r.inspection_type?.code || "").toUpperCase();
+            const code = (r.inspection_type?.code || r.inspection_type_code || r.type || "").toUpperCase();
             
             // System level reports explicit routing
             if (['defect-summary', 'defect-summary-pipeline'].includes(templateId)) {
@@ -500,10 +643,14 @@ export const mapInspectionDataForDocx = async (
                     companySettings || {},
                     sharedConfig as any
                 ) as any;
-            } else if (templateId === 'rov-rgvi-report') {
-                const { generateROVRGVIReport } = await import("./rov-rgvi-report");
+            } else if (templateId === 'rov-rgvi-report' || templateId === 'rov-gvi-report') {
+                const { generateROVRGVIReport, isExcludedFromRGVI } = await import("./rov-rgvi-report");
+                const rgviRecords = records.filter(r => {
+                    const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r);
+                });
                 pdfBlob = await generateROVRGVIReport(
-                    records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGVI"),
+                    rgviRecords,
                     sharedHeaderData,
                     companySettings || {},
                     sharedConfig as any
@@ -744,44 +891,7 @@ export const mapInspectionDataForDocx = async (
         }
         }
 
-        const defaultAliasesByTemplateId: Record<string, string[]> = {
-            'rov-photo-report': ['RPHOTO', 'RPHOTO_REPORT', 'ROV_PHOTO', 'ROV_PHOTO_REPORT', 'PHOTO_REPORT', 'PHOTOGRAPHY_REPORT', 'PHOTO_SHEETS', 'RPHOTO_PAGES'],
-            'rov-photo-log-report': ['RPHOTO_LOG', 'RPHOTO_LOG_REPORT', 'ROV_PHOTO_LOG', 'ROV_PHOTO_LOG_REPORT', 'PHOTO_LOG', 'PHOTO_LOG_REPORT', 'PHOTOGRAPHY_LOG', 'RPHOTO_LOG_PAGES'],
-            'diving-photo-report': ['DPHOTO', 'DPHOTO_REPORT', 'DIVING_PHOTO', 'DIVING_PHOTO_REPORT', 'DPHOTO_PAGES'],
-            'diving-photo-log-report': ['DPHOTO_LOG', 'DPHOTO_LOG_REPORT', 'DIVING_PHOTO_LOG', 'DIVING_PHOTO_LOG_REPORT', 'DPHOTO_LOG_PAGES'],
-            'defect-anomaly-report': ['DFT_REPORT', 'DFT_ANOMALY', 'DEFECT_ANOMALY', 'DEFECT_ANOMALY_REPORT', 'ANOMALY_REPORT', 'DEFECT_REPORT', 'ANOMALIES_REPORT', 'DFT_REPORT_PAGES'],
-            'findings-report': ['FND_REPORT', 'FINDINGS_REPORT', 'FINDINGS_DETAIL_REPORT', 'FND_REPORT_PAGES'],
-            'defect-summary': ['DEFECT_SUMMARY', 'ANOMALIES_SUMMARY_REPORT', 'DFT_SUMMARY', 'DEFECT_SUMMARY_PAGES'],
-            'findings-summary': ['FINDINGS_SUMMARY', 'FND_SUMMARY', 'FINDINGS_SUMMARY_PAGES'],
-            'defect-summary-pipeline': ['DEFECT_SUMMARY_PIPELINE', 'DEFECT_SUMMARY_PIPELINE_REPORT'],
-            'findings-summary-pipeline': ['FINDINGS_SUMMARY_PIPELINE', 'FINDINGS_SUMMARY_PIPELINE_REPORT'],
-            'rov-cp-report': ['RCP', 'RCP_REPORT', 'CP', 'CP_REPORT', 'CP_SURVEY', 'ROV_CP', 'ROV_CP_REPORT', 'CP_ROV', 'CP_ROV_REPORT', 'RECORDS_CP_ROV'],
-            'diving-cpsurv-report': ['DCPSURV', 'CPSURV', 'CP', 'CP_SURVEY', 'DCP', 'DCP_REPORT', 'DIVING_CP', 'DIVING_CP_REPORT', 'CP_DIVE', 'CP_DIVE_REPORT', 'DCPSURV_REPORT', 'CPSURV_REPORT', 'RECORDS_CP_DIVE'],
-            'rov-fmd-report': ['RFMD', 'FMD', 'RFMD_REPORT', 'FMD_REPORT'],
-            'diving-fmd-report': ['DFMD', 'FMD', 'FLOOD', 'DFMD_REPORT'],
-            'rov-gvi-report': ['RGVI', 'GVI', 'RGVI_REPORT', 'GVI_REPORT'],
-            'rov-rwdi-report': ['RWDI', 'WDI', 'RWDI_REPORT', 'WDI_REPORT'],
-            'rov-mgi-report': ['RMGI', 'MGI', 'MGROW', 'RMGI_REPORT'],
-            'rov-ricmi-report': ['RICMI', 'ICMI', 'RICMI_REPORT'],
-            'rov-seabed-report': ['RSEAB', 'SEAB', 'RSEAB_REPORT'],
-            'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOR_REPORT'],
-            'rov-caisson-report': ['RCASN', 'CAISSON', 'CAISSON_SUB', 'RCASN_REPORT'],
-            'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT'],
-            'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOATLANDING_SUB', 'RBLTG_REPORT'],
-            'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISERGUARD_SUB', 'RGUARD_REPORT'],
-            'rov-sg-report': ['RCG', 'SG', 'CAISSONGUARD', 'CAISSONGUARD_SUB', 'RCG_REPORT'],
-            'rov-cu-report': ['RCDG', 'CU', 'CONDUCTORGUARD', 'CONDUCTORGUARD_SUB', 'RCDG_REPORT'],
-            'rrisi-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT'],
-            'rov-riser-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT'],
-            'diving-rrisi-report': ['DRRISI', 'DRISI', 'RISER', 'DRRISI_REPORT'],
-            'rov-anode-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT'],
-            'rov-anode-rsani-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT'],
-            'szci-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT'],
-            'rov-splash-zone-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT'],
-            'rov-navig-report': ['NAVIG', 'RNAVIG', 'NAVIG_REPORT']
-        };
-
-        const targetAliases = Array.from(new Set([alias, ...(defaultAliasesByTemplateId[templateId] || [])]));
+        // targetAliases already resolved and normalized at top of loop
 
         // If PDF was generated, convert its pages to images and assign to {alias}_PAGES
         if (pdfBlob) {
@@ -854,23 +964,27 @@ export const mapInspectionDataForDocx = async (
                 };
             });
 
-            // Generate flattened pages list (e.g. for DFT_REP_PAGES)
+            // Generate flattened pages list only for photo or anomaly/defect templates (e.g. DFT_REP_PAGES, PHOTO_PAGES)
+            // Tabular reports like RGVI should never have raw photos dumped as full pages
+            const isPhotoOrAnomalyTemplate = /photo|dft|defect|anomaly|drawing/i.test(templateId);
             const pages: any[] = [];
-            recordsForTemplate.forEach(r => {
-                const recordAttachments = attachments.filter(att => 
-                    Number(att.source_id) === Number(r.insp_id) && 
-                    (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
-                );
-                recordAttachments.forEach(att => {
-                    pages.push({
-                        page_image: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
-                        photo: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
-                        qid: r.structure_components?.q_id || "N/A",
-                        elevation: r.elevation || "-",
-                        description: r.description || "N/A"
+            if (isPhotoOrAnomalyTemplate) {
+                recordsForTemplate.forEach(r => {
+                    const recordAttachments = attachments.filter(att => 
+                        Number(att.source_id) === Number(r.insp_id) && 
+                        (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
+                    );
+                    recordAttachments.forEach(att => {
+                        pages.push({
+                            page_image: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
+                            photo: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
+                            qid: r.structure_components?.q_id || "N/A",
+                            elevation: r.elevation || "-",
+                            description: r.description || "N/A"
+                        });
                     });
                 });
-            });
+            }
 
             targetAliases.forEach(tAlias => {
                 const cleanT = tAlias.trim().toUpperCase();
@@ -907,6 +1021,49 @@ export const mapInspectionDataForDocx = async (
             });
         }
     }
+
+    // 4. Format VDR_LST_BLK and VDD_LST_BLK for video logs
+    try {
+        const jobpackId = jobPack?.id;
+        const structureId = structure?.id;
+        if (jobpackId) {
+            let vUrl = `/api/reports/video-log?jobpack_id=${jobpackId}&`;
+            if (sowReportNo) vUrl += `sow_report_no=${encodeURIComponent(sowReportNo)}&`;
+            if (structureId) vUrl += `structure_id=${structureId}&`;
+            const vRes = await fetch(vUrl);
+            if (vRes.ok) {
+                const vJson = await vRes.json();
+                const vTapes = Array.isArray(vJson?.data) ? vJson.data : [];
+                const rovTapes = vTapes.filter((t: any) => Boolean(t.rov_job_id) || !t.dive_job_id);
+                const diveTapes = vTapes.filter((t: any) => Boolean(t.dive_job_id));
+
+                const formatTapeBlock = (tList: any[]) => {
+                    if (tList.length === 0) return "No video log entries recorded.";
+                    return tList.map(t => {
+                        const header = `Tape No: ${t.tape_no || t.tape_id}${t.dive_no ? ` | Deployment/Dive: ${t.dive_no}` : ''}${t.chapter_no ? ` | Chapter: ${t.chapter_no}` : ''}`;
+                        const logLines = (t.logs || []).map((l: any, idx: number) => {
+                            const tc = l.timecode_start || (l.tape_counter_start !== undefined && l.tape_counter_start !== null ? String(l.tape_counter_start) : "-");
+                            const act = l.event_type || l.action || "";
+                            const rem = l.remarks || l.description || "";
+                            return `  ${idx + 1}. [${tc}] ${act}${rem ? ` - ${rem}` : ''}`;
+                        }).join('\n');
+                        return `${header}\n${logLines}`;
+                    }).join('\n\n');
+                };
+
+                reportData.VDR_LST_BLK = formatTapeBlock(rovTapes);
+                reportData.VDD_LST_BLK = formatTapeBlock(diveTapes);
+                reportData.HAS_VDR = rovTapes.length > 0;
+                reportData.NO_VDR = rovTapes.length === 0;
+                reportData.HAS_VDD = diveTapes.length > 0;
+                reportData.NO_VDD = diveTapes.length === 0;
+            }
+        }
+    } catch (e) {
+        console.warn("[DocxMapper] Error resolving video log blocks:", e);
+    }
+    if (!reportData.VDR_LST_BLK) reportData.VDR_LST_BLK = "No ROV video logs recorded.";
+    if (!reportData.VDD_LST_BLK) reportData.VDD_LST_BLK = "No diving video logs recorded.";
 
     return reportData;
 };

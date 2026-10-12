@@ -77,8 +77,9 @@ These global tags are available throughout the entire document:
 | `{CONTRACTOR_ADDRESS}` | `Kuala Lumpur, Malaysia` | Registered address / comments |
 | `{CONTRACTOR_REF}` | `CR-2026-SWS-01` | Contractor internal reference number |
 | `{CONTRACT_REF}` | `CTR-PCSB-2026` | Client contract reference number |
-| `{CLIENT_NAME}` | `PETRONAS CARIGALI SDN BHD` | Client organization name |
-| `{CLIENT_SHORT}` | `PCSB` | Client short code |
+| `{CLIENT_NAME}` | `PETRONAS CARIGALI SDN BHD` | Client organization full name (configured in Preferences → Company Information) |
+| `{CLIENT_SHORT}` | `PCSB` | Client short code (configured in Preferences → Company Information) |
+| `{CLIENT_SHORT_UPPER}` | `PCSB` | Client short code in uppercase |
 | `{COMPANY_REP}` | `Ahmad Razak` | Client company representative |
 
 ### 3.3 Campaign Logistics & Vessels
