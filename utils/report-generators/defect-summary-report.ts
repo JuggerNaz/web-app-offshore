@@ -658,11 +658,17 @@ export const generateDefectSummaryReport = async (
         // Priority cell with colour
         const priorityCell = {
             content: isRectified ? `${priority}\n✓ RECTIFIED` : priority,
-            styles: {fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
+            styles: {
+                fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
                 textColor: isRectified ? [255, 255, 255] as [number, number, number] : text,
                 fontStyle: "bold" as const,
                 halign: "center" as const,
-                fontSize: 7, lineWidth: 0.1, lineColor: [200, 200, 200],},
+                valign: "middle" as const,
+                fontSize: priority.trim().length > 9 ? 6.5 : 7,
+                cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200],
+            },
         };
 
         // Finding cell — coloured by priority
@@ -693,16 +699,16 @@ export const generateDefectSummaryReport = async (
         ];
     });
 
-    // ── Column widths (landscape 297mm — 2×12mm margins = 273mm usable) ──────
-    // # | Ref | Tape | DefType | DefCode | Priority | Findings
+    // ── Column widths (landscape 297mm — 2×10mm margins = 277mm usable) ──────
+    // # | Ref | Tape | DefCode | DefType | Priority | Findings
     const cw = {
         no: 8,
-        ref: 28,
-        tape: 30,
-        defType: 35,
-        defCode: 22,
-        priority: 20,
-        findings: contentWidth - 8 - 28 - 30 - 35 - 22 - 20, // ~130mm
+        ref: 26,
+        tape: 26,
+        defCode: 20,
+        defType: 42,
+        priority: 28,
+        findings: contentWidth - 8 - 26 - 26 - 20 - 42 - 28, // 277 - 150 = 127mm
     };
 
     // First page: draw header and sub-header, then dashboard, then table
@@ -740,8 +746,8 @@ export const generateDefectSummaryReport = async (
             0: { cellWidth: cw.no, halign: "center" },
             1: { cellWidth: cw.ref },
             2: { cellWidth: cw.tape },
-            3: { cellWidth: cw.defType },
-            4: { cellWidth: cw.defCode },
+            3: { cellWidth: cw.defCode, halign: "center" },
+            4: { cellWidth: cw.defType },
             5: { cellWidth: cw.priority, halign: "center" },
             6: { cellWidth: cw.findings },
         },

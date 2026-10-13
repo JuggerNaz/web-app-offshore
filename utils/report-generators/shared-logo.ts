@@ -236,100 +236,49 @@ export const draw3SectionHeader = (
 
     const titleCenterX = x2 + col2W / 2;
 
-    const isStructureSummary = options.showCompanyInMiddle ||
-        (options.reportTitle && (
-            options.reportTitle.toLowerCase().includes("structure summary") ||
-            options.reportTitle.toLowerCase().includes("platform specification") ||
-            options.reportTitle.toLowerCase().includes("pipeline specification")
-        ));
+    const companyName = options.companySettings?.company_name || options.headerData?.companyName || "Petronas Carigali Sdn Bhd (SKA)";
+    const deptName = options.companySettings?.department_name || (options.companySettings as any)?.departmentName || options.headerData?.departmentName || "Technical Services Department";
 
-    if (isStructureSummary) {
-        const companyName = options.companySettings?.company_name || options.headerData?.companyName || "Petronas Carigali Sdn Bhd (SKA)";
-        const deptName = options.companySettings?.department_name || (options.companySettings as any)?.departmentName || options.headerData?.departmentName || "Technical Services Department";
+    const reportTitleText = options.reportTitle || "Inspection Report";
 
-        // Line 1: Company Name (bold, size 8)
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...titleTextColor);
-        const compLines = doc.splitTextToSize(companyName, col2W - 8);
-        doc.text(compLines[0] || companyName, titleCenterX, headerY + 4.5, { align: "center" });
+    const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
+        (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
+        (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
 
-        // Line 2: Department Name (no bold, size 8)
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...titleSubTextColor);
-        const deptLines = doc.splitTextToSize(deptName, col2W - 8);
-        doc.text(deptLines[0] || deptName, titleCenterX, headerY + 8.8, { align: "center" });
+    const reportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
+        ? (String(rawReportNo).trim().toLowerCase().startsWith("report no") ? String(rawReportNo).trim() : `Report No: ${String(rawReportNo).trim()}`)
+        : "Report No: N/A";
 
-        // Line 3: Report Title (bold, size 8)
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...titleTextColor);
-        const titleLines = doc.splitTextToSize(options.reportTitle || "Platform Specifications Report", col2W - 8);
-        doc.text(titleLines[0] || (options.reportTitle || "Platform Specifications Report"), titleCenterX, headerY + 13.2, { align: "center" });
+    // Line 1: Company Name (bold, size 8)
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...titleTextColor);
+    const compLines = doc.splitTextToSize(companyName, col2W - 8);
+    doc.text(compLines[0] || companyName, titleCenterX, headerY + 5.8, { align: "center" });
 
-        // Line 4: Report No (no bold, size 8)
-        const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
-            (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
-            (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
+    // Line 2: Department Name (no bold, size 8)
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...titleSubTextColor);
+    const deptLines = doc.splitTextToSize(deptName, col2W - 8);
+    doc.text(deptLines[0] || deptName, titleCenterX, headerY + 10.6, { align: "center" });
 
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...titleSubTextColor);
-        const reportNoStr = rawReportNo && rawReportNo !== "N/A"
-            ? (rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`)
-            : "Report No: N/A";
-        doc.text(reportNoStr, titleCenterX, headerY + 17.6, { align: "center" });
-
-        // Line 5: Structure Name (bold, size 8)
-        const sub = options.structureName || options.jobpackName || options.subtitle ||
-            (options.headerData?.platformName ? `${options.headerData.platformName}${options.headerData.jobpackName ? ` - ${options.headerData.jobpackName}` : ''}` : options.headerData?.jobpackName) || "";
-
-        if (sub) {
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...titleTextColor);
-            const subLines = doc.splitTextToSize(sub, col2W - 8);
-            doc.text(subLines[0] || "", titleCenterX, headerY + 22.2, { align: "center" });
-        }
-    } else {
-        // Standard 3-line format for Inspection Reports
-        const titleText = (options.reportTitle || "INSPECTION REPORT").toUpperCase();
-        let titleFontSize = orientation === "landscape" ? 11 : 10.5;
-        if (titleText.length > 34) titleFontSize = 9.5;
-        if (titleText.length > 44) titleFontSize = 8.5;
-        if (titleText.length > 54) titleFontSize = 7.5;
-
-        doc.setFontSize(titleFontSize);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...titleTextColor);
-        doc.text(titleText, titleCenterX, headerY + 8, { align: "center" });
-
-        // Report No
-        const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
-            (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
-            (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
-
-        if (rawReportNo && rawReportNo !== "N/A") {
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...titleSubTextColor);
-            const reportNoStr = rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`;
-            doc.text(reportNoStr, titleCenterX, headerY + 14, { align: "center" });
-        }
-
-        // Subtitle / Structure / Jobpack Info
-        const sub = options.structureName || options.jobpackName || options.subtitle ||
-            (options.headerData?.platformName ? `${options.headerData.platformName}${options.headerData.jobpackName ? ` - ${options.headerData.jobpackName}` : ''}` : options.headerData?.jobpackName) || "";
-
-        if (sub) {
-            doc.setFontSize(7.5);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...titleTextColor);
-            const subLines = doc.splitTextToSize(sub, col2W - 8);
-            doc.text(subLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
-        }
+    // Line 3: Report Title (bold, size 8, dynamically adjusted for very long titles)
+    let titleFontSize = 8;
+    if (orientation === "portrait" && reportTitleText.length > 36) {
+        titleFontSize = reportTitleText.length > 44 ? 6.8 : 7.2;
     }
+    doc.setFontSize(titleFontSize);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(...titleTextColor);
+    const titleLines = doc.splitTextToSize(reportTitleText, col2W - 8);
+    doc.text(titleLines[0] || reportTitleText, titleCenterX, headerY + 15.4, { align: "center" });
+
+    // Line 4: Report No (no bold, size 8)
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(...titleSubTextColor);
+    doc.text(reportNoStr, titleCenterX, headerY + 20.2, { align: "center" });
 
     // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
     doc.setFillColor(255, 255, 255);

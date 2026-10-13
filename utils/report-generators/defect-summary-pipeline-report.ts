@@ -1105,13 +1105,13 @@ export const generatePipelineDefectSummaryReport = async (
             halign: "center", lineWidth: 0.1, lineColor: [200, 200, 200]},
         columnStyles: {
             0: { cellWidth: 10, halign: "center" },   // Item No.
-            1: { cellWidth: 30, halign: "center" },   // Easting (m E)
-            2: { cellWidth: 30, halign: "center" },   // Northing (m N)
-            3: { cellWidth: 22, halign: "center" },   // KP / Elevation
-            4: { cellWidth: 48, halign: "left" },     // Event Name (Clean alignment)
+            1: { cellWidth: 28, halign: "center" },   // Easting (m E)
+            2: { cellWidth: 28, halign: "center" },   // Northing (m N)
+            3: { cellWidth: 20, halign: "center" },   // KP / Elevation
+            4: { cellWidth: 46, halign: "left" },     // Event Name (Clean alignment)
             5: { cellWidth: 35, halign: "center" },   // Anomaly Code (PIPELINE SPANNING)
-            6: { cellWidth: 20, halign: "center" },   // Priority
-            7: { cellWidth: 82, halign: "left" }      // Finding
+            6: { cellWidth: 27, halign: "center" },   // Priority
+            7: { cellWidth: 83, halign: "left" }      // Finding
         },
         didParseCell: (data) => {
             if (data.section === "body" && data.column.index === 6) {
@@ -1122,6 +1122,9 @@ export const generatePipelineDefectSummaryReport = async (
                     data.cell.styles.fillColor = style.bg;
                     data.cell.styles.textColor = style.text;
                     data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fontSize = rawPriority.trim().length > 9 ? 6.5 : 7;
+                    data.cell.styles.cellPadding = { top: 2, bottom: 2, left: 1, right: 1 };
+                    data.cell.styles.valign = "middle";
                 }
             }
         },

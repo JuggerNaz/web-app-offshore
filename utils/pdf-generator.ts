@@ -306,45 +306,41 @@ const draw3SectionHeader = async (
   const companyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
   const deptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
 
+  const rawReportNo = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  const reportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
+    ? (String(rawReportNo).trim().toLowerCase().startsWith("report no") ? String(rawReportNo).trim() : `Report No: ${String(rawReportNo).trim()}`)
+    : "Report No: N/A";
+
   // Line 1: Company Name (bold, size 8)
   doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
   const compLines = doc.splitTextToSize(companyName, col2W - 8);
-  doc.text(compLines[0] || companyName, titleCenterX, headerY + 4.5, { align: "center" });
+  doc.text(compLines[0] || companyName, titleCenterX, headerY + 5.8, { align: "center" });
 
   // Line 2: Department Name (no bold, size 8)
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...titleSubTextColor);
   const deptLines = doc.splitTextToSize(deptName, col2W - 8);
-  doc.text(deptLines[0] || deptName, titleCenterX, headerY + 8.8, { align: "center" });
+  doc.text(deptLines[0] || deptName, titleCenterX, headerY + 10.6, { align: "center" });
 
-  // Line 3: Report Title (bold, size 8)
-  doc.setFontSize(8);
+  // Line 3: Report Title (bold, size 8, dynamically adjusted for long titles)
+  let titleFontSize = 8;
+  if (reportTitle.length > 36) {
+    titleFontSize = reportTitle.length > 44 ? 6.8 : 7.2;
+  }
+  doc.setFontSize(titleFontSize);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
   const titleLines = doc.splitTextToSize(reportTitle, col2W - 8);
-  doc.text(titleLines[0] || reportTitle, titleCenterX, headerY + 13.2, { align: "center" });
+  doc.text(titleLines[0] || reportTitle, titleCenterX, headerY + 15.4, { align: "center" });
 
   // Line 4: Report No (no bold, size 8)
-  const rawReportNo = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
-  const reportNoStr = rawReportNo
-    ? (rawReportNo.toLowerCase().startsWith("report no") ? rawReportNo : `Report No: ${rawReportNo}`)
-    : "Report No: N/A";
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(...titleSubTextColor);
-  doc.text(reportNoStr, titleCenterX, headerY + 17.6, { align: "center" });
-
-  // Line 5: Platform Name / Structure Name (bold, size 8)
-  if (structureName) {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...titleTextColor);
-    const structLines = doc.splitTextToSize(structureName, col2W - 8);
-    doc.text(structLines[0] || "", titleCenterX, headerY + 22.2, { align: "center" });
-  }
+  doc.text(reportNoStr, titleCenterX, headerY + 20.2, { align: "center" });
 
   // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
   doc.setFillColor(255, 255, 255);
@@ -408,7 +404,6 @@ const generatePipelineReport = async (
     companySettings,
     config,
     reportTitle: "Pipeline Specifications Report",
-    structureName: structure.str_name || structure.title || undefined,
     isPrintFriendly,
     headerBlue,
   });
@@ -720,7 +715,6 @@ const generatePlatformReport = async (
     companySettings,
     config,
     reportTitle: "Platform Specifications Report",
-    structureName: structure.str_name || structure.title || undefined,
     isPrintFriendly,
     headerBlue,
   });

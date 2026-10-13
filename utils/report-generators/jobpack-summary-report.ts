@@ -144,11 +144,30 @@ export const generateJobPackSummaryReport = async (
         d.rect(x2, headerY, col2W, headerH, "S");
 
         const titleCenterX = x2 + col2W / 2;
-        d.setFontSize(10.5);
+        const companyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+        const deptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+
+        // Line 1: Company Name (bold, size 8)
+        d.setFontSize(8);
         d.setFont("helvetica", "bold");
         d.setTextColor(...titleTextColor);
-        d.text("JOB PACK SUMMARY REPORT", titleCenterX, headerY + 8, { align: "center" });
+        const compLines = d.splitTextToSize(companyName, col2W - 8);
+        d.text(compLines[0] || companyName, titleCenterX, headerY + 5.8, { align: "center" });
 
+        // Line 2: Department Name (no bold, size 8)
+        d.setFontSize(8);
+        d.setFont("helvetica", "normal");
+        d.setTextColor(...titleSubTextColor);
+        const deptLines = d.splitTextToSize(deptName, col2W - 8);
+        d.text(deptLines[0] || deptName, titleCenterX, headerY + 10.6, { align: "center" });
+
+        // Line 3: Report Title (bold, size 8)
+        d.setFontSize(8);
+        d.setFont("helvetica", "bold");
+        d.setTextColor(...titleTextColor);
+        d.text("Job Pack Summary Report", titleCenterX, headerY + 15.4, { align: "center" });
+
+        // Line 4: Report No (no bold, size 8)
         const reportNo = config?.reportNoPrefix
             ? `${config.reportNoPrefix}-${config.reportYear || new Date().getFullYear()}-${jobPack.id}`
             : (jobPack.metadata?.contract_ref || `JP-${jobPack.id}`);
@@ -156,15 +175,7 @@ export const generateJobPackSummaryReport = async (
         d.setFontSize(8);
         d.setFont("helvetica", "normal");
         d.setTextColor(...titleSubTextColor);
-        d.text(`Report No: ${reportNo}`, titleCenterX, headerY + 14, { align: "center" });
-
-        if (jobPack.name) {
-            d.setFontSize(7.5);
-            d.setFont("helvetica", "bold");
-            d.setTextColor(...titleTextColor);
-            const jpLines = d.splitTextToSize(jobPack.name, col2W - 8);
-            d.text(jpLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
-        }
+        d.text(`Report No: ${reportNo}`, titleCenterX, headerY + 20.2, { align: "center" });
 
         // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
         d.setFillColor(255, 255, 255);
