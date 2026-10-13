@@ -33,6 +33,8 @@ export const REPORT_TEMPLATES = {
         { id: "planning-overview", name: "Planning Overview", icon: FileText, description: "Complete planning documentation", requires: ["planning"] },
     ],
     inspection: [
+        { id: "inspection-summary", name: "Inspection Summary", icon: FileBarChart, description: "Executive summary dashboard with task coverage, anomaly distribution, and active task breakdown", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "inspection-summary-graph", name: "Inspection Summary by Graph", icon: FileBarChart, description: "Executive graphical dashboard with interactive visual charts, anomaly donuts, depletion meters, and survey gauges", requires: ["jobpack", "structure", "sow_report"] },
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline findings with reference numbers containing 'F' and combined span/burial events", requires: ["jobpack", "structure", "sow_report"] },

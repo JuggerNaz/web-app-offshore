@@ -410,6 +410,8 @@ interface WorkspaceDialogsProps {
         generateUTWTKReport: () => void;
         generateUTWTKReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateJobPackSummaryReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateInspectionSummaryReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateInspectionSummaryGraphReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateSZONEReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingCPSURVReport?: () => void;
         generateDivingCPSURVReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
@@ -758,6 +760,8 @@ export function WorkspaceDialogs({
         generateUTWTKReport,
         generateUTWTKReportBlob,
         generateJobPackSummaryReportBlob,
+        generateInspectionSummaryReportBlob,
+        generateInspectionSummaryGraphReportBlob,
         generateSZONEReportBlob,
         generateDivingCPSURVReport,
         generateDivingCPSURVReportBlob,
@@ -920,12 +924,22 @@ export function WorkspaceDialogs({
     const [wizardStep, setWizardStep] = React.useState(1);
     const [wizardSelectedTemplate, setWizardSelectedTemplate] = React.useState<any>(null);
     const [platformSummaryPreviewOpen, setPlatformSummaryPreviewOpen] = React.useState(false);
+    const [inspectionSummaryPreviewOpen, setInspectionSummaryPreviewOpen] = React.useState(false);
+    const [inspectionSummaryGraphPreviewOpen, setInspectionSummaryGraphPreviewOpen] = React.useState(false);
     const isReturningFromPreview = React.useRef(false);
 
     React.useEffect(() => {
         const handleOpenSummary = () => setPlatformSummaryPreviewOpen(true);
+        const handleOpenInspectionSummary = () => setInspectionSummaryPreviewOpen(true);
+        const handleOpenInspectionSummaryGraph = () => setInspectionSummaryGraphPreviewOpen(true);
         window.addEventListener("open-platform-summary-report", handleOpenSummary);
-        return () => window.removeEventListener("open-platform-summary-report", handleOpenSummary);
+        window.addEventListener("open-inspection-summary-report", handleOpenInspectionSummary);
+        window.addEventListener("open-inspection-summary-graph-report", handleOpenInspectionSummaryGraph);
+        return () => {
+            window.removeEventListener("open-platform-summary-report", handleOpenSummary);
+            window.removeEventListener("open-inspection-summary-report", handleOpenInspectionSummary);
+            window.removeEventListener("open-inspection-summary-graph-report", handleOpenInspectionSummaryGraph);
+        };
     }, []);
 
     React.useEffect(() => {
@@ -2836,6 +2850,30 @@ export function WorkspaceDialogs({
 
             <ReportPreviewDialog
                 reportConfig={reportConfig}
+                onBack={() => setInspectionSummaryPreviewOpen(false)}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={inspectionSummaryPreviewOpen} 
+                onOpenChange={setInspectionSummaryPreviewOpen} 
+                title="Inspection Summary Report Preview" 
+                fileName={`Inspection_Summary_Report_${headerData.sowReportNo || 'SUMMARY'}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateInspectionSummaryReportBlob || handlers.generateJobPackSummaryReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => setInspectionSummaryGraphPreviewOpen(false)}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
+                open={inspectionSummaryGraphPreviewOpen} 
+                onOpenChange={setInspectionSummaryGraphPreviewOpen} 
+                title="Inspection Summary by Graph Preview" 
+                fileName={`Inspection_Summary_Graph_Report_${headerData.sowReportNo || 'SUMMARY'}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={handlers.generateInspectionSummaryGraphReportBlob || handlers.generateInspectionSummaryReportBlob || handlers.generateJobPackSummaryReportBlob} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
@@ -3116,6 +3154,8 @@ export function WorkspaceDialogs({
                     generateSeabedGasDetailReport: () => setters.setSeabedGasDetailPreviewOpen(true),
                     generateSeabedCraterDetailReport: () => setters.setSeabedCraterDetailPreviewOpen(true),
                     generateAnomalyReport: () => setters.setPreviewOpen(true),
+                    generateInspectionSummaryReport: () => setInspectionSummaryPreviewOpen(true),
+                    generateInspectionSummaryGraphReport: () => setInspectionSummaryGraphPreviewOpen(true),
                     generateFullInspectionReport: () => toast.info("Generating full inspection report..."),
                     generateInspectionReportByType: (id: any) => {
                         const type = states.allInspectionTypes.find(t => t.id === id);

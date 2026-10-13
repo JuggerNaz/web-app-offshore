@@ -405,40 +405,33 @@ export const generateDefectCriteriaReport = async (
 
         // --- SECTION: Active Marine Growth Inspection (MGI) Profile Settings ---
         if (activeMgiProfiles.length > 0 || hasContent) {
-            // Check for page break space
-            if (currentY > pageHeight - 55) {
-                doc.addPage();
-                currentY = 35;
-            } else if (hasContent) {
-                currentY += 2;
-            }
-
-            // Section Header Banner
-            if (isPrintFriendly) {
-                doc.setFillColor(240, 240, 240);
-                doc.setDrawColor(180, 180, 180);
-                doc.setLineWidth(0.3);
-                doc.rect(10, currentY, pageWidth - 20, 8, "FD");
-                doc.setTextColor(0, 0, 0);
-            } else {
-                doc.setFillColor(...sectionBlue);
-                doc.rect(10, currentY, pageWidth - 20, 8, "F");
-                doc.setTextColor(255, 255, 255);
-            }
-            doc.setFontSize(10);
-            doc.setFont("helvetica", "bold");
-            doc.text("Marine Growth Inspection (MGI) - Active Profile Settings", 12, currentY + 5.5);
-
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "normal");
-            const activeProfileCountText = activeMgiProfiles.length === 1 
-                ? "1 Active Profile" 
-                : `${activeMgiProfiles.length} Active Profiles`;
-            doc.text(activeProfileCountText, pageWidth - 12, currentY + 5.5, { align: "right" });
-
-            currentY += 12;
-
             if (activeMgiProfiles.length === 0) {
+                // Check for page break space
+                if (currentY > pageHeight - 55) {
+                    doc.addPage();
+                    currentY = 35;
+                } else if (hasContent) {
+                    currentY += 2;
+                }
+
+                // Section Header Banner
+                if (isPrintFriendly) {
+                    doc.setFillColor(240, 240, 240);
+                    doc.setDrawColor(180, 180, 180);
+                    doc.setLineWidth(0.3);
+                    doc.rect(10, currentY, pageWidth - 20, 8, "FD");
+                    doc.setTextColor(0, 0, 0);
+                } else {
+                    doc.setFillColor(...sectionBlue);
+                    doc.rect(10, currentY, pageWidth - 20, 8, "F");
+                    doc.setTextColor(255, 255, 255);
+                }
+                doc.setFontSize(10);
+                doc.setFont("helvetica", "bold");
+                doc.text("Marine Growth Inspection (MGI)", 12, currentY + 5.5);
+
+                currentY += 12;
+
                 doc.setTextColor(100, 100, 100);
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "italic");
@@ -447,24 +440,38 @@ export const generateDefectCriteriaReport = async (
             } else {
                 hasContent = true;
                 for (const profile of activeMgiProfiles) {
-                    if (currentY > pageHeight - 45) {
+                    // Check for page break space
+                    if (currentY > pageHeight - 55) {
                         doc.addPage();
                         currentY = 35;
+                    } else if (hasContent) {
+                        currentY += 2;
                     }
 
-                    // Profile Details Info
-                    doc.setTextColor(15, 23, 42);
-                    doc.setFontSize(9.5);
+                    // Section Header Banner
+                    if (isPrintFriendly) {
+                        doc.setFillColor(240, 240, 240);
+                        doc.setDrawColor(180, 180, 180);
+                        doc.setLineWidth(0.3);
+                        doc.rect(10, currentY, pageWidth - 20, 8, "FD");
+                        doc.setTextColor(0, 0, 0);
+                    } else {
+                        doc.setFillColor(...sectionBlue);
+                        doc.rect(10, currentY, pageWidth - 20, 8, "F");
+                        doc.setTextColor(255, 255, 255);
+                    }
+                    doc.setFontSize(10);
                     doc.setFont("helvetica", "bold");
-                    doc.text(`Profile: ${profile.name}`, 12, currentY);
+                    doc.text("Marine Growth Inspection (MGI)", 12, currentY + 5.5);
 
-                    const typeBadge = profile.is_job_specific ? "Job-Specific Profile" : "Global Default Profile";
-                    doc.setFontSize(7.5);
+                    doc.setFontSize(8.5);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...sectionBlue);
-                    doc.text(`[${typeBadge}]`, pageWidth - 12, currentY, { align: "right" });
+                    const profileDisplayName = profile.name?.toLowerCase().startsWith("profile")
+                        ? profile.name
+                        : `Profile: ${profile.name || "Default"}`;
+                    doc.text(profileDisplayName, pageWidth - 12, currentY + 5.5, { align: "right" });
 
-                    currentY += 4.5;
+                    currentY += 11;
 
                     if (profile.description) {
                         doc.setFontSize(7.5);

@@ -2203,6 +2203,106 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
         }
 
+        // Inspection Summary Report
+        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+            }
+
+            let summaryData: any = null;
+            if (!selections.printBlankReport) {
+                try {
+                    const params = new URLSearchParams();
+                    if (reportConfig.structureId) params.set("structure_id", String(reportConfig.structureId));
+                    if (reportConfig.jobPackId) params.set("jobpack_id", String(reportConfig.jobPackId));
+                    if (selections.sowReportNo && selections.sowReportNo !== "all") params.set("sow_report_no", selections.sowReportNo);
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data;
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary for report:", e);
+                }
+            }
+
+            const { generateInspectionSummaryReport } = await import("@/utils/report-generators/inspection-summary-report");
+            return await generateInspectionSummaryReport(
+                summaryData || jobPack || {},
+                {
+                    ...(structure || {}),
+                    structure_id: reportConfig.structureId,
+                    platformName: structure?.str_name || structure?.name || "OFFSHORE PLATFORM",
+                    fieldName: structure?.field_name || structure?.field || "",
+                    waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
+                    depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
+                    contractorLogoUrl,
+                    sowReportNo: selections.sowReportNo
+                },
+                companySettings,
+                reportConfig
+            );
+        }
+
+        // Inspection Summary by Graph
+        if (currentTemplateId === "inspection-summary-graph" || currentTemplateId === "inspection-summary-graph-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+            }
+
+            let summaryData: any = null;
+            if (!selections.printBlankReport) {
+                try {
+                    const params = new URLSearchParams();
+                    if (reportConfig.structureId) params.set("structure_id", String(reportConfig.structureId));
+                    if (reportConfig.jobPackId) params.set("jobpack_id", String(reportConfig.jobPackId));
+                    if (selections.sowReportNo && selections.sowReportNo !== "all") params.set("sow_report_no", selections.sowReportNo);
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data;
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary for graph report:", e);
+                }
+            }
+
+            const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
+            return await generateInspectionSummaryGraphReport(
+                summaryData || jobPack || {},
+                {
+                    ...(structure || {}),
+                    structure_id: reportConfig.structureId,
+                    platformName: structure?.str_name || structure?.name || "OFFSHORE PLATFORM",
+                    fieldName: structure?.field_name || structure?.field || "",
+                    waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
+                    depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
+                    contractorLogoUrl,
+                    sowReportNo: selections.sowReportNo
+                },
+                companySettings,
+                reportConfig
+            );
+        }
+
         // Defect Summary Report / Findings Summary Report
         if (currentTemplateId === "defect-summary" || currentTemplateId === "findings-summary") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
