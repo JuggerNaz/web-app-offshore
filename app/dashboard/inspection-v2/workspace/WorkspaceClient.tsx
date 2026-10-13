@@ -237,6 +237,12 @@ import { HistoryDataPanel } from "./_components/panels/HistoryDataPanel";
 import { PipelineInspectionInfoPanel } from "./_components/panels/PipelineInspectionInfoPanel";
 import { QuickShortcutsPanel } from "./_components/panels/QuickShortcutsPanel";
 
+const SYSTEM_RECORD_KEYS = [
+  "tape_id", "tape_no", "chapter_no", "chapter",
+  "dive_id", "dive_no", "deployment_no", "dive_job_id", "rov_job_id",
+  "insp_id", "inspno", "comp_id", "component_id", "str_id", "structure_id",
+  "counter", "fields", "component_overrides", "status", "has_anomaly"
+];
 
 export default function WorkspaceV2Page() {
   return (
@@ -998,12 +1004,12 @@ function V10PreviewLayout() {
           bVal = isNaN(bCp) ? -Infinity : bCp;
           break;
         case "dive_no":
-          aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || "").toLowerCase();
-          bVal = (b.insp_dive_jobs?.job_no || b.insp_rov_jobs?.job_no || "").toLowerCase();
+          aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || a.dive_no || a.deployment_no || "").toLowerCase();
+          bVal = (b.insp_dive_jobs?.job_no || b.insp_rov_jobs?.job_no || b.dive_no || b.deployment_no || "").toLowerCase();
           break;
         case "tape_no":
-          aVal = (a.insp_video_tapes?.tape_no || "").toLowerCase();
-          bVal = (b.insp_video_tapes?.tape_no || "").toLowerCase();
+          aVal = (a.insp_video_tapes?.tape_no || a.tape_no || a.inspection_data?.tape_no || "").toLowerCase();
+          bVal = (b.insp_video_tapes?.tape_no || b.tape_no || b.inspection_data?.tape_no || "").toLowerCase();
           break;
         default:
           aVal = a[sortConfig.key];
@@ -1095,9 +1101,9 @@ function V10PreviewLayout() {
       // Depth / Elevation / CP / Job / Tape
       const waterDepth = String(d.water_depth || d.measured_depth || d.corrected_depth || r.elevation || "").trim();
       const cpVal = String(d.cp_rdg ?? d.cp_reading_mv ?? d.cp_reading ?? d.cp ?? "").trim();
-      const jobNo = String(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || "").trim();
+      const jobNo = String(r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || r.dive_no || r.deployment_no || "").trim();
       const operator = String(r.insp_dive_jobs?.diver_name || r.insp_rov_jobs?.rov_operator || "").trim();
-      const tapeNo = String(r.insp_video_tapes?.tape_no || "").trim();
+      const tapeNo = String(r.insp_video_tapes?.tape_no || r.tape_no || r.inspection_data?.tape_no || "").trim();
       const sowReportNo = String(r.sow_report_no || "").trim();
 
       // Date / Time
@@ -4102,6 +4108,7 @@ function V10PreviewLayout() {
       // 1. Prepare updated record data
       const updatedData = { ...dynamicProps };
       const updatedArchive = { ...archivedData };
+      SYSTEM_RECORD_KEYS.forEach(k => delete updatedArchive[k]);
 
       // Archive orphaned fields
       if (orphanedFields && orphanedFields.length > 0) {
@@ -5070,7 +5077,11 @@ function V10PreviewLayout() {
             const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(l.tape_id));
             const tapeNo = matchedTape?.tape_no || "N/A";
             const chapterNo = matchedTape?.chapter_no != null ? String(matchedTape.chapter_no) : "N/A";
-            const diveNo = activeDep?.jobNo || "N/A";
+            const matchedDep = deployments?.find((d: any) => 
+              (matchedTape?.dive_job_id && String(d.id) === String(matchedTape.dive_job_id)) ||
+              (matchedTape?.rov_job_id && String(d.id) === String(matchedTape.rov_job_id))
+            );
+            const diveNo = matchedDep?.jobNo || activeDep?.jobNo || "N/A";
             const structure = headerData.platformName || "N/A";
             return {
               id: `log_${l.video_log_id}`,
@@ -5242,11 +5253,19 @@ function V10PreviewLayout() {
             const status = hasAnom ? "ANOMALY" : "INSPECTION";
 
             const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
-            const tapeNo = matchedTape?.tape_no || r.insp_video_tapes?.tape_no || "N/A";
+            const tapeNo = matchedTape?.tape_no || r.insp_video_tapes?.tape_no || r.tape_no || r.inspection_data?.tape_no || "N/A";
             const chapterNo = matchedTape?.chapter_no != null 
               ? String(matchedTape.chapter_no) 
-              : (r.insp_video_tapes?.chapter_no != null ? String(r.insp_video_tapes.chapter_no) : "N/A");
-            const diveNo = r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || activeDep?.jobNo || "N/A";
+              : (r.insp_video_tapes?.chapter_no != null 
+                  ? String(r.insp_video_tapes.chapter_no) 
+                  : (r.chapter_no != null ? String(r.chapter_no) : (r.inspection_data?.chapter_no != null ? String(r.inspection_data.chapter_no) : "N/A")));
+            const matchedDep = deployments?.find((d: any) => 
+              (r.dive_job_id && String(d.id) === String(r.dive_job_id)) ||
+              (r.rov_job_id && String(d.id) === String(r.rov_job_id)) ||
+              (matchedTape?.dive_job_id && String(d.id) === String(matchedTape.dive_job_id)) ||
+              (matchedTape?.rov_job_id && String(d.id) === String(matchedTape.rov_job_id))
+            );
+            const diveNo = r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || r.dive_no || r.deployment_no || matchedDep?.jobNo || activeDep?.jobNo || "N/A";
             const structure = headerData.platformName || "N/A";
 
             // Extract component info
@@ -7316,12 +7335,18 @@ function V10PreviewLayout() {
       let autoRefNo = "";
 
       if (isEditing) {
-        // When editing/modifying historical record: preserve original tape_id if present, otherwise resolve from jobTapes or active tape
+        // When editing/modifying historical record: use explicitly selected tape_id if user changed it in the form,
+        // otherwise preserve original tape_id if present, or resolve from jobTapes / active tape
+        const explicitTapeId = (dynamicProps?.tape_id !== undefined && dynamicProps?.tape_id !== null && dynamicProps?.tape_id !== "")
+          ? Number(dynamicProps.tape_id)
+          : null;
         const origTapeId = originalRecordContext?.tape_id !== undefined && originalRecordContext?.tape_id !== null
           ? originalRecordContext.tape_id 
           : (originalRecordContext?.raw?.tape_id ?? null);
 
-        if (origTapeId) {
+        if (explicitTapeId) {
+          tId = explicitTapeId;
+        } else if (origTapeId) {
           tId = origTapeId;
         } else {
           const rDepId = originalRecordContext?.rov_job_id || originalRecordContext?.dive_job_id || originalRecordContext?.raw?.rov_job_id || originalRecordContext?.raw?.dive_job_id;
@@ -7550,6 +7575,7 @@ function V10PreviewLayout() {
 
       // Process Archived Data during Re-classification
       const newArchivedData = { ...archivedData };
+      SYSTEM_RECORD_KEYS.forEach(k => delete newArchivedData[k]);
       const currentFieldNames = new Set(activeFormProps.map((p: any) => p.name).filter(Boolean));
 
       // Also include all resolved field names from the JSON registry as a safety net.
@@ -7583,7 +7609,13 @@ function V10PreviewLayout() {
           "verification_depth", "verification_depth_unit",
           "inspection_date", "inspection_time", "tape_count_no",
           "incomplete_reason", "has_anomaly",
-          "flow_direction", "insp_mode", "inspection_direction", "inspection_location"
+          "flow_direction", "insp_mode", "inspection_direction", "inspection_location",
+          "tape_id", "tape_no", "chapter_no", "dive_id", "dive_no", "deployment_no", "dive_job_id", "rov_job_id",
+          "counter", "fp_kp", "kp", "elevation", "depth", "northing", "easting", "rov_heading", "heading", "cp_fg_rdg", "cp_fg",
+          "nominal_thickness", "nominal_wall_thickness", "wall_thickness", "nom_wt",
+          "avg_reading", "min_reading", "max_reading", "nom_wt_12_percent", "nom_wt_25_percent",
+          "wall_thickness_loss", "%_wall_thickness_loss", "effective_thickness", "effectiveThickness",
+          "mgi_profile", "max_allowable_thickness", "ut_readings_additional", "cp_rdg_additional", "cp_readings_additional"
         ]);
 
         Object.keys(activeProps).forEach((key) => {
@@ -7640,11 +7672,9 @@ function V10PreviewLayout() {
         description: recordNotes,
         status: findingType === "Incomplete" ? "INCOMPLETE" : "COMPLETED",
         has_anomaly: findingType === "Anomaly" || findingType === "Finding",
-        tape_id: activeProps.tape_id !== undefined && activeProps.tape_id !== null && activeProps.tape_id !== ""
+        tape_id: (activeProps.tape_id !== undefined && activeProps.tape_id !== null && activeProps.tape_id !== "")
           ? Number(activeProps.tape_id)
-          : (isEditing
-              ? (originalRecordContext?.tape_id !== undefined ? originalRecordContext.tape_id : (originalRecordContext?.raw?.tape_id ?? tId))
-              : tId),
+          : (tId ? Number(tId) : (isEditing ? (originalRecordContext?.tape_id ?? originalRecordContext?.raw?.tape_id ?? null) : null)),
         tape_count_no: (() => {
           const typedVal =
             activeProps.tape_count_no !== undefined &&
@@ -7702,28 +7732,47 @@ function V10PreviewLayout() {
           _meta_status: findingType,
           _mgi_profile_id: activeMGIProfile?.id || null,
           incomplete_reason: findingType === "Incomplete" ? incompleteReason : null,
-          chapter_no: activeProps.chapter_no !== undefined && activeProps.chapter_no !== null && activeProps.chapter_no !== ""
-            ? Number(activeProps.chapter_no)
-            : (isEditing 
-                ? (originalRecordContext?.chapter_no !== undefined 
-                    ? originalRecordContext.chapter_no 
-                    : (originalRecordContext?.raw?.inspection_data?.chapter_no 
-                        ? originalRecordContext.raw.inspection_data.chapter_no 
-                        : (originalRecordContext?.raw?.inspection_data?.chapter 
-                            ? originalRecordContext.raw.inspection_data.chapter 
-                            : 1)))
-                : (activeChapter ? Number(activeChapter) : 1)),
+          chapter_no: (() => {
+            if (activeProps.chapter_no !== undefined && activeProps.chapter_no !== null && activeProps.chapter_no !== "") {
+              return Number(activeProps.chapter_no);
+            }
+            const chosenTid = activeProps.tape_id || tId;
+            if (chosenTid) {
+              const matchedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(chosenTid));
+              if (matchedTape?.chapter_no) return Number(matchedTape.chapter_no);
+            }
+            if (isEditing) {
+              return originalRecordContext?.chapter_no !== undefined 
+                ? originalRecordContext.chapter_no 
+                : (originalRecordContext?.raw?.inspection_data?.chapter_no 
+                    ? originalRecordContext.raw.inspection_data.chapter_no 
+                    : (originalRecordContext?.raw?.inspection_data?.chapter 
+                        ? originalRecordContext.raw.inspection_data.chapter 
+                        : 1));
+            }
+            return activeChapter ? Number(activeChapter) : 1;
+          })(),
         },
         archived_data: newArchivedData,
       };
 
-      // Set job assignment: if user explicitly selected dive_job_id / rov_job_id in activeProps, use it; otherwise preserve original if editing or assign active deployment
-      if (activeProps.dive_job_id || activeProps.rov_job_id) {
+      // Set job assignment: if user explicitly selected dive_job_id / rov_job_id in activeProps, use it;
+      // or if selected tape belongs to a specific dive/deployment, sync to that deployment
+      const explicitDepId = (activeProps.dive_job_id || activeProps.rov_job_id) ? Number(activeProps.dive_job_id || activeProps.rov_job_id) : null;
+      const chosenTid = payload.tape_id || tId;
+      const matchedTapeForJob = chosenTid ? jobTapes?.find((t: any) => String(t.tape_id) === String(chosenTid)) : null;
+      const tapeDepId = (matchedTapeForJob?.dive_job_id || matchedTapeForJob?.rov_job_id || matchedTapeForJob?.raw?.dive_job_id || matchedTapeForJob?.raw?.rov_job_id) 
+        ? Number(matchedTapeForJob.dive_job_id || matchedTapeForJob.rov_job_id || matchedTapeForJob.raw?.dive_job_id || matchedTapeForJob.raw?.rov_job_id) 
+        : null;
+
+      const targetDepId = explicitDepId || tapeDepId;
+
+      if (targetDepId) {
         if (inspMethod === "DIVING") {
-          payload.dive_job_id = activeProps.dive_job_id || activeProps.rov_job_id;
+          payload.dive_job_id = targetDepId;
           payload.rov_job_id = null;
         } else {
-          payload.rov_job_id = activeProps.rov_job_id || activeProps.dive_job_id;
+          payload.rov_job_id = targetDepId;
           payload.dive_job_id = null;
         }
       } else if (isEditing) {
@@ -8006,7 +8055,7 @@ function V10PreviewLayout() {
       const finalTapeId = payload.tape_id || tId;
       if (finalTapeId) {
         if (editingRecordId) {
-          await supabase
+          const { data: updatedLogs } = await supabase
             .from("insp_video_logs")
             .update({
               timecode_start: finalTimecodeStr,
@@ -8014,7 +8063,20 @@ function V10PreviewLayout() {
               event_time: finalEventTimeUtc,
               tape_id: finalTapeId,
             })
-            .eq("inspection_id", editingRecordId);
+            .eq("inspection_id", editingRecordId)
+            .select("video_log_id");
+
+          if ((!updatedLogs || updatedLogs.length === 0) && (vidState === "RECORDING" || payload.tape_id)) {
+            await supabase.from("insp_video_logs").insert({
+              inspection_id: editingRecordId,
+              event_type: `${it?.name || activeSpec} - ${selectedComp.q_id || selectedComp.name}`,
+              event_time: finalEventTimeUtc,
+              timecode_start: finalTimecodeStr,
+              tape_counter_start: finalCounterSecs,
+              tape_id: finalTapeId,
+              company_id: activeCompanyId || null,
+            });
+          }
         } else {
           await supabase.from("insp_video_logs").insert({
             inspection_id: opData.insp_id,
@@ -8069,6 +8131,76 @@ function V10PreviewLayout() {
         setPrevRefNo(finalAutoRefNo);
         setIsCommitting(false);
         setIsFormModified(false);
+
+        // Immediate optimistic synchronization for Captured Events and Video Log lists
+        const resolvedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(payload.tape_id));
+        const resolvedDep = deployments?.find((d: any) => String(d.id) === String(payload.dive_job_id || payload.rov_job_id));
+        const rTapeNo = resolvedTape?.tape_no || dynamicProps?.tape_no;
+        const rChapterNo = payload.inspection_data?.chapter_no;
+        const rDiveNo = resolvedDep?.jobNo || dynamicProps?.dive_no;
+
+        const updateRecordObject = (r: any) => {
+          if (r.insp_id === editingRecordId) {
+            return {
+              ...r,
+              ...payload,
+              tape_id: payload.tape_id,
+              chapter_no: rChapterNo,
+              tape_no: rTapeNo || r.tape_no,
+              dive_no: rDiveNo || r.dive_no,
+              deployment_no: rDiveNo || r.deployment_no,
+              insp_video_tapes: resolvedTape
+                ? { tape_no: resolvedTape.tape_no, chapter_no: rChapterNo || resolvedTape.chapter_no }
+                : (rTapeNo ? { tape_no: rTapeNo, chapter_no: rChapterNo } : r.insp_video_tapes),
+              insp_dive_jobs: (inspMethod === "DIVING" && resolvedDep)
+                ? { job_no: resolvedDep.jobNo, name: resolvedDep.name }
+                : (rDiveNo && inspMethod === "DIVING" ? { job_no: rDiveNo, name: "" } : r.insp_dive_jobs),
+              insp_rov_jobs: (inspMethod !== "DIVING" && resolvedDep)
+                ? { job_no: resolvedDep.jobNo, name: resolvedDep.name }
+                : (rDiveNo && inspMethod !== "DIVING" ? { job_no: rDiveNo, name: "" } : r.insp_rov_jobs),
+            };
+          }
+          return r;
+        };
+
+        setCurrentRecords((prev: any[]) => (prev || []).map(updateRecordObject));
+        setAllWorkspaceRecords((prev: any[]) => (prev || []).map(updateRecordObject));
+
+        setVideoEvents((prev: any[]) =>
+          (prev || []).map((ev: any) => {
+            if (ev.realId === editingRecordId || ev.inspectionId === editingRecordId || ev.id === `insp_${editingRecordId}`) {
+              return {
+                ...ev,
+                tape_id: payload.tape_id,
+                tapeNo: rTapeNo || ev.tapeNo,
+                chapterNo: rChapterNo != null ? String(rChapterNo) : ev.chapterNo,
+                diveNo: rDiveNo || ev.diveNo,
+                time: finalTimecodeStr,
+                tape_counter_start: finalCounterSecs,
+                rawRecord: updateRecordObject(ev.rawRecord || {}),
+              };
+            }
+            return ev;
+          })
+        );
+
+        setOriginalRecordContext((prev: any) => ({
+          ...prev,
+          dive_job_id: payload.dive_job_id,
+          rov_job_id: payload.rov_job_id,
+          tape_id: payload.tape_id,
+          dive_no: rDiveNo || prev?.dive_no,
+          deployment_no: rDiveNo || prev?.deployment_no,
+          tape_no: rTapeNo || prev?.tape_no,
+          chapter_no: rChapterNo || prev?.chapter_no,
+          raw: {
+            ...(prev?.raw || {}),
+            ...payload,
+            insp_video_tapes: resolvedTape || prev?.raw?.insp_video_tapes,
+            insp_dive_jobs: resolvedDep?.raw || prev?.raw?.insp_dive_jobs,
+            insp_rov_jobs: resolvedDep?.raw || prev?.raw?.insp_rov_jobs,
+          }
+        }));
       } else {
         toast.success("Inspection record saved successfully!");
         resetForm();
@@ -8171,8 +8303,9 @@ function V10PreviewLayout() {
       processAttachments();
 
       // Initial refresh for the record itself
-      syncDeploymentState();
+      await syncDeploymentState();
       fetchHistory();
+      fetchFullWorkspaceRecords();
     } catch (err: any) {
       console.error("HandleCommitRecord Error:", err);
       toast.error(`Error saving record: ${err.message || "Unknown error"}`);
@@ -8295,6 +8428,25 @@ function V10PreviewLayout() {
     if (fullRecord.inspection_date) initialProps.inspection_date = fullRecord.inspection_date;
     if (fullRecord.inspection_time) initialProps.inspection_time = fullRecord.inspection_time;
 
+    // Explicitly seed core table assignment fields
+    if (fullRecord.tape_id !== undefined && fullRecord.tape_id !== null && fullRecord.tape_id !== "") {
+      initialProps.tape_id = Number(fullRecord.tape_id);
+    }
+    const recTapeNo = fullRecord.insp_video_tapes?.tape_no || fullRecord.tape_no || jobTapes?.find((t: any) => String(t.tape_id) === String(fullRecord.tape_id))?.tape_no;
+    if (recTapeNo) {
+      initialProps.tape_no = recTapeNo;
+    }
+    const recChapter = fullRecord.insp_video_tapes?.chapter_no ?? fullRecord.inspection_data?.chapter_no ?? fullRecord.chapter_no ?? jobTapes?.find((t: any) => String(t.tape_id) === String(fullRecord.tape_id))?.chapter_no;
+    if (recChapter !== undefined && recChapter !== null && recChapter !== "") {
+      initialProps.chapter_no = Number(recChapter);
+    }
+    if (fullRecord.dive_job_id) initialProps.dive_job_id = Number(fullRecord.dive_job_id);
+    if (fullRecord.rov_job_id) initialProps.rov_job_id = Number(fullRecord.rov_job_id);
+    const recDiveNo = fullRecord.insp_dive_jobs?.job_no || fullRecord.insp_dive_jobs?.dive_no || fullRecord.dive_no || deployments?.find((d: any) => String(d.id) === String(fullRecord.dive_job_id))?.jobNo;
+    const recDepNo = fullRecord.insp_rov_jobs?.job_no || fullRecord.insp_rov_jobs?.deployment_no || fullRecord.deployment_no || deployments?.find((d: any) => String(d.id) === String(fullRecord.rov_job_id))?.jobNo;
+    if (recDiveNo) initialProps.dive_no = recDiveNo;
+    if (recDepNo) initialProps.deployment_no = recDepNo;
+
     if (activeSpec === 'RSEAB' && initialProps.category === 'Debris') {
       if (!initialProps.debris_desc || initialProps.debris_desc === '') {
         initialProps.debris_desc = fullRecord.description || fullRecord.observation || "";
@@ -8310,10 +8462,10 @@ function V10PreviewLayout() {
       dive_job_id: fullRecord.dive_job_id,
       rov_job_id: fullRecord.rov_job_id,
       tape_id: fullRecord.tape_id,
-      dive_no: fullRecord.insp_dive_jobs?.job_no || fullRecord.insp_dive_jobs?.dive_no || fullRecord.dive_no,
-      deployment_no: fullRecord.insp_rov_jobs?.job_no || fullRecord.insp_rov_jobs?.deployment_no || fullRecord.deployment_no,
-      tape_no: fullRecord.insp_video_tapes?.tape_no || fullRecord.tape_no,
-      chapter_no: fullRecord.insp_video_tapes?.chapter_no ?? fullRecord.chapter_no ?? fullRecord.inspection_data?.chapter_no ?? fullRecord.inspection_data?.chapter,
+      dive_no: recDiveNo || recDepNo,
+      deployment_no: recDepNo || recDiveNo,
+      tape_no: recTapeNo,
+      chapter_no: recChapter,
       raw: fullRecord,
     });
     
@@ -8324,7 +8476,7 @@ function V10PreviewLayout() {
           ? JSON.parse(fullRecord.archived_data)
           : fullRecord.archived_data;
         Object.keys(parsedArchive).forEach(key => {
-          if (/^\d+$/.test(key)) delete parsedArchive[key];
+          if (/^\d+$/.test(key) || SYSTEM_RECORD_KEYS.includes(key)) delete parsedArchive[key];
         });
       }
     } catch (e) {
@@ -8458,7 +8610,7 @@ function V10PreviewLayout() {
                   ? JSON.parse(freshRecord.archived_data)
                   : freshRecord.archived_data;
                 Object.keys(freshParsedArchive).forEach(key => {
-                  if (/^\d+$/.test(key)) delete freshParsedArchive[key];
+                  if (/^\d+$/.test(key) || SYSTEM_RECORD_KEYS.includes(key)) delete freshParsedArchive[key];
                 });
               }
             } catch (e) {
@@ -8471,6 +8623,22 @@ function V10PreviewLayout() {
             }
             if (freshRecord.inspection_date) freshProps.inspection_date = freshRecord.inspection_date;
             if (freshRecord.inspection_time) freshProps.inspection_time = freshRecord.inspection_time;
+
+            if (freshRecord.tape_id !== undefined && freshRecord.tape_id !== null && freshRecord.tape_id !== "") {
+              freshProps.tape_id = Number(freshRecord.tape_id);
+            }
+            const freshTapeNo = freshRecord.insp_video_tapes?.tape_no || freshRecord.tape_no || jobTapes?.find((t: any) => String(t.tape_id) === String(freshRecord.tape_id))?.tape_no;
+            if (freshTapeNo) freshProps.tape_no = freshTapeNo;
+            const freshChapter = freshRecord.insp_video_tapes?.chapter_no ?? freshRecord.inspection_data?.chapter_no ?? freshRecord.chapter_no ?? jobTapes?.find((t: any) => String(t.tape_id) === String(freshRecord.tape_id))?.chapter_no;
+            if (freshChapter !== undefined && freshChapter !== null && freshChapter !== "") {
+              freshProps.chapter_no = Number(freshChapter);
+            }
+            if (freshRecord.dive_job_id) freshProps.dive_job_id = Number(freshRecord.dive_job_id);
+            if (freshRecord.rov_job_id) freshProps.rov_job_id = Number(freshRecord.rov_job_id);
+            const freshDiveNo = freshRecord.insp_dive_jobs?.job_no || freshRecord.insp_dive_jobs?.dive_no || freshRecord.dive_no || deployments?.find((d: any) => String(d.id) === String(freshRecord.dive_job_id))?.jobNo;
+            const freshDepNo = freshRecord.insp_rov_jobs?.job_no || freshRecord.insp_rov_jobs?.deployment_no || freshRecord.deployment_no || deployments?.find((d: any) => String(d.id) === String(freshRecord.rov_job_id))?.jobNo;
+            if (freshDiveNo) freshProps.dive_no = freshDiveNo;
+            if (freshDepNo) freshProps.deployment_no = freshDepNo;
 
             if (freshRecord.elevation !== undefined && freshRecord.elevation !== null && !freshProps.verification_depth) {
               freshProps.verification_depth = String(freshRecord.elevation);
@@ -8486,6 +8654,11 @@ function V10PreviewLayout() {
             );
           }
 
+          const resolvedCtxTapeNo = freshRecord.insp_video_tapes?.tape_no || freshRecord.tape_no || jobTapes?.find((t: any) => String(t.tape_id) === String(freshRecord.tape_id))?.tape_no;
+          const resolvedCtxChapter = freshRecord.insp_video_tapes?.chapter_no ?? freshRecord.chapter_no ?? freshRecord.inspection_data?.chapter_no ?? freshRecord.inspection_data?.chapter ?? jobTapes?.find((t: any) => String(t.tape_id) === String(freshRecord.tape_id))?.chapter_no;
+          const resolvedCtxDiveNo = freshRecord.insp_dive_jobs?.job_no || freshRecord.insp_dive_jobs?.dive_no || freshRecord.dive_no || deployments?.find((d: any) => String(d.id) === String(freshRecord.dive_job_id))?.jobNo;
+          const resolvedCtxDepNo = freshRecord.insp_rov_jobs?.job_no || freshRecord.insp_rov_jobs?.deployment_no || freshRecord.deployment_no || deployments?.find((d: any) => String(d.id) === String(freshRecord.rov_job_id))?.jobNo;
+
           setOriginalRecordContext((prev: any) => ({
             ...prev,
             insp_id: freshRecord.insp_id || prev?.insp_id,
@@ -8496,10 +8669,10 @@ function V10PreviewLayout() {
             dive_job_id: freshRecord.dive_job_id ?? prev?.dive_job_id,
             rov_job_id: freshRecord.rov_job_id ?? prev?.rov_job_id,
             tape_id: freshRecord.tape_id ?? prev?.tape_id,
-            dive_no: freshRecord.insp_dive_jobs?.job_no || freshRecord.insp_dive_jobs?.dive_no || freshRecord.dive_no || prev?.dive_no,
-            deployment_no: freshRecord.insp_rov_jobs?.job_no || freshRecord.insp_rov_jobs?.deployment_no || freshRecord.deployment_no || prev?.deployment_no,
-            tape_no: freshRecord.insp_video_tapes?.tape_no || freshRecord.tape_no || prev?.tape_no,
-            chapter_no: freshRecord.insp_video_tapes?.chapter_no ?? freshRecord.chapter_no ?? freshRecord.inspection_data?.chapter_no ?? freshRecord.inspection_data?.chapter ?? prev?.chapter_no,
+            dive_no: resolvedCtxDiveNo || resolvedCtxDepNo || prev?.dive_no,
+            deployment_no: resolvedCtxDepNo || resolvedCtxDiveNo || prev?.deployment_no,
+            tape_no: resolvedCtxTapeNo || prev?.tape_no,
+            chapter_no: resolvedCtxChapter || prev?.chapter_no,
             raw: freshRecord,
           }));
 

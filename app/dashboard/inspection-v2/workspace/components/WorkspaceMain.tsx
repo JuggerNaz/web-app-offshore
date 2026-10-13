@@ -1145,23 +1145,32 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                 })()}
                               </td>
                             );
-                          case 'dive_no':
+                          case 'dive_no': {
+                            const diveDisplay = r.insp_dive_jobs?.job_no || 
+                              r.insp_rov_jobs?.job_no || 
+                              r.dive_no || 
+                              r.deployment_no || 
+                              (r.dive_job_id || r.rov_job_id ? activeDep?.jobNo : null);
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
-                                <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
+                                <span className="text-xs font-medium">{diveDisplay || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
                               </td>
                             );
+                          }
                           case 'tape_no': {
                             const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
+                            const matchedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
+                            const tapeDisplay = r.insp_video_tapes?.tape_no || matchedTape?.tape_no || r.tape_no || r.inspection_data?.tape_no;
                             const chapterNo = r.insp_video_tapes?.chapter_no 
+                              ?? matchedTape?.chapter_no
                               ?? r.chapter_no 
                               ?? r.inspection_data?.chapter_no 
                               ?? r.inspection_data?.chapter 
-                              ?? (jobTapes?.find((t: any) => t.tape_id === r.tape_id || (t.tape_no && r.insp_video_tapes?.tape_no && t.tape_no === r.insp_video_tapes.tape_no))?.chapter_no);
+                              ?? (jobTapes?.find((t: any) => (t.tape_no && tapeDisplay && t.tape_no === tapeDisplay))?.chapter_no);
                             const hasChapter = chapterNo !== undefined && chapterNo !== null && String(chapterNo).trim() !== "";
                             return (
                               <td key={col.id} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300">
-                                <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
+                                <span className="text-xs font-medium">{tapeDisplay || <span className="text-slate-300 dark:text-slate-700">-</span>}</span>
                                 {(hasChapter || counterDisplay) && (
                                   <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1">
                                     {hasChapter && (
@@ -1501,23 +1510,32 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                     })()}
                                   </td>
                                 );
-                              case 'dive_no':
+                              case 'dive_no': {
+                                const diveDisplay = r.insp_dive_jobs?.job_no || 
+                                  r.insp_rov_jobs?.job_no || 
+                                  r.dive_no || 
+                                  r.deployment_no || 
+                                  (r.dive_job_id || r.rov_job_id ? activeDep?.jobNo : null);
                                 return (
                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300">-</span>}</span>
+                                    <span className="text-xs font-medium">{diveDisplay || <span className="text-slate-300">-</span>}</span>
                                   </td>
                                 );
+                              }
                               case 'tape_no': {
                                 const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
+                                const matchedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
+                                const tapeDisplay = r.insp_video_tapes?.tape_no || matchedTape?.tape_no || r.tape_no || r.inspection_data?.tape_no;
                                 const chapterNo = r.insp_video_tapes?.chapter_no 
+                                  ?? matchedTape?.chapter_no
                                   ?? r.chapter_no 
                                   ?? r.inspection_data?.chapter_no 
                                   ?? r.inspection_data?.chapter 
-                                  ?? (jobTapes?.find((t: any) => t.tape_id === r.tape_id || (t.tape_no && r.insp_video_tapes?.tape_no && t.tape_no === r.insp_video_tapes.tape_no))?.chapter_no);
+                                  ?? (jobTapes?.find((t: any) => (t.tape_no && tapeDisplay && t.tape_no === tapeDisplay))?.chapter_no);
                                 const hasChapter = chapterNo !== undefined && chapterNo !== null && String(chapterNo).trim() !== "";
                                 return (
                                   <td key={col.id} className="px-3 py-3 align-top text-slate-700">
-                                    <span className="text-xs font-medium">{r.insp_video_tapes?.tape_no || <span className="text-slate-300">-</span>}</span>
+                                    <span className="text-xs font-medium">{tapeDisplay || <span className="text-slate-300">-</span>}</span>
                                     {(hasChapter || counterDisplay) && (
                                       <div className="text-[11px] font-mono font-medium text-slate-500 flex items-center gap-1.5 mt-1">
                                         {hasChapter && (
