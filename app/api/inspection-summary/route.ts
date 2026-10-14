@@ -220,58 +220,38 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         }
 
-        // Extract active component IDs and QIDs to query target components specifically
+        // Extract active component IDs strictly by component_id
         // Coerce componentIds strictly to numbers to prevent "operator does not exist: integer = text" SQL errors
-        const componentIds = sowItemsToProcess
-            .map((i: any) => {
-                const val = parseInt(String(i.component_id));
-                return isNaN(val) ? null : val;
-            })
-            .filter(Boolean) as number[];
-        const componentQids = sowItemsToProcess.map((i: any) => String(i.component_qid || "").trim()).filter(q => q !== "");
+        const compIdSet = new Set<number>();
+        allSowItems.forEach((i: any) => {
+            const val = parseInt(String(i.component_id));
+            if (!isNaN(val) && val > 0) compIdSet.add(val);
+        });
+        const componentIds = Array.from(compIdSet);
 
         let compList: any[] = [];
-        if (!isNaN(strNum)) {
-            const queries: Promise<any>[] = [];
-            if (componentIds.length > 0) {
-                queries.push(
-                    (supabase as any)
-                        .from("structure_components")
-                        .select("id, q_id, code, metadata")
-                        .eq("structure_id", strNum)
-                        .in("id", componentIds)
-                );
-            }
-            if (componentQids.length > 0) {
-                queries.push(
-                    (supabase as any)
-                        .from("structure_components")
-                        .select("id, q_id, code, metadata")
-                        .eq("structure_id", strNum)
-                        .in("q_id", componentQids)
-                );
-            }
-
-            if (queries.length > 0) {
-                const results = await Promise.all(queries);
-                results.forEach((res) => {
-                    if (res.data) {
-                        compList = compList.concat(res.data);
-                    }
-                });
+        if (!isNaN(strNum) && componentIds.length > 0) {
+            const chunkSize = 500;
+            for (let i = 0; i < componentIds.length; i += chunkSize) {
+                const chunk = componentIds.slice(i, i + chunkSize);
+                const { data: chunkComps } = await (supabase as any)
+                    .from("structure_components")
+                    .select("id, q_id, code, metadata, is_deleted")
+                    .eq("structure_id", strNum)
+                    .in("id", chunk);
+                if (chunkComps && chunkComps.length > 0) {
+                    compList.push(...chunkComps);
+                }
             }
         }
 
-        console.log(`[Summary API] Fetched ${compList.length} targeted components for SOW items`);
+        console.log(`[Summary API] Fetched ${compList.length} targeted components strictly by component_id`);
 
         const compMap = new Map();
-        const qidMap = new Map();
         if (compList) {
             compList.forEach((c: any) => {
                 compMap.set(String(c.id), c);
-                if (c.q_id) {
-                    qidMap.set(String(c.q_id).trim().toUpperCase(), c);
-                }
+                compMap.set(Number(c.id), c);
             });
         }
 
@@ -354,6 +334,30 @@ export const GET = withTenant(async (request, { companyId }) => {
                 anomMap.get(a.inspection_id)!.push(a);
             }
         });
+
+        // Ensure any component_id in allRecordsData not yet in compMap is fetched strictly by ID
+        const missingRecordCompIds = Array.from(new Set(
+            allRecordsData
+                .map((r: any) => parseInt(String(r.component_id)))
+                .filter((cid: number) => !isNaN(cid) && cid > 0 && !compMap.has(String(cid)))
+        ));
+        if (!isNaN(strNum) && missingRecordCompIds.length > 0) {
+            const chunkSize = 500;
+            for (let i = 0; i < missingRecordCompIds.length; i += chunkSize) {
+                const chunk = missingRecordCompIds.slice(i, i + chunkSize);
+                const { data: chunkComps } = await (supabase as any)
+                    .from("structure_components")
+                    .select("id, q_id, code, metadata, is_deleted")
+                    .eq("structure_id", strNum)
+                    .in("id", chunk);
+                if (chunkComps && chunkComps.length > 0) {
+                    chunkComps.forEach((c: any) => {
+                        compMap.set(String(c.id), c);
+                        compMap.set(Number(c.id), c);
+                    });
+                }
+            }
+        }
 
         // Fast in-memory link for structure_components, inspection_types, and insp_anomalies
         allRecordsData.forEach((r: any) => {
@@ -512,10 +516,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         resolvedSowItems.forEach((item: any) => {
             const statusStr = item.effectiveStatus;
             if (statusStr === "incomplete" || statusStr === "pending") {
-                let comp = compMap.get(String(item.component_id));
-                if (!comp && item.component_qid) {
-                    comp = qidMap.get(String(item.component_qid).trim().toUpperCase());
-                }
+                let comp = item.component_id != null ? compMap.get(String(item.component_id)) : null;
                 const compMeta = comp?.metadata || {};
                 const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
                 const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
@@ -1515,10 +1516,11 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id);
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
             const comp = { 
-                q_id: item.component_qid || dbComp?.q_id, 
-                code: item.component_type || dbComp?.code,
+                q_id: dbComp?.q_id || item.component_qid, 
+                code: dbComp?.code || item.component_type,
                 metadata: dbComp?.metadata 
             };
             const qid = (comp?.q_id || "").toUpperCase();
@@ -1769,19 +1771,19 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // 1. Initialize from SOW items for selected SOW Report (to capture scoped tasks)
         sowItemsToProcess.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id) || qidMap.get(String(item.component_qid || "").trim().toUpperCase());
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
             
             // Derive component code: dbComp.code -> item.component_type -> qid prefix (e.g. CGF -> CF)
             let rawCode = dbComp?.code || item.component_type || "";
             if (!rawCode && item.component_qid) {
-                const qidUpper = String(item.component_qid).trim().toUpperCase();
-                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                const prefix = String(item.component_qid).trim().toUpperCase().split(/[\/\-_0-9]/)[0];
                 rawCode = prefix;
             }
             if (rawCode === "CGF") rawCode = "CF";
 
             const compType = getComponentTypeName(rawCode || "Other");
-            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
+            const qid = dbComp?.q_id || item.component_qid || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
             // Skip pipeline-only inspection types on platform structure
@@ -1886,10 +1888,11 @@ export const GET = withTenant(async (request, { companyId }) => {
         // 1. Initialize from SOW items (to capture any scoped items)
         allSowItems.forEach((item: any) => {
             const inspCode = item.inspection_code || "UNKNOWN";
-            const dbComp = compMap.get(item.component_id);
-            const compTypeRaw = item.component_type || dbComp?.code || "Other";
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
+            const compTypeRaw = dbComp?.code || item.component_type || "Other";
             const compType = getComponentTypeName(compTypeRaw);
-            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
+            const qid = dbComp?.q_id || item.component_qid || `ID: ${item.component_id}`;
             
             if (!inspectionTypeSummary[inspCode]) {
                 inspectionTypeSummary[inspCode] = {};

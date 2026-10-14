@@ -6452,11 +6452,9 @@ function V10PreviewLayout() {
           let matchingComp: any = null;
           if (item.component_id) {
             matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
-          }
-          if (!matchingComp && item.component_qid) {
+          } else if (item.component_qid) {
             matchingComp = (allCompsData || []).find((c: any) => c.q_id === item.component_qid);
-          }
-          if (!matchingComp && item.component_type && !item.component_qid && !item.component_id) {
+          } else if (item.component_type) {
             matchingComp = (allCompsData || []).find(
               (c: any) => c.code === item.component_type || c.name === item.component_type
             );

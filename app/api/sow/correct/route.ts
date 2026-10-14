@@ -82,13 +82,7 @@ export const POST = withTenant(async (request, { companyId }) => {
             const qidUpper = item.component_qid ? item.component_qid.toUpperCase() : "";
 
             const itemRecords = (records || []).filter((r: any) => {
-                const matchesComp = (r.component_id && r.component_id === item.component_id) ||
-                    (qidUpper && (
-                        (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) ||
-                        (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) ||
-                        (r.inspection_data?.component_qid && String(r.inspection_data.component_qid).toUpperCase() === qidUpper) ||
-                        (r.inspection_data?.qid && String(r.inspection_data.qid).toUpperCase() === qidUpper)
-                    ));
+                const matchesComp = Boolean(item.component_id && r.component_id && r.component_id === item.component_id);
                 
                 const matchesType = 
                     r.inspection_type_id === item.inspection_type_id ||
@@ -103,13 +97,7 @@ export const POST = withTenant(async (request, { companyId }) => {
             });
 
             const itemAnomalies = (anomalies || []).filter((a: any) => {
-                const matchesComp = (a.component_id && a.component_id === item.component_id) ||
-                    (qidUpper && (
-                        (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) ||
-                        (a.component_name && String(a.component_name).toUpperCase() === qidUpper) ||
-                        (a.q_id && String(a.q_id).toUpperCase() === qidUpper)
-                    ));
-
+                const matchesComp = Boolean(item.component_id && a.component_id && a.component_id === item.component_id);
                 const matchesRpt = isReportMatch(item.report_number, a.sow_report_no);
                 return matchesComp && matchesRpt;
             });

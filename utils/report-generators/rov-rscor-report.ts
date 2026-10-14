@@ -112,8 +112,7 @@ export const generateROVRSCORReport = async (
             return y + (rowH * 2) + 3;
         };
 
-        // --- 1. Pre-fetch Structure Components if missing metadata ---
-        const compRegistry = new Map<string, any>();
+        const compRegistry = new Map<string | number, any>();
         const effectiveStructureId = config?.structureId || records.find(r => r.structure_components?.structure_id || r.structure_id)?.structure_components?.structure_id || records.find(r => r.structure_id)?.structure_id;
 
         if (effectiveStructureId && typeof window !== "undefined") {
@@ -127,6 +126,8 @@ export const generateROVRSCORReport = async (
 
                 if (allComps && allComps.length > 0) {
                     allComps.forEach(c => {
+                        compRegistry.set(String(c.id), c);
+                        compRegistry.set(Number(c.id), c);
                         if (c.q_id) compRegistry.set(c.q_id.toUpperCase().trim(), c);
                     });
                 }
@@ -152,9 +153,13 @@ export const generateROVRSCORReport = async (
         const resolveRecordFace = (r: any): string => {
             const d = r.inspection_data || r.inspection_dat || {};
             let comp = r.structure_components || r.component || {};
+            const compId = r.component_id || r.structure_components?.id || r.component?.id;
             const qid = String(comp.q_id || comp.id_no || comp.name || r.qid || "").toUpperCase().trim();
 
-            if (qid && compRegistry.has(qid)) {
+            if (compId && compRegistry.has(compId)) {
+                const regComp = compRegistry.get(compId);
+                comp = { ...regComp, ...comp, metadata: regComp.metadata || comp.metadata };
+            } else if (qid && compRegistry.has(qid)) {
                 const regComp = compRegistry.get(qid);
                 comp = { ...regComp, ...comp, metadata: regComp.metadata || comp.metadata };
             }
