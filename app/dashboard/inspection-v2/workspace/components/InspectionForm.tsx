@@ -41,6 +41,7 @@ import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
 import { VoiceInspectionAssistant } from "@/components/inspection/VoiceInspectionAssistant";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
 
@@ -281,11 +282,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             try {
                 const dObj = new Date(rawDate);
                 if (!isNaN(dObj.getTime())) {
-                    recDate = dObj.toISOString().split("T")[0];
-                    const hours = String(dObj.getHours()).padStart(2, "0");
-                    const mins = String(dObj.getMinutes()).padStart(2, "0");
-                    const secs = String(dObj.getSeconds()).padStart(2, "0");
-                    recTime = `${hours}:${mins}:${secs}`;
+                    recDate = toLocalDateString(dObj);
+                    recTime = toLocalTimeString(dObj, true);
                 }
             } catch (_) {}
         }
@@ -342,11 +340,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             try {
                 const dObj = new Date(rawTime);
                 if (!isNaN(dObj.getTime())) {
-                    recDate = dObj.toISOString().split("T")[0];
-                    const hours = String(dObj.getHours()).padStart(2, "0");
-                    const mins = String(dObj.getMinutes()).padStart(2, "0");
-                    const secs = String(dObj.getSeconds()).padStart(2, "0");
-                    recTime = `${hours}:${mins}:${secs}`;
+                    recDate = toLocalDateString(dObj);
+                    recTime = toLocalTimeString(dObj, true);
                 }
             } catch (_) {}
         }

@@ -1570,6 +1570,14 @@ function V10PreviewLayout() {
   const [calibrationDialogOpen, setCalibrationDialogOpen] = useState(false);
   const [rovCalibrationDialogOpen, setRovCalibrationDialogOpen] = useState(false);
 
+  const handleOpenCalibration = useCallback(() => {
+    if (inspMethod === "DIVING") {
+      setCalibrationDialogOpen(true);
+    } else {
+      setRovCalibrationDialogOpen(true);
+    }
+  }, [inspMethod]);
+
   // Persist user active tape & state to session
   useEffect(() => {
     if (tapeId) {
@@ -4558,14 +4566,14 @@ function V10PreviewLayout() {
         let isCurrentlyPaused = false;
 
         const sorted = [...activeMovements].sort((a, b) => {
-          const tA = new Date(a.movement_time || a.event_time || a.timestamp || 0).getTime();
-          const tB = new Date(b.movement_time || b.event_time || b.timestamp || 0).getTime();
+          const tA = parseClientDate(a.movement_time || a.event_time || a.timestamp || 0).getTime();
+          const tB = parseClientDate(b.movement_time || b.event_time || b.timestamp || 0).getTime();
           return tA - tB;
         });
 
         for (const m of sorted) {
           const type = (m.movement_type || m.activity || "").toLowerCase();
-          const t = new Date(m.movement_time || m.event_time || m.timestamp || 0).getTime();
+          const t = parseClientDate(m.movement_time || m.event_time || m.timestamp || 0).getTime();
 
           const isLaunch = type.includes("launched") || type.includes("left surface") || type.includes("deployed");
           const isPauseOrEnd = type.includes("tms") || type.includes("recovered") || type.includes("arrived surface") || type.includes("off hire");
@@ -4584,7 +4592,7 @@ function V10PreviewLayout() {
 
         // If currently in water and not paused/tms, add duration from latest segment launch up to now
         if (segmentStartMs !== null && !isCurrentlyPaused) {
-          const nowMs = diveEndTime ? new Date(diveEndTime).getTime() : new Date().getTime();
+          const nowMs = diveEndTime ? parseClientDate(diveEndTime).getTime() : new Date().getTime();
           totalMs += Math.max(0, nowMs - segmentStartMs);
         }
 
@@ -6917,16 +6925,29 @@ function V10PreviewLayout() {
     const mvtCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
     const jobTable = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
+    // Resolve company_id from active context, raw deployment, or storage
+    const compId = 
+      activeCompanyId || 
+      activeDep?.raw?.company_id || 
+      (profile as any)?.company?.id || 
+      (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null) || 
+      null;
+
+    const depJobId = Number(activeDep.raw?.dive_job_id || activeDep.raw?.rov_job_id || activeDep.raw?.id || activeDep.id);
+
     const nowIso = new Date().toISOString();
-    const payload: any = {};
+    const payload: any = {
+      company_id: compId,
+      cr_user: profile?.id || null,
+    };
     if (inspMethod === "DIVING") {
       const mappedAction = [...AIR_DIVE_ACTIONS, ...BELL_DIVE_ACTIONS].find(a => a.label === dbValue);
-      payload.dive_job_id = activeDep.id;
+      payload.dive_job_id = depJobId;
       payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = mappedAction?.location ? `Location: ${mappedAction.location}` : "";
     } else {
-      payload.rov_job_id = activeDep.id;
+      payload.rov_job_id = depJobId;
       payload.movement_time = nowIso;
       payload.movement_type = dbValue;
       payload.remarks = "";
@@ -6961,9 +6982,11 @@ function V10PreviewLayout() {
           "Recovered",
           "System on Deck",
           "Rov Off Hire",
+          "Rov Recovered",
+          "ROV_RECOVERED",
         ].includes(actionLabel)
       ) {
-        await supabase.from(jobTable).update({ status: "COMPLETED" }).eq(mvtCol, activeDep.id);
+        await supabase.from(jobTable).update({ status: "COMPLETED" }).eq(mvtCol, depJobId);
       }
 
       // Check if we need to alert or auto-stop video recording
@@ -6988,8 +7011,8 @@ function V10PreviewLayout() {
         }
       }
     } else {
-      console.error("Failed to insert movement log", error);
-      alert("Failed to log movement: " + error.message);
+      console.error("Failed to insert movement log", error.message, error.details, error.hint, error);
+      toast.error("Failed to log movement: " + (error.message || "Unknown error"));
     }
   };
 
@@ -9230,8 +9253,8 @@ function V10PreviewLayout() {
       : (targetComp?.raw?.code || targetComp?.raw?.metadata?.comp_type || targetComp?.type || "PP");
 
     const now = new Date();
-    const formattedDate = now.toISOString().split("T")[0];
-    const formattedTime = now.toTimeString().split(" ")[0];
+    const formattedDate = toLocalDateString(now);
+    const formattedTime = toLocalTimeString(now, true);
 
     const eventProps = {
       event_name: evtData.eventName, event_type: evtData.eventType,
@@ -9339,6 +9362,9 @@ function V10PreviewLayout() {
             handleNextDep={handleNextDep}
             diveActionsList={diveActionsList}
             ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+            deployments={deployments}
+            setActiveDep={setActiveDep}
+            onOpenCalibration={handleOpenCalibration}
           />
         ) : (
           <DiverLogPanel
@@ -9358,6 +9384,9 @@ function V10PreviewLayout() {
             handleNextDep={handleNextDep}
             diveActionsList={diveActionsList}
             ROV_MOVEMENT_BRANCHES={ROV_MOVEMENT_BRANCHES}
+            deployments={deployments}
+            setActiveDep={setActiveDep}
+            onOpenCalibration={handleOpenCalibration}
           />
         );
         break;
@@ -10072,91 +10101,6 @@ function V10PreviewLayout() {
           </div>
         )}
 
-        {/* Separator */}
-        {deployments.length > 1 && (
-          <div className="w-px h-6 bg-slate-200 dark:bg-slate-700 shrink-0" />
-        )}
-
-        {/* History Selector - for completed / other dives */}
-        {deployments.length > 1 && (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-1.5 px-2.5 py-1.5 text-[10px] font-bold text-slate-500 hover:text-blue-600 uppercase tracking-wider transition-colors bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:border-blue-300 hover:bg-blue-50/50 shadow-sm">
-                <History className="w-3 h-3" />
-                <span className="hidden sm:inline">History</span>
-                <span className="bg-slate-200 dark:bg-slate-600 text-slate-600 dark:text-slate-300 text-[9px] font-black px-1 rounded-full min-w-[16px] text-center">
-                  {deployments.length - 1}
-                </span>
-                <ChevronDown className="w-3 h-3 opacity-50" />
-              </button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="start" className="w-64 p-1">
-              <div className="px-2 py-1.5 text-[9px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 mb-1">
-                All {inspMethod === "DIVING" ? "Dives" : "Deployments"} ({deployments.length})
-              </div>
-              {deployments.map((dep) => {
-                const isActive = activeDep?.id === dep.id;
-                const isCompleted = dep.raw?.status === "COMPLETED";
-                return (
-                  <DropdownMenuItem
-                    key={dep.id}
-                    onClick={() => setActiveDep(dep)}
-                    className={`flex items-center justify-between cursor-pointer rounded-md px-2 py-2 ${isActive ? "bg-blue-50 dark:bg-blue-950/40" : ""}`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${isActive ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]" : isCompleted ? "bg-slate-300" : "bg-blue-400"}`}
-                      />
-                      <div className="flex flex-col">
-                        <span
-                          className={`font-bold text-xs uppercase leading-none ${isActive ? "text-blue-700" : "text-slate-800 dark:text-slate-200"}`}
-                        >
-                          {dep.jobNo || dep.id}
-                        </span>
-                        <span className="text-[10px] text-slate-400 leading-none mt-0.5">
-                          {dep.name || "Unknown"}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {isCompleted && (
-                        <span className="text-[8px] font-bold uppercase bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
-                          Done
-                        </span>
-                      )}
-                      {isActive && <Check className="w-3.5 h-3.5 text-blue-600" />}
-                    </div>
-                  </DropdownMenuItem>
-                );
-              })}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-
-        {inspMethod === "DIVING" && activeDep && (
-          <Button
-            onClick={() => setCalibrationDialogOpen(true)}
-            variant="outline"
-            size="sm"
-            className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            Calibration
-          </Button>
-        )}
-
-        {inspMethod === "ROV" && activeDep && (
-          <Button
-            onClick={() => setRovCalibrationDialogOpen(true)}
-            variant="outline"
-            size="sm"
-            className="gap-2 border-blue-300 text-blue-700 hover:bg-blue-50 dark:border-blue-700 dark:text-blue-300 h-7"
-          >
-            <Wrench className="h-3.5 w-3.5" />
-            Calibration
-          </Button>
-        )}
-
         {/* Inspection Readiness Traffic Light */}
 
         {(() => {
@@ -10504,6 +10448,7 @@ function V10PreviewLayout() {
         pendingAttachments={pendingAttachments}
         setPendingAttachments={setPendingAttachments}
         onCompSpecSuccess={handleCompSpecSuccess}
+        setActiveDep={setActiveDep}
         states={{
           isDiveSetupOpen,
           isDiveSetupForNew,

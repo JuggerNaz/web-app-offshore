@@ -10,7 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Plus, Edit, Settings, ArrowLeft, ArrowRight, ChevronDown } from "lucide-react";
+import { Plus, Edit, Settings, ArrowLeft, ArrowRight, ChevronDown, Check, Wrench } from "lucide-react";
 import { format } from "date-fns";
 import { formatClientTime } from "@/utils/client-date";
 
@@ -33,6 +33,11 @@ interface DiverLogPanelProps {
   handleNextDep: () => void;
   diveActionsList: any[];
   ROV_MOVEMENT_BRANCHES: Record<string, string[]>;
+
+  // Historical dives & calibration
+  deployments?: any[];
+  setActiveDep?: (dep: any) => void;
+  onOpenCalibration?: () => void;
 }
 
 export function DiverLogPanelPipeline({
@@ -52,6 +57,9 @@ export function DiverLogPanelPipeline({
   handleNextDep,
   diveActionsList,
   ROV_MOVEMENT_BRANCHES,
+  deployments,
+  setActiveDep,
+  onOpenCalibration,
 }: DiverLogPanelProps) {
   const options = ROV_MOVEMENT_BRANCHES[currentMovement || "Awaiting Deployment"] || [];
   const isCompleted = options.length === 0;
@@ -140,7 +148,18 @@ export function DiverLogPanelPipeline({
         {/* Header Section */}
         <div className="bg-slate-100 dark:bg-[#030712] border-b border-slate-200 dark:border-cyan-500/10 text-slate-800 dark:text-cyan-400 px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center shrink-0">
           <span>ROV STATUS {activeDep?.jobNo ? `(${activeDep.jobNo})` : ""}</span>
-          <div className="flex items-center gap-0.5">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={onOpenCalibration}
+              disabled={!activeDep}
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded text-blue-600 dark:text-cyan-400 hover:bg-slate-200 dark:hover:bg-white/10 transition disabled:opacity-40"
+              title="Calibration"
+            >
+              <Wrench className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-bold hidden sm:inline">Calib</span>
+            </button>
+            <div className="w-px h-3 bg-slate-300 dark:bg-slate-800 my-auto" />
             <button
               onClick={() => {
                 setIsDiveSetupForNew(true);
@@ -166,9 +185,52 @@ export function DiverLogPanelPipeline({
 
         {/* Dashboard Stats */}
         <div className="p-2 bg-slate-50/50 dark:bg-[#05080e] border-b border-slate-100 dark:border-slate-900 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px] font-medium text-slate-500 dark:text-slate-400">
-          <div className="flex justify-between border-b border-slate-200 dark:border-slate-900/50 pb-1">
+          <div className="flex justify-between items-center border-b border-slate-200 dark:border-slate-900/50 pb-1">
             <span>Dive No.</span>
-            <span className="font-bold text-slate-800 dark:text-slate-200">: {activeDep?.jobNo || "—"}</span>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex items-center gap-1 font-bold text-slate-800 dark:text-slate-200 hover:text-blue-600 dark:hover:text-cyan-400 cursor-pointer"
+                >
+                  <span>: {activeDep?.jobNo || "—"}</span>
+                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-56 p-1 max-h-64 overflow-y-auto z-50">
+                <div className="px-2 py-1 text-[9px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 dark:border-slate-800 mb-1">
+                  All Deployments ({deployments?.length || 0})
+                </div>
+                {deployments && deployments.length > 0 ? (
+                  deployments.map((dep) => {
+                    const isActive = activeDep?.id === dep.id;
+                    const isCompleted = dep.raw?.status === "COMPLETED";
+                    return (
+                      <DropdownMenuItem
+                        key={dep.id}
+                        onClick={() => setActiveDep && setActiveDep(dep)}
+                        className={`flex items-center justify-between cursor-pointer rounded px-2 py-1.5 text-xs ${
+                          isActive ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-cyan-300 font-semibold" : ""
+                        }`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className={`w-2 h-2 rounded-full shrink-0 ${
+                              isActive ? "bg-green-500" : isCompleted ? "bg-slate-300 dark:bg-slate-600" : "bg-blue-400"
+                            }`}
+                          />
+                          <span className="font-black text-xs uppercase">{dep.jobNo || dep.id}</span>
+                          <span className="text-[10px] text-slate-400 truncate">{dep.name}</span>
+                        </div>
+                        {isActive && <Check className="w-3 h-3 text-blue-600 dark:text-cyan-400" />}
+                      </DropdownMenuItem>
+                    );
+                  })
+                ) : (
+                  <div className="px-2 py-2 text-center text-[10px] text-slate-400">No deployments</div>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
           <div className="flex justify-between border-b border-slate-200 dark:border-slate-900/50 pb-1">
             <span>Date</span>
@@ -291,7 +353,18 @@ export function DiverLogPanelPipeline({
     <Card className="flex flex-col border-none shadow-none rounded-none h-full bg-white dark:bg-slate-900/60 backdrop-blur-md overflow-y-auto custom-scrollbar">
       <div className="bg-[#1f2937] text-white px-3 py-2 text-[10px] font-black uppercase tracking-[0.2em] flex justify-between items-center shrink-0">
         <span>{inspMethod === "DIVING" ? "DIVER LOG" : "ROV LOG"}</span>
-        <div className="flex items-center gap-2 text-slate-300">
+        <div className="flex items-center gap-1.5 text-slate-300">
+          <button
+            type="button"
+            onClick={onOpenCalibration}
+            disabled={!activeDep}
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded text-blue-300 hover:text-white hover:bg-white/10 transition disabled:opacity-40 disabled:cursor-not-allowed"
+            title={activeDep ? `Calibration for Dive ${activeDep.jobNo}` : "Calibration (No active dive)"}
+          >
+            <Wrench className="w-3.5 h-3.5" />
+            <span className="text-[9px] font-bold hidden sm:inline">Calib</span>
+          </button>
+          <div className="w-px h-3 bg-slate-600 my-auto" />
           <button
             onClick={() => {
               setIsDiveSetupForNew(true);
@@ -318,28 +391,137 @@ export function DiverLogPanelPipeline({
         </div>
       </div>
       <div className="p-2.5 bg-white dark:bg-slate-900 space-y-2 flex-1">
-        <div className="flex flex-col sm:flex-row justify-between gap-1.5 px-1">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap justify-between items-center gap-x-2">
-              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
-                Selection
-              </span>
-              <span className="font-bold text-slate-800 dark:text-slate-200 text-xs truncate">
-                {activeDep?.jobNo || "None"}
-              </span>
+        {/* Selection & In Water Row */}
+        <div className="flex items-center justify-between gap-2 px-0.5">
+            {/* Historical Dive Dropdown Selector */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-[9px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-wider">
+                  Selection
+                </span>
+                {deployments && deployments.length > 1 && (
+                  <span className="text-[8px] font-bold text-slate-400 dark:text-slate-500">
+                    {deployments.length} Dives
+                  </span>
+                )}
+              </div>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between gap-1.5 px-2.5 py-1.5 bg-slate-50 hover:bg-blue-50/60 dark:bg-slate-800/70 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600 rounded-md transition-all text-left shadow-2xs group cursor-pointer"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className={`w-2 h-2 rounded-full shrink-0 ${
+                          activeDep?.raw?.status === "COMPLETED"
+                            ? "bg-slate-400"
+                            : activeDep
+                              ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.6)] animate-pulse"
+                              : "bg-amber-400"
+                        }`}
+                      />
+                      <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-black text-xs uppercase tracking-tight text-slate-900 dark:text-slate-100 truncate">
+                            {activeDep?.jobNo || "None"}
+                          </span>
+                          {activeDep?.raw?.status === "COMPLETED" ? (
+                            <span className="text-[8px] font-bold uppercase bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-1 py-0.2 rounded">
+                              Done
+                            </span>
+                          ) : activeDep ? (
+                            <span className="text-[8px] font-bold uppercase bg-green-100 dark:bg-green-950 text-green-700 dark:text-green-300 px-1 py-0.2 rounded border border-green-200 dark:border-green-800">
+                              Active
+                            </span>
+                          ) : null}
+                        </div>
+                        {activeDep?.name && (
+                          <span className="text-[9px] text-slate-400 dark:text-slate-500 truncate leading-none mt-0.5">
+                            {activeDep.name}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 group-hover:text-blue-600 transition-colors shrink-0" />
+                  </button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="start" className="w-64 p-1 max-h-72 overflow-y-auto z-50">
+                  <div className="px-2 py-1.5 text-[9px] font-black uppercase text-slate-400 tracking-widest border-b border-slate-100 dark:border-slate-800 mb-1 flex items-center justify-between">
+                    <span>All {inspMethod === "DIVING" ? "Dives" : "Deployments"}</span>
+                    <span className="bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 px-1.5 py-0.5 rounded text-[8px] font-black">
+                      {deployments?.length || 0}
+                    </span>
+                  </div>
+                  {deployments && deployments.length > 0 ? (
+                    deployments.map((dep) => {
+                      const isActive = activeDep?.id === dep.id;
+                      const isCompleted = dep.raw?.status === "COMPLETED";
+                      return (
+                        <DropdownMenuItem
+                          key={dep.id}
+                          onClick={() => setActiveDep && setActiveDep(dep)}
+                          className={`flex items-center justify-between cursor-pointer rounded-md px-2 py-2 text-xs ${
+                            isActive
+                              ? "bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 font-semibold"
+                              : ""
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span
+                              className={`w-2 h-2 rounded-full shrink-0 ${
+                                isActive
+                                  ? "bg-green-500 shadow-[0_0_6px_rgba(34,197,94,0.5)]"
+                                  : isCompleted
+                                    ? "bg-slate-300 dark:bg-slate-600"
+                                    : "bg-blue-400"
+                              }`}
+                            />
+                            <div className="flex flex-col min-w-0">
+                              <span
+                                className={`font-black text-xs uppercase leading-tight ${
+                                  isActive ? "text-blue-700 dark:text-blue-300" : "text-slate-800 dark:text-slate-200"
+                                }`}
+                              >
+                                {dep.jobNo || dep.id}
+                              </span>
+                              <span className="text-[10px] text-slate-400 truncate leading-tight">
+                                {dep.name || "Unknown"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {isCompleted && (
+                              <span className="text-[8px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">
+                                Done
+                              </span>
+                            )}
+                            {isActive && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />}
+                          </div>
+                        </DropdownMenuItem>
+                      );
+                    })
+                  ) : (
+                    <div className="px-2 py-3 text-center text-[10px] text-slate-400 font-bold uppercase">
+                      No {inspMethod === "DIVING" ? "dives" : "deployments"} recorded
+                    </div>
+                  )}
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap justify-between items-center gap-x-2 sm:justify-end">
-              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-bold uppercase tracking-wider">
+
+            {/* In Water Time */}
+            <div className="shrink-0 flex flex-col items-end">
+              <span className="text-[9px] text-slate-400 dark:text-slate-500 font-black uppercase tracking-wider mb-1">
                 In Water
               </span>
-              <span className="font-black text-[#2563eb] dark:text-blue-400 text-xs">
-                {timeInWater}
-              </span>
+              <div className="h-[34px] flex items-center px-2 bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/60 rounded-md">
+                <span className="font-black text-[#2563eb] dark:text-blue-400 text-xs tracking-tight">
+                  {timeInWater}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
         <div className={`rounded-lg p-2.5 border shadow-sm relative overflow-hidden group/m transition-colors duration-500 ${
           currentMovement.toLowerCase().includes('worksite') || currentMovement.toLowerCase().includes('bottom') 

@@ -788,13 +788,15 @@ export function DiveInspectionContent({ hideHeader = false }: { hideHeader?: boo
         return;
       }
 
+      const compId = (selectedDiveJob as any)?.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
       const { error } = await supabase.from("insp_dive_movements").insert({
-        dive_job_id: selectedDiveJob.dive_job_id,
+        dive_job_id: Number(selectedDiveJob.dive_job_id),
         movement_type: actionLabel,
         movement_time: new Date().toISOString(),
         depth_meters: 0,
         cr_user: user?.id || "system",
         workunit: "000",
+        company_id: compId,
       });
 
       if (error) throw error;

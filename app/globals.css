@@ -67,10 +67,30 @@
   body {
     @apply bg-background text-foreground;
   }
+  /* Disable spin buttons / steppers for all number inputs */
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none !important;
+    margin: 0 !important;
+  }
+
+  input[type="number"] {
+    -moz-appearance: textfield !important;
+    appearance: textfield !important;
+  }
 }
 
+/* Global unlayered rules to guarantee spin buttons are hidden in all contexts */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none !important;
+  margin: 0 !important;
+}
 
-
+input[type="number"] {
+  -moz-appearance: textfield !important;
+  appearance: textfield !important;
+}
 @layer utilities {
   .app-viewport {
     @apply fixed inset-0 flex flex-col overflow-hidden h-screen w-screen selection:bg-blue-100 dark:selection:bg-blue-900/30;

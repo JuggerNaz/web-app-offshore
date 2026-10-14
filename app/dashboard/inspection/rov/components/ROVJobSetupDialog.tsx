@@ -25,6 +25,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -56,8 +57,8 @@ export default function ROVJobSetupDialog({
         rov_operator: "",
         rov_supervisor: "",
         report_coordinator: "",
-        deployment_date: new Date().toISOString().split("T")[0],
-        start_time: new Date().toTimeString().slice(0, 5),
+        deployment_date: toLocalDateString(new Date()),
+        start_time: toLocalTimeString(new Date(), false),
     });
 
     // Team Rotation State
@@ -81,8 +82,8 @@ export default function ROVJobSetupDialog({
                 rov_operator: "",
                 rov_supervisor: "",
                 report_coordinator: "",
-                deployment_date: new Date().toISOString().split("T")[0],
-                start_time: new Date().toTimeString().slice(0, 5),
+                deployment_date: toLocalDateString(new Date()),
+                start_time: toLocalTimeString(new Date(), false),
             });
             setTeamCombos([]);
             setDiveHistory([]);
@@ -367,10 +368,20 @@ export default function ROVJobSetupDialog({
                 start_time: formData.start_time,
             };
 
+            // Resolve company_id from metadata, active company, or users profile
+            let compId = (user as any)?.user_metadata?.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
+            if (!compId) {
+                const { data: uRec } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle();
+                compId = uRec?.company_id || null;
+            }
+
             if (existingJob) {
                 query = supabase
                     .from("insp_rov_jobs")
-                    .update(payload)
+                    .update({
+                        ...payload,
+                        ...(compId && !existingJob.company_id ? { company_id: compId } : {}),
+                    })
                     .eq("rov_job_id", existingJob.rov_job_id)
                     .select()
                     .single();
@@ -384,6 +395,7 @@ export default function ROVJobSetupDialog({
                         sow_report_no: sowId,
                         status: "IN_PROGRESS",
                         cr_user: user.id,
+                        company_id: compId,
                         rov_data_config_id: null,
                         video_grab_config_id: null,
                         auto_capture_data: true,

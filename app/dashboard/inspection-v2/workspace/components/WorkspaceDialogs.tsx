@@ -85,6 +85,7 @@ interface WorkspaceDialogsProps {
     pendingAttachments: any[];
     setPendingAttachments: React.Dispatch<React.SetStateAction<any[]>>;
     onCompSpecSuccess?: (updatedComp: any) => void;
+    setActiveDep?: (dep: any) => void;
     
     // States
     states: {
@@ -467,6 +468,7 @@ export function WorkspaceDialogs({
     pendingAttachments,
     setPendingAttachments,
     onCompSpecSuccess,
+    setActiveDep,
     states,
     setters,
     handlers,
@@ -987,6 +989,25 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
+                            if (job) {
+                                const rawId = job.dive_job_id || job.id;
+                                const newDep = {
+                                    id: String(rawId),
+                                    jobNo: job.dive_no || `JOB-${rawId}`,
+                                    name: job.diver_name || "Unnamed",
+                                    created_at: job.dive_date || new Date().toISOString(),
+                                    raw: job,
+                                };
+                                if (typeof window !== "undefined") {
+                                    try {
+                                        const raw = sessionStorage.getItem("agy_inspection_workspace_v10");
+                                        const parsed = raw ? JSON.parse(raw) : {};
+                                        parsed.lastActiveDepId = String(rawId);
+                                        sessionStorage.setItem("agy_inspection_workspace_v10", JSON.stringify(parsed));
+                                    } catch (_) {}
+                                }
+                                setActiveDep?.(newDep);
+                            }
                             if (fetchDeployments) {
                                 fetchDeployments();
                             } else {
@@ -1004,6 +1025,25 @@ export function WorkspaceDialogs({
                         onOpenChange={setIsDiveSetupOpen}
                         onJobCreated={(job: any) => {
                             setIsDiveSetupOpen(false);
+                            if (job) {
+                                const rawId = job.rov_job_id || job.id;
+                                const newDep = {
+                                    id: String(rawId),
+                                    jobNo: job.deployment_no || `JOB-${rawId}`,
+                                    name: job.rov_operator || job.rov_system || "Unnamed",
+                                    created_at: job.deployment_date || new Date().toISOString(),
+                                    raw: job,
+                                };
+                                if (typeof window !== "undefined") {
+                                    try {
+                                        const raw = sessionStorage.getItem("agy_inspection_workspace_v10");
+                                        const parsed = raw ? JSON.parse(raw) : {};
+                                        parsed.lastActiveDepId = String(rawId);
+                                        sessionStorage.setItem("agy_inspection_workspace_v10", JSON.stringify(parsed));
+                                    } catch (_) {}
+                                }
+                                setActiveDep?.(newDep);
+                            }
                             if (fetchDeployments) {
                                 fetchDeployments();
                             } else {

@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/select";
 import { Anchor, Users, Info } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { toast } from "sonner";
 
 interface DiveJobSetupProps {
@@ -39,8 +40,8 @@ export default function DiveJobSetup({
         dive_supervisor: "",
         report_coordinator: "",
         dive_type: "Air Dive",
-        deployment_date: new Date().toISOString().split("T")[0],
-        dive_start_time: new Date().toTimeString().slice(0, 5),
+        deployment_date: toLocalDateString(new Date()),
+        dive_start_time: toLocalTimeString(new Date(), false),
         max_depth: "",
         planned_duration: "",
     });
@@ -86,6 +87,7 @@ export default function DiveJobSetup({
                     max_depth: formData.max_depth ? parseFloat(formData.max_depth) : null,
                     planned_duration: formData.planned_duration ? parseInt(formData.planned_duration) : null,
                     status: "IN_PROGRESS",
+                    company_id: typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null,
                 })
                 .select()
                 .single();
