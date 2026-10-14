@@ -77,7 +77,7 @@ export const generateROVRiserGuardReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `RISER GUARD SURVEY REPORT (ROV) - ${extraTitleInfo}` : "RISER GUARD SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Riser Guard Survey Report (ROV) - ${extraTitleInfo}` : "Riser Guard Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

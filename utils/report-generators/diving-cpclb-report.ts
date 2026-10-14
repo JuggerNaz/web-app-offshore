@@ -74,7 +74,7 @@ export const generateDivingCPCLBReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `CP CALIBRATION REPORT (DIVING) - ${extraTitleInfo}` : "CP CALIBRATION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `CP Calibration Report (Diving) - ${extraTitleInfo}` : "CP Calibration Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

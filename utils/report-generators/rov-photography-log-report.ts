@@ -80,7 +80,7 @@ export const generateROVPhotographyLogReport = async (
             const structName = headerData.platformName || "N/A";
 
             draw3SectionHeader(d, {
-                reportTitle: "PHOTOGRAPHY LOG REPORT (ROV)",
+                reportTitle: "Photography Log Report (ROV)",
                 reportNo,
                 structureName: structName,
                 companySettings,

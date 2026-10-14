@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, formatReportHeaderTitle, formatHeaderInfoText } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {
@@ -144,8 +144,11 @@ export const generateJobPackSummaryReport = async (
         d.rect(x2, headerY, col2W, headerH, "S");
 
         const titleCenterX = x2 + col2W / 2;
-        const companyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
-        const deptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+        const rawCompanyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+        const companyName = formatHeaderInfoText(rawCompanyName);
+
+        const rawDeptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+        const deptName = formatHeaderInfoText(rawDeptName);
 
         // Line 1: Company Name (bold, size 8)
         d.setFontSize(8);
@@ -165,17 +168,18 @@ export const generateJobPackSummaryReport = async (
         d.setFontSize(8);
         d.setFont("helvetica", "bold");
         d.setTextColor(...titleTextColor);
-        d.text("Job Pack Summary Report", titleCenterX, headerY + 15.4, { align: "center" });
+        d.text(formatReportHeaderTitle("Job Pack Summary Report"), titleCenterX, headerY + 15.4, { align: "center" });
 
         // Line 4: Report No (no bold, size 8)
-        const reportNo = config?.reportNoPrefix
+        const rawReportNo = config?.reportNoPrefix
             ? `${config.reportNoPrefix}-${config.reportYear || new Date().getFullYear()}-${jobPack.id}`
             : (jobPack.metadata?.contract_ref || `JP-${jobPack.id}`);
+        const reportNoStr = formatHeaderInfoText(`Report No: ${rawReportNo}`);
 
         d.setFontSize(8);
         d.setFont("helvetica", "normal");
         d.setTextColor(...titleSubTextColor);
-        d.text(`Report No: ${reportNo}`, titleCenterX, headerY + 20.2, { align: "center" });
+        d.text(reportNoStr, titleCenterX, headerY + 20.2, { align: "center" });
 
         // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
         d.setFillColor(255, 255, 255);

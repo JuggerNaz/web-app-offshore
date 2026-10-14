@@ -71,7 +71,7 @@ export const generateDivingMPINSReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string | number) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `MAGNETIC PARTICLE INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "MAGNETIC PARTICLE INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Magnetic Particle Inspection Report (Diving) - ${extraTitleInfo}` : "Magnetic Particle Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

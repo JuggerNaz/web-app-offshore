@@ -5,7 +5,9 @@ import {
   drawLogo as drawSharedLogo,
   applyWatermarkAndSignaturesGlobal,
   REPORT_FOOTER_APP_TEXT,
-  formatPdfDate
+  formatPdfDate,
+  formatReportHeaderTitle,
+  formatHeaderInfoText
 } from "./report-generators/shared-logo";
 
 // Helper to load image for PDF with transparency support
@@ -303,13 +305,19 @@ const draw3SectionHeader = async (
 
   const titleCenterX = x2 + col2W / 2;
 
-  const companyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
-  const deptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+  const rawCompanyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+  const companyName = formatHeaderInfoText(rawCompanyName);
+
+  const rawDeptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+  const deptName = formatHeaderInfoText(rawDeptName);
+
+  const formattedReportTitle = formatReportHeaderTitle(reportTitle);
 
   const rawReportNo = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
-  const reportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
+  const baseReportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
     ? (String(rawReportNo).trim().toLowerCase().startsWith("report no") ? String(rawReportNo).trim() : `Report No: ${String(rawReportNo).trim()}`)
     : "Report No: N/A";
+  const reportNoStr = formatHeaderInfoText(baseReportNoStr);
 
   // Line 1: Company Name (bold, size 8)
   doc.setFontSize(8);
@@ -327,14 +335,14 @@ const draw3SectionHeader = async (
 
   // Line 3: Report Title (bold, size 8, dynamically adjusted for long titles)
   let titleFontSize = 8;
-  if (reportTitle.length > 36) {
-    titleFontSize = reportTitle.length > 44 ? 6.8 : 7.2;
+  if (formattedReportTitle.length > 36) {
+    titleFontSize = formattedReportTitle.length > 44 ? 6.8 : 7.2;
   }
   doc.setFontSize(titleFontSize);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
-  const titleLines = doc.splitTextToSize(reportTitle, col2W - 8);
-  doc.text(titleLines[0] || reportTitle, titleCenterX, headerY + 15.4, { align: "center" });
+  const titleLines = doc.splitTextToSize(formattedReportTitle, col2W - 8);
+  doc.text(titleLines[0] || formattedReportTitle, titleCenterX, headerY + 15.4, { align: "center" });
 
   // Line 4: Report No (no bold, size 8)
   doc.setFontSize(8);

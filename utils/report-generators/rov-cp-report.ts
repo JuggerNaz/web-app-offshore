@@ -140,7 +140,7 @@ export const generateROVCPReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `CP SURVEY REPORT (ROV) - ${extraTitleInfo}` : "CP SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `CP Survey Report (ROV) - ${extraTitleInfo}` : "CP Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

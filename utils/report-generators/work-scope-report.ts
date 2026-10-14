@@ -136,7 +136,7 @@ export const generateWorkScopeReport = async (
     // -- HEADER GENERATION Helper --
     const drawHeader = (pageNo: number) => {
         draw3SectionHeader(doc, {
-            reportTitle: "WORK SCOPE REPORT",
+            reportTitle: "Work Scope Report",
             reportNo: config?.reportNoPrefix ? `${config.reportNoPrefix}-${config.reportYear || new Date().getFullYear()}` : ((sowData as any).metadata?.contract_ref || jobPack.metadata?.contract_ref || `JP-${jobPack.id}`),
             structureName: structure?.name ? `${structure.name}${structure.title ? ` - ${structure.title}` : ''}` : (structure?.str_name || jobPack.name),
             companySettings,

@@ -73,7 +73,7 @@ export const generateDivingANMAINReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `ANODE MAINTENANCE INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "ANODE MAINTENANCE INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Anode Maintenance Inspection Report (Diving) - ${extraTitleInfo}` : "Anode Maintenance Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

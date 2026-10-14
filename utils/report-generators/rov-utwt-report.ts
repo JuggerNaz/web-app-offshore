@@ -70,7 +70,7 @@ export const generateROVUTWTReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `UT THICKNESS REPORT (ROV) - ${extraTitleInfo}` : "UT THICKNESS REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `UT Thickness Report (ROV) - ${extraTitleInfo}` : "UT Thickness Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

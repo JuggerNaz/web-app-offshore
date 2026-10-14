@@ -74,7 +74,7 @@ export const generateROVRICMIReport = async (
         // ── Page header ─────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `INCLINOMETER SURVEY REPORT (ROV) - ${extraTitleInfo}` : "INCLINOMETER SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Inclinometer Survey Report (ROV) - ${extraTitleInfo}` : "Inclinometer Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

@@ -74,7 +74,7 @@ export const generatePlatformInspectionSummaryReport = async (
         // ── Synchronous Page Header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `PLATFORM INSPECTION SUMMARY REPORT - ${extraTitleInfo}` : "PLATFORM INSPECTION SUMMARY REPORT",
+                reportTitle: extraTitleInfo ? `Platform Inspection Summary Report - ${extraTitleInfo}` : "Platform Inspection Summary Report",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

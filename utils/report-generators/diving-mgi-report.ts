@@ -76,7 +76,7 @@ export const generateDivingMGIReport = async (
             const structName = headerData.platformName || "N/A";
 
             draw3SectionHeader(d, {
-                reportTitle: "MARINE GROWTH INSPECTION GRAPH REPORT (DIVING)",
+                reportTitle: "Marine Growth Inspection Graph Report (Diving)",
                 reportNo,
                 structureName: structName,
                 companySettings,

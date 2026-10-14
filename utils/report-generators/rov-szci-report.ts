@@ -70,7 +70,7 @@ export const generateROVSZCIReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `SPLASH ZONE INSPECTION REPORT (ROV) - ${extraTitleInfo}` : "SPLASH ZONE INSPECTION REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Splash Zone Inspection Report (ROV) - ${extraTitleInfo}` : "Splash Zone Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

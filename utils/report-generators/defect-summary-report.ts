@@ -255,7 +255,7 @@ export const generateDefectSummaryReport = async (
 
     // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const reportTitle = config.isFindingsReport ? "FINDINGS SUMMARY REPORT" : "DEFECT SUMMARY REPORT";
+        const reportTitle = config.isFindingsReport ? "Findings Summary Report" : "Defect Summary Report";
         const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 

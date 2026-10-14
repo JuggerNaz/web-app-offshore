@@ -168,6 +168,80 @@ export interface Draw3SectionHeaderOptions {
 }
 
 /**
+ * Converts a word to title case while preserving offshore engineering acronyms
+ * (e.g. ROV, ACFM, CP, UT, FMD, MPI, NDT, etc.) and company abbreviations (e.g. Sdn Bhd).
+ */
+export function toTitleCaseWord(word: string): string {
+    const match = word.match(/^([^a-zA-Z0-9]*)(.*?)([^a-zA-Z0-9]*)$/);
+    if (!match) return word;
+    const [, prefix, core, suffix] = match;
+    if (!core) return word;
+    if (!/[a-zA-Z]/.test(core)) return word;
+
+    // Handle hyphenated words like 'J-TUBE', 'I-TUBE', 'MULTI-DROP'
+    if (core.includes("-")) {
+        const parts = core.split("-");
+        return prefix + parts.map(p => toTitleCaseWord(p)).join("-") + suffix;
+    }
+
+    // Handle slash words like 'DEFECT / ANOMALY' or 'AND/OR'
+    if (core.includes("/")) {
+        const parts = core.split("/");
+        return prefix + parts.map(p => toTitleCaseWord(p)).join("/") + suffix;
+    }
+
+    const upper = core.toUpperCase();
+
+    // Acronyms that MUST remain uppercase (ROV is explicitly required)
+    const acronyms = new Set([
+        "ROV", "ACFM", "CP", "UT", "UTWT", "FMD", "MPI", "NDT", "GVI", "CVI",
+        "SOW", "SKA", "PCSB", "SKO", "PMO", "SBO", "KP", "N/A", "CO2", "ID",
+        "II", "III", "IV", "VI", "VII", "VIII", "IX", "X"
+    ]);
+
+    if (acronyms.has(upper)) return prefix + upper + suffix;
+    if (/^v\d+$/i.test(core)) return prefix + core.toLowerCase() + suffix;
+    if (/^[0-9]+[a-zA-Z]+$/.test(core) || /^[a-zA-Z]+[0-9]+$/.test(core)) {
+        return prefix + (core === core.toLowerCase() ? core : upper) + suffix;
+    }
+    if (upper === "SDN") return prefix + "Sdn" + suffix;
+    if (upper === "BHD") return prefix + "Bhd" + suffix;
+    if (upper === "PTY") return prefix + "Pty" + suffix;
+    if (upper === "LTD") return prefix + "Ltd" + suffix;
+    if (upper === "INC") return prefix + "Inc" + suffix;
+
+    return prefix + core.charAt(0).toUpperCase() + core.slice(1).toLowerCase() + suffix;
+}
+
+/**
+ * Transforms report header title text to Title Case (capital letter on first letter of words)
+ * while keeping acronyms like ROV in all caps.
+ */
+export function formatReportHeaderTitle(title: string): string {
+    if (!title || typeof title !== "string") return title;
+    return title.split(/(\s+)/).map(token => {
+        if (/^\s+$/.test(token)) return token;
+        return toTitleCaseWord(token);
+    }).join("");
+}
+
+/**
+ * Formats header info lines (Company Name, Department, Report Title, Report No prefix)
+ * to Title Case while preserving uppercase codes and prefixes.
+ */
+export function formatHeaderInfoText(text: string): string {
+    if (!text || typeof text !== "string") return text;
+    // Check if string is report number like 'Report No: ...' or 'REPORT NO: ...'
+    if (/^report\s*no\.?\s*:/i.test(text.trim())) {
+        return text.replace(/^(\s*report\s*no)(\.?\s*:)/i, (_m, _p1, p2) => {
+            const hasDot = p2.includes(".");
+            return hasDot ? "Report No. :" : "Report No:";
+        });
+    }
+    return formatReportHeaderTitle(text);
+}
+
+/**
  * Universal 3-Section Header matching Jobpack Summary Report (Contractor Box | Middle Navy Info Box | Client Box)
  * Supports both Portrait (210mm) and Landscape (297mm) orientations with perfectly aligned borders.
  */
@@ -236,18 +310,22 @@ export const draw3SectionHeader = (
 
     const titleCenterX = x2 + col2W / 2;
 
-    const companyName = options.companySettings?.company_name || options.headerData?.companyName || "Petronas Carigali Sdn Bhd (SKA)";
-    const deptName = options.companySettings?.department_name || (options.companySettings as any)?.departmentName || options.headerData?.departmentName || "Technical Services Department";
+    const rawCompanyName = options.companySettings?.company_name || options.headerData?.companyName || "Petronas Carigali Sdn Bhd (SKA)";
+    const companyName = formatHeaderInfoText(rawCompanyName);
 
-    const reportTitleText = options.reportTitle || "Inspection Report";
+    const rawDeptName = options.companySettings?.department_name || (options.companySettings as any)?.departmentName || options.headerData?.departmentName || "Technical Services Department";
+    const deptName = formatHeaderInfoText(rawDeptName);
+
+    const reportTitleText = formatReportHeaderTitle(options.reportTitle || "Inspection Report");
 
     const rawReportNo = options.reportNo || options.headerData?.sowReportNo || options.config?.sowReportNo ||
         (options.config?.reportNoPrefix ? `${options.config.reportNoPrefix}-${options.config.reportYear || new Date().getFullYear()}` : "") ||
         (options.companySettings?.serial_no ? `${options.companySettings.serial_no}` : "");
 
-    const reportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
+    const baseReportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
         ? (String(rawReportNo).trim().toLowerCase().startsWith("report no") ? String(rawReportNo).trim() : `Report No: ${String(rawReportNo).trim()}`)
         : "Report No: N/A";
+    const reportNoStr = formatHeaderInfoText(baseReportNoStr);
 
     // Line 1: Company Name (bold, size 8)
     doc.setFontSize(8);

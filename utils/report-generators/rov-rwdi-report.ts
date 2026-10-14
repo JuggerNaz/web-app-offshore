@@ -75,7 +75,7 @@ export const generateROVRWDIReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `WATER DEPTH MEASUREMENT SURVEY REPORT (ROV) - ${extraTitleInfo}` : "WATER DEPTH MEASUREMENT SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Water Depth Measurement Survey Report (ROV) - ${extraTitleInfo}` : "Water Depth Measurement Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

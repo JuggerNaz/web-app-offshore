@@ -70,7 +70,7 @@ export const generateDivingUTWTKReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string | number) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `UT WALL THICKNESS INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "UT WALL THICKNESS INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `UT Wall Thickness Inspection Report (Diving) - ${extraTitleInfo}` : "UT Wall Thickness Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

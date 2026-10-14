@@ -134,7 +134,7 @@ export const generateWorkScopeIncompleteReport = async (
         const structStr = structure?.str_name || (structure?.id === 'all' ? 'ALL STRUCTURES' : jobPack.name);
 
         draw3SectionHeader(doc, {
-            reportTitle: "WORK SCOPE INCOMPLETE STATUS",
+            reportTitle: "Work Scope Incomplete Status",
             reportNo: reportNoStr,
             structureName: structStr,
             companySettings,

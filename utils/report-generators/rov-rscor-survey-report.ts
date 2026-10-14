@@ -78,7 +78,7 @@ export const generateROVRSCORSurveyReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `SCOUR SURVEY REPORT (ROV) - ${extraTitleInfo}` : "SCOUR SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Scour Survey Report (ROV) - ${extraTitleInfo}` : "Scour Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

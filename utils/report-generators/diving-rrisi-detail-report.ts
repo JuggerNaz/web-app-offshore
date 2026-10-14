@@ -303,7 +303,7 @@ export const generateDivingRRISIDetailReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `RISER INSPECTION SUMMARY REPORT (DIVING) - ${extraTitleInfo}` : "RISER INSPECTION SUMMARY REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Riser Inspection Summary Report (Diving) - ${extraTitleInfo}` : "Riser Inspection Summary Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

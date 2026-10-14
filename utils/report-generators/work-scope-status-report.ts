@@ -155,7 +155,7 @@ export const generateWorkScopeStatusReport = async (
         const structStr = structure?.str_name || (structure?.id === 'all' ? 'ALL STRUCTURES' : jobPack.name);
 
         draw3SectionHeader(doc, {
-            reportTitle: "WORK SCOPE STATUS SUMMARY",
+            reportTitle: "Work Scope Status Summary",
             reportNo: reportNoStr,
             structureName: structStr,
             companySettings,

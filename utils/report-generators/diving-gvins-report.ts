@@ -69,7 +69,7 @@ export const generateDivingGVINSReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `GENERAL VISUAL INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "GENERAL VISUAL INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `General Visual Inspection Report (Diving) - ${extraTitleInfo}` : "General Visual Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

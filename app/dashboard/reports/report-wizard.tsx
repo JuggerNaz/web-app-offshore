@@ -141,7 +141,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
         reportYear: new Date().getFullYear().toString(),
-        preparedBy: { name: "", date: new Date().toISOString().split('T')[0] },
+        preparedBy: { name: "", date: "" },
         reviewedBy: { name: "", date: "" },
         approvedBy: { name: "", date: "" },
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
@@ -2175,7 +2175,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
                     const mergedPdfBytes = await mergedPdf.save();
-                    const finalBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                    const finalBlob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
 
                     if (returnBlob) {
                         return finalBlob;
@@ -2200,7 +2200,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, showSignatures: true, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
         }
 
         // Defect Summary Report / Findings Summary Report

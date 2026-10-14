@@ -99,7 +99,7 @@ export const generateVideoLogReport = async (
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
         draw3SectionHeader(d, {
-            reportTitle: "VIDEO LOG REPORT",
+            reportTitle: "Video Log Report",
             reportNo: reportNoDisplay,
             structureName: structName,
             companySettings,

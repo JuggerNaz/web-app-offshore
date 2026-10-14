@@ -100,7 +100,7 @@ export const generateROVMGIGraphReport = async (
             const structName = headerData.platformName ? `${headerData.platformName}${qid ? ` (${qid})` : ''}` : "N/A";
 
             draw3SectionHeader(d, {
-                reportTitle: "MARINE GROWTH GRAPH REPORT (ROV)",
+                reportTitle: "Marine Growth Graph Report (ROV)",
                 reportNo,
                 structureName: structName,
                 companySettings,

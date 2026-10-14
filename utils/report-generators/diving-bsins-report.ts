@@ -70,7 +70,7 @@ export const generateDivingBSINSReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string | number) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `BOLTED SUPPORT INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "BOLTED SUPPORT INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Bolted Support Inspection Report (Diving) - ${extraTitleInfo}` : "Bolted Support Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

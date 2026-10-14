@@ -213,7 +213,7 @@ export default function ROVInspectionList({
             const config = {
                 reportNoPrefix: "ANOMALY",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "System", date: new Date().toLocaleDateString() },
+                preparedBy: { name: "System", date: "" },
                 reviewedBy: { name: "", date: "" },
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },

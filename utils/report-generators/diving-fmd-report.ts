@@ -72,7 +72,7 @@ export const generateDivingFMDReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `FLOODED MEMBER INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "FLOODED MEMBER INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Flooded Member Inspection Report (Diving) - ${extraTitleInfo}` : "Flooded Member Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

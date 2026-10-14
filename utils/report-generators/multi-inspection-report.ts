@@ -109,7 +109,7 @@ export const generateMultiInspectionReport = async (
             // --- HEADER ---
             const drawPremiumHeader = (d: jsPDF) => {
                 draw3SectionHeader(d, {
-                    reportTitle: isAnomaly ? "ANOMALY REPORT" : "INSPECTION REPORT",
+                    reportTitle: isAnomaly ? "Anomaly Report" : "Inspection Report",
                     reportNo: inspection.sow_report_no || (config as any)?.sowReportNo || (config as any)?.reportNoPrefix || `ID-${inspection.insp_id}`,
                     structureName: structureName,
                     jobpackName: (config as any)?.jobpackName,

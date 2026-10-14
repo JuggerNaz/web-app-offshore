@@ -165,7 +165,7 @@ export const generateDivingCPSURVReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `CATHODIC PROTECTION SURVEY REPORT (DIVING) - ${extraTitleInfo}` : "CATHODIC PROTECTION SURVEY REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Cathodic Protection Survey Report (Diving) - ${extraTitleInfo}` : "Cathodic Protection Survey Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

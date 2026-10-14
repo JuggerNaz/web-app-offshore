@@ -71,7 +71,7 @@ export const generateROVFMDReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `FMD SURVEY REPORT (ROV) - ${extraTitleInfo}` : "FMD SURVEY REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `FMD Survey Report (ROV) - ${extraTitleInfo}` : "FMD Survey Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

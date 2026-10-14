@@ -73,7 +73,7 @@ export const generateDivingMEASUReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `MEASUREMENT DIMENSIONAL SURVEY REPORT (DIVING) - ${extraTitleInfo}` : "MEASUREMENT DIMENSIONAL SURVEY REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Measurement Dimensional Survey Report (Diving) - ${extraTitleInfo}` : "Measurement Dimensional Survey Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

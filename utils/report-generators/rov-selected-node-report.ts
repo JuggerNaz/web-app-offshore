@@ -75,7 +75,7 @@ export const generateROVSelectedNodeReport = async (
         // ── Page Header ─────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `SELECTED NODE REPORT (ROV) - ${extraTitleInfo}` : "SELECTED NODE REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Selected Node Report (ROV) - ${extraTitleInfo}` : "Selected Node Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

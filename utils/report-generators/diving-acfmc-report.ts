@@ -74,7 +74,7 @@ export const generateDivingACFMCReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `ACFM INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "ACFM INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `ACFM Inspection Report (Diving) - ${extraTitleInfo}` : "ACFM Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

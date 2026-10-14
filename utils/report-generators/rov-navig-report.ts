@@ -362,7 +362,7 @@ export const generateROVNavigReport = async (
         const reportNo = sowReportNo || hData.sowReportNo || `${config.reportNoPrefix || "REP"}-NAVIG-01`;
 
         draw3SectionHeader(d, {
-            reportTitle: "PIPELINE VISUAL INSPECTION REPORT",
+            reportTitle: "Pipeline Visual Inspection Report",
             reportNo,
             structureName: structName,
             companySettings,

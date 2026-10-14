@@ -253,7 +253,7 @@ export const generateROVRRISIITubeDetailReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `I-TUBE INSPECTION REPORT (ROV) - ${extraTitleInfo}` : "I-TUBE INSPECTION REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `I-Tube Inspection Report (ROV) - ${extraTitleInfo}` : "I-Tube Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

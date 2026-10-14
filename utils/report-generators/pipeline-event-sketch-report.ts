@@ -425,7 +425,7 @@ export const generatePipelineEventSketchReport = async (
         const reportNo = sowReportNo || hData.sowReportNo || config.reportNoPrefix || "N/A";
 
         draw3SectionHeader(d, {
-            reportTitle: "PIPELINE NAVIGATION EVENT SKETCH REPORT",
+            reportTitle: "Pipeline Navigation Event Sketch Report",
             reportNo,
             structureName: structName,
             companySettings,

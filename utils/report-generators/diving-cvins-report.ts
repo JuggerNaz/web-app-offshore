@@ -69,7 +69,7 @@ export const generateDivingCVINSReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string | number) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `CLOSE VISUAL INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "CLOSE VISUAL INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Close Visual Inspection Report (Diving) - ${extraTitleInfo}` : "Close Visual Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

@@ -180,7 +180,7 @@ export const generateSeabedSurveyReport = async (
         const reportNo = sowReportNo || config.headerData?.sowReportNo || (config as any)?.reportNoPrefix || "N/A";
 
         draw3SectionHeader(d, {
-            reportTitle: `SEABED SURVEY MULTI-DROP SKETCH REPORT (${titleType})`,
+            reportTitle: `Seabed Survey Multi-Drop Sketch Report (${titleType})`,
             reportNo,
             structureName: structName,
             companySettings,

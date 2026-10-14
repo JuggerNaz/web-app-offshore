@@ -75,7 +75,7 @@ export const generateDivingPLCOReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `COATING DAMAGE INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "COATING DAMAGE INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Coating Damage Inspection Report (Diving) - ${extraTitleInfo}` : "Coating Damage Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

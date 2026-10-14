@@ -88,7 +88,7 @@ export const generateDiverLogReport = async (
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
         draw3SectionHeader(d, {
-            reportTitle: "DIVER LOG REPORT",
+            reportTitle: "Diver Log Report",
             reportNo: reportNoDisplay,
             structureName: structName,
             companySettings,

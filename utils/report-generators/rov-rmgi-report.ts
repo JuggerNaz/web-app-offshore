@@ -77,7 +77,7 @@ export const generateROVRMGIReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `MARINE GROWTH INSPECTION REPORT (ROV) - ${extraTitleInfo}` : "MARINE GROWTH INSPECTION REPORT (ROV)",
+                reportTitle: extraTitleInfo ? `Marine Growth Inspection Report (ROV) - ${extraTitleInfo}` : "Marine Growth Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

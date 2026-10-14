@@ -675,7 +675,7 @@ export const generatePipelineDefectSummaryReport = async (
 
     // ── Header Box ───────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const reportTitle = isFindingsReport ? "FINDING SUMMARY REPORT (PIPELINE)" : "DEFECT SUMMARY REPORT (PIPELINE)";
+        const reportTitle = isFindingsReport ? "Finding Summary Report (Pipeline)" : "Defect Summary Report (Pipeline)";
         const structName = pipelineInfo?.title || pipelineInfo?.structure_name || structure?.name || structure?.title;
         draw3SectionHeader(d, {
             reportTitle,

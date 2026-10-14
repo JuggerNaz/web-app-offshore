@@ -91,7 +91,7 @@ export const generateDivingDCONDReport = async (
 
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `CONDUCTOR INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "CONDUCTOR INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Conductor Inspection Report (Diving) - ${extraTitleInfo}` : "Conductor Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

@@ -84,7 +84,7 @@ export const generateDivingITMAINReport = async (
         // ── Page Header Renderer ────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `ITEM MAINTENANCE INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "ITEM MAINTENANCE INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Item Maintenance Inspection Report (Diving) - ${extraTitleInfo}` : "Item Maintenance Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

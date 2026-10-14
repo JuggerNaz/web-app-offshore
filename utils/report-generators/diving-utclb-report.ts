@@ -75,7 +75,7 @@ export const generateDivingUTCLBReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `UT CALIBRATION REPORT (DIVING) - ${extraTitleInfo}` : "UT CALIBRATION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `UT Calibration Report (Diving) - ${extraTitleInfo}` : "UT Calibration Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

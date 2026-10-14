@@ -76,7 +76,7 @@ export const generateDivingSZONEReport = async (
         // ── Header ──────────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `SPLASH ZONE INSPECTION REPORT (DIVING) - ${extraTitleInfo}` : "SPLASH ZONE INSPECTION REPORT (DIVING)",
+                reportTitle: extraTitleInfo ? `Splash Zone Inspection Report (Diving) - ${extraTitleInfo}` : "Splash Zone Inspection Report (Diving)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

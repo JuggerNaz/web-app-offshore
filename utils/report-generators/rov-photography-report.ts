@@ -247,7 +247,7 @@ export const generateROVPhotographyReport = async (
             const structName = headerData.platformName || "N/A";
 
             draw3SectionHeader(d, {
-                reportTitle: "PHOTOGRAPHY REPORT (ROV)",
+                reportTitle: "Photography Report (ROV)",
                 reportNo,
                 structureName: structName,
                 companySettings,
