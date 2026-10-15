@@ -90,36 +90,57 @@ export const GET = withTenant(async (request, { companyId, params }) => {
                 console.error("Error fetching platform attachments in structures API:", attError);
             }
 
-            const attachments = (rawAttachments || []).map((a: any) => {
-                let metaObj = a.meta;
-                if (typeof metaObj === "string") {
-                    try { metaObj = JSON.parse(metaObj); } catch {}
-                }
-                let directUrl = metaObj?.file_url || a.file_url || "";
-                if (!directUrl && a.path) {
-                    const p = String(a.path).trim().replace(/\\/g, '/');
-                    if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) {
-                        directUrl = p;
-                    } else {
-                        const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-                        const cleanP = p.replace(/^\/?(attachments\/)?/, "");
-                        if (supabaseUrl) {
-                            directUrl = `${supabaseUrl}/storage/v1/object/public/attachments/${cleanP}`;
+            const isStructurePhoto = (item: any): boolean => {
+                const st = String(item.source_type || "").toLowerCase();
+                const p = String(item.path || item.file_url || "").toLowerCase();
+                return st.includes("structure_image") || st.includes("visual") || p.includes("structure-images");
+            };
+
+            const attachments = (rawAttachments || [])
+                .map((a: any) => {
+                    let metaObj = a.meta;
+                    if (typeof metaObj === "string") {
+                        try { metaObj = JSON.parse(metaObj); } catch {}
+                    }
+                    const rawPath = String(a.path || metaObj?.file_path || "").trim();
+                    const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+
+                    let directUrl = metaObj?.file_url || a.file_url || "";
+                    if (!directUrl && a.path) {
+                        const p = String(a.path).trim().replace(/\\/g, '/');
+                        if (p.startsWith("http://") || p.startsWith("https://") || p.startsWith("data:")) {
+                            directUrl = p;
+                        } else if (!isLocalDrive) {
+                            const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
+                            const cleanP = p.replace(/^\/?(attachments\/)?/, "");
+                            if (supabaseUrl && cleanP && !cleanP.endsWith("/")) {
+                                directUrl = `${supabaseUrl}/storage/v1/object/public/attachments/${cleanP}`;
+                            }
                         }
                     }
-                }
-                const proxyUrl = a.id ? `/api/attachment/url?id=${a.id}` : (a.path ? `/api/attachment/url?path=${encodeURIComponent(a.path)}` : directUrl);
 
-                return {
-                    ...a,
-                    id: a.id,
-                    url: proxyUrl || directUrl,
-                    file_url: directUrl || proxyUrl,
-                    proxy_url: proxyUrl,
-                    path: a.path,
-                    title: metaObj?.title || a.title || a.name || metaObj?.original_file_name || "Platform Visual"
-                };
-            });
+                    // For local drive paths without cloud URL, do not create dead proxyUrl
+                    const proxyUrl = isLocalDrive && !directUrl
+                        ? ""
+                        : (a.id ? `/api/attachment/url?id=${a.id}` : (a.path ? `/api/attachment/url?path=${encodeURIComponent(a.path)}` : directUrl));
+
+                    return {
+                        ...a,
+                        id: a.id,
+                        url: directUrl || proxyUrl,
+                        file_url: directUrl || proxyUrl,
+                        proxy_url: proxyUrl,
+                        path: a.path,
+                        is_local_drive: isLocalDrive,
+                        local_path: isLocalDrive ? rawPath : undefined,
+                        title: metaObj?.title || a.title || a.name || metaObj?.original_file_name || "Platform Visual"
+                    };
+                })
+                .sort((a: any, b: any) => {
+                    const aIsPhoto = isStructurePhoto(a) ? 1 : 0;
+                    const bIsPhoto = isStructurePhoto(b) ? 1 : 0;
+                    return bIsPhoto - aIsPhoto;
+                });
 
             const legs: any[] = [];
             const legsCount = platform.plegs || 0;

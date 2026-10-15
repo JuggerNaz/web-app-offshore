@@ -866,13 +866,31 @@ const generatePlatformReport = async (
     return str.trim() || "Structure Visual";
   };
 
-  // Helper: check if an attachment looks like an image file
+  // Helper: check if an attachment is an explicit platform/structure visual photo
+  const isStructurePhoto = (item: any): boolean => {
+    const st = String(item.source_type || "").toLowerCase();
+    const p = String(item.path || item.file_url || "").toLowerCase();
+    return st.includes("structure_image") || st.includes("visual") || p.includes("structure-images");
+  };
+
+  // Helper: check if an attachment looks like an image file and has a reachable URL
   const isImageAttachment = (item: any): boolean => {
     if (!item || typeof item !== 'object') return false;
     const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
     const fileType = String(meta?.file_type || item.file_type || "").toLowerCase();
-    if (fileType.startsWith("image/")) return true;
     const filePath = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+
+    // Reject legacy local drive paths (e.g. c:\..., p:\...) without valid remote/cloud URL
+    const rawPath = String(item.path || meta?.file_path || "").trim();
+    const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+    const hasValidRemoteUrl = Boolean(
+      (item.file_url && !/^[a-zA-Z]:[\\/]/.test(item.file_url) && !item.file_url.includes("/api/attachment/url")) ||
+      (meta?.file_url && !/^[a-zA-Z]:[\\/]/.test(meta.file_url)) ||
+      (item.url && !item.url.includes("c%3A") && !item.url.includes("C%3A") && !/^[a-zA-Z]:[\\/]/.test(item.url) && !item.url.includes("/api/attachment/url"))
+    );
+    if (isLocalDrive && !hasValidRemoteUrl) return false;
+
+    if (fileType.startsWith("image/")) return true;
     return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(filePath);
   };
 
@@ -883,7 +901,7 @@ const generatePlatformReport = async (
 
   const addVisualItem = (item: any) => {
     if (!item || typeof item !== 'object') return;
-    // Skip non-image attachments
+    // Skip non-image attachments or dead local disk paths
     if (!isImageAttachment(item)) return;
     // Deduplicate by attachment id
     const itemId = String(item.id || "");
@@ -895,6 +913,17 @@ const generatePlatformReport = async (
       try { metaObj = JSON.parse(metaObj); } catch {}
     }
 
+    const rawPath = String(item.path || metaObj?.file_path || "").trim();
+    const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+    const directUrl = metaObj?.file_url || item.file_url || item.url || item.path || "";
+    const hasValidRemoteUrl = Boolean(
+      directUrl &&
+      (directUrl.startsWith("http://") || directUrl.startsWith("https://") || directUrl.startsWith("data:")) &&
+      !/^[a-zA-Z]:[\\/]/.test(directUrl)
+    );
+
+    if (isLocalDrive && !hasValidRemoteUrl) return;
+
     // Build the URL — PRIORITIZE proxy_url (server-side, no CORS) over direct Supabase URL
     let url = "";
     if (item.id) {
@@ -902,7 +931,6 @@ const generatePlatformReport = async (
     } else if (item.proxy_url) {
       url = item.proxy_url;
     } else {
-      const directUrl = metaObj?.file_url || item.file_url || item.url || item.path || "";
       url = directUrl;
     }
     if (!url || typeof url !== 'string' || !url.trim()) return;
@@ -920,19 +948,28 @@ const generatePlatformReport = async (
     rawVisuals.push({ id: item.id, url: url.trim(), title, path: item.path || metaObj?.file_path });
   };
 
+  // Sort source so explicit structure photos come first
+  const sortVisualSources = (list: any[]) => {
+    return [...list].sort((a, b) => {
+      const aIs = isStructurePhoto(a) ? 1 : 0;
+      const bIs = isStructurePhoto(b) ? 1 : 0;
+      return bIs - aIs;
+    });
+  };
+
   // Only iterate structure.visuals (structure.photos is the same array from the API — don't double-count)
   if (Array.isArray(structure.visuals)) {
-    structure.visuals.forEach((v: any) => addVisualItem(v));
+    sortVisualSources(structure.visuals).forEach((v: any) => addVisualItem(v));
   }
   // Fallback: if visuals was empty, try photos/images/attachments
   if (rawVisuals.length === 0 && Array.isArray(structure.photos)) {
-    structure.photos.forEach((p: any) => addVisualItem(p));
+    sortVisualSources(structure.photos).forEach((p: any) => addVisualItem(p));
   }
   if (rawVisuals.length === 0 && Array.isArray(structure.images)) {
-    structure.images.forEach((i: any) => addVisualItem(i));
+    sortVisualSources(structure.images).forEach((i: any) => addVisualItem(i));
   }
   if (rawVisuals.length === 0 && Array.isArray((structure as any).attachments)) {
-    (structure as any).attachments.forEach((a: any) => addVisualItem(a));
+    sortVisualSources((structure as any).attachments).forEach((a: any) => addVisualItem(a));
   }
   // photo_url string fallback
   if (rawVisuals.length === 0 && structure.photo_url && typeof structure.photo_url === 'string') {
@@ -941,102 +978,154 @@ const generatePlatformReport = async (
   }
 
   const uniquePhotos = rawVisuals;
+  let page1RenderedCount = 0;
 
   if (uniquePhotos.length > 0) {
-    const page1Photos = uniquePhotos.slice(0, 4);
-    const count = page1Photos.length;
-    drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
-    yPos += 5;
+    // Attempt loading candidate photos (up to 8 for page 1)
+    const maxPage1 = 8;
+    const loadedCandidates: { photo: VisualItem; data: string }[] = [];
 
-    const gap = count === 4 ? 3.5 : 5;
-    const totalWidth = pageWidth - 20;
-    const imgWidth = (totalWidth - (gap * (count - 1))) / count;
-    const imgHeight = count === 4 ? 50 : (count === 3 ? 54 : 58);
-
-    let currentX = 10;
-    const padding = 1; // Inner padding for border
-
-    // Load images SEQUENTIALLY through the /api/attachment/url proxy to avoid CORS and rate-limiting
-    const loadedImages: (string | null)[] = [];
-    for (const p of page1Photos) {
+    // Load candidate photos sequentially through /api/attachment/url to avoid CORS & rate limits
+    for (const p of uniquePhotos) {
+      if (loadedCandidates.length >= maxPage1) break;
       try {
         const imgData = await loadImage(p.url, p.id);
-        loadedImages.push(imgData);
+        if (imgData) {
+          loadedCandidates.push({ photo: p, data: imgData });
+        }
       } catch (e) {
         console.error(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
-        loadedImages.push(null);
       }
     }
 
-    try {
-      loadedImages.forEach((imgData, idx) => {
-        const photoItem = page1Photos[idx];
+    if (loadedCandidates.length > 0) {
+      const count = loadedCandidates.length;
+      page1RenderedCount = count;
+      drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${count})`, 12, yPos + 3.5);
+      yPos += 5;
 
-        // Draw border container
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(currentX, yPos, imgWidth, imgHeight);
+      const totalWidth = pageWidth - 20;
+      const padding = 1; // Inner padding for border
 
-        if (imgData) {
+      if (count <= 4) {
+        // Single row layout (1-4 images)
+        const gap = count === 4 ? 3.5 : 5;
+        const imgWidth = (totalWidth - (gap * (count - 1))) / count;
+        const imgHeight = count === 4 ? 48 : (count === 3 ? 52 : 56);
+        let currentX = 10;
+
+        loadedCandidates.forEach(({ photo, data }) => {
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(currentX, yPos, imgWidth, imgHeight);
+
           try {
-            // Add image with slight padding inside the box
-            doc.addImage(imgData, 'JPEG', currentX + padding, yPos + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
+            doc.addImage(data, 'JPEG', currentX + padding, yPos + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
           } catch (e) {
             console.error("Error adding PDF image", e);
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6);
-            doc.setTextColor(150, 150, 150);
-            doc.text("Error", currentX + 5, yPos + 10);
           }
-        } else {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(6);
-          doc.setTextColor(150, 150, 150);
-          doc.text("No Img", currentX + 5, yPos + 10);
-        }
 
-        // Semi-transparent Title Overlay over the photo (bottom bar)
-        if (photoItem && photoItem.title) {
-          const bannerH = count === 4 ? 5.5 : 6;
-          const bannerY = yPos + imgHeight - bannerH - padding;
-          const bannerX = currentX + padding;
-          const bannerW = imgWidth - (padding * 2);
+          // Semi-transparent Title Overlay over the photo (bottom bar)
+          if (photo && photo.title) {
+            const bannerH = count === 4 ? 5.5 : 6;
+            const bannerY = yPos + imgHeight - bannerH - padding;
+            const bannerX = currentX + padding;
+            const bannerW = imgWidth - (padding * 2);
 
-          doc.saveGraphicsState();
+            doc.saveGraphicsState();
+            try {
+              if ((doc as any).GState) {
+                doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+              }
+              doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
+              doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+            } finally {
+              doc.restoreGraphicsState();
+            }
+
+            // Overlay Title Text
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(count === 4 ? 5.5 : 6.5);
+            doc.setTextColor(255, 255, 255);
+
+            const maxTextW = bannerW - 3;
+            let displayTitle = photo.title;
+            if (doc.getTextWidth(displayTitle) > maxTextW) {
+              while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+                displayTitle = displayTitle.slice(0, -1);
+              }
+              displayTitle += "...";
+            }
+
+            doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
+          }
+
+          currentX += imgWidth + gap;
+        });
+
+        yPos += imgHeight + 5;
+
+      } else {
+        // Multi-row grid layout for 5-8 images (2 rows)
+        const cols = count <= 6 ? 3 : 4;
+        const gapX = cols === 4 ? 3.5 : 5;
+        const gapY = 3.5;
+        const imgWidth = (totalWidth - (gapX * (cols - 1))) / cols;
+        const imgHeight = 32;
+
+        loadedCandidates.forEach(({ photo, data }, idx) => {
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
+          const cellX = 10 + col * (imgWidth + gapX);
+          const cellY = yPos + row * (imgHeight + gapY);
+
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(cellX, cellY, imgWidth, imgHeight);
+
           try {
-            if ((doc as any).GState) {
-              doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
-            }
-            doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
-            doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
-          } finally {
-            doc.restoreGraphicsState();
+            doc.addImage(data, 'JPEG', cellX + padding, cellY + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
+          } catch (e) {
+            console.error("Error adding PDF image", e);
           }
 
-          // Overlay Title Text
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(count === 4 ? 5.5 : 6.5);
-          doc.setTextColor(255, 255, 255);
+          // Title Overlay
+          if (photo && photo.title) {
+            const bannerH = 4.5;
+            const bannerY = cellY + imgHeight - bannerH - padding;
+            const bannerX = cellX + padding;
+            const bannerW = imgWidth - (padding * 2);
 
-          const maxTextW = bannerW - 3;
-          let displayTitle = photoItem.title;
-          if (doc.getTextWidth(displayTitle) > maxTextW) {
-            while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
-              displayTitle = displayTitle.slice(0, -1);
+            doc.saveGraphicsState();
+            try {
+              if ((doc as any).GState) {
+                doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+              }
+              doc.setFillColor(15, 23, 42);
+              doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+            } finally {
+              doc.restoreGraphicsState();
             }
-            displayTitle += "...";
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(5);
+            doc.setTextColor(255, 255, 255);
+
+            const maxTextW = bannerW - 2;
+            let displayTitle = photo.title;
+            if (doc.getTextWidth(displayTitle) > maxTextW) {
+              while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+                displayTitle = displayTitle.slice(0, -1);
+              }
+              displayTitle += "...";
+            }
+            doc.text(displayTitle, bannerX + bannerW / 2, bannerY + 3.2, { align: "center" });
           }
+        });
 
-          doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
-        }
-
-        currentX += imgWidth + gap;
-      });
-
-      yPos += imgHeight + 5;
-
-    } catch (err) {
-      console.error("Critical error in image section", err);
-      yPos += 10;
+        const numRows = Math.ceil(count / cols);
+        yPos += (numRows * (imgHeight + gapY)) + 2;
+      }
     }
   }
 
@@ -1405,58 +1494,70 @@ const generatePlatformReport = async (
     yPos += boxHeight + 4;
   }
 
-  // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos > 4) =====
-  if (uniquePhotos.length > 4) {
-    const remainingPhotos = uniquePhotos.slice(4);
-    const photosPerPage = 4; // 2x2 grid per page
+  // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos beyond Page 1) =====
+  // User Requirement: If not more than 4 visuals attached, NO NEED to print the second page.
+  // Strictly prevent Page 2 whenever uniquePhotos.length <= 4, or when remaining images are not renderable.
+  if (uniquePhotos.length > 4 && uniquePhotos.length > page1RenderedCount && page1RenderedCount > 0) {
+    const remainingPhotos = uniquePhotos.slice(page1RenderedCount);
+    // Pre-load all remaining photos to verify at least one actually succeeds
+    const loadedBatchPromises = remainingPhotos.map(p => loadImage(p.url, p.id).catch(() => null));
+    const loadedBatch = await Promise.all(loadedBatchPromises);
 
-    for (let pageIdx = 0; pageIdx < Math.ceil(remainingPhotos.length / photosPerPage); pageIdx++) {
-      doc.addPage();
-      yPos = 15;
+    const hasAnyValidRemaining = loadedBatch.some(Boolean);
 
-      // Header bar for additional visuals page
-      drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUAL DOCUMENTATION (Page ${pageIdx + 2})`, 12, yPos + 3.5);
-      yPos += 8;
+    // Only add page(s) if there are actual loaded images to render
+    if (hasAnyValidRemaining) {
+      const photosPerPage = 4; // 2x2 grid per page
+      for (let pageIdx = 0; pageIdx < Math.ceil(remainingPhotos.length / photosPerPage); pageIdx++) {
+        const batchStart = pageIdx * photosPerPage;
+        const batchEnd = (pageIdx + 1) * photosPerPage;
+        const currentBatch = remainingPhotos.slice(batchStart, batchEnd);
+        const currentLoaded = loadedBatch.slice(batchStart, batchEnd);
 
-      const currentBatch = remainingPhotos.slice(pageIdx * photosPerPage, (pageIdx + 1) * photosPerPage);
-      const gridCols = 2;
-      const gridGap = 6;
-      const cellWidth = (pageWidth - 20 - gridGap) / 2;
-      const cellHeight = 90;
+        // If no image on this page loaded successfully, do not create an empty page
+        if (!currentLoaded.some(Boolean)) continue;
 
-      // Load batch images
-      const batchPromises = currentBatch.map(p => loadImage(p.url, p.id).catch(e => null));
-      const loadedBatch = await Promise.all(batchPromises);
+        doc.addPage();
+        yPos = 15;
 
-      loadedBatch.forEach((imgData, idx) => {
-        const photoItem = currentBatch[idx];
-        const row = Math.floor(idx / gridCols);
-        const col = idx % gridCols;
-        const x = 10 + (col * (cellWidth + gridGap));
-        const y = yPos + (row * (cellHeight + gridGap));
+        // Header bar for additional visuals page
+        drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUAL DOCUMENTATION (Page ${pageIdx + 2})`, 12, yPos + 3.5);
+        yPos += 8;
 
-        // Draw border container
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x, y, cellWidth, cellHeight);
+        const gridCols = 2;
+        const gridGap = 6;
+        const cellWidth = (pageWidth - 20 - gridGap) / 2;
+        const cellHeight = 90;
 
-        if (imgData) {
+        currentLoaded.forEach((imgData, idx) => {
+          if (!imgData) return; // Do not draw empty border box if image failed to load
+          const photoItem = currentBatch[idx];
+          const row = Math.floor(idx / gridCols);
+          const col = idx % gridCols;
+          const x = 10 + (col * (cellWidth + gridGap));
+          const y = yPos + (row * (cellHeight + gridGap));
+
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(x, y, cellWidth, cellHeight);
+
           try {
             doc.addImage(imgData, 'JPEG', x + 1, y + 1, cellWidth - 2, cellHeight - 8);
           } catch (e) {
             console.error("Error adding PDF gallery image", e);
           }
-        }
 
-        // Title banner
-        if (photoItem && photoItem.title) {
-          doc.setFillColor(15, 23, 42);
-          doc.rect(x + 1, y + cellHeight - 7, cellWidth - 2, 6, 'F');
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(6.5);
-          doc.setTextColor(255, 255, 255);
-          doc.text(photoItem.title, x + cellWidth / 2, y + cellHeight - 3, { align: "center" });
-        }
-      });
+          // Title banner
+          if (photoItem && photoItem.title) {
+            doc.setFillColor(15, 23, 42);
+            doc.rect(x + 1, y + cellHeight - 7, cellWidth - 2, 6, 'F');
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.5);
+            doc.setTextColor(255, 255, 255);
+            doc.text(photoItem.title, x + cellWidth / 2, y + cellHeight - 3, { align: "center" });
+          }
+        });
+      }
     }
   }
 
@@ -1767,20 +1868,39 @@ const generatePlatformHTML = (
         
         <!-- Platform Picture (Dynamic: 1, 2, or 3+ photos) -->
         ${(() => {
-          // Only use structure.visuals (structure.photos is the same array from the API)
-          const sourceVisuals: any[] = Array.isArray(structure.visuals) ? structure.visuals : [];
+          const isStructurePhoto = (item: any): boolean => {
+            const st = String(item.source_type || "").toLowerCase();
+            const p = String(item.path || item.file_url || "").toLowerCase();
+            return st.includes("structure_image") || st.includes("visual") || p.includes("structure-images");
+          };
 
-          const seenIds = new Set<string>();
-          const uniqueItems: any[] = [];
-          
           const isImage = (item: any): boolean => {
             if (!item || typeof item !== 'object') return false;
             const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
             const ft = String(meta?.file_type || item.file_type || "").toLowerCase();
-            if (ft.startsWith("image/")) return true;
             const fp = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+
+            // Reject legacy local drive paths (e.g. c:\..., p:\...) without valid remote/cloud URL
+            const rawPath = String(item.path || meta?.file_path || "").trim();
+            const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+            const hasValidRemoteUrl = (item.file_url && !/^[a-zA-Z]:[\\/]/.test(item.file_url)) ||
+                                      (meta?.file_url && !/^[a-zA-Z]:[\\/]/.test(meta.file_url)) ||
+                                      (item.url && !item.url.includes("c%3A") && !item.url.includes("C%3A") && !/^[a-zA-Z]:[\\/]/.test(item.url));
+            if (isLocalDrive && !hasValidRemoteUrl) return false;
+
+            if (ft.startsWith("image/")) return true;
             return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(fp);
           };
+
+          // Only use structure.visuals, sorted by explicit structure photos first
+          const sourceVisuals: any[] = [...(Array.isArray(structure.visuals) ? structure.visuals : [])].sort((a, b) => {
+            const aIs = isStructurePhoto(a) ? 1 : 0;
+            const bIs = isStructurePhoto(b) ? 1 : 0;
+            return bIs - aIs;
+          });
+
+          const seenIds = new Set<string>();
+          const uniqueItems: any[] = [];
 
           for (const v of sourceVisuals) {
             if (!v || typeof v !== 'object') continue;
@@ -1806,15 +1926,17 @@ const generatePlatformHTML = (
 
           if (uniqueItems.length === 0) return '';
 
+          const displayItems = uniqueItems.slice(0, 8);
+
           return `
             <div style="margin-bottom: 20px;">
               <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-                Structure Visuals (${uniqueItems.length})
+                Structure Visuals (${displayItems.length})
               </div>
               <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: stretch; gap: 12px; flex-wrap: wrap;">
-                  ${uniqueItems.slice(0, 4).map((photo: any) => {
-                    const count = Math.min(uniqueItems.length, 4);
+                  ${displayItems.map((photo: any) => {
+                    const count = displayItems.length;
                     let width = '100%';
                     if (count === 2) width = '48%';
                     else if (count === 3) width = '31%';

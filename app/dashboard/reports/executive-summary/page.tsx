@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     ChevronRight, 
@@ -147,11 +147,12 @@ export default function ExecutiveSummaryPage() {
         fetcher
     );
 
-    const checkJobPackMatchesStructure = (jp: any, structureIdStr: string) => {
-        if (!jp || !structureIdStr) return false;
-        const selStructId = structureIdStr.replace(/^(platform|pipeline)-/, "");
-        const structObj = structures.find((s: any) => s.id?.toString() === selStructId);
-        const selStructName = structObj?.str_name?.toLowerCase().trim();
+    const checkJobPackMatchesStructureFast = (
+        jp: any, 
+        selStructId: string, 
+        selStructName: string | undefined
+    ) => {
+        if (!jp || !selStructId) return false;
 
         // 1. Direct structure columns on jobpack
         if (jp.structure_id !== undefined && jp.structure_id !== null && jp.structure_id.toString() === selStructId) return true;
@@ -201,6 +202,10 @@ export default function ExecutiveSummaryPage() {
     const filteredJobpacks = useMemo(() => {
         if (!selections.structureId) return jobpacks;
         
+        const selStructId = selections.structureId.replace(/^(platform|pipeline)-/, "");
+        const structObj = structures.find((s: any) => s.id?.toString() === selStructId);
+        const selStructName = structObj?.str_name?.toLowerCase().trim();
+
         const inspectedJpIds = new Set(
             (structureInspectionFiltersRes?.data || []).map((f: any) => f.jobpack_id?.toString()).filter(Boolean)
         );
@@ -214,32 +219,76 @@ export default function ExecutiveSummaryPage() {
             const idStr = jp.id?.toString();
             if (inspectedJpIds.has(idStr)) return true;
             if (sowJpIds.has(idStr)) return true;
-            return checkJobPackMatchesStructure(jp, selections.structureId);
+            return checkJobPackMatchesStructureFast(jp, selStructId, selStructName);
         });
 
         // Fallback to all jobpacks if nothing matched so user isn't locked out
         return matches.length > 0 ? matches : jobpacks;
     }, [selections.structureId, jobpacks, structureInspectionFiltersRes, sowsForStructureData, structures]);
 
-    // Fetch SOW and inspection filters for the selected Jobpack and Structure
+    // Check if we already have SOW records in memory from structure data
+    const hasSowReportsFromStructure = useMemo(() => {
+        if (!selections.jobpackId) return false;
+        if (Array.isArray(sowsForStructureData?.data)) {
+            const hasSow = sowsForStructureData.data.some((s: any) => 
+                s.jobpack_id?.toString() === selections.jobpackId && 
+                Array.isArray(s.report_numbers) && 
+                s.report_numbers.length > 0
+            );
+            if (hasSow) return true;
+        }
+        if (Array.isArray(structureInspectionFiltersRes?.data)) {
+            const hasInsp = structureInspectionFiltersRes.data.some((f: any) => 
+                f.jobpack_id?.toString() === selections.jobpackId && !!f.sow_report_no
+            );
+            if (hasInsp) return true;
+        }
+        return false;
+    }, [selections.jobpackId, sowsForStructureData, structureInspectionFiltersRes]);
+
+    // Fetch SOW and inspection filters for the selected Jobpack and Structure only as fallback
     const { data: jobpackInspFiltersRes } = useSWR(
-        selections.jobpackId && cleanStructureId
+        selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/reports/inspection-filters?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}`
             : null,
         fetcher
     );
 
     const { data: sowsData } = useSWR(
-        selections.jobpackId && cleanStructureId 
+        selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}` 
             : null, 
         fetcher
     );
 
-    const availableSowReports = useMemo(() => {
+    const getSowReportsForJobpack = useCallback((jpId: string) => {
+        if (!jpId) return [];
         const reportsSet = new Set<string>();
 
-        // 1. From SOW data report_numbers
+        // 1. From structure-level SOW data (already in memory)
+        if (Array.isArray(sowsForStructureData?.data)) {
+            sowsForStructureData.data.forEach((s: any) => {
+                if (s.jobpack_id?.toString() === jpId && Array.isArray(s.report_numbers)) {
+                    s.report_numbers.forEach((r: any) => {
+                        const val = r?.number || r;
+                        if (val && typeof val === 'string' && val.trim()) {
+                            reportsSet.add(val.trim());
+                        }
+                    });
+                }
+            });
+        }
+
+        // 2. From structure-level inspection filters if matches jobpack (already in memory)
+        if (structureInspectionFiltersRes?.data && Array.isArray(structureInspectionFiltersRes.data)) {
+            structureInspectionFiltersRes.data.forEach((f: any) => {
+                if (f.jobpack_id?.toString() === jpId && f.sow_report_no?.trim()) {
+                    reportsSet.add(f.sow_report_no.trim());
+                }
+            });
+        }
+
+        // 3. Fallback from SOW data report_numbers
         if (sowsData?.data && typeof sowsData.data === 'object') {
             const reportNumbers = sowsData.data.report_numbers;
             if (Array.isArray(reportNumbers)) {
@@ -252,7 +301,7 @@ export default function ExecutiveSummaryPage() {
             }
         }
 
-        // 2. From inspection filters (distinct sow_report_no in insp_records)
+        // 4. Fallback from jobpack-specific inspection filters
         if (jobpackInspFiltersRes?.data && Array.isArray(jobpackInspFiltersRes.data)) {
             jobpackInspFiltersRes.data.forEach((f: any) => {
                 if (f.sow_report_no && typeof f.sow_report_no === 'string' && f.sow_report_no.trim()) {
@@ -261,19 +310,36 @@ export default function ExecutiveSummaryPage() {
             });
         }
 
-        // 3. From structure-level inspection filters if matches jobpack
-        if (structureInspectionFiltersRes?.data && Array.isArray(structureInspectionFiltersRes.data)) {
-            structureInspectionFiltersRes.data.forEach((f: any) => {
-                if (f.jobpack_id?.toString() === selections.jobpackId && f.sow_report_no?.trim()) {
-                    reportsSet.add(f.sow_report_no.trim());
-                }
-            });
-        }
-
         return Array.from(reportsSet).sort((a, b) => 
             String(a).localeCompare(String(b), undefined, { numeric: true })
         );
-    }, [sowsData, jobpackInspFiltersRes, structureInspectionFiltersRes, selections.jobpackId]);
+    }, [sowsForStructureData, structureInspectionFiltersRes, sowsData, jobpackInspFiltersRes]);
+
+    const availableSowReports = useMemo(() => {
+        return getSowReportsForJobpack(selections.jobpackId);
+    }, [getSowReportsForJobpack, selections.jobpackId]);
+
+    // Auto-select SOW report number when reports become available if none is currently selected
+    useEffect(() => {
+        if (selections.jobpackId && !selections.sowReportNo && availableSowReports.length > 0) {
+            setSelections(s => ({
+                ...s,
+                sowReportNo: availableSowReports.length === 1 ? availableSowReports[0] : (s.sowReportNo || availableSowReports[0])
+            }));
+        }
+    }, [selections.jobpackId, selections.sowReportNo, availableSowReports]);
+
+    const structureOptions = useMemo(() => {
+        return structures.map((s: any) => ({ value: s.id.toString(), label: s.str_name }));
+    }, [structures]);
+
+    const jobpackOptions = useMemo(() => {
+        return filteredJobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }));
+    }, [filteredJobpacks]);
+
+    const sowReportOptions = useMemo(() => {
+        return availableSowReports.map((no: string) => ({ value: no, label: no }));
+    }, [availableSowReports]);
 
     // Fetch existing summary
     const { data: summaryData, mutate: refreshSummary } = useSWR(
@@ -3172,7 +3238,7 @@ export default function ExecutiveSummaryPage() {
 
                     <div className="flex items-center gap-2">
                         <SearchableSelect 
-                            options={structures.map((s: any) => ({ value: s.id.toString(), label: s.str_name }))}
+                            options={structureOptions}
                             value={selections.structureId}
                             onValueChange={(v) => setSelections({ structureId: v, jobpackId: "", sowReportNo: "" })}
                             placeholder="Select Structure"
@@ -3181,9 +3247,13 @@ export default function ExecutiveSummaryPage() {
                         />
 
                         <SearchableSelect 
-                            options={filteredJobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
+                            options={jobpackOptions}
                             value={selections.jobpackId}
-                            onValueChange={(v) => setSelections(s => ({...s, jobpackId: v, sowReportNo: "" }))}
+                            onValueChange={(v) => {
+                                const reports = getSowReportsForJobpack(v);
+                                const autoReport = reports.length === 1 ? reports[0] : (reports.includes(selections.sowReportNo) ? selections.sowReportNo : (reports[0] || ""));
+                                setSelections(s => ({ ...s, jobpackId: v, sowReportNo: autoReport }));
+                            }}
                             disabled={!selections.structureId}
                             placeholder="Select Job Pack"
                             searchPlaceholder="Search Job Pack..."
@@ -3191,7 +3261,7 @@ export default function ExecutiveSummaryPage() {
                         />
 
                         <SearchableSelect 
-                            options={availableSowReports.map((no: string) => ({ value: no, label: no }))}
+                            options={sowReportOptions}
                             value={selections.sowReportNo}
                             onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}
                             disabled={!selections.jobpackId}

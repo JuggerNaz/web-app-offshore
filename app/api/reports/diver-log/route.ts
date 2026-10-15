@@ -7,17 +7,25 @@ export async function GET(request: NextRequest) {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
 
-        let jobpackId = searchParams.get("jobpack_id");
-        let structureId = searchParams.get("structure_id");
+        let rawJobpackId = searchParams.get("jobpack_id");
+        let rawStructureId = searchParams.get("structure_id");
         let sowReportNo = searchParams.get("sow_report_no");
 
         // Clean up "undefined" or "null" strings
-        if (jobpackId === "undefined" || jobpackId === "null") jobpackId = null;
-        if (structureId === "undefined" || structureId === "null") structureId = null;
-        if (sowReportNo === "undefined" || sowReportNo === "null") sowReportNo = null;
+        if (rawJobpackId === "undefined" || rawJobpackId === "null" || rawJobpackId === "") rawJobpackId = null;
+        if (rawStructureId === "undefined" || rawStructureId === "null" || rawStructureId === "") rawStructureId = null;
+        if (sowReportNo === "undefined" || sowReportNo === "null" || sowReportNo === "all" || sowReportNo === "N/A" || sowReportNo === "") sowReportNo = null;
 
-        if (!jobpackId) {
-            return NextResponse.json({ error: "JobPack ID is required" }, { status: 400 });
+        const cleanStructureId = rawStructureId ? String(rawStructureId).replace(/^(platform|pipeline)-/, "").trim() : null;
+        const structureIdNum = cleanStructureId ? Number(cleanStructureId) : NaN;
+        const structureId = !isNaN(structureIdNum) ? structureIdNum : cleanStructureId;
+
+        const cleanJobpackId = rawJobpackId ? String(rawJobpackId).trim() : null;
+        const jobpackIdNum = cleanJobpackId ? Number(cleanJobpackId) : NaN;
+        const jobpackId = !isNaN(jobpackIdNum) ? jobpackIdNum : cleanJobpackId;
+
+        if (!jobpackId && !structureId) {
+            return NextResponse.json({ error: "JobPack ID or Structure ID is required" }, { status: 400 });
         }
 
         console.log(`[DiverLog] Req: JobPack=${jobpackId}, Structure=${structureId}, SOW=${sowReportNo}`);
@@ -49,9 +57,9 @@ export async function GET(request: NextRequest) {
                 start_time,
                 status
             `)
-            .eq("jobpack_id", jobpackId)
             .order("cr_date", { ascending: true });
 
+        if (jobpackId) jobsQuery = jobsQuery.eq("jobpack_id", jobpackId);
         if (structureId) jobsQuery = jobsQuery.eq("structure_id", structureId);
         // NOTE: sow_report_no filter is intentionally skipped to match live page behaviour
 

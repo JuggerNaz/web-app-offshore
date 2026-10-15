@@ -2345,8 +2345,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : (await fetchJobPackData() || jobPacks.find((jp: any) => jp.id?.toString() === selections.jobPackId?.toString()));
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (await fetchStructureData() || structures.find((s: any) => s.id?.toString() === selections.structureId?.toString()));
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
@@ -2354,8 +2354,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Video Log Report
         if (currentTemplateId === "video-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : (await fetchJobPackData() || jobPacks.find((jp: any) => jp.id?.toString() === selections.jobPackId?.toString()));
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (await fetchStructureData() || structures.find((s: any) => s.id?.toString() === selections.structureId?.toString()));
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateVideoLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
@@ -7040,8 +7040,41 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             title="Report Preview"
                         />
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                            Preview not available (Check if generator supports blob)
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                            <div className="w-12 h-12 rounded-full bg-slate-200/60 dark:bg-slate-800/60 flex items-center justify-center text-slate-500">
+                                <FileText className="w-6 h-6" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                                    Preview not available
+                                </p>
+                                <p className="text-xs text-muted-foreground max-w-sm">
+                                    No records were returned for this report or the preview could not be generated. You can retry or preview as a blank report template.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => generatePreview()}
+                                    className="text-xs"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                                    Retry Preview
+                                </Button>
+                                {!selections.printBlankReport && (
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelections((prev: any) => ({ ...prev, printBlankReport: true }));
+                                        }}
+                                        className="text-xs"
+                                    >
+                                        Preview as Blank Template
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

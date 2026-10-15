@@ -7,16 +7,24 @@ export async function GET(request: NextRequest) {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
 
-        let jobpackId = searchParams.get("jobpack_id");
-        let structureId = searchParams.get("structure_id");
+        let rawJobpackId = searchParams.get("jobpack_id");
+        let rawStructureId = searchParams.get("structure_id");
         let sowReportNo = searchParams.get("sow_report_no");
 
-        if (jobpackId === "undefined" || jobpackId === "null" || jobpackId === "") jobpackId = null;
-        if (structureId === "undefined" || structureId === "null" || structureId === "") structureId = null;
+        if (rawJobpackId === "undefined" || rawJobpackId === "null" || rawJobpackId === "") rawJobpackId = null;
+        if (rawStructureId === "undefined" || rawStructureId === "null" || rawStructureId === "") rawStructureId = null;
         if (sowReportNo === "undefined" || sowReportNo === "null" || sowReportNo === "all" || sowReportNo === "N/A" || sowReportNo === "") sowReportNo = null;
 
-        if (!jobpackId) {
-            return NextResponse.json({ error: "JobPack ID is required" }, { status: 400 });
+        const cleanStructureId = rawStructureId ? String(rawStructureId).replace(/^(platform|pipeline)-/, "").trim() : null;
+        const structureIdNum = cleanStructureId ? Number(cleanStructureId) : NaN;
+        const structureId = !isNaN(structureIdNum) ? structureIdNum : cleanStructureId;
+
+        const cleanJobpackId = rawJobpackId ? String(rawJobpackId).trim() : null;
+        const jobpackIdNum = cleanJobpackId ? Number(cleanJobpackId) : NaN;
+        const jobpackId = !isNaN(jobpackIdNum) ? jobpackIdNum : cleanJobpackId;
+
+        if (!jobpackId && !structureId) {
+            return NextResponse.json({ error: "JobPack ID or Structure ID is required" }, { status: 400 });
         }
 
         console.log(`[VideoLog] Req: JobPack=${jobpackId}, Structure=${structureId}, Report=${sowReportNo}`);
@@ -24,9 +32,9 @@ export async function GET(request: NextRequest) {
         // 1. Fetch tapes for this jobpack via dive jobs
         let jobsQuery = (supabase as any)
             .from("insp_dive_jobs")
-            .select("dive_job_id, dive_no")
-            .eq("jobpack_id", jobpackId);
+            .select("dive_job_id, dive_no");
 
+        if (jobpackId) jobsQuery = jobsQuery.eq("jobpack_id", jobpackId);
         if (structureId) jobsQuery = jobsQuery.eq("structure_id", structureId);
         if (sowReportNo) jobsQuery = jobsQuery.eq("sow_report_no", sowReportNo);
 
@@ -37,9 +45,9 @@ export async function GET(request: NextRequest) {
         // 1b. Fetch tapes for this jobpack via ROV jobs
         let rovJobsQuery = (supabase as any)
             .from("insp_rov_jobs")
-            .select("rov_job_id, deployment_no")
-            .eq("jobpack_id", jobpackId);
+            .select("rov_job_id, deployment_no");
 
+        if (jobpackId) rovJobsQuery = rovJobsQuery.eq("jobpack_id", jobpackId);
         if (structureId) rovJobsQuery = rovJobsQuery.eq("structure_id", structureId);
         if (sowReportNo) rovJobsQuery = rovJobsQuery.eq("sow_report_no", sowReportNo);
 
