@@ -2245,8 +2245,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            let jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!jobPack && !selections.printBlankReport && selections.jobPackId) {
+                jobPack = jobPacks.find((jp: any) => String(jp.id) === String(selections.jobPackId)) || { id: selections.jobPackId, name: "JobPack " + selections.jobPackId, metadata: {} };
+            }
+
+            let structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if (!structure && !selections.printBlankReport && selections.structureId) {
+                const cleanStrId = String(selections.structureId).replace(/^(platform|pipeline)-/, "");
+                structure = structures.find((s: any) => String(s.id) === String(cleanStrId) || String(s.str_id) === String(cleanStrId)) || { id: cleanStrId, str_name: "Structure " + cleanStrId };
+            }
+
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);

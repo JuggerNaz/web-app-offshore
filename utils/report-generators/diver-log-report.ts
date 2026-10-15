@@ -34,22 +34,83 @@ export const generateDiverLogReport = async (
     const contentWidth = pageWidth - margin * 2;
 
     // ── Fetch Data ──────────────────────────────────────────────────────────
+    const rawJpId = jobPack?.id || jobPack?.jobpack_id || (config as any)?.jobPackId;
+    const cleanJobpackId = rawJpId ? String(rawJpId).trim() : null;
+
+    const rawStrId = structure?.id || structure?.str_id || (config as any)?.structureId;
+    const cleanStructureId = rawStrId ? String(rawStrId).replace(/^(platform|pipeline)-/, "").trim() : null;
+    const validStructureId = (cleanStructureId && cleanStructureId !== "all" && cleanStructureId !== "null" && cleanStructureId !== "undefined") ? cleanStructureId : null;
+
+    const validSowNo = (sowReportNo && sowReportNo !== "all" && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "undefined") ? sowReportNo : null;
+
     let diveJobs: any[] = [];
     try {
         let url = `/api/reports/diver-log?`;
-        if (jobPack?.id) url += `jobpack_id=${jobPack.id}&`;
-        if (sowReportNo) url += `sow_report_no=${sowReportNo}&`;
-        if (structure?.id) url += `structure_id=${structure.id}&`;
+        if (cleanJobpackId) url += `jobpack_id=${encodeURIComponent(cleanJobpackId)}&`;
+        if (validStructureId) url += `structure_id=${encodeURIComponent(validStructureId)}&`;
+        if (validSowNo) url += `sow_report_no=${encodeURIComponent(validSowNo)}&`;
 
         const res = await fetch(url);
         const json = await res.json();
-        if (json.data) diveJobs = json.data;
+        if (json.data && Array.isArray(json.data)) diveJobs = json.data;
     } catch (e) {
         console.error("Error fetching diver log data", e);
     }
 
-    if (!config.isBlankReport && (!diveJobs || diveJobs.length === 0)) {
-        return null;
+    if (diveJobs.length === 0 && cleanJobpackId) {
+        try {
+            const jpNum = parseInt(cleanJobpackId, 10);
+            if (!isNaN(jpNum)) {
+                let jobsQ = (supabase as any)
+                    .from("insp_dive_jobs")
+                    .select(`
+                        dive_job_id,
+                        dive_no,
+                        jobpack_id,
+                        structure_id,
+                        sow_report_no,
+                        diver_name,
+                        standby_diver,
+                        dive_supervisor,
+                        report_coordinator,
+                        dive_type,
+                        dive_date,
+                        start_time,
+                        status
+                    `)
+                    .eq("jobpack_id", jpNum)
+                    .order("cr_date", { ascending: true });
+
+                if (validStructureId) {
+                    const strNum = parseInt(validStructureId, 10);
+                    if (!isNaN(strNum)) jobsQ = jobsQ.eq("structure_id", strNum);
+                }
+
+                const { data: rawJobs } = await jobsQ;
+                if (rawJobs && rawJobs.length > 0) {
+                    const jobIds = rawJobs.map((j: any) => j.dive_job_id);
+                    const { data: movements } = await (supabase as any)
+                        .from("insp_dive_movements")
+                        .select("movement_id, dive_job_id, movement_type, movement_time, depth_meters, remarks")
+                        .in("dive_job_id", jobIds)
+                        .order("movement_time", { ascending: true });
+
+                    const movementMap: Record<number, any[]> = {};
+                    (movements || []).forEach((mov: any) => {
+                        const jid = mov.dive_job_id;
+                        if (!movementMap[jid]) movementMap[jid] = [];
+                        movementMap[jid].push(mov);
+                    });
+
+                    diveJobs = rawJobs.map((job: any) => ({
+                        ...job,
+                        movements: movementMap[job.dive_job_id] || []
+                    }));
+                }
+            }
+        } catch (fbErr) {
+            console.warn("[DiverLog] Direct Supabase fetch fallback failed:", fbErr);
+        }
     }
 
     // ── Logos ────────────────────────────────────────────────────────────────
@@ -163,22 +224,40 @@ export const generateDiverLogReport = async (
                 dive_date: null,
                 start_time: "",
                 dive_type: "Diving Inspection",
-                movements: Array.from({ length: 8 }, (_, i) => ({
-                    timecode: "",
-                    component_qid: "",
-                    elevation: "",
-                    observations: ""
+                movements: Array.from({ length: 8 }, () => ({
+                    movement_type: "—",
+                    depth_meters: null,
+                    movement_time: null,
+                    remarks: ""
                 }))
             }];
         } else {
             drawHeader(doc);
-            doc.setFontSize(12);
-            doc.setTextColor(0, 0, 0);
-            doc.text("No diver log records found.", pageWidth / 2, 80, { align: "center" });
+            drawSubHeader(doc, jobPack, structure, sowReportNo);
+            const subTableFinalY = (doc as any).lastAutoTable?.finalY ?? (margin + headerH + 25);
+            doc.setFontSize(11);
+            doc.setTextColor(100, 100, 100);
+            doc.text("No diver log records found.", pageWidth / 2, subTableFinalY + 20, { align: "center" });
+
+            // Draw footer on empty report page
+            const printedDateStr = `Printed: ${new Date().toLocaleDateString("en-GB")}`;
+            const footerLineY = pageHeight - FOOTER_Y_OFFSET;
+            doc.setDrawColor(180, 180, 180);
+            doc.setLineWidth(0.3);
+            doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+            doc.setTextColor(100, 100, 100);
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.text(REPORT_FOOTER_APP_TEXT, margin, footerLineY + 4);
+            if (config.showPageNumbers) {
+                doc.text("Page 1 of 1", pageWidth / 2, footerLineY + 4, { align: "center" });
+            }
+            doc.text(printedDateStr, pageWidth - margin, footerLineY + 4, { align: "right" });
+
             applyWatermarkAndSignaturesGlobal(doc, config);
             if (config.returnBlob) return doc.output("blob");
-            applyWatermarkAndSignaturesGlobal(doc, config);
-            doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
+            const fileName = `${config?.reportNoPrefix || sowReportNo || "DiverLog"}_DiverLog.pdf`;
+            doc.save(fileName);
             return;
         }
     }
@@ -250,12 +329,22 @@ export const generateDiverLogReport = async (
             tableBody.push([{ content: "No movement records found for this deployment.", colSpan: 4, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [200, 200, 200]} }]);
         } else {
             movements.forEach((mov: any, idx: number) => {
-                const movDateTime = mov.movement_time
-                    ? new Date(mov.movement_time).toLocaleString("en-GB", {
-                        day: "2-digit", month: "2-digit", year: "numeric",
-                        hour: "2-digit", minute: "2-digit"
-                    })
-                    : "N/A";
+                let movDateTime = "N/A";
+                if (mov.movement_time) {
+                    try {
+                        const parsed = new Date(mov.movement_time);
+                        if (!isNaN(parsed.getTime())) {
+                            movDateTime = parsed.toLocaleString("en-GB", {
+                                day: "2-digit", month: "2-digit", year: "numeric",
+                                hour: "2-digit", minute: "2-digit"
+                            });
+                        } else {
+                            movDateTime = String(mov.movement_time);
+                        }
+                    } catch {
+                        movDateTime = String(mov.movement_time);
+                    }
+                }
 
                 // movement_type: "Left Surface", "Arrived Bottom", "Diver at Worksite", etc.
                 const movType = mov.movement_type || "—";
@@ -341,6 +430,6 @@ export const generateDiverLogReport = async (
 
     applyWatermarkAndSignaturesGlobal(doc, config);
     if (config.returnBlob) return doc.output("blob");
-    applyWatermarkAndSignaturesGlobal(doc, config);
-    doc.save(`${config.reportNoPrefix}_DiverLog.pdf`);
+    const fileName = `${config?.reportNoPrefix || sowReportNo || "DiverLog"}_DiverLog.pdf`;
+    doc.save(fileName);
 };

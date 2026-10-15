@@ -1,20 +1,34 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createClient();
+        const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const supabase = useAdmin ? createAdminClient() : createClient();
         const { searchParams } = new URL(request.url);
 
-        let jobpackId = searchParams.get("jobpack_id");
-        let structureId = searchParams.get("structure_id");
-        let sowReportNo = searchParams.get("sow_report_no");
+        let rawJobpack = searchParams.get("jobpack_id");
+        let rawStructure = searchParams.get("structure_id");
+        let rawSow = searchParams.get("sow_report_no");
 
-        // Clean up "undefined" or "null" strings
-        if (jobpackId === "undefined" || jobpackId === "null") jobpackId = null;
-        if (structureId === "undefined" || structureId === "null") structureId = null;
-        if (sowReportNo === "undefined" || sowReportNo === "null") sowReportNo = null;
+        let jobpackId: number | null = null;
+        if (rawJobpack && rawJobpack !== "undefined" && rawJobpack !== "null" && rawJobpack !== "") {
+            const parsed = parseInt(String(rawJobpack).trim(), 10);
+            if (!isNaN(parsed)) jobpackId = parsed;
+        }
+
+        let structureId: number | null = null;
+        if (rawStructure && rawStructure !== "undefined" && rawStructure !== "null" && rawStructure !== "all" && rawStructure !== "") {
+            const cleaned = String(rawStructure).replace(/^(platform|pipeline)-/, "").trim();
+            const parsed = parseInt(cleaned, 10);
+            if (!isNaN(parsed)) structureId = parsed;
+        }
+
+        let sowReportNo: string | null = null;
+        if (rawSow && rawSow !== "undefined" && rawSow !== "null" && rawSow !== "all" && rawSow !== "N/A" && rawSow !== "") {
+            sowReportNo = String(rawSow).trim();
+        }
 
         if (!jobpackId) {
             return NextResponse.json({ error: "JobPack ID is required" }, { status: 400 });
