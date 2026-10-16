@@ -497,6 +497,9 @@ function resolveDynamicTags(finalData: Record<string, any>, zip: PizZip) {
  * - Loop tags: {#LOOP}...{/LOOP}
  */
 export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, data, fileName, logoUrl, contractorLogoUrl, onProgress }: ReportOptions) => {
+    const imageCache: Record<string, Uint8Array> = {};
+    const finalData: Record<string, any> = {};
+
     try {
         let content: ArrayBuffer;
         if (preloadedTemplate) {
@@ -504,7 +507,8 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         } else {
             onProgress?.(80, "Fetching report template...");
             console.log(`[ReportGen] Fetching template: ${templateUrl}`);
-            const response = await fetch(templateUrl);
+            const tUrl = templateUrl.includes("?") ? `${templateUrl}&_t=${Date.now()}` : `${templateUrl}?_t=${Date.now()}`;
+            const response = await fetch(tUrl, { cache: "no-store" });
             if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
             content = await response.arrayBuffer();
         }
@@ -546,7 +550,6 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
 
         // ── Image cache (tagValue → Uint8Array) ─────────────────
         onProgress?.(88, "Processing embedded media and charts...");
-        const imageCache: Record<string, Uint8Array> = {};
         if (logoBytes) {
             imageCache["CLIENT_LOGO"] = logoBytes;
             imageCache["client_logo"] = logoBytes;
@@ -560,41 +563,96 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             imageCache["contractor_logo"] = contractorLogoBytes;
         }
 
+        const base64ToUint8Array = (base64: string): Uint8Array => {
+            const binaryString = atob(base64.trim());
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes;
+        };
+
+        // In-memory promise cache to guarantee every distinct image is fetched EXACTLY ONCE
+        const imageFetchPromiseCache = new Map<string, Promise<Uint8Array | null>>();
+
+        if (logoBytes && resolvedLogoUrl) {
+            const cleanLUrl = resolvedLogoUrl.replace(/([?&])_t=\d+/g, "").replace(/[?&]$/, "").trim();
+            imageFetchPromiseCache.set(cleanLUrl, Promise.resolve(logoBytes));
+        }
+        if (contractorLogoBytes && resolvedContractorLogoUrl) {
+            const cleanClUrl = resolvedContractorLogoUrl.replace(/([?&])_t=\d+/g, "").replace(/[?&]$/, "").trim();
+            imageFetchPromiseCache.set(cleanClUrl, Promise.resolve(contractorLogoBytes));
+        }
+
+        const fetchImageBytes = (dataUriOrUrl: string): Promise<Uint8Array | null> => {
+            if (!dataUriOrUrl || typeof dataUriOrUrl !== "string") return Promise.resolve(null);
+            const cleanUrl = dataUriOrUrl.replace(/([?&])_t=\d+/g, "").replace(/[?&]$/, "").trim();
+            if (!cleanUrl) return Promise.resolve(null);
+
+            if (imageFetchPromiseCache.has(cleanUrl)) {
+                return imageFetchPromiseCache.get(cleanUrl)!;
+            }
+
+            const promise = (async (): Promise<Uint8Array | null> => {
+                if (cleanUrl.startsWith("data:image")) {
+                    const base64 = cleanUrl.split(",")[1];
+                    return base64ToUint8Array(base64);
+                }
+
+                if (cleanUrl.startsWith("/") || cleanUrl.startsWith("http")) {
+                    try {
+                        const rawUrl = cleanUrl.startsWith("/") ? window.location.origin + cleanUrl : cleanUrl;
+                        let imgRes = await fetch(rawUrl).catch(() => null);
+                        if (!imgRes || !imgRes.ok) {
+                            const proxyUrl = `/api/attachment/url?path=${encodeURIComponent(cleanUrl)}`;
+                            imgRes = await fetch(proxyUrl).catch(() => null);
+                        }
+                        if (!imgRes || !imgRes.ok) {
+                            const dlUrl = `/api/attachment/download?path=${encodeURIComponent(cleanUrl)}&bucket=attachments`;
+                            imgRes = await fetch(dlUrl).catch(() => null);
+                        }
+                        if (imgRes && imgRes.ok) {
+                            return toUint8Array(await imgRes.arrayBuffer());
+                        }
+                    } catch (e) {
+                        console.warn("Failed to fetch image:", e);
+                    }
+                    return null;
+                }
+
+                try {
+                    return base64ToUint8Array(cleanUrl);
+                } catch {
+                    return null;
+                }
+            })();
+
+            imageFetchPromiseCache.set(cleanUrl, promise);
+            return promise;
+        };
+
         let imageCounter = 0;
-        const finalData: Record<string, any> = {};
         for (const [key, value] of Object.entries(data)) {
+            const upperKey = key.toUpperCase();
+            // Reuse pre-fetched logo bytes without redundant network calls
+            if (["CLIENT_LOGO", "COMPANY_LOGO", "LOGO"].includes(upperKey) && logoBytes) {
+                finalData[key] = "CLIENT_LOGO";
+                continue;
+            }
+            if (upperKey === "CONTRACTOR_LOGO" && contractorLogoBytes) {
+                finalData[key] = "CONTRACTOR_LOGO";
+                continue;
+            }
+
             if (typeof value === "object" && value !== null && (value as any).data && (value as any).extension) {
                 // Single image
                 const imgObj = value as any;
-                const base64ToUint8Array = (base64: string): Uint8Array => {
-                    const binaryString = atob(base64.trim());
-                    const len = binaryString.length;
-                    const bytes = new Uint8Array(len);
-                    for (let i = 0; i < len; i++) {
-                        bytes[i] = binaryString.charCodeAt(i);
-                    }
-                    return bytes;
-                };
                 let bytes: Uint8Array | null = null;
                 if (imgObj.data instanceof Uint8Array) {
                     bytes = imgObj.data;
                 } else if (typeof imgObj.data === "string") {
-                    if (imgObj.data.startsWith("data:image")) {
-                        const base64 = imgObj.data.split(",")[1];
-                        bytes = base64ToUint8Array(base64);
-                    } else if (imgObj.data.startsWith("/") || imgObj.data.startsWith("http")) {
-                        try {
-                            const url = imgObj.data.startsWith("/") ? window.location.origin + imgObj.data : imgObj.data;
-                            const imgRes = await fetch(url);
-                            if (imgRes.ok) {
-                                bytes = toUint8Array(await imgRes.arrayBuffer());
-                            }
-                        } catch (e) {
-                            console.warn("Failed to fetch image:", e);
-                        }
-                    } else {
-                        bytes = base64ToUint8Array(imgObj.data);
-                    }
+                    bytes = await fetchImageBytes(imgObj.data);
                 }
                 if (bytes) {
                     const dims = getImageDimensions(bytes);
@@ -618,35 +676,11 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
                         for (const [k, v] of Object.entries(newItem)) {
                             if (typeof v === "object" && v !== null && (v as any).data && (v as any).extension) {
                                 const imgObj = v as any;
-                                const base64ToUint8Array = (base64: string): Uint8Array => {
-                                    const binaryString = atob(base64.trim());
-                                    const len = binaryString.length;
-                                    const bytes = new Uint8Array(len);
-                                    for (let i = 0; i < len; i++) {
-                                        bytes[i] = binaryString.charCodeAt(i);
-                                    }
-                                    return bytes;
-                                };
                                 let bytes: Uint8Array | null = null;
                                 if (imgObj.data instanceof Uint8Array) {
                                     bytes = imgObj.data;
                                 } else if (typeof imgObj.data === "string") {
-                                    if (imgObj.data.startsWith("data:image")) {
-                                        const base64 = imgObj.data.split(",")[1];
-                                        bytes = base64ToUint8Array(base64);
-                                    } else if (imgObj.data.startsWith("/") || imgObj.data.startsWith("http")) {
-                                        try {
-                                            const url = imgObj.data.startsWith("/") ? window.location.origin + imgObj.data : imgObj.data;
-                                            const imgRes = await fetch(url);
-                                            if (imgRes.ok) {
-                                                bytes = toUint8Array(await imgRes.arrayBuffer());
-                                            }
-                                        } catch (e) {
-                                            console.warn("Failed to fetch image:", e);
-                                        }
-                                    } else {
-                                        bytes = base64ToUint8Array(imgObj.data);
-                                    }
+                                    bytes = await fetchImageBytes(imgObj.data);
                                 }
                                 if (bytes) {
                                     const dims = getImageDimensions(bytes);
@@ -816,5 +850,14 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             toast.error(error.message || "Report generation failed");
         }
         throw error;
+    } finally {
+        // Explicitly clean up all in-memory image buffers and dictionary data
+        console.log(`[ReportGen] Cleaning up ${Object.keys(imageCache).length} in-memory image buffers and ${Object.keys(finalData).length} data entries...`);
+        for (const k of Object.keys(imageCache)) {
+            delete imageCache[k];
+        }
+        for (const k of Object.keys(finalData)) {
+            delete finalData[k];
+        }
     }
 };

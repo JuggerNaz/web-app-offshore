@@ -3088,14 +3088,30 @@ function V10PreviewLayout() {
       const taskCode = it.code; // Canonical code
 
       // 2. Get the SOW item for this component + canonical task + report scope
-      const { data: existing, error: fetchSowErr } = await supabase
+      let existingQuery = supabase
         .from("u_sow_items")
         .select("*")
         .eq("sow_id", activeSowId)
         .eq("component_id", compId)
-        .eq("inspection_code", taskCode)
-        .eq("report_number", activeReportNo)
-        .maybeSingle();
+        .eq("inspection_code", taskCode);
+
+      if (activeReportNo && activeReportNo !== "N/A" && activeReportNo !== "Unknown Report") {
+        existingQuery = existingQuery.eq("report_number", activeReportNo);
+      }
+
+      let { data: existing, error: fetchSowErr } = await existingQuery.maybeSingle();
+
+      // Fallback: If not found with exact report_number, match without report_number restriction
+      if (!existing) {
+        const { data: fallbackExisting } = await supabase
+          .from("u_sow_items")
+          .select("*")
+          .eq("sow_id", activeSowId)
+          .eq("component_id", compId)
+          .eq("inspection_code", taskCode)
+          .maybeSingle();
+        if (fallbackExisting) existing = fallbackExisting;
+      }
 
       if (fetchSowErr) {
         console.error(`[SOW Sync] Fetch failed for ${taskCode}:`, fetchSowErr);
@@ -3110,6 +3126,8 @@ function V10PreviewLayout() {
         const updatedFields: any = {
           updated_at: new Date().toISOString(),
           updated_by: userName,
+          last_inspection_date: format(new Date(), "yyyy-MM-dd"),
+          inspection_count: (existing.inspection_count || 0) + 1,
         };
 
         // Helper to get status from remaining records
@@ -3179,7 +3197,33 @@ function V10PreviewLayout() {
           .update(updatedFields)
           .eq("id", existing.id);
 
-        if (updateErr) console.error("[SOW Sync] Update error:", updateErr);
+        if (updateErr) {
+          console.error("[SOW Sync] Update error:", updateErr);
+        } else {
+          // Recalculate parent SOW totals
+          const { data: refreshedItems } = await supabase
+            .from("u_sow_items")
+            .select("status")
+            .eq("sow_id", activeSowId);
+
+          if (refreshedItems) {
+            const totalItems = refreshedItems.length;
+            const completedItems = refreshedItems.filter((i: any) => i.status === "completed" || i.status === "anomaly").length;
+            const incompleteItems = refreshedItems.filter((i: any) => i.status === "incomplete").length;
+            const pendingItems = refreshedItems.filter((i: any) => i.status === "pending").length;
+
+            await supabase
+              .from("u_sow")
+              .update({
+                total_items: totalItems,
+                completed_items: completedItems,
+                incomplete_items: incompleteItems,
+                pending_items: pendingItems,
+                updated_at: new Date().toISOString(),
+              })
+              .eq("id", activeSowId);
+          }
+        }
       } else {
         // 4. Auto-add to SOW if missing (Standard fallback)
         let newStatus: "pending" | "completed" | "incomplete" = "completed";
@@ -6420,12 +6464,30 @@ function V10PreviewLayout() {
       const sowItems = allSowItems;
 
       // 2.5 Fetch actual records for true dynamic status correction
-      const recsQuery = supabase
+      let recsQuery = supabase
         .from("insp_records")
-        .select("component_id, inspection_type_code, status, cr_date")
+        .select("component_id, inspection_type_code, status, has_anomaly, cr_date")
         .eq("structure_id", Number(structureId));
 
-      const { data: actualRecords } = await recsQuery.order("cr_date", { ascending: false });
+      if (jobPackId) {
+        recsQuery = recsQuery.eq("jobpack_id", Number(jobPackId));
+      }
+
+      // Fetch all records without 1000-row limit truncation
+      let actualRecords: any[] = [];
+      let fromA = 0;
+      while (true) {
+        const { data: pageA } = await recsQuery
+          .order("cr_date", { ascending: false })
+          .range(fromA, fromA + 999);
+        if (pageA && pageA.length > 0) {
+          actualRecords.push(...pageA);
+          if (pageA.length < 1000) break;
+          fromA += 1000;
+        } else {
+          break;
+        }
+      }
 
       // Create truth-mask for component + task
       const trueStatusMap = new Map<string, string>();
@@ -6435,9 +6497,11 @@ function V10PreviewLayout() {
           const key = `${r.component_id}_${r.inspection_type_code}`;
           // Array is newest first, so first encounter sets the final state
           if (!trueStatusMap.has(key)) {
+            const hasAnom = r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY";
+            const isIncomp = String(r.status).toUpperCase() === "INCOMPLETE";
             trueStatusMap.set(
               key,
-              r.status?.toLowerCase() === "incomplete" ? "incomplete" : "completed"
+              hasAnom ? "anomaly" : (isIncomp ? "incomplete" : "completed")
             );
           }
         });
@@ -6468,8 +6532,9 @@ function V10PreviewLayout() {
             if (taskToLog) {
               const dynKey1 = `${matchingComp.id}_${item.inspection_code}`;
               const dynKey2 = `${matchingComp.id}_${item.inspection_name}`;
+              const rawSowStatus = String(item.status || "").toLowerCase();
               const realStatus =
-                trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || "pending";
+                trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || (rawSowStatus && rawSowStatus !== "pending" ? rawSowStatus : "pending");
               assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
             }
           } else {

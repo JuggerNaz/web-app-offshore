@@ -66,12 +66,20 @@ export const GET = withTenant(async (request, { companyId }) => {
             const filterRep = String(sow_report_no).replace(/\s+/g, "").toLowerCase();
             const matches = filteredData.filter((r: any) => {
                 const recRep = String(r.sow_report_no || r.inspection_data?.sow_report_no || r.inspection_data?.sowReportNo || "").replace(/\s+/g, "").toLowerCase();
-                return recRep === filterRep;
+                return recRep === filterRep || filterRep.includes(recRep) || (recRep.length > 2 && recRep.includes(filterRep));
             });
             filteredData = matches;
         }
 
-        return NextResponse.json({ data: filteredData });
+        return NextResponse.json(
+            { data: filteredData },
+            {
+                headers: {
+                    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+                    "Pragma": "no-cache",
+                }
+            }
+        );
     } catch (error: any) {
         console.error("[InspectionRecords API] Error:", error);
         return NextResponse.json({ error: error.message }, { status: 500 });

@@ -173,8 +173,12 @@ Any built-in inspection sub-report can be rendered as full-page images (with con
 - `{{#DCPSURV_PAGES}}` / `{{#DIVING_CP_PAGES}}` : Diver CP Survey Report pages
 - `{{#RGVI_PAGES}}` : ROV GVI Report pages
 - `{{#RMGI_PAGES}}` : ROV Marine Growth Report pages
-- `{{#RFMD_PAGES}}` : ROV Flooded Member Report pages
-- `{{#RCASN_PAGES}}`, `{{#RCOND_PAGES}}`, `{{#RBLTG_PAGES}}`, `{{#RGUARD_PAGES}}`, `{{#RRISI_PAGES}}`
+- `{{#RCASN_PAGES}}` / `{{#CAISSON_PAGES}}` : Standard Caisson Survey Report (ROV) pages [Tabular format]
+- `{{#RCASN_SKETCH_PAGES}}` / `{{#CAISSON_SKETCH_PAGES}}` : Caisson Survey (Sketch) Report (ROV) pages [Graphical elevation profiles & sketch]
+- `{{#RCOND_PAGES}}` / `{{#CONDUCTOR_PAGES}}` : Standard Conductor Survey Report (ROV) pages [Tabular format]
+- `{{#RGANI_REPORT_PAGES}}` / `{{#RGANI_PAGES}}` / `{{#ANODE_PAGES}}` : ROV General Anode Inspection Report pages (`rov-anode-report`)
+- `{{#RSANI_REPORT_PAGES}}` / `{{#RSANI_PAGES}}` : ROV Selected Anode Inspection Report pages (`rov-anode-rsani-report`)
+- `{{#RBLTG_PAGES}}`, `{{#RGUARD_PAGES}}`, `{{#RRISI_PAGES}}`
 - `{{#RSEAB_PAGES}}`, `{{#RSCOR_PAGES}}`, `{{#NAVIG_PAGES}}`
 - `{{#WORK_SCOPE_STATUS_PAGES}}`, `{{#WORK_SCOPE_INCOMPLETE_PAGES}}`
 

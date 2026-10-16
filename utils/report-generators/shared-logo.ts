@@ -4,30 +4,54 @@ export const APP_NAME = "OFFSHOREPRO";
 export const APP_VERSION = "1.0";
 export const REPORT_FOOTER_APP_TEXT = `${APP_NAME} Version ${APP_VERSION}`;
 
+const logoCache = new Map<string, { data: string; width: number; height: number; }>();
+
 export const loadLogoWithTransparency = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
     if (!url || typeof url !== 'string' || !url.trim()) {
         return null;
     }
 
+    if (logoCache.has(url)) {
+        return logoCache.get(url)!;
+    }
+
     // Convert to Data URI via fetch + blob if possible to avoid canvas taint / CORS errors
     let finalSrc = url;
     if (!url.startsWith("data:")) {
-        try {
-            const response = await fetch(url);
-            if (response.ok) {
-                const blob = await response.blob();
-                const dataUrl = await new Promise<string>((resolve, reject) => {
-                    const reader = new FileReader();
-                    reader.onloadend = () => resolve(reader.result as string);
-                    reader.onerror = reject;
-                    reader.readAsDataURL(blob);
-                });
-                if (dataUrl) finalSrc = dataUrl;
+        const fetchCandidate = async (targetUrl: string): Promise<string | null> => {
+            try {
+                const response = await fetch(targetUrl);
+                if (response.ok) {
+                    const blob = await response.blob();
+                    return await new Promise<string>((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onloadend = () => resolve(reader.result as string);
+                        reader.onerror = reject;
+                        reader.readAsDataURL(blob);
+                    });
+                }
+            } catch (_) {}
+            return null;
+        };
+
+        const directData = await fetchCandidate(url);
+        if (directData) {
+            finalSrc = directData;
+        } else {
+            // Fallback via server-side proxies (handles S3 / Backblaze / multi-tenant assets without CORS restrictions)
+            const proxyUrl = `/api/attachment/url?path=${encodeURIComponent(url)}`;
+            const proxyData = await fetchCandidate(proxyUrl);
+            if (proxyData) {
+                finalSrc = proxyData;
+            } else {
+                const downloadUrl = `/api/attachment/download?path=${encodeURIComponent(url)}&bucket=company-assets`;
+                const dlData = await fetchCandidate(downloadUrl);
+                if (dlData) finalSrc = dlData;
             }
-        } catch (_) {}
+        }
     }
 
-    return new Promise((resolve) => {
+    const result = await new Promise<{ data: string; width: number; height: number; } | null>((resolve) => {
         const img = new window.Image();
         if (!finalSrc.startsWith("data:")) {
             img.crossOrigin = "Anonymous";
@@ -71,6 +95,11 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
 
         img.src = finalSrc;
     });
+
+    if (result) {
+        logoCache.set(url, result);
+    }
+    return result;
 };
 
 export const loadLogo = loadLogoWithTransparency;

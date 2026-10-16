@@ -28,6 +28,8 @@ const getPublicStorageUrl = (pathOrUrl: string): string => {
   return supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/attachments/${cleanPath}` : str;
 };
 
+const pdfImageCache = new Map<string, string>();
+
 const loadImage = async (url: string, id?: number | string): Promise<string> => {
   if (!url || typeof url !== 'string' || !url.trim()) {
     if (id) {
@@ -40,6 +42,11 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   const cleanUrl = url.trim();
   if (cleanUrl.startsWith("data:image/")) {
     return cleanUrl;
+  }
+
+  const cacheKey = `${id || ''}::${cleanUrl}`;
+  if (pdfImageCache.has(cacheKey)) {
+    return pdfImageCache.get(cacheKey)!;
   }
 
   // Helper: convert a Blob to a base64 data URL string
@@ -65,41 +72,61 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
     }
   };
 
-  // ── Strategy 1: /api/attachment/url proxy (server-side download, NO CORS) ──
-  // This is the most reliable method. The server downloads from Supabase storage
-  // using the service role key and streams the binary back as a same-origin response.
+  // ── Strategy 1: /api/attachment/url proxy (server-side download, bypasses CORS) ──
   if (id) {
-    const proxyUrl = `/api/attachment/url?id=${id}`;
+    const hasPath = cleanUrl && !cleanUrl.startsWith("/api/") ? `&path=${encodeURIComponent(cleanUrl)}` : "";
+    const proxyUrl = `/api/attachment/url?id=${id}${hasPath}`;
     const result = await fetchAsDataUrl(proxyUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
   // If the url is already an /api/ proxy path, try it directly
   if (cleanUrl.startsWith("/api/")) {
     const result = await fetchAsDataUrl(cleanUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
-  // ── Strategy 2: Direct fetch (works for same-origin or CORS-enabled URLs) ──
+  // ── Strategy 2: If external S3 / Backblaze / storage URL, try server proxy first to avoid CORS ──
+  if (cleanUrl.includes("backblazeb2.com") || cleanUrl.includes("amazonaws.com") || cleanUrl.startsWith("uploads/")) {
+    const proxyPathUrl = `/api/attachment/url?path=${encodeURIComponent(cleanUrl)}`;
+    const result = await fetchAsDataUrl(proxyPathUrl);
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
+    const downloadPathUrl = `/api/attachment/download?path=${encodeURIComponent(cleanUrl)}&bucket=attachments`;
+    const resDl = await fetchAsDataUrl(downloadPathUrl);
+    if (resDl) {
+      pdfImageCache.set(cacheKey, resDl);
+      return resDl;
+    }
+  }
+
+  // ── Strategy 3: Direct fetch (works for same-origin or CORS-enabled URLs) ──
   const fullUrl = getPublicStorageUrl(cleanUrl);
   {
     const result = await fetchAsDataUrl(fullUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
-  // ── Strategy 3: Next.js image proxy ──
-  if (fullUrl.startsWith("http://") || fullUrl.startsWith("https://")) {
-    const nextProxyUrl = `/_next/image?url=${encodeURIComponent(fullUrl)}&w=1200&q=85`;
-    const result = await fetchAsDataUrl(nextProxyUrl);
-    if (result) return result;
-  }
-
-  // ── Strategy 4: /api/attachment/url?path= proxy ──
-  if (fullUrl.includes("structure-images") || fullUrl.includes("attachments")) {
+  // ── Strategy 4: Server-side proxy for any relative storage paths ──
+  {
     const p = fullUrl.replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/attachments\//, "").replace(/^\/?attachments\//, "");
     if (p) {
       const result = await fetchAsDataUrl(`/api/attachment/url?path=${encodeURIComponent(p)}`);
-      if (result) return result;
+      if (result) {
+        pdfImageCache.set(cacheKey, result);
+        return result;
+      }
     }
   }
 
@@ -981,22 +1008,21 @@ const generatePlatformReport = async (
   let page1RenderedCount = 0;
 
   if (uniquePhotos.length > 0) {
-    // Attempt loading candidate photos (up to 8 for page 1)
+    // Attempt loading candidate photos (up to 8 for page 1) in parallel
     const maxPage1 = 8;
-    const loadedCandidates: { photo: VisualItem; data: string }[] = [];
-
-    // Load candidate photos sequentially through /api/attachment/url to avoid CORS & rate limits
-    for (const p of uniquePhotos) {
-      if (loadedCandidates.length >= maxPage1) break;
-      try {
-        const imgData = await loadImage(p.url, p.id);
-        if (imgData) {
-          loadedCandidates.push({ photo: p, data: imgData });
+    const candidatesToLoad = uniquePhotos.slice(0, maxPage1);
+    const candidateResults = await Promise.all(
+      candidatesToLoad.map(async (p) => {
+        try {
+          const imgData = await loadImage(p.url, p.id);
+          return imgData ? { photo: p, data: imgData } : null;
+        } catch (e) {
+          console.warn(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
+          return null;
         }
-      } catch (e) {
-        console.error(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
-      }
-    }
+      })
+    );
+    const loadedCandidates = candidateResults.filter((r): r is { photo: VisualItem; data: string } => r !== null);
 
     if (loadedCandidates.length > 0) {
       const count = loadedCandidates.length;

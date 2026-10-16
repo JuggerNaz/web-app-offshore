@@ -15,6 +15,7 @@ export interface StorageHandler {
   upload(file: Buffer | File, fileName: string, contentType: string): Promise<{ publicUrl: string; filePath: string }>;
   delete(filePath: string): Promise<void>;
   getSignedUrl(filePath: string, expiresIn?: number): Promise<string>;
+  download?(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null>;
 }
 
 /**
@@ -89,6 +90,56 @@ class SupabaseStorageHandler implements StorageHandler {
     }
     return data.signedUrl;
   }
+
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
+
+    let relativePath = (filePath || "").trim();
+    let bucket = "attachments";
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      const parts = relativePath.split("/");
+      const bucketIndex = parts.indexOf("attachments");
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      } else {
+        const inspIndex = parts.indexOf("inspection-media");
+        if (inspIndex !== -1 && inspIndex < parts.length - 1) {
+          relativePath = parts.slice(inspIndex + 1).join("/");
+          bucket = "inspection-media";
+        }
+      }
+    } else if (relativePath.startsWith("attachments/")) {
+      relativePath = relativePath.replace(/^attachments\//, "");
+    } else if (relativePath.startsWith("inspection-media/")) {
+      relativePath = relativePath.replace(/^inspection-media\//, "");
+      bucket = "inspection-media";
+    }
+    relativePath = relativePath.replace(/^\/+/, "");
+
+    const pathVariations = [
+      relativePath,
+      relativePath.startsWith("uploads/") ? relativePath.replace(/^uploads\//, "") : `uploads/${relativePath}`
+    ].filter(Boolean);
+
+    const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
+
+    for (const b of bucketVariations) {
+      for (const p of pathVariations) {
+        try {
+          const { data, error } = await supabase.storage.from(b).download(p);
+          if (!error && data) {
+            const arrayBuffer = await data.arrayBuffer();
+            return {
+              buffer: Buffer.from(arrayBuffer),
+              contentType: data.type || "image/jpeg"
+            };
+          }
+        } catch {}
+      }
+    }
+    return null;
+  }
 }
 
 /**
@@ -129,6 +180,25 @@ class LocalStorageHandler implements StorageHandler {
     // For local storage, we just return the virtual URL or the path
     // The actual serving would happen via a local route
     return `local://${path.basename(filePath)}`;
+  }
+
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    try {
+      let realPath = filePath;
+      if (filePath.startsWith("local://")) {
+        const filename = filePath.replace("local://", "");
+        realPath = path.join(this.basePath, "uploads", filename);
+      } else if (!path.isAbsolute(filePath)) {
+        realPath = path.join(this.basePath, filePath);
+      }
+      const buffer = await fs.readFile(realPath);
+      const ext = path.extname(realPath).toLowerCase();
+      const contentType = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".pdf" ? "application/pdf" : "image/jpeg";
+      return { buffer, contentType };
+    } catch (e: any) {
+      console.warn("[LocalStorageHandler] download failed:", e?.message || e);
+      return null;
+    }
   }
 }
 
@@ -326,50 +396,45 @@ class AWSS3StorageHandler implements StorageHandler {
   }
 
   async delete(filePath: string) {
-    // Extract key if it's a full URL
-    let key = filePath;
-    if (filePath.startsWith('http')) {
-        try {
-            const url = new URL(filePath);
-            const pathParts = url.pathname.split('/').filter(Boolean);
-            
-            // For Path-style URLs (common in B2/S3-compatible), the first part of the path is the bucket name
-            if (pathParts[0] === this.bucket) {
-                key = pathParts.slice(1).join('/');
-            } else {
-                // For Virtual-hosted style URLs, the pathname is just the key
-                key = pathParts.join('/');
-            }
-        } catch (e) {
-            console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
-        }
-    }
-    
-    console.log(`[AWSS3StorageHandler] Deleting key "${key}" from bucket "${this.bucket}"`);
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
+    console.log(`[AWSS3StorageHandler] Deleting key "${key}" from bucket "${bucket}"`);
     await this.client.send(new DeleteObjectCommand({
-      Bucket: this.bucket,
+      Bucket: bucket,
       Key: key,
     }));
   }
 
-  async getSignedUrl(filePath: string, expiresIn: number = 3600) {
-    let key = (filePath || "").trim();
-    if (key.startsWith("http://") || key.startsWith("https://")) {
-      try {
-        const url = new URL(key);
-        const pathParts = url.pathname.split("/").filter(Boolean);
-        if (pathParts[0] === this.bucket) {
-          key = pathParts.slice(1).join("/");
-        } else {
-          key = pathParts.join("/");
-        }
-      } catch (e) {
-        console.warn(`[${this.constructor.name}] Failed to parse URL ${filePath}, using as-is`);
-      }
-    } else if (this.bucket && key.startsWith(`${this.bucket}/`)) {
-      key = key.slice(this.bucket.length + 1);
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
+    const keyCandidates = [key];
+    if (!key.startsWith("uploads/")) {
+      keyCandidates.push(`uploads/${key}`);
     }
-    key = key.replace(/^\/+/, "");
+
+    for (const testKey of keyCandidates) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: bucket,
+          Key: testKey,
+        });
+        const res = await this.client.send(command);
+        if (res.Body) {
+          const byteArray = await (res.Body as any).transformToByteArray();
+          return {
+            buffer: Buffer.from(byteArray),
+            contentType: res.ContentType || "image/jpeg",
+          };
+        }
+      } catch (e: any) {
+        // try next candidate
+      }
+    }
+    console.warn(`[${this.constructor.name}] download failed for "${filePath}" in bucket "${bucket}" (tried keys: ${keyCandidates.join(", ")})`);
+    return null;
+  }
+
+  async getSignedUrl(filePath: string, expiresIn: number = 3600) {
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
 
     // If credentials are not present, do NOT invoke AWS presigner which hangs for 4.2 seconds searching IMDS
     if (!this.hasCredentials) {
@@ -379,14 +444,14 @@ class AWSS3StorageHandler implements StorageHandler {
       }
       if (this.endpoint) {
         const urlObj = new URL(this.endpoint);
-        return `${urlObj.protocol}//${urlObj.host}/${this.bucket}/${key}`;
+        return `${urlObj.protocol}//${urlObj.host}/${bucket}/${key}`;
       }
       return filePath || "";
     }
 
     try {
       const command = new GetObjectCommand({
-        Bucket: this.bucket,
+        Bucket: bucket,
         Key: key,
       });
       return await getSignedUrl(this.client, command, { expiresIn });
@@ -395,6 +460,47 @@ class AWSS3StorageHandler implements StorageHandler {
       return filePath || "";
     }
   }
+}
+
+function parseS3Location(input: string, defaultBucket: string): { bucket: string; key: string } {
+  let clean = (input || "").trim();
+  let bucket = defaultBucket || "web-app-offshore";
+  let key = clean;
+
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    try {
+      const url = new URL(clean);
+      const pathParts = url.pathname.split("/").filter(Boolean);
+
+      // Virtual-hosted style: <bucket>.s3.<region>.backblazeb2.com or amazonaws.com
+      const hostParts = url.hostname.split(".");
+      if (hostParts.length > 3 && !url.hostname.startsWith("s3.")) {
+        bucket = hostParts[0];
+        key = pathParts.join("/");
+      } else if (pathParts.length > 1 && pathParts[0] !== "uploads" && pathParts[0] !== "attachments" && pathParts[0] !== "inspection-media") {
+        // Path-style: https://s3.<region>.backblazeb2.com/<bucket>/<key>
+        bucket = pathParts[0];
+        key = pathParts.slice(1).join("/");
+      } else {
+        key = pathParts.join("/");
+      }
+    } catch {
+      key = clean;
+    }
+  }
+
+  if (bucket && key.startsWith(`${bucket}/`)) {
+    key = key.slice(bucket.length + 1);
+  }
+  if (key.startsWith("attachments/")) {
+    key = key.slice("attachments/".length);
+  }
+  if (key.startsWith("inspection-media/")) {
+    key = key.slice("inspection-media/".length);
+  }
+  key = key.replace(/^\/+/, "");
+
+  return { bucket, key };
 }
 
 /**

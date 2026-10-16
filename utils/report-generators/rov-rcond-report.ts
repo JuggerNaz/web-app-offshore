@@ -235,14 +235,12 @@ export const generateROVCondReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const compCond = d.comp_cond || d.component_condition || "—";
-            const coatCond = d.coat_cond || d.coating_condition || "—";
+            const compCond = d.component_condition || d.comp_cond || d.general_condition || r.component_condition || "—";
+            const coatCond = d.coating_condition || d.coat_cond || r.coating_condition || "—";
 
             const baseFinding = [
                 r.description?.trim(),
                 (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
-                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
-                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
                 d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
             ].filter(Boolean).join('\n');
             const findings = formatReportFindingText(r, baseFinding);
@@ -252,8 +250,9 @@ export const generateROVCondReport = async (
                 qid,
                 String(elevation),
                 String(diveNo),
-                String(tapeNo),
                 cpDisplay,
+                String(compCond),
+                String(coatCond),
                 findings,
             ];
         };
@@ -316,20 +315,20 @@ export const generateROVCondReport = async (
                     textColor: colors.text,
                     lineColor: colors.border, lineWidth: 0.1,},
                 columnStyles: {
-                    0: { cellWidth: 12,   halign: "center" },
+                    0: { cellWidth: 10,   halign: "center" },
                     1: { cellWidth: 20 },
                     2: { cellWidth: 15,   halign: "center" },
                     3: { cellWidth: 15,   halign: "center" },
                     4: { cellWidth: 15,   halign: "center" },
-                    5: { cellWidth: 20 },
-                    6: { cellWidth: 20 },
+                    5: { cellWidth: 20,   halign: "center" },
+                    6: { cellWidth: 20,   halign: "center" },
                     7: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
-                if (data.section !== "body") return;
-                const r = (typeof records !== 'undefined' ? records : [])[data.row.index];
-                applyRecordCellStyling(data.cell, r, config.printFriendly);
-            },
+                    if (data.section !== "body") return;
+                    const r = groupRecords[data.row.index];
+                    applyRecordCellStyling(data.cell, r, config.printFriendly);
+                },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawPageHeader(doc);
 

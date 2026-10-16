@@ -32,10 +32,16 @@ interface LoadedPhoto {
     aspect: number;
 }
 
+const photoDataCache = new Map<string, LoadedPhoto>();
+
 // Multi-strategy image loader for PDF generation (immune to CORS & canvas tainting)
 const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
     if (!url || typeof url !== "string" || !url.trim()) {
         return null;
+    }
+
+    if (photoDataCache.has(url)) {
+        return photoDataCache.get(url)!;
     }
 
     const tryViaImageElement = (src: string, useCrossOrigin = true): Promise<LoadedPhoto | null> => {
@@ -109,7 +115,10 @@ const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
             });
             if (dataUrl) {
                 const res = await tryViaImageElement(dataUrl, false);
-                if (res) return res;
+                if (res) {
+                    photoDataCache.set(url, res);
+                    return res;
+                }
             }
         }
     } catch (e) {
@@ -118,10 +127,17 @@ const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
 
     // 3. Fallback: Image element with crossOrigin
     const resCrossOrigin = await tryViaImageElement(url, true);
-    if (resCrossOrigin) return resCrossOrigin;
+    if (resCrossOrigin) {
+        photoDataCache.set(url, resCrossOrigin);
+        return resCrossOrigin;
+    }
 
     // 4. Fallback: Image element without crossOrigin
-    return await tryViaImageElement(url, false);
+    const resFallback = await tryViaImageElement(url, false);
+    if (resFallback) {
+        photoDataCache.set(url, resFallback);
+    }
+    return resFallback;
 };
 
 /**
@@ -354,6 +370,7 @@ export const generateROVPhotographyReport = async (
                         urlCandidates.push(fallbackUrl);
                     }
                     if (rawPath) {
+                        urlCandidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
                         urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
                     }
                     // 2. Direct HTTP or Data URL

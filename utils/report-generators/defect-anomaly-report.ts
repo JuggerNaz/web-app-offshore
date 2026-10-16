@@ -39,19 +39,27 @@ interface LoadedImageData {
     aspect: number;
 }
 
+const reportImageCache = new Map<string, LoadedImageData>();
+
 const loadImage = async (url: string): Promise<LoadedImageData | null> => {
     if (!url || typeof url !== 'string' || !url.trim()) return null;
+
+    if (reportImageCache.has(url)) {
+        return reportImageCache.get(url)!;
+    }
 
     // Helper using standard Image element
     const tryLoadViaImage = (src: string): Promise<LoadedImageData | null> => {
         return new Promise((resolve) => {
             const img = new Image();
-            img.crossOrigin = "Anonymous";
+            if (!src.startsWith("data:")) {
+                img.crossOrigin = "Anonymous";
+            }
             const timeout = setTimeout(() => {
                 img.onload = null;
                 img.onerror = null;
                 resolve(null);
-            }, 4000);
+            }, 3000);
             img.onload = () => {
                 clearTimeout(timeout);
                 try {
@@ -85,13 +93,22 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
         });
     };
 
-    // 1. Try normal image load
-    const result1 = await tryLoadViaImage(url);
-    if (result1) return result1;
+    // 1. Direct Data URI
+    if (url.startsWith("data:")) {
+        const directRes = await tryLoadViaImage(url);
+        if (directRes) {
+            reportImageCache.set(url, directRes);
+            return directRes;
+        }
+    }
 
-    // 2. Fallback: Fetch as Blob and convert to Data URL (bypasses browser canvas taint & CORS issues)
+    // 2. Fetch as Blob and convert to Data URL (fastest for API endpoints, avoids canvas taint & CORS issues)
     try {
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (response.ok) {
             const blob = await response.blob();
             const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -101,11 +118,22 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
                 reader.readAsDataURL(blob);
             });
             if (dataUrl) {
-                return await tryLoadViaImage(dataUrl);
+                const res = await tryLoadViaImage(dataUrl);
+                if (res) {
+                    reportImageCache.set(url, res);
+                    return res;
+                }
             }
         }
     } catch {
-        // Fallback failed
+        // Fallback to direct image loading
+    }
+
+    // 3. Fallback: Image element direct
+    const fallbackRes = await tryLoadViaImage(url);
+    if (fallbackRes) {
+        reportImageCache.set(url, fallbackRes);
+        return fallbackRes;
     }
 
     return null;
@@ -689,49 +717,55 @@ export const generateDefectAnomalyReport = async (
             : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
             ? record.insp_photos
             : [];
-        const processedImages: { data: string; att: any; aspect: number }[] = [];
+        // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
+        const loadedImages = await Promise.all(
+            images.map(async (rawAtt: any) => {
+                const att = typeof rawAtt === 'string' ? { path: rawAtt, name: 'Photo' } : (rawAtt || {});
+                const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
+                if (!rawPath && !att.id) return null;
+                const bucket = att.bucket_id || att.bucket || "attachments";
 
-        // Load images while maintaining association with their metadata and aspect ratio
-        for (const att of images) {
-            const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
-            if (!rawPath && !att.id) continue;
-            const bucket = att.bucket_id || att.bucket || "attachments";
+                const urlCandidates: string[] = [];
+                // 1. Server-side proxy with attachment ID (direct stream, bypasses CORS)
+                if (att.id) {
+                    urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
+                }
+                // 2. Server-side proxy with raw path / S3 URL
+                if (rawPath) {
+                    urlCandidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
+                    urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+                }
+                // 3. Direct URL fallback
+                if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
+                    urlCandidates.push(rawPath);
+                }
 
-            const urlCandidates: string[] = [];
-            if (att.id) {
-                urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
-            }
-            if (rawPath) {
-                urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
-            }
-            if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
-                urlCandidates.push(rawPath);
-            }
-
-            let loadedImgRes: LoadedImageData | null = null;
-            for (const testUrl of urlCandidates) {
-                try {
-                    const imgRes = await loadImage(testUrl);
-                    if (imgRes && imgRes.data) {
-                        loadedImgRes = imgRes;
-                        break;
+                let loadedImgRes: LoadedImageData | null = null;
+                for (const testUrl of urlCandidates) {
+                    try {
+                        const imgRes = await loadImage(testUrl);
+                        if (imgRes && imgRes.data) {
+                            loadedImgRes = imgRes;
+                            break;
+                        }
+                    } catch {
+                        // Try next candidate
                     }
-                } catch {
-                    // Try next candidate
                 }
-            }
 
-            if (loadedImgRes && loadedImgRes.data) {
-                // Robust meta parsing
-                let meta = att.meta || {};
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                if (loadedImgRes && loadedImgRes.data) {
+                    let meta = att.meta || {};
+                    if (typeof meta === 'string') {
+                        try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                    }
+                    return { data: loadedImgRes.data, att: { ...att, meta }, aspect: loadedImgRes.aspect };
+                } else {
+                    console.warn("Failed to load image for report", att.name || rawPath || att.id);
+                    return null;
                 }
-                processedImages.push({ data: loadedImgRes.data, att: { ...att, meta }, aspect: loadedImgRes.aspect });
-            } else {
-                console.warn("Failed to load image for report", att.name || rawPath || att.id);
-            }
-        }
+            })
+        );
+        const processedImages = loadedImages.filter((img): img is NonNullable<typeof img> => img !== null);
 
         // Define Footer Height for Signatories Box
         const footerH = 22; // Compact signatory height (22mm)

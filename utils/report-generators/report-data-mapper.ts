@@ -10,6 +10,7 @@ const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient
 
 // Helper to load pdf.js from CDN and convert a PDF Blob to an array of images (page_image)
 const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image: any, photo: any, is_landscape: boolean, section_break: string, qid: string, elevation: string, description: string }>> => {
+    let pdf: any = null;
     try {
         // Load pdf.js dynamically
         const pdfjsLib = await new Promise<any>((resolve, reject) => {
@@ -29,7 +30,7 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
         });
 
         const arrayBuffer = await pdfBlob.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const pages: any[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
@@ -41,7 +42,10 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
 
             const canvas = document.createElement("canvas");
             const context = canvas.getContext("2d");
-            if (!context) continue;
+            if (!context) {
+                if (typeof page.cleanup === "function") page.cleanup();
+                continue;
+            }
 
             canvas.height = viewport.height;
             canvas.width = viewport.width;
@@ -52,6 +56,13 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
             }).promise;
 
             const base64Data = canvas.toDataURL("image/png");
+
+            // Release canvas GPU and backing memory immediately
+            canvas.width = 0;
+            canvas.height = 0;
+            if (typeof page.cleanup === "function") {
+                page.cleanup();
+            }
             
             pages.push({
                 page_image: {
@@ -85,6 +96,14 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
     } catch (err) {
         console.error("Error converting PDF to images:", err);
         return [];
+    } finally {
+        if (pdf && typeof pdf.destroy === "function") {
+            try {
+                await pdf.destroy();
+            } catch (e) {
+                console.warn("Failed to destroy PDF document worker:", e);
+            }
+        }
     }
 };
 
@@ -117,8 +136,17 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-rseab-gas-detail-report': ['RSEAB_GAS', 'RSEAB_GAS_REPORT', 'RSEAB_GAS_PAGES'],
     'rov-rseab-crater-detail-report': ['RSEAB_CRATER', 'RSEAB_CRATER_REPORT', 'RSEAB_CRATER_PAGES'],
     'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOR_REPORT', 'RSCOR_PAGES', 'SCOUR_PAGES'],
+    'rov-rscor-v2-report': ['RSCOR_V2', 'RSCOR_V2_REPORT', 'RSCOR_V2_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
+    'rov-rscor-survey-report': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
+    'rscor-survey': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
+    'rov-selected-node-report': ['RSWNI', 'RSWNI_REPORT', 'ROV_NODE', 'ROV_NODE_REPORT', 'SELECTED_NODE_REPORT', 'NODE_REPORT', 'RSWNI_PAGES', 'NODE_PAGES', 'SELECTED_NODE_PAGES'],
+    'rov-node-report': ['RSWNI', 'RSWNI_REPORT', 'ROV_NODE', 'ROV_NODE_REPORT', 'SELECTED_NODE_REPORT', 'NODE_REPORT', 'RSWNI_PAGES', 'NODE_PAGES', 'SELECTED_NODE_PAGES'],
     'rov-caisson-report': ['RCASN', 'CAISSON', 'CAISSON_SUB', 'RCASN_REPORT', 'RCASN_PAGES'],
+    'rov-rcasn-report': ['RCASN', 'CAISSON', 'CAISSON_SUB', 'RCASN_REPORT', 'RCASN_PAGES'],
+    'rov-rcasn-sketch-report': ['RCASN_SKETCH', 'CAISSON_SKETCH', 'RCASN_SKETCH_REPORT', 'RCASN_SKETCH_PAGES'],
     'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
+    'rov-rcond-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
+    'rov-rcond-sketch-report': ['RCOND_SKETCH', 'CONDUCTOR_SKETCH', 'RCOND_SKETCH_REPORT', 'RCOND_SKETCH_PAGES'],
     'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOATLANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES'],
     'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISERGUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES'],
     'rov-sg-report': ['RCG', 'SG', 'CAISSONGUARD', 'CAISSONGUARD_SUB', 'RCG_REPORT', 'RCG_PAGES'],
@@ -128,9 +156,14 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rrisi-detail-report': ['RRISI_DETAIL', 'RRISI_DETAIL_REPORT', 'RRISI_DETAIL_PAGES'],
     'diving-rrisi-report': ['DRRISI', 'DRISI', 'RISER', 'DRRISI_REPORT', 'DRRISI_PAGES'],
     'diving-rrisi-detail-report': ['DRRISI_DETAIL', 'DRISI_DETAIL', 'DRRISI_DETAIL_REPORT', 'DRRISI_DETAIL_PAGES'],
-    'rov-anode-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT', 'RSANI_PAGES'],
-    'rov-anode-rsani-report': ['RSANI', 'ANODE', 'RAN', 'RSANI_REPORT', 'RSANI_PAGES'],
+    'rov-anode-report': ['RGANI', 'RGANI_REPORT', 'RGANI_PAGES', 'GANI', 'GANI_REPORT', 'GANI_PAGES', 'ANODE', 'ANODE_REPORT', 'ANODE_PAGES', 'RAN', 'RAN_REPORT', 'RAN_PAGES'],
+    'anode-report': ['RGANI', 'RGANI_REPORT', 'RGANI_PAGES', 'GANI', 'GANI_REPORT', 'GANI_PAGES', 'ANODE', 'ANODE_REPORT', 'ANODE_PAGES', 'RAN', 'RAN_REPORT', 'RAN_PAGES'],
+    'rgani-report': ['RGANI', 'RGANI_REPORT', 'RGANI_PAGES', 'GANI', 'GANI_REPORT', 'GANI_PAGES'],
+    'rov-anode-rsani-report': ['RSANI', 'RSANI_REPORT', 'RSANI_PAGES', 'SANI', 'SANI_REPORT', 'SANI_PAGES', 'SELECTED_ANODE', 'SELECTED_ANODE_PAGES'],
+    'anode-rsani-report': ['RSANI', 'RSANI_REPORT', 'RSANI_PAGES', 'SANI', 'SANI_REPORT', 'SANI_PAGES', 'SELECTED_ANODE', 'SELECTED_ANODE_PAGES'],
+    'rsani-report': ['RSANI', 'RSANI_REPORT', 'RSANI_PAGES', 'SANI', 'SANI_REPORT', 'SANI_PAGES'],
     'szci-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT', 'RSZCI_PAGES'],
+    'rov-szci-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT', 'RSZCI_PAGES'],
     'rov-splash-zone-report': ['RSZCI', 'SZCI', 'SPLASH_ZONE', 'RSZCI_REPORT', 'RSZCI_PAGES'],
     'rov-navig-report': ['NAVIG', 'RNAVIG', 'NAVIG_REPORT', 'NAVIG_PAGES'],
     'work-scope-report': ['WORK_SCOPE', 'WORK_SCOPE_REPORT', 'WORK_SCOPE_PAGES', 'SOW_REPORT_PAGES'],
@@ -172,43 +205,45 @@ export const mapInspectionDataForDocx = async (
                 chunks.push(recordIds.slice(i, i + 100));
             }
 
-            const results = await Promise.all(
-                chunks.map(chunk =>
-                    supabase
-                        .from('attachment')
-                        .select('*')
-                        .in('source_id', chunk)
-                )
-            );
-
-            for (const { data, error } of results) {
-                if (!error && data && data.length > 0) {
-                    attachments.push(...data);
-                }
-            }
-
-            if (attachments.length === 0) {
-                const mediaResults = await Promise.all(
+            // Always query BOTH 'attachment' table AND 'insp_media' table in parallel so freshly uploaded photos are never missed
+            const [attachmentBatches, mediaBatches] = await Promise.all([
+                Promise.all(
+                    chunks.map(chunk =>
+                        supabase
+                            .from('attachment')
+                            .select('*')
+                            .in('source_id', chunk)
+                    )
+                ),
+                Promise.all(
                     chunks.map(chunk =>
                         supabase
                             .from('insp_media' as any)
                             .select('*')
                             .in('inspection_id', chunk)
                     )
-                );
-                for (const { data: media } of mediaResults) {
-                    if (media && media.length > 0) {
-                        attachments.push(...media.map((m: any) => ({
-                            id: m.media_id,
-                            path: m.file_path,
-                            file_path: m.file_path,
-                            name: m.file_name || `Photo ${m.media_id}`,
-                            source_id: m.inspection_id,
-                            source_type: 'inspection',
-                            meta: m.meta,
-                            bucket: (m.meta as any)?.bucket || 'inspection-media'
-                        })));
-                    }
+                )
+            ]);
+
+            for (const { data, error } of attachmentBatches) {
+                if (!error && data && data.length > 0) {
+                    attachments.push(...data);
+                }
+            }
+
+            for (const { data: media, error } of mediaBatches) {
+                if (!error && media && media.length > 0) {
+                    attachments.push(...media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        source_type: 'inspection',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media',
+                        created_at: m.created_at || m.captured_at
+                    })));
                 }
             }
         } catch (e) {
@@ -221,6 +256,14 @@ export const mapInspectionDataForDocx = async (
         const sid = Number(att.source_id);
         if (!attMap.has(sid)) attMap.set(sid, []);
         attMap.get(sid)!.push(att);
+    });
+    // Sort attachments newest-first for each record
+    attMap.forEach(list => {
+        list.sort((a, b) => {
+            const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+            const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+            return dateB - dateA;
+        });
     });
     records.forEach(r => {
         if (r.insp_id && attMap.has(Number(r.insp_id))) {
@@ -326,12 +369,28 @@ export const mapInspectionDataForDocx = async (
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
         'rov-scour-report': ['RSCOR', 'SCOUR'],
+        'rov-rscor-v2-report': ['RSCOR', 'SCOUR'],
+        'rscor-v2': ['RSCOR', 'SCOUR'],
         'rov-rscor-survey-report': ['RSCOR', 'SCOUR'],
         'rscor-survey': ['RSCOR', 'SCOUR'],
-        'rov-caisson-report': ['RCASN'],
-        'rov-conductor-report': ['RCOND'],
-        'rov-splash-zone-report': ['RSZCI'],
-        'rov-node-report': ['RSWNI']
+        'rov-caisson-report': ['RCASN', 'CASN'],
+        'rov-rcasn-report': ['RCASN', 'CASN'],
+        'rov-rcasn-sketch-report': ['RCASN', 'CASN'],
+        'rov-conductor-report': ['RCOND', 'RCON'],
+        'rov-rcond-report': ['RCOND', 'RCON'],
+        'rov-rcond-sketch-report': ['RCOND', 'RCON'],
+        'szci-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
+        'rov-szci-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
+        'rov-splash-zone-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
+        'rov-selected-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
+        'selected-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
+        'rov-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
+        'rov-anode-report': ['RGVI', 'RGANI', 'GANI', 'ANODE', 'ANOD', 'RAN'],
+        'anode-report': ['RGVI', 'RGANI', 'GANI', 'ANODE', 'ANOD', 'RAN'],
+        'rgani-report': ['RGVI', 'RGANI', 'GANI', 'ANODE', 'ANOD', 'RAN'],
+        'rov-anode-rsani-report': ['RSANI', 'SANI'],
+        'anode-rsani-report': ['RSANI', 'SANI'],
+        'rsani-report': ['RSANI', 'SANI']
     };
 
     let contractorLogoUrl = "";
@@ -353,7 +412,7 @@ export const mapInspectionDataForDocx = async (
             }
         }
         if (!contractorLogoUrl) {
-            const cRes = await fetch(`/api/library/CONTR_NAM`);
+            const cRes = await fetch(`/api/library/CONTR_NAM?_t=${Date.now()}`, { cache: "no-store" });
             if (cRes.ok) {
                 const cJson = await cRes.json();
                 if (Array.isArray(cJson?.data)) {
@@ -512,6 +571,29 @@ export const mapInspectionDataForDocx = async (
             }
             if (templateId === 'diving-cpsurv-report' || templateId === 'cpsurv-diving-report' || templateId === 'diving-cp') {
                 return isDivingCPSURVRecord(r) || ['CPSURV', 'DCPSURV', 'CPINS', 'PIPECP', 'CP', 'DCP'].includes(code);
+            }
+
+            // Conductor and Caisson explicit routing
+            if (['rov-rcond-report', 'rov-conductor-report', 'rov-rcond-sketch-report'].includes(templateId)) {
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                return ['RCOND', 'RCON'].includes(code) || ['CD', 'CON'].includes(compCode);
+            }
+            if (['rov-rcasn-report', 'rov-caisson-report', 'rov-rcasn-sketch-report'].includes(templateId)) {
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                return ['RCASN', 'CASN'].includes(code) || ['CS', 'CASN'].includes(compCode);
+            }
+
+            // Anode explicit routing: RGANI (General Visual Anode) vs RSANI (Selected Anode)
+            if (['rov-anode-report', 'anode-report', 'rgani-report'].includes(templateId)) {
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
+                return code !== 'RSANI' && code !== 'SANI' && (code === "RAN" || code === "RGANI" || code === "GANI" || (['RGVI', 'ANODE', 'ANOD'].includes(code) && (compCode === 'AN' || compType === 'ANODE')));
+            }
+            if (['rov-anode-rsani-report', 'anode-rsani-report', 'rsani-report', 'rov-anode-rsani'].includes(templateId)) {
+                const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
+                const typeName = String(r.inspection_type?.name || r.inspection_type_name || "").toUpperCase();
+                return (code === "RSANI" || code === "SANI" || typeName.includes("SELECTED ANODE")) && (compCode === 'AN' || compType === 'ANODE' || !compCode);
             }
 
             // Activity-specific reports routing
@@ -675,12 +757,22 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'diving-measu-report' || templateId === 'measu-report') {
                 const { generateDivingMEASUReport } = await import("./diving-measu-report");
                 pdfBlob = await generateDivingMEASUReport(records.filter(r => ["MEASU", "DMSR", "MEASUREMENT", "DMEAS"].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-rcond-report') {
+            } else if (templateId === 'rov-rcond-report' || templateId === 'rov-conductor-report') {
                 const { generateROVCondReport } = await import("./rov-rcond-report");
-                pdfBlob = await generateROVCondReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-rcasn-report') {
+                const condRecs = records.filter(r => {
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
+                    return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
+                });
+                pdfBlob = await generateROVCondReport(condRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-rcasn-report' || templateId === 'rov-caisson-report') {
                 const { generateROVCasnReport } = await import("./rov-rcasn-report");
-                pdfBlob = await generateROVCasnReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const casnRecs = records.filter(r => {
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
+                    return ['RCASN', 'CASN'].includes(typeCode) || ['CS', 'CASN'].includes(compCode);
+                });
+                pdfBlob = await generateROVCasnReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-bl-report') {
                 const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
                 pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r) || (r.inspection_type?.code || "").toUpperCase() === "RBLTG"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -698,10 +790,20 @@ export const mapInspectionDataForDocx = async (
                 pdfBlob = await generateROVNavigReport(jobPack, structure, sowReportNo || "N/A", companySettings || {}, { ...sharedConfig, headerData: sharedHeaderData } as any, records);
             } else if (templateId === 'rov-rcond-sketch-report') {
                 const { generateROVCondSketchReport } = await import("./rov-rcond-sketch-report");
-                pdfBlob = await generateROVCondSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCOND"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const condRecs = records.filter(r => {
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
+                    return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
+                });
+                pdfBlob = await generateROVCondSketchReport(condRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rcasn-sketch-report') {
                 const { generateROVCasnSketchReport } = await import("./rov-rcasn-sketch-report");
-                pdfBlob = await generateROVCasnSketchReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCASN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const casnRecs = records.filter(r => {
+                    const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                    const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
+                    return ['RCASN', 'CASN'].includes(typeCode) || ['CS', 'CASN'].includes(compCode);
+                });
+                pdfBlob = await generateROVCasnSketchReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rrisi-report') {
                 const { generateROVRRISIReport } = await import("./rov-rrisi-report");
                 pdfBlob = await generateROVRRISIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -726,19 +828,31 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-itisi-detail-report') {
                 const { generateROVRRISIITubeDetailReport } = await import("./rov-itisi-detail-report");
                 pdfBlob = await generateROVRRISIITubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'szci-report') {
+            } else if (templateId === 'szci-report' || templateId === 'rov-szci-report' || templateId === 'rov-splash-zone-report' || templateId === 'splash-zone-report') {
                 const { generateROVSZCIReport } = await import("./rov-szci-report");
-                pdfBlob = await generateROVSZCIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSZCI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-anode-report') {
+                pdfBlob = await generateROVSZCIReport(records.filter(r => {
+                    const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    return ["RSZCI", "SZCI", "SZONE", "SPLASH"].includes(code);
+                }), sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-anode-report' || templateId === 'anode-report' || templateId === 'rgani-report') {
                 const { generateROVAnodeReport } = await import("./rov-anode-report");
-                pdfBlob = await generateROVAnodeReport(records.filter(r => {
+                const anodeRecs = records.filter(r => {
                     const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                    return t === "RAN" || (['RGVI', 'ANODE', 'ANOD'].includes(t) && c === 'AN' && t !== 'RSANI');
-                }), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-anode-rsani-report') {
+                    const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
+                    return t !== 'RSANI' && t !== 'SANI' && (t === "RAN" || t === "RGANI" || t === "GANI" || (['RGVI', 'ANODE', 'ANOD'].includes(t) && (c === 'AN' || compType === 'ANODE')));
+                });
+                pdfBlob = await generateROVAnodeReport(anodeRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-anode-rsani-report' || templateId === 'anode-rsani-report' || templateId === 'rsani-report' || templateId === 'rov-anode-rsani') {
                 const { generateROVAnodeRSANIReport } = await import("./rov-anode-rsani-report");
-                pdfBlob = await generateROVAnodeRSANIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSANI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const saniRecs = records.filter(r => {
+                    const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
+                    const typeName = String(r.inspection_type?.name || r.inspection_type_name || "").toUpperCase();
+                    return (t === "RSANI" || t === "SANI" || typeName.includes("SELECTED ANODE")) && (c === 'AN' || compType === 'ANODE' || !c);
+                });
+                pdfBlob = await generateROVAnodeRSANIReport(saniRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'mgi-report') {
                 const { generateROVMGIGraphReport } = await import("./rov-mgi-report");
                 pdfBlob = await generateROVMGIGraphReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), {}, sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -748,12 +862,19 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
                 pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2') {
+                const { generateROVRSCORV2Report } = await import("./rov-rscor-v2-report");
+                pdfBlob = await generateROVRSCORV2Report(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
                 const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
                 pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-selected-node-report') {
+            } else if (templateId === 'rov-selected-node-report' || templateId === 'rov-node-report' || templateId === 'selected-node-report' || templateId === 'rswni-report') {
                 const { generateROVSelectedNodeReport } = await import("./rov-selected-node-report");
-                pdfBlob = await generateROVSelectedNodeReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSWNI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                pdfBlob = await generateROVSelectedNodeReport(records.filter(r => {
+                    const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
+                    const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
+                    return ["RSWNI", "SWNI", "NODE", "CVI", "RCVI"].includes(t) || ["ND", "WN", "NODE"].includes(c);
+                }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'utwt-report') {
                 const { generateROVUTWTReport } = await import("./rov-utwt-report");
                 pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -864,14 +985,14 @@ export const mapInspectionDataForDocx = async (
                 let fullStructure = structure;
                 const structId = structure.id || structure.str_id || structure.plat_id || structure.pipe_id;
                 try {
-                    const structRes = await fetch(`/api/structures/${structId}`);
+                    const structRes = await fetch(`/api/structures/${structId}?_t=${Date.now()}`, { cache: "no-store" });
                     if (structRes.ok) {
                         const structJson = await structRes.json();
                         if (structJson.success && structJson.data) {
                             fullStructure = structJson.data;
                             try {
                                 const strType = fullStructure.str_type?.toLowerCase() || "platform";
-                                const commentRes = await fetch(`/api/comment/${strType}/${structId}`);
+                                const commentRes = await fetch(`/api/comment/${strType}/${structId}?_t=${Date.now()}`, { cache: "no-store" });
                                 if (commentRes.ok) {
                                     const commentJson = await commentRes.json();
                                     if (commentJson.data && Array.isArray(commentJson.data)) {
@@ -938,6 +1059,20 @@ export const mapInspectionDataForDocx = async (
                 );
                 const firstPhoto = recordAttachments[0];
                 
+                const formatAttachmentImg = (att: any) => {
+                    if (!att) return "";
+                    const p = att.path || att.file_path || att.url || att.file_url || "";
+                    let src = "";
+                    if (att.id) {
+                        src = `/api/attachment/url?id=${att.id}${p ? `&path=${encodeURIComponent(p)}` : ''}`;
+                    } else if (p) {
+                        src = `/api/attachment/url?path=${encodeURIComponent(p)}`;
+                    }
+                    return src ? { data: src, extension: '.jpg' } : "";
+                };
+
+                const photoImg = formatAttachmentImg(firstPhoto);
+
                 // Specific flattening for Seabed Records
                 if (a.template_id.toLowerCase() === 'rov-seabed-report') {
                     return {
@@ -950,8 +1085,8 @@ export const mapInspectionDataForDocx = async (
                         description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || "-",
                         material: d.material || d.debris_material || "Unknown",
                         dims: d.size_dimensions || d.dimension_1 || "-",
-                        photo: firstPhoto ? { data: `/api/attachment/url?id=${firstPhoto.id}`, extension: '.jpg' } : "",
-                        page_image: firstPhoto ? { data: `/api/attachment/url?id=${firstPhoto.id}`, extension: '.jpg' } : ""
+                        photo: photoImg,
+                        page_image: photoImg
                     };
                 }
 
@@ -961,8 +1096,8 @@ export const mapInspectionDataForDocx = async (
                     elevation: r.elevation || "-",
                     description: r.description || "N/A",
                     data: d,
-                    photo: firstPhoto ? { data: `/api/attachment/url?id=${firstPhoto.id}`, extension: '.jpg' } : "",
-                    page_image: firstPhoto ? { data: `/api/attachment/url?id=${firstPhoto.id}`, extension: '.jpg' } : ""
+                    photo: photoImg,
+                    page_image: photoImg
                 };
             });
 
@@ -977,9 +1112,14 @@ export const mapInspectionDataForDocx = async (
                         (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
                     );
                     recordAttachments.forEach(att => {
+                        const p = att.path || att.file_path || att.url || att.file_url || "";
+                        const src = att.id
+                            ? `/api/attachment/url?id=${att.id}${p ? `&path=${encodeURIComponent(p)}` : ''}`
+                            : (p ? `/api/attachment/url?path=${encodeURIComponent(p)}` : "");
+                        const pageImgObj = src ? { data: src, extension: '.jpg' } : "";
                         pages.push({
-                            page_image: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
-                            photo: { data: `/api/attachment/url?id=${att.id}`, extension: '.jpg' },
+                            page_image: pageImgObj,
+                            photo: pageImgObj,
                             qid: r.structure_components?.q_id || "N/A",
                             elevation: r.elevation || "-",
                             description: r.description || "N/A"

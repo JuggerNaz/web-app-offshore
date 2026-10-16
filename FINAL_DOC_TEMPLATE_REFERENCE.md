@@ -187,7 +187,8 @@ To paste any sub-report into your Final Document template, insert a page loop:
 | **ROV Conductor Guard** | `rov-cu-report` | `{#RCDG_PAGES}` | `{#HAS_RCDG_PAGES}` | `{#NO_RCDG_PAGES}` |
 | **ROV Riser Report** | `rrisi-report` | `{#RRISI_PAGES}` | `{#HAS_RRISI_PAGES}` | `{#NO_RRISI_PAGES}` |
 | **Diving Riser Report** | `diving-rrisi-report` | `{#DRRISI_PAGES}` | `{#HAS_DRRISI_PAGES}` | `{#NO_DRRISI_PAGES}` |
-| **ROV Anode Report** | `rov-anode-report` | `{#RSANI_PAGES}` *(or `{#RAN_PAGES}`)* | `{#HAS_RSANI_PAGES}` | `{#NO_RSANI_PAGES}` |
+| **ROV General Visual Anode (RGANI)** | `rov-anode-report` | `{#RGANI_REPORT_PAGES}` *(or `{#RGANI_PAGES}`)* | `{#HAS_RGANI_PAGES}` | `{#NO_RGANI_PAGES}` |
+| **ROV Selected Anode (RSANI)** | `rov-anode-rsani-report` | `{#RSANI_REPORT_PAGES}` *(or `{#RSANI_PAGES}`)* | `{#HAS_RSANI_PAGES}` | `{#NO_RSANI_PAGES}` |
 | **Diving Anode Report** | `diving-anode-report` | `{#ANODE_PAGES}` *(or `{#DAN_PAGES}`)* | `{#HAS_ANODE_PAGES}` | `{#NO_ANODE_PAGES}` |
 | **Diving Anode Maintenance** | `diving-anmain-report` | `{#ANMAIN_PAGES}` | `{#HAS_ANMAIN_PAGES}` | `{#NO_ANMAIN_PAGES}` |
 | **ROV Splash Zone Report** | `rov-splash-zone-report`| `{#RSZCI_PAGES}` *(or `{#SPLASH_ZONE_PAGES}`)* | `{#HAS_RSZCI_PAGES}` | `{#NO_RSZCI_PAGES}` |

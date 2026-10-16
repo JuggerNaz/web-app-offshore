@@ -500,6 +500,12 @@ export default function ExecutiveSummaryPage() {
             status: "Initializing report configuration and templates...",
         });
 
+        let preloadedTemplateBuffer: ArrayBuffer | null = null;
+        let allRecords: any[] = [];
+        let mappedData: any = {};
+        let structureVisuals: any[] = [];
+        let reportData: Record<string, any> = {};
+
         try {
             // Step 1: Preload template early to inspect required tags and eliminate duplicate download
             setExportProgress(prev => ({
@@ -508,11 +514,12 @@ export default function ExecutiveSummaryPage() {
                 status: "Analyzing document template structure...",
             }));
 
-            let preloadedTemplateBuffer: ArrayBuffer | null = null;
             const activeTemplateTags = new Set<string>();
 
             try {
-                const tRes = await fetch(template.storage_path);
+                const tPath = template.storage_path;
+                const tUrl = tPath.startsWith("data:") ? tPath : `${tPath}${tPath.includes("?") ? "&" : "?"}_t=${Date.now()}`;
+                const tRes = await fetch(tUrl, { cache: "no-store" });
                 if (tRes.ok) {
                     preloadedTemplateBuffer = await tRes.arrayBuffer();
                     const PizZip = (await import("pizzip")).default || (await import("pizzip"));
@@ -605,7 +612,7 @@ export default function ExecutiveSummaryPage() {
             }));
 
             // Fetch Aliases
-            const aliasesRes = await fetch("/api/report-aliases");
+            const aliasesRes = await fetch(`/api/report-aliases?_t=${Date.now()}`, { cache: "no-store" });
             let aliases: any[] = [];
             if (aliasesRes.ok) {
                 const aliasesData = await aliasesRes.json();
@@ -613,7 +620,7 @@ export default function ExecutiveSummaryPage() {
             }
 
             // Fetch Contractors
-            const contractorsRes = await fetch("/api/jobpack/utils/contractors");
+            const contractorsRes = await fetch(`/api/jobpack/utils/contractors?_t=${Date.now()}`, { cache: "no-store" });
             let contractors: any[] = [];
             if (contractorsRes.ok) {
                 const contrData = await contractorsRes.json();
@@ -653,7 +660,7 @@ export default function ExecutiveSummaryPage() {
                 throw new Error(`Failed to fetch inspection records: ${recordsRes.status} ${recordsRes.statusText}`);
             }
             const recordsData = await recordsRes.json();
-            const allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
+            allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
 
             setExportProgress(prev => ({
                 ...prev,
@@ -662,7 +669,7 @@ export default function ExecutiveSummaryPage() {
             }));
 
             // Map data for DOCX
-            const mappedData = await mapInspectionDataForDocx(
+            mappedData = await mapInspectionDataForDocx(
                 allRecords,
                 aliases,
                 jp,
@@ -712,7 +719,7 @@ export default function ExecutiveSummaryPage() {
             }
 
             // Fetch Structure Visuals only if the template actually uses them
-            let structureVisuals: any[] = [];
+            structureVisuals = [];
             const needsVisuals = !activeTemplateTags.size || 
                 activeTemplateTags.has("STRUCTURE_VISUALS") || 
                 activeTemplateTags.has("HAS_VISUALS") || 
@@ -722,7 +729,7 @@ export default function ExecutiveSummaryPage() {
                 try {
                     const structType = (str?.str_type || "PLATFORM").toLowerCase();
                     const sourceType = `${structType}_structure_image`;
-                    const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}`);
+                    const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}?_t=${Date.now()}`, { cache: "no-store" });
                     if (apiRes.ok) {
                         const apiJson = await apiRes.json();
                         const visualAtts = Array.isArray(apiJson.data) ? apiJson.data.slice(0, 6) : [];
@@ -736,28 +743,32 @@ export default function ExecutiveSummaryPage() {
                                 const description = att.meta?.description || att.description || "";
 
                                 let imgData: any = null;
-                                try {
-                                    // 6-second timeout guard to prevent storage downloads from hanging
-                                    const downloadPromise = supabase.storage
-                                        .from("attachments")
-                                        .download(att.path);
-                                    const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => 
-                                        setTimeout(() => reject(new Error("Timeout")), 6000)
-                                    );
-                                    const { data: blob, error: downloadError } = await Promise.race([downloadPromise, timeoutPromise]) as any;
+                                const isExternal = typeof att.path === "string" && (att.path.startsWith("http://") || att.path.startsWith("https://"));
+                                if (!isExternal && att.path) {
+                                    try {
+                                        // 4-second timeout guard to prevent storage downloads from hanging
+                                        const downloadPromise = supabase.storage
+                                            .from("attachments")
+                                            .download(att.path);
+                                        const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => 
+                                            setTimeout(() => reject(new Error("Timeout")), 4000)
+                                        );
+                                        const { data: blob, error: downloadError } = await Promise.race([downloadPromise, timeoutPromise]) as any;
 
-                                    if (blob && !downloadError) {
-                                        const arrayBuffer = await blob.arrayBuffer();
-                                        imgData = new Uint8Array(arrayBuffer);
-                                    } else if (downloadError) {
-                                        console.warn("Storage download failed, using URL fallback:", downloadError);
+                                        if (blob && !downloadError) {
+                                            const arrayBuffer = await blob.arrayBuffer();
+                                            imgData = new Uint8Array(arrayBuffer);
+                                        } else if (downloadError) {
+                                            console.warn("Storage download failed, using URL fallback:", downloadError);
+                                        }
+                                    } catch (downloadErr) {
+                                        console.warn("Storage download skipped or timed out, using URL fallback:", downloadErr);
                                     }
-                                } catch (downloadErr) {
-                                    console.warn("Storage download skipped or timed out, using URL fallback:", downloadErr);
                                 }
 
                                 if (!imgData) {
-                                    imgData = `/api/attachment/url?id=${att.id}`;
+                                    const pathParam = att.path ? `&path=${encodeURIComponent(att.path)}` : "";
+                                    imgData = `/api/attachment/url?id=${att.id}${pathParam}`;
                                 }
 
                                 const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
@@ -783,7 +794,7 @@ export default function ExecutiveSummaryPage() {
 
             let anomaliesResData: any[] = [];
             try {
-                const anomRes = await fetch(`/api/reports/anomaly-report?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${encodeURIComponent(selections.sowReportNo)}`);
+                const anomRes = await fetch(`/api/reports/anomaly-report?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${encodeURIComponent(selections.sowReportNo)}&_t=${Date.now()}`, { cache: "no-store" });
                 if (anomRes.ok) {
                     const json = await anomRes.json();
                     if (Array.isArray(json?.data)) {
@@ -1096,9 +1107,9 @@ export default function ExecutiveSummaryPage() {
             try {
                 // Fetch library lists (AMLY_TYP, COLOR) and combo mappings (ANMLYCLR)
                 const [comboRes, prioLibRes, colorLibRes] = await Promise.all([
-                    fetch("/api/library/combo/ANMLYCLR").catch(() => null),
-                    fetch("/api/library/AMLY_TYP").catch(() => null),
-                    fetch("/api/library/COLOR").catch(() => null)
+                    fetch(`/api/library/combo/ANMLYCLR?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null),
+                    fetch(`/api/library/AMLY_TYP?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null),
+                    fetch(`/api/library/COLOR?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null)
                 ]);
 
                 const colorLibMap: Record<string, string> = {};
@@ -2028,7 +2039,7 @@ export default function ExecutiveSummaryPage() {
                 };
             });
 
-            const reportData: Record<string, any> = {
+            reportData = {
                 STRUCTURE_VISUALS: structureVisuals,
                 HAS_VISUALS: structureVisuals.length > 0,
                 HAS_ANOMALIES: totalAnomCount > 0 || rawAnomalies.length > 0,
@@ -2977,6 +2988,21 @@ export default function ExecutiveSummaryPage() {
             toast.error(error.message || "Error generating report");
         } finally {
             setIsGenerating(false);
+            if (reportData && typeof reportData === "object") {
+                for (const k of Object.keys(reportData)) {
+                    delete reportData[k];
+                }
+            }
+            if (mappedData && typeof mappedData === "object") {
+                for (const k of Object.keys(mappedData)) {
+                    delete mappedData[k];
+                }
+            }
+            preloadedTemplateBuffer = null;
+            allRecords = [];
+            structureVisuals = [];
+            reportData = {};
+            mappedData = {};
         }
     };
 
