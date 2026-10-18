@@ -92,11 +92,13 @@ export default function ExecutiveSummaryPage() {
         percent: number;
         title: string;
         status: string;
+        detail?: string;
     }>({
         isOpen: false,
         percent: 0,
         title: "",
         status: "",
+        detail: "",
     });
 
     // Fetch context data
@@ -495,9 +497,10 @@ export default function ExecutiveSummaryPage() {
         setIsGenerating(true);
         setExportProgress({
             isOpen: true,
-            percent: 5,
+            percent: 3,
             title: `Generating ${reportType === "preliminary" ? "Preliminary" : "Final"} Executive Summary`,
-            status: "Initializing report configuration and templates...",
+            status: "Initializing export configuration...",
+            detail: `Structure: ${str?.str_name || "N/A"} | Job Pack: ${jp?.name || "N/A"}`
         });
 
         let preloadedTemplateBuffer: ArrayBuffer | null = null;
@@ -510,8 +513,9 @@ export default function ExecutiveSummaryPage() {
             // Step 1: Preload template early to inspect required tags and eliminate duplicate download
             setExportProgress(prev => ({
                 ...prev,
-                percent: 10,
+                percent: 8,
                 status: "Analyzing document template structure...",
+                detail: `Inspecting ${template.name || "template"} tags...`
             }));
 
             const activeTemplateTags = new Set<string>();
@@ -536,6 +540,47 @@ export default function ExecutiveSummaryPage() {
                             activeTemplateTags.add(m[1].toUpperCase());
                         }
                     }
+                    let detectedParentPrefix = "1";
+                    try {
+                        const docFile = zip.file("word/document.xml");
+                        if (docFile) {
+                            const docXml = docFile.asText();
+                            // 1. Check for explicit tag like {PARENT_SECTION_NO: 2}, {SECTION_NO: 2}, {CHAPTER_NO: 2}, {PARENT_NO: 2}
+                            const explicitMatch = docXml.match(/\{(?:PARENT_SECTION_NO|SECTION_NO|CHAPTER_NO|PARENT_NO|SECTION_PREFIX)\s*[:=]\s*(\d+(?:\.\d+)*)\}/i);
+                            if (explicitMatch) {
+                                detectedParentPrefix = explicitMatch[1];
+                            } else {
+                                // 2. Scan the paragraph immediately preceding {#SECTIONS} or {SECTIONS}
+                                const sectionsPos = docXml.search(/\{#?SECTIONS\}/i);
+                                if (sectionsPos !== -1) {
+                                    const textBefore = docXml.substring(0, sectionsPos);
+                                    const pMatches = Array.from(textBefore.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi));
+                                    if (pMatches.length > 0) {
+                                        for (let i = pMatches.length - 1; i >= Math.max(0, pMatches.length - 5); i--) {
+                                            const rawPContent = pMatches[i][1];
+                                            const cleanText = rawPContent.replace(/<[^>]+>/g, "").trim();
+                                            if (!cleanText) continue;
+                                            const numMatch = cleanText.match(/^(\d+(?:\.\d+)*)\.?\s+/i) || cleanText.match(/^(?:Section|Chapter)\s+(\d+(?:\.\d+)*)/i);
+                                            if (numMatch) {
+                                                detectedParentPrefix = numMatch[1];
+                                                console.log(`[ExecutiveSummary] Auto-detected parent section number from template: ${detectedParentPrefix} (from "${cleanText}")`);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (detectErr) {
+                        console.warn("[ExecutiveSummary] Could not auto-detect parent section number:", detectErr);
+                    }
+                    (template as any)._detectedParentPrefix = detectedParentPrefix;
+                    setExportProgress(prev => ({
+                        ...prev,
+                        percent: 14,
+                        status: `Template analyzed (${activeTemplateTags.size} tags detected, parent section: ${detectedParentPrefix})`,
+                        detail: `Found ${activeTemplateTags.size} dynamic tags in DOCX template`
+                    }));
                 }
             } catch (tErr) {
                 console.warn("[ExecutiveSummary] Could not preload/analyze template tags:", tErr);
@@ -543,14 +588,18 @@ export default function ExecutiveSummaryPage() {
 
             const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             
+            const activeParentPrefix = (template as any)?._detectedParentPrefix || "1";
+
             const sections = EXECUTIVE_SUMMARY_TOC.map((s, idx) => {
                 const isIntro = s.id === "intro" || idx === 0;
-                const pNo = `1.${idx + 1}`;
+                const pNo = `${activeParentPrefix}.${idx + 1}`;
                 const sectionData: any = {
                     id: s.id,
                     title: s.title,
                     content: sectionsData[s.id] || "",
                     no: idx + 1,
+                    parent_no: activeParentPrefix,
+                    PARENT_NO: activeParentPrefix,
                     paragraph_no: pNo,
                     PARAGRAPH_NO: pNo,
                     sub_paragraph_no_1: `${pNo}.1`,
@@ -607,8 +656,9 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 20,
+                percent: 18,
                 status: "Fetching report aliases and contractor profiles...",
+                detail: "Loading report configurations"
             }));
 
             // Fetch Aliases
@@ -646,8 +696,9 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 30,
-                status: "Fetching detailed inspection records...",
+                percent: 22,
+                status: `Querying inspection records for ${str?.str_name || "structure"}...`,
+                detail: `SOW Report No: ${selections.sowReportNo}`
             }));
 
             // Fetch Detailed Records
@@ -664,8 +715,9 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 42,
-                status: "Mapping inspection data and attachments...",
+                percent: 26,
+                status: `Retrieved ${allRecords.length} inspection records from database`,
+                detail: `Mapping records & generating sub-reports for ${allRecords.length} items...`
             }));
 
             // Map data for DOCX
@@ -676,13 +728,22 @@ export default function ExecutiveSummaryPage() {
                 str,
                 selections.sowReportNo,
                 companySettings?.data,
-                activeTemplateTags
+                activeTemplateTags,
+                (info) => {
+                    setExportProgress(prev => ({
+                        ...prev,
+                        percent: info.percent !== undefined ? info.percent : prev.percent,
+                        status: info.status || prev.status,
+                        detail: info.detail || prev.detail
+                    }));
+                }
             );
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 55,
-                status: "Processing visual documentation and graphs...",
+                percent: 70,
+                status: "Generating MGI thickness profile and Seabed survey graphs...",
+                detail: "Rendering graphs & visual documentation"
             }));
 
             // Generate MGI Graph if applicable and requested by template
@@ -788,8 +849,9 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 65,
-                status: "Fetching anomaly and defect records...",
+                percent: 74,
+                status: "Fetching anomaly and defect records from register...",
+                detail: `SOW Report: ${selections.sowReportNo}`
             }));
 
             let anomaliesResData: any[] = [];
@@ -804,6 +866,13 @@ export default function ExecutiveSummaryPage() {
             } catch (err) {
                 console.warn("Failed to fetch anomaly report API:", err);
             }
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 77,
+                status: `Retrieved ${anomaliesResData.length} anomaly and defect records`,
+                detail: "Computing priority matrices and category summaries..."
+            }));
 
             const buildAnomalyFindingsText = (item: any): string => {
                 if (!item) return "-";
@@ -2332,45 +2401,47 @@ export default function ExecutiveSummaryPage() {
                 // Sections (User-Written)
                 sections: enrichedSections,
                 SECTIONS: enrichedSections,
-                NEXT_PARAGRAPH_NO: `1.${sections.length + 1}`,
+                PARENT_SECTION_NO: activeParentPrefix,
+                PARENT_PARAGRAPH_NO: activeParentPrefix,
+                NEXT_PARAGRAPH_NO: `${activeParentPrefix}.${sections.length + 1}`,
                 NEXT_NO: sections.length + 1,
 
                 // Global Section & Sub-Paragraph Numbering
                 PARAGRAPH_NO_ANOMALY: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? sec.paragraph_no : "1.29";
+                    return sec ? sec.paragraph_no : `${activeParentPrefix}.29`;
                 })(),
                 PARAGRAPH_NO_ANOMALY_SUMMARY: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? `${sec.paragraph_no}.1` : "1.29.1";
+                    return sec ? `${sec.paragraph_no}.1` : `${activeParentPrefix}.29.1`;
                 })(),
                 PARAGRAPH_NO_SOW_STATUS: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? `${sec.paragraph_no}.2` : "1.29.2";
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.29.2`;
                 })(),
                 PARAGRAPH_NO_SOW_SUMMARY: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? `${sec.paragraph_no}.2` : "1.29.2";
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.29.2`;
                 })(),
                 PARAGRAPH_NO_ANOMALY_LIST: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? `${sec.paragraph_no}.3` : "1.29.3";
+                    return sec ? `${sec.paragraph_no}.3` : `${activeParentPrefix}.29.3`;
                 })(),
                 PARAGRAPH_NO_FINDINGS_SUMMARY: (() => {
                     const sec = sections.find((s: any) => s.id === "anomaly_finding");
-                    return sec ? `${sec.paragraph_no}.4` : "1.29.4";
+                    return sec ? `${sec.paragraph_no}.4` : `${activeParentPrefix}.29.4`;
                 })(),
                 PARAGRAPH_NO_INCOMPLETE: (() => {
                     const sec = sections.find((s: any) => s.id === "incomplete");
-                    return sec ? sec.paragraph_no : "1.30";
+                    return sec ? sec.paragraph_no : `${activeParentPrefix}.30`;
                 })(),
                 PARAGRAPH_NO_INCOMPLETE_SCOPE: (() => {
                     const sec = sections.find((s: any) => s.id === "incomplete");
-                    return sec ? `${sec.paragraph_no}.1` : "1.30.1";
+                    return sec ? `${sec.paragraph_no}.1` : `${activeParentPrefix}.30.1`;
                 })(),
                 PARAGRAPH_NO_OUTSTANDING_TASKS: (() => {
                     const sec = sections.find((s: any) => s.id === "incomplete");
-                    return sec ? `${sec.paragraph_no}.2` : "1.30.2";
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.30.2`;
                 })(),
 
                 HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
@@ -2459,22 +2530,84 @@ export default function ExecutiveSummaryPage() {
                 HAS_ANOMALIES_CAISSON_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caisson") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caisson") && isUnderwater(a)),
 
+                // ── Caisson Guard Anomalies & Findings ──
+                ANOMALIES_CAISSON_GUARD: getSubAnomalies("caissonguard"),
+                ANOMALIES_CAISSONGUARD: getSubAnomalies("caissonguard"),
                 ANOMALIES_CAISSON_GUARD_ABOVE: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSON_GUARD_UNDER: getSubAnomalies("caissonguard_sub", isUnderwater),
                 ANOMALIES_CAISSON_GUARD_ABOVE_WATER: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSON_GUARD_UNDERWATER: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSON_GUARD_TOP: getSubAnomalies("caissonguard_top", isAboveWater),
+                ANOMALIES_CAISSON_GUARD_SUB: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSON_GUARD_ROV: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_CAISSON_GUARD_DIVE: getSubAnomalies("caissonguard_sub", isDiving),
                 ANOMALIES_CAISSONGUARD_ABOVE: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSONGUARD_UNDER: getSubAnomalies("caissonguard_sub", isUnderwater),
                 ANOMALIES_CAISSONGUARD_ABOVE_WATER: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSONGUARD_UNDERWATER: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSONGUARD_TOP: getSubAnomalies("caissonguard_top", isAboveWater),
+                ANOMALIES_CAISSONGUARD_SUB: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSONGUARD_ROV: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_CAISSONGUARD_DIVE: getSubAnomalies("caissonguard_sub", isDiving),
+                ANOMALIES_RCAISSONGUARD: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_DCAISSONGUARD: getSubAnomalies("caissonguard_sub", isDiving),
+                HAS_ANOMALIES_CAISSON_GUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard")),
+                HAS_ANOMALIES_CAISSONGUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard")),
                 HAS_ANOMALIES_CAISSON_GUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isDiving(a)),
                 HAS_ANOMALIES_CAISSONGUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CAISSONGUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isDiving(a)),
+
+                FINDINGS_CAISSON_GUARD: getSubFindings("caissonguard"),
+                FINDINGS_CAISSONGUARD: getSubFindings("caissonguard"),
+                FINDINGS_CAISSON_GUARD_ABOVE: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_UNDER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_ABOVE_WATER: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_UNDERWATER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_TOP: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_SUB: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_ROV: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_CAISSON_GUARD_DIVE: getSubFindings("caissonguard_sub", isDiving),
+                FINDINGS_CAISSONGUARD_ABOVE: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_UNDER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_ABOVE_WATER: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_UNDERWATER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_TOP: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_SUB: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_ROV: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_CAISSONGUARD_DIVE: getSubFindings("caissonguard_sub", isDiving),
+                FINDINGS_RCAISSONGUARD: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_DCAISSONGUARD: getSubFindings("caissonguard_sub", isDiving),
+                HAS_FINDINGS_CAISSON_GUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard")),
+                HAS_FINDINGS_CAISSONGUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard")),
+                HAS_FINDINGS_CAISSON_GUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isROV(f)),
+                HAS_FINDINGS_CAISSON_GUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isDiving(f)),
+                HAS_FINDINGS_CAISSONGUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isROV(f)),
+                HAS_FINDINGS_CAISSONGUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isDiving(f)),
 
                 FINDINGS_CAISSON: getSubFindings("caisson"),
                 FINDINGS_CAISSON_ROV: getSubFindings("caisson", isROV),
@@ -2517,22 +2650,84 @@ export default function ExecutiveSummaryPage() {
                 HAS_ANOMALIES_CONDUCTOR_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductor") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductor") && isUnderwater(a)),
 
+                // ── Conductor Guard Anomalies & Findings ──
+                ANOMALIES_CONDUCTOR_GUARD: getSubAnomalies("conductorguard"),
+                ANOMALIES_CONDUCTORGUARD: getSubAnomalies("conductorguard"),
                 ANOMALIES_CONDUCTOR_GUARD_ABOVE: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTOR_GUARD_UNDER: getSubAnomalies("conductorguard_sub", isUnderwater),
                 ANOMALIES_CONDUCTOR_GUARD_ABOVE_WATER: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTOR_GUARD_UNDERWATER: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTOR_GUARD_TOP: getSubAnomalies("conductorguard_top", isAboveWater),
+                ANOMALIES_CONDUCTOR_GUARD_SUB: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTOR_GUARD_ROV: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_CONDUCTOR_GUARD_DIVE: getSubAnomalies("conductorguard_sub", isDiving),
                 ANOMALIES_CONDUCTORGUARD_ABOVE: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTORGUARD_UNDER: getSubAnomalies("conductorguard_sub", isUnderwater),
                 ANOMALIES_CONDUCTORGUARD_ABOVE_WATER: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTORGUARD_UNDERWATER: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTORGUARD_TOP: getSubAnomalies("conductorguard_top", isAboveWater),
+                ANOMALIES_CONDUCTORGUARD_SUB: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTORGUARD_ROV: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_CONDUCTORGUARD_DIVE: getSubAnomalies("conductorguard_sub", isDiving),
+                ANOMALIES_RCONDUCTORGUARD: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_DCONDUCTORGUARD: getSubAnomalies("conductorguard_sub", isDiving),
+                HAS_ANOMALIES_CONDUCTOR_GUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard")),
+                HAS_ANOMALIES_CONDUCTORGUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard")),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isDiving(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isDiving(a)),
+
+                FINDINGS_CONDUCTOR_GUARD: getSubFindings("conductorguard"),
+                FINDINGS_CONDUCTORGUARD: getSubFindings("conductorguard"),
+                FINDINGS_CONDUCTOR_GUARD_ABOVE: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_UNDER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_ABOVE_WATER: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_UNDERWATER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_TOP: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_SUB: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_ROV: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_CONDUCTOR_GUARD_DIVE: getSubFindings("conductorguard_sub", isDiving),
+                FINDINGS_CONDUCTORGUARD_ABOVE: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_UNDER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_ABOVE_WATER: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_UNDERWATER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_TOP: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_SUB: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_ROV: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_CONDUCTORGUARD_DIVE: getSubFindings("conductorguard_sub", isDiving),
+                FINDINGS_RCONDUCTORGUARD: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_DCONDUCTORGUARD: getSubFindings("conductorguard_sub", isDiving),
+                HAS_FINDINGS_CONDUCTOR_GUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard")),
+                HAS_FINDINGS_CONDUCTORGUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard")),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isROV(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isDiving(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isROV(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isDiving(f)),
 
                 FINDINGS_CONDUCTOR: getSubFindings("conductor"),
                 FINDINGS_CONDUCTOR_ROV: getSubFindings("conductor", isROV),
@@ -2675,45 +2870,162 @@ export default function ExecutiveSummaryPage() {
                 HAS_FINDINGS_RISERGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "riserguard") && isUnderwater(f)),
 
                 // ── Boat Bumper Anomalies & Findings ──
+                // ── Boat Bumper Anomalies & Findings ──
+                ANOMALIES_BOAT_BUMPER: getSubAnomalies("boatbumper"),
                 ANOMALIES_BOATBUMPER: getSubAnomalies("boatbumper"),
-                ANOMALIES_BOATBUMPER_ROV: getSubAnomalies("boatbumper", isROV),
-                ANOMALIES_BOATBUMPER_DIVE: getSubAnomalies("boatbumper", isDiving),
-                ANOMALIES_RBOATBUMPER: getSubAnomalies("boatbumper", isROV),
-                ANOMALIES_DBOATBUMPER: getSubAnomalies("boatbumper", isDiving),
-                ANOMALIES_BOATBUMPER_ABOVE: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_UNDER: getSubAnomalies("boatbumper", isUnderwater),
-                ANOMALIES_BOATBUMPER_ABOVE_WATER: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_UNDERWATER: getSubAnomalies("boatbumper", isUnderwater),
-                ANOMALIES_BOATBUMPER_TOP: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_SUB: getSubAnomalies("boatbumper", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOAT_BUMPER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_BOATBUMPER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOATBUMPER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_RBOATBUMPER: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_DBOATBUMPER: getSubAnomalies("boatbumper_sub", isDiving),
+                HAS_ANOMALIES_BOAT_BUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
                 HAS_ANOMALIES_BOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
-                HAS_ANOMALIES_BOATBUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isROV(a)),
-                HAS_ANOMALIES_BOATBUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isDiving(a)),
-                HAS_ANOMALIES_RBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isROV(a)),
-                HAS_ANOMALIES_DBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isDiving(a)),
-                HAS_ANOMALIES_BOATBUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
-                HAS_ANOMALIES_BOATBUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
-                HAS_ANOMALIES_BOATBUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_BOATBUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOATBUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_RBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_DBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
 
+                // Boat Bumber typo aliases
+                ANOMALIES_BOAT_BUMBER: getSubAnomalies("boatbumper"),
+                ANOMALIES_BOATBUMBER: getSubAnomalies("boatbumper"),
+                ANOMALIES_BOAT_BUMBER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOAT_BUMBER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_BOATBUMBER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOATBUMBER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                HAS_ANOMALIES_BOAT_BUMBER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
+                HAS_ANOMALIES_BOATBUMBER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
+                HAS_ANOMALIES_BOAT_BUMBER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_BOATBUMBER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOATBUMBER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+
+                FINDINGS_BOAT_BUMPER: getSubFindings("boatbumper"),
                 FINDINGS_BOATBUMPER: getSubFindings("boatbumper"),
-                FINDINGS_BOATBUMPER_ROV: getSubFindings("boatbumper", isROV),
-                FINDINGS_BOATBUMPER_DIVE: getSubFindings("boatbumper", isDiving),
-                FINDINGS_RBOATBUMPER: getSubFindings("boatbumper", isROV),
-                FINDINGS_DBOATBUMPER: getSubFindings("boatbumper", isDiving),
-                FINDINGS_BOATBUMPER_ABOVE: getSubFindings("boatbumper", isAboveWater),
-                FINDINGS_BOATBUMPER_UNDER: getSubFindings("boatbumper", isUnderwater),
-                FINDINGS_BOATBUMPER_ABOVE_WATER: getSubFindings("boatbumper", isAboveWater),
-                FINDINGS_BOATBUMPER_UNDERWATER: getSubFindings("boatbumper", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOAT_BUMPER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_BOATBUMPER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOATBUMPER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_RBOATBUMPER: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_DBOATBUMPER: getSubFindings("boatbumper_sub", isDiving),
+                HAS_FINDINGS_BOAT_BUMPER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
                 HAS_FINDINGS_BOATBUMPER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
-                HAS_FINDINGS_BOATBUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isROV(f)),
-                HAS_FINDINGS_BOATBUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isDiving(f)),
-                HAS_FINDINGS_BOATBUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isAboveWater(f)),
-                HAS_FINDINGS_BOATBUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isUnderwater(f)),
-                HAS_FINDINGS_BOATBUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isAboveWater(f)),
-                HAS_FINDINGS_BOATBUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOAT_BUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+                HAS_FINDINGS_BOATBUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOATBUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+
+                // Boat Bumber typo aliases
+                FINDINGS_BOAT_BUMBER: getSubFindings("boatbumper"),
+                FINDINGS_BOATBUMBER: getSubFindings("boatbumper"),
+                FINDINGS_BOAT_BUMBER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOAT_BUMBER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_BOATBUMBER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOATBUMBER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                HAS_FINDINGS_BOAT_BUMBER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
+                HAS_FINDINGS_BOATBUMBER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
+                HAS_FINDINGS_BOAT_BUMBER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOAT_BUMBER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+                HAS_FINDINGS_BOATBUMBER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOATBUMBER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
 
                 ANOMALIES_CP: getSubAnomalies("cp"),
                 ANOMALIES_CP_ROV: getSubAnomalies("cp", isROV),
@@ -2829,14 +3141,42 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_CAISSON_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caisson") && isROV(r)),
                 HAS_RECORDS_CAISSON_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caisson") && isDiving(r)),
 
+                RECORDS_CAISSON_GUARD: getSubRecords("caissonguard"),
+                RECORDS_CAISSONGUARD: getSubRecords("caissonguard"),
+                RECORDS_CAISSON_GUARD_ABOVE: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSON_GUARD_UNDER: getSubRecords("caissonguard_sub", isUnderwater),
                 RECORDS_CAISSON_GUARD_ABOVE_WATER: getSubRecords("caissonguard_top", isAboveWater),
                 RECORDS_CAISSON_GUARD_UNDERWATER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSON_GUARD_TOP: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSON_GUARD_SUB: getSubRecords("caissonguard_sub", isUnderwater),
                 RECORDS_CAISSON_GUARD_ROV: getSubRecords("caissonguard_sub", isROV),
                 RECORDS_CAISSON_GUARD_DIVE: getSubRecords("caissonguard_sub", isDiving),
+                RECORDS_CAISSONGUARD_ABOVE: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_UNDER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_ABOVE_WATER: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_UNDERWATER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_TOP: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_SUB: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_ROV: getSubRecords("caissonguard_sub", isROV),
+                RECORDS_CAISSONGUARD_DIVE: getSubRecords("caissonguard_sub", isDiving),
+                HAS_RECORDS_CAISSON_GUARD: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard")),
+                HAS_RECORDS_CAISSONGUARD: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard")),
+                HAS_RECORDS_CAISSON_GUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSON_GUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CAISSON_GUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
                 HAS_RECORDS_CAISSON_GUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSON_GUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSON_GUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CAISSON_GUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isROV(r)),
                 HAS_RECORDS_CAISSON_GUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isDiving(r)),
+                HAS_RECORDS_CAISSONGUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isROV(r)),
+                HAS_RECORDS_CAISSONGUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isDiving(r)),
 
                 RECORDS_BOATLANDING_ABOVE_WATER: getSubRecords("boatlanding_top", isAboveWater),
                 RECORDS_BOATLANDING_UNDERWATER: getSubRecords("boatlanding_sub", isUnderwater),
@@ -2847,14 +3187,80 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_BOATLANDING_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatlanding_sub") && isROV(r)),
                 HAS_RECORDS_BOATLANDING_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatlanding_sub") && isDiving(r)),
 
+                RECORDS_BOAT_BUMPER: getSubRecords("boatbumper"),
+                RECORDS_BOATBUMPER: getSubRecords("boatbumper"),
+                RECORDS_BOAT_BUMPER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOAT_BUMPER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                RECORDS_BOATBUMPER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMPER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
                 RECORDS_BOATBUMPER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
                 RECORDS_BOATBUMPER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMPER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMPER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
                 RECORDS_BOATBUMPER_ROV: getSubRecords("boatbumper_sub", isROV),
                 RECORDS_BOATBUMPER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                HAS_RECORDS_BOAT_BUMPER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOATBUMPER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOAT_BUMPER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOAT_BUMPER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+                HAS_RECORDS_BOATBUMPER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMPER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
                 HAS_RECORDS_BOATBUMPER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
                 HAS_RECORDS_BOATBUMPER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMPER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMPER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
                 HAS_RECORDS_BOATBUMPER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
                 HAS_RECORDS_BOATBUMPER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+
+                // Boat Bumber typo aliases
+                RECORDS_BOAT_BUMBER: getSubRecords("boatbumper"),
+                RECORDS_BOATBUMBER: getSubRecords("boatbumper"),
+                RECORDS_BOAT_BUMBER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOAT_BUMBER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                RECORDS_BOATBUMBER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOATBUMBER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                HAS_RECORDS_BOAT_BUMBER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOATBUMBER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOAT_BUMBER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOAT_BUMBER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+                HAS_RECORDS_BOATBUMBER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOATBUMBER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
 
                 RECORDS_RISERGUARD_ABOVE_WATER: getSubRecords("riserguard_top", isAboveWater),
                 RECORDS_RISERGUARD_UNDERWATER: getSubRecords("riserguard_sub", isUnderwater),
@@ -2873,14 +3279,42 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_CONDUCTOR_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductor_sub") && isUnderwater(r) && isROV(r)),
                 HAS_RECORDS_CONDUCTOR_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductor_sub") && isUnderwater(r) && isDiving(r)),
 
+                RECORDS_CONDUCTOR_GUARD: getSubRecords("conductorguard"),
+                RECORDS_CONDUCTORGUARD: getSubRecords("conductorguard"),
+                RECORDS_CONDUCTOR_GUARD_ABOVE: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTOR_GUARD_UNDER: getSubRecords("conductorguard_sub", isUnderwater),
                 RECORDS_CONDUCTOR_GUARD_ABOVE_WATER: getSubRecords("conductorguard_top", isAboveWater),
                 RECORDS_CONDUCTOR_GUARD_UNDERWATER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTOR_GUARD_TOP: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTOR_GUARD_SUB: getSubRecords("conductorguard_sub", isUnderwater),
                 RECORDS_CONDUCTOR_GUARD_ROV: getSubRecords("conductorguard_sub", isROV),
                 RECORDS_CONDUCTOR_GUARD_DIVE: getSubRecords("conductorguard_sub", isDiving),
+                RECORDS_CONDUCTORGUARD_ABOVE: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_UNDER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_ABOVE_WATER: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_UNDERWATER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_TOP: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_SUB: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_ROV: getSubRecords("conductorguard_sub", isROV),
+                RECORDS_CONDUCTORGUARD_DIVE: getSubRecords("conductorguard_sub", isDiving),
+                HAS_RECORDS_CONDUCTOR_GUARD: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard")),
+                HAS_RECORDS_CONDUCTORGUARD: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard")),
+                HAS_RECORDS_CONDUCTOR_GUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isROV(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isDiving(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isROV(r)),
+                HAS_RECORDS_CONDUCTORGUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isDiving(r)),
 
                 RECORDS_RISER_ABOVE_WATER: getSubRecords("riser", isAboveWater),
                 RECORDS_RISER_UNDERWATER: getSubRecords("riser", isUnderwater),
@@ -2950,8 +3384,9 @@ export default function ExecutiveSummaryPage() {
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 78,
-                status: "Compiling executive summary tables and metrics...",
+                percent: 79,
+                status: "Compiling executive summary tables, metrics, and loop bindings...",
+                detail: "Finalizing data structures for Word template"
             }));
 
             const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
@@ -2963,10 +3398,19 @@ export default function ExecutiveSummaryPage() {
                 logoUrl: companySettings?.data?.logo_url,
                 contractorLogoUrl: activeContractor?.logo_url,
                 onProgress: (percent, statusText) => {
+                    let detail = "Preparing final Word document";
+                    if (percent >= 80 && percent < 93) {
+                        detail = "Embedding media, photos & sub-report pages";
+                    } else if (percent >= 93 && percent < 98) {
+                        detail = "Compiling document layout & tables";
+                    } else if (percent >= 98) {
+                        detail = "Compressing archive & initiating download";
+                    }
                     setExportProgress(prev => ({
                         ...prev,
                         percent,
                         status: statusText,
+                        detail
                     }));
                 },
             });
@@ -3607,7 +4051,7 @@ export default function ExecutiveSummaryPage() {
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-md border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl p-6">
+                <DialogContent className="sm:max-w-lg border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl p-6">
                     <DialogHeader className="space-y-2">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary animate-pulse">
@@ -3629,7 +4073,7 @@ export default function ExecutiveSummaryPage() {
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-medium text-foreground flex items-center gap-2">
                                     <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                                    <span className="truncate max-w-[280px]">{exportProgress.status || "Building file..."}</span>
+                                    <span className="truncate max-w-[340px]" title={exportProgress.status}>{exportProgress.status || "Building file..."}</span>
                                 </span>
                                 <Badge variant="secondary" className="font-mono text-xs font-semibold px-2 py-0.5">
                                     {Math.round(exportProgress.percent)}%
@@ -3639,6 +4083,12 @@ export default function ExecutiveSummaryPage() {
                                 value={exportProgress.percent} 
                                 className="h-2.5 w-full transition-all duration-300 bg-secondary/80" 
                             />
+                            {exportProgress.detail && (
+                                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 pl-0.5 pt-0.5">
+                                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/70 animate-ping" />
+                                    <span className="truncate">{exportProgress.detail}</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">

@@ -151,39 +151,53 @@ export const SECTION_COMPONENT_FILTERS: Record<string, {
 
     // ── Boat Bumper Sections ──
     boatbumper: {
-        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "FD", "FENDER"],
+        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "BOAT_BUMBER", "BOATBUMBER", "FD", "FENDER"],
         includeQidPrefixes: ["BB"],
-        includeInspTypes: ["BUMPER", "FENDER"]
+        includeInspTypes: ["BUMPER", "FENDER", "BUMBER", "BOAT BUMPER", "BOAT BUMBER"]
     },
     boatbumper_top: {
-        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "FD", "FENDER"],
+        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "BOAT_BUMBER", "BOATBUMBER", "FD", "FENDER"],
         includeQidPrefixes: ["BB"],
-        includeInspTypes: ["BUMPER", "FENDER"]
+        includeInspTypes: ["BUMPER", "FENDER", "BUMBER", "BOAT BUMPER", "BOAT BUMBER"]
     },
     boatbumper_sub: {
-        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "FD", "FENDER"],
+        includeCodes: ["BB", "BOAT_BUMPER", "BOATBUMPER", "BOAT_BUMBER", "BOATBUMBER", "FD", "FENDER"],
         includeQidPrefixes: ["BB"],
-        includeInspTypes: ["BUMPER", "FENDER"]
+        includeInspTypes: ["BUMPER", "FENDER", "BUMBER", "BOAT BUMPER", "BOAT BUMBER"]
     },
 
     // ── Conductor Guard Sections ──
-    conductorguard_sub: {
-        includeCodes: ["CG", "CU", "CF"],
-        includeQidPrefixes: ["CG", "CU"]
+    conductorguard: {
+        includeCodes: ["CG", "CU", "CF", "RCDG", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "CDG"],
+        includeQidPrefixes: ["CG", "CU", "CDG", "RCDG"],
+        includeInspTypes: ["CONDUCTOR GUARD", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "GUARD"]
     },
     conductorguard_top: {
-        includeCodes: ["CG", "CU", "CF"],
-        includeQidPrefixes: ["CG", "CU"]
+        includeCodes: ["CG", "CU", "CF", "RCDG", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "CDG"],
+        includeQidPrefixes: ["CG", "CU", "CDG", "RCDG"],
+        includeInspTypes: ["CONDUCTOR GUARD", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "GUARD"]
+    },
+    conductorguard_sub: {
+        includeCodes: ["CG", "CU", "CF", "RCDG", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "CDG"],
+        includeQidPrefixes: ["CG", "CU", "CDG", "RCDG"],
+        includeInspTypes: ["CONDUCTOR GUARD", "CONDUCTOR_GUARD", "CONDUCTORGUARD", "GUARD"]
     },
 
     // ── Caisson Guard Sections ──
-    caissonguard_sub: {
-        includeCodes: ["SG", "CB"],
-        includeQidPrefixes: ["SG"]
+    caissonguard: {
+        includeCodes: ["SG", "CB", "RCG", "CAISSON_GUARD", "CAISSONGUARD", "CSG"],
+        includeQidPrefixes: ["SG", "RCG", "CSG"],
+        includeInspTypes: ["CAISSON GUARD", "CAISSON_GUARD", "CAISSONGUARD", "GUARD"]
     },
     caissonguard_top: {
-        includeCodes: ["SG", "CB"],
-        includeQidPrefixes: ["SG"]
+        includeCodes: ["SG", "CB", "RCG", "CAISSON_GUARD", "CAISSONGUARD", "CSG"],
+        includeQidPrefixes: ["SG", "RCG", "CSG"],
+        includeInspTypes: ["CAISSON GUARD", "CAISSON_GUARD", "CAISSONGUARD", "GUARD"]
+    },
+    caissonguard_sub: {
+        includeCodes: ["SG", "CB", "RCG", "CAISSON_GUARD", "CAISSONGUARD", "CSG"],
+        includeQidPrefixes: ["SG", "RCG", "CSG"],
+        includeInspTypes: ["CAISSON GUARD", "CAISSON_GUARD", "CAISSONGUARD", "GUARD"]
     },
 
     // ── Cathodic Potential (CP) Survey Section (Strictly CP potential / survey anomalies) ──

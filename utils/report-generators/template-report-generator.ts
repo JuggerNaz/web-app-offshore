@@ -116,10 +116,12 @@ export function normalizeDelimiters(zip: PizZip) {
                 content = content.replace(/\{([#/\%^!?$@]?)FINDING_(?!(?:SUMMARY|STAT))([A-Za-z0-9_]+)\}/g, "{$1FINDINGS_$2}");
                 content = content.replace(/\{([#/\%^!?$@]?)ANOMALY_(?!(?:SUMMARY|STAT))([A-Za-z0-9_]+)\}/g, "{$1ANOMALIES_$2}");
 
-                // 4. Fix caisson guard aliases
+                // 4. Fix caisson guard and boat bumper aliases
                 content = content.replace(/\{([#/\%^!?$@]?)HAS_FINDINGS_CAISSON_GUARD_ABOVE_UNDERWATER\}/g, "{$1HAS_FINDINGS_CAISSON_GUARD_UNDERWATER}");
                 content = content.replace(/\{([#/\%^!?$@]?)ANOMALIES_DCAISSONGUARD([A-Za-z0-9_]*)\}/g, "{$1ANOMALIES_CAISSON_GUARD_UNDERWATER$2}");
                 content = content.replace(/\{([#/\%^!?$@]?)FINDINGS_DCAISSONGUARD([A-Za-z0-9_]*)\}/g, "{$1FINDINGS_CAISSON_GUARD_UNDERWATER$2}");
+                content = content.replace(/\{([#/\%^!?$@]?)([A-Za-z0-9_]*)BOAT_BUMBER([A-Za-z0-9_]*)\}/g, "{$1$2BOAT_BUMPER$3}");
+                content = content.replace(/\{([#/\%^!?$@]?)([A-Za-z0-9_]*)BOATBUMBER([A-Za-z0-9_]*)\}/g, "{$1$2BOATBUMPER$3}");
 
                 return `${openTag}${content}${closeTag}`;
             });
@@ -129,6 +131,48 @@ export function normalizeDelimiters(zip: PizZip) {
             text = text.replace(/\{\^([A-Za-z0-9_]+_PAGES)\}([\s\S]*?)\{\/\1\}/g, '{#NO_$1}$2{/NO_$1}');
             text = text.replace(/\{\^HAS_([A-Za-z0-9_]+)\}([\s\S]*?)\{\/HAS_\1\}/g, '{#NO_$1}$2{/NO_$1}');
             text = text.replace(/\{\^([A-Za-z0-9_]+)\}([\s\S]*?)\{\/\1\}/g, '{#NO_$1}$2{/NO_$1}');
+
+            // 6. Auto-center and clear inherited indents on full-page report image paragraphs (e.g. {%page_image}, {%PAGE_IMAGE}, {%%...})
+            text = text.replace(/(<w:p\b[^>]*>)([\s\S]*?)(<\/w:p>)/g, (fullPara, pOpen, pBody, pClose) => {
+                const hasPageImageTag = /\{[%]{1,2}(?:page_image|PAGE_IMAGE|MGI_GRAPH)[^}]*\}/i.test(pBody);
+                const hasDoublePercent = /\{%%[^{}]+\}/.test(pBody);
+
+                if (!hasPageImageTag && !hasDoublePercent) return fullPara;
+
+                let updatedBody = pBody;
+
+                // Normalize {%%tag} to {%tag} to prevent invalid nested <w:p> tags from image module
+                if (hasDoublePercent) {
+                    updatedBody = updatedBody.replace(/\{%%([^{}]+)\}/g, "{%$1}");
+                }
+
+                // Check for existing <w:pPr>
+                if (/<w:pPr\b[^>]*>[\s\S]*?<\/w:pPr>/i.test(updatedBody)) {
+                    updatedBody = updatedBody.replace(/(<w:pPr\b[^>]*>)([\s\S]*?)(<\/w:pPr>)/i, (_pPrMatch, pPrOpen, pPrBody, pPrClose) => {
+                        let newPPrBody = pPrBody;
+
+                        // Set horizontal alignment to center
+                        if (/<w:jc\b[^>]*\/?>/i.test(newPPrBody)) {
+                            newPPrBody = newPPrBody.replace(/<w:jc\b[^>]*\/?>/i, '<w:jc w:val="center"/>');
+                        } else {
+                            newPPrBody += '<w:jc w:val="center"/>';
+                        }
+
+                        // Reset any left/hanging indents (e.g., inherited from numbered headings like 1.1.1)
+                        if (/<w:ind\b[^>]*\/?>/i.test(newPPrBody)) {
+                            newPPrBody = newPPrBody.replace(/<w:ind\b[^>]*\/?>/i, '<w:ind w:left="0" w:right="0" w:firstLine="0" w:hanging="0"/>');
+                        } else {
+                            newPPrBody += '<w:ind w:left="0" w:right="0" w:firstLine="0" w:hanging="0"/>';
+                        }
+
+                        return `${pPrOpen}${newPPrBody}${pPrClose}`;
+                    });
+                } else {
+                    updatedBody = `<w:pPr><w:jc w:val="center"/><w:ind w:left="0" w:right="0" w:firstLine="0" w:hanging="0"/></w:pPr>${updatedBody}`;
+                }
+
+                return `${pOpen}${updatedBody}${pClose}`;
+            });
 
             zip.file(relativePath, text);
         }
@@ -535,7 +579,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         const resolvedContractorLogoUrl = contractorLogoUrl || data?.CONTRACTOR_LOGO_URL || data?.contractor_logo_url || (typeof data?.CONTRACTOR_LOGO === "string" && data.CONTRACTOR_LOGO.startsWith("http") ? data.CONTRACTOR_LOGO : null);
         if (resolvedContractorLogoUrl) {
             try {
-                onProgress?.(86, "Loading contractor logo...");
+                onProgress?.(80, "Pre-loading contractor logo...");
                 console.log(`[ReportGen] Fetching contractor logo: ${resolvedContractorLogoUrl}`);
                 const clRes = await fetch(resolvedContractorLogoUrl);
                 if (clRes.ok) {
@@ -549,7 +593,30 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         }
 
         // ── Image cache (tagValue → Uint8Array) ─────────────────
-        onProgress?.(88, "Processing embedded media and charts...");
+        let totalImagesToProcess = 0;
+        for (const [key, value] of Object.entries(data)) {
+            const upperKey = key.toUpperCase();
+            if (["CLIENT_LOGO", "COMPANY_LOGO", "LOGO", "CONTRACTOR_LOGO"].includes(upperKey)) continue;
+            if (typeof value === "object" && value !== null && (value as any).data && (value as any).extension) {
+                totalImagesToProcess++;
+            } else if (Array.isArray(value)) {
+                for (const item of value) {
+                    if (typeof item === "object" && item !== null) {
+                        for (const v of Object.values(item)) {
+                            if (typeof v === "object" && v !== null && (v as any).data && (v as any).extension) {
+                                totalImagesToProcess++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        onProgress?.(82, totalImagesToProcess > 0
+            ? `Scanning embedded media, charts & report pages (${totalImagesToProcess} items)...`
+            : "Processing embedded media and charts..."
+        );
+
         if (logoBytes) {
             imageCache["CLIENT_LOGO"] = logoBytes;
             imageCache["client_logo"] = logoBytes;
@@ -633,6 +700,15 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         };
 
         let imageCounter = 0;
+        let processedImagesCount = 0;
+        const notifyImageProgress = () => {
+            processedImagesCount++;
+            if (totalImagesToProcess > 0) {
+                const pct = Math.min(92, Math.round(82 + (processedImagesCount / totalImagesToProcess) * 10));
+                onProgress?.(pct, `Embedding report media & pages (${processedImagesCount}/${totalImagesToProcess})...`);
+            }
+        };
+
         for (const [key, value] of Object.entries(data)) {
             const upperKey = key.toUpperCase();
             // Reuse pre-fetched logo bytes without redundant network calls
@@ -654,6 +730,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
                 } else if (typeof imgObj.data === "string") {
                     bytes = await fetchImageBytes(imgObj.data);
                 }
+                notifyImageProgress();
                 if (bytes) {
                     const dims = getImageDimensions(bytes);
                     if (dims && dims[0] > dims[1] && (key.toUpperCase().includes("PAGE_IMAGE") || (imgObj as any)?.rotate)) {
@@ -682,6 +759,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
                                 } else if (typeof imgObj.data === "string") {
                                     bytes = await fetchImageBytes(imgObj.data);
                                 }
+                                notifyImageProgress();
                                 if (bytes) {
                                     const dims = getImageDimensions(bytes);
                                     if (dims && dims[0] > dims[1] && (k.toUpperCase().includes("PAGE_IMAGE") || (item as any)?.is_landscape || (imgObj as any)?.rotate)) {
@@ -735,7 +813,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         finalData["client_short"] = finalData["CLIENT_SHORT"] || "";
         finalData["client_name"] = finalData["CLIENT_NAME"] || "";
 
-        onProgress?.(92, "Sanitizing template and compiling Word document...");
+        onProgress?.(93, "Compiling Word document and binding XML tags...");
         // ── Build and render ─────────────────────────────────────
         const zip = new PizZip(content);
         normalizeDelimiters(zip);
@@ -795,7 +873,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         });
         doc.setData(finalData);
 
-        onProgress?.(96, "Rendering document tables and pages...");
+        onProgress?.(96, "Rendering document tables, loop blocks, and pagination...");
         try {
             doc.render();
             console.log("[ReportGen] Render succeeded with image module.");
@@ -818,25 +896,25 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             doc2.setData(textData);
             doc2.render();
 
-            onProgress?.(99, "Generating final file...");
+            onProgress?.(98, "Generating final file...");
             const out2 = doc2.getZip().generate({
                 type: "blob",
                 mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             });
             saveAs(out2, fileName.endsWith(".docx") ? fileName : `${fileName}.docx`);
             console.log("[ReportGen] Saved text-only fallback.");
-            onProgress?.(100, "Done!");
+            onProgress?.(100, "Done! Report downloaded.");
             return;
         }
 
-        onProgress?.(99, "Generating final DOCX file...");
+        onProgress?.(98, "Generating and compressing final DOCX file...");
         const out = doc.getZip().generate({
             type: "blob",
             mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         });
         saveAs(out, fileName.endsWith(".docx") ? fileName : `${fileName}.docx`);
         console.log("[ReportGen] Saved with logo.");
-        onProgress?.(100, "Done!");
+        onProgress?.(100, "Report generated successfully! Starting download...");
 
     } catch (error: any) {
         if (error.properties?.errors instanceof Array) {

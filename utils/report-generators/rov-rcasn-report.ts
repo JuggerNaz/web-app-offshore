@@ -82,7 +82,10 @@ export const generateROVCasnReport = async (
         }
 
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        const { data: allComps } = effectiveStructureId 
+            ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
+            : { data: null };
         
         const HEADER_H = 26;
 

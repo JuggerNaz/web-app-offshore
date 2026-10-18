@@ -202,6 +202,27 @@ To paste any sub-report into your Final Document template, insert a page loop:
 | **Diving UT Thickness (UTWTK)**| `diving-utwtk-report` | `{#UTWTK_PAGES}` | `{#HAS_UTWTK_PAGES}` | `{#NO_UTWTK_PAGES}` |
 | **Diving Pipeline Crossing** | `diving-plco-report` | `{#PLCO_PAGES}` | `{#HAS_PLCO_PAGES}` | `{#NO_PLCO_PAGES}` |
 
+### 4.1 How to Center Report Images Horizontally on the Page
+
+When embedding sub-report pages (such as `Platform Specifications`, `RGVI`, `Diver Log`, `Anode`, or `Defect Reports`) via `{%page_image}`, the image is embedded as an **inline drawing**. Its horizontal position is directly governed by the paragraph formatting in your Word template:
+
+1. **Center Align the Tag in Word**:
+   - Highlight the line containing `{%page_image}` in your `.docx` template.
+   - Press **`Ctrl + E`** (or click the **Center** alignment button on the **Home** tab ribbon).
+2. **Clear Inherited Left / Hanging Indents**:
+   - If you press `Enter` directly after a numbered section heading (e.g. `1.1.1 Structure Details`), Word automatically applies a **Left Indent** (typically `1.27 cm` / `0.5 in`).
+   - If this indent remains, the image will start indented and appear shifted to the right or left.
+   - **Fix**: Open the **Paragraph** settings in Word (right-click the paragraph → *Paragraph...*) and set:
+     - **Indentation Left**: `0 cm`
+     - **Indentation Right**: `0 cm`
+     - **Special**: `(none)`
+     - **Alignment**: `Centered`
+3. **Template Margins & Auto-Fit**:
+   - Sub-report page images are rendered at `680 × 800` px (approx. `18.0 cm` wide).
+   - Setting your page margins to **1.5 cm** (or 0.6–0.75 in) allows full-page report images to span symmetrically from margin to margin.
+4. **Engine Auto-Centering Protection**:
+   - The document generation engine automatically detects `{%page_image}` and ensures `<w:jc w:val="center"/>` is enforced with zero left indent (`<w:ind w:left="0"/>`), guaranteeing consistent horizontal centering across all sections.
+
 ---
 
 ## 5. Scope of Work (SOW) Status & Task Breakdown
@@ -297,10 +318,12 @@ Loop through `{#SOW_SUMMARY}` to print the campaign work scope completion regist
 |---|---|---|---|---|---|
 | **GVI (Structure)** | `{#ANOMALIES_GVI}` | `{#ANOMALIES_GVI_ROV}` | `{#ANOMALIES_GVI_DIVE}` | `{#ANOMALIES_GVI_ABOVE}` | `{#ANOMALIES_GVI_UNDER}` |
 | **Caissons** | `{#ANOMALIES_CAISSON}` | `{#ANOMALIES_CAISSON_ROV}` | `{#ANOMALIES_CAISSON_DIVE}` | `{#ANOMALIES_CAISSON_TOP}` | `{#ANOMALIES_CAISSON_SUB}` |
+| **Caisson Guard** | `{#ANOMALIES_CAISSON_GUARD}` | `{#ANOMALIES_CAISSON_GUARD_ROV}` | `{#ANOMALIES_CAISSON_GUARD_DIVE}` | `{#ANOMALIES_CAISSON_GUARD_ABOVE}` | `{#ANOMALIES_CAISSON_GUARD_UNDER}` |
 | **Conductors** | `{#ANOMALIES_CONDUCTOR}` | `{#ANOMALIES_CONDUCTOR_ROV}` | `{#ANOMALIES_CONDUCTOR_DIVE}` | `{#ANOMALIES_CONDUCTOR_TOP}` | `{#ANOMALIES_CONDUCTOR_SUB}` |
+| **Conductor Guard** | `{#ANOMALIES_CONDUCTOR_GUARD}` | `{#ANOMALIES_CONDUCTOR_GUARD_ROV}` | `{#ANOMALIES_CONDUCTOR_GUARD_DIVE}` | `{#ANOMALIES_CONDUCTOR_GUARD_ABOVE}` | `{#ANOMALIES_CONDUCTOR_GUARD_UNDER}` |
 | **Risers** | `{#ANOMALIES_RISER}` | `{#ANOMALIES_RISER_ROV}` | `{#ANOMALIES_RISER_DIVE}` | `{#ANOMALIES_RISER_TOP}` | `{#ANOMALIES_RISER_SUB}` |
 | **Boat Landing** | `{#ANOMALIES_BL}` | `{#ANOMALIES_BL_ROV}` | `{#ANOMALIES_BL_DIVE}` | `{#ANOMALIES_BL_TOP}` | `{#ANOMALIES_BL_SUB}` |
-| **Boat Bumper** | `{#ANOMALIES_BOATBUMPER}` | `{#ANOMALIES_BOATBUMPER_ROV}` | `{#ANOMALIES_BOATBUMPER_DIVE}` | `{#ANOMALIES_BOATBUMPER_TOP}` | `{#ANOMALIES_BOATBUMPER_SUB}` |
+| **Boat Bumper (Bumber)** | `{#ANOMALIES_BOAT_BUMPER}` | `{#ANOMALIES_BOAT_BUMPER_ROV}` | `{#ANOMALIES_BOAT_BUMPER_DIVE}` | `{#ANOMALIES_BOAT_BUMPER_ABOVE}` | `{#ANOMALIES_BOAT_BUMPER_UNDER}` |
 | **Riser Guard** | `{#ANOMALIES_RISERGUARD}` | `{#ANOMALIES_RISERGUARD_ROV}` | `{#ANOMALIES_RISERGUARD_DIVE}` | `{#ANOMALIES_RISERGUARD_TOP}` | `{#ANOMALIES_RISERGUARD_SUB}` |
 | **CP Survey** | `{#ANOMALIES_CP}` | `{#ANOMALIES_CP_ROV}` | `{#ANOMALIES_CP_DIVE}` | — | `{#ANOMALIES_CP}` |
 | **FMD Survey** | `{#ANOMALIES_FMD}` | `{#ANOMALIES_FMD_ROV}` | `{#ANOMALIES_FMD_DIVE}` | — | `{#ANOMALIES_FMD}` |
@@ -310,6 +333,13 @@ Loop through `{#SOW_SUMMARY}` to print the campaign work scope completion regist
 | **Splash Zone** | `{#ANOMALIES_SPLASHZONE}`| — | `{#ANOMALIES_SPLASHZONE}`| `{#ANOMALIES_SPLASHZONE}` | — |
 | **Anodes** | `{#ANOMALIES_ANODE}` | `{#ANOMALIES_ANODE}` | `{#ANOMALIES_ANODE}` | — | `{#ANOMALIES_ANODE}` |
 | **Nodes (CVI/MPI)** | `{#ANOMALIES_NODE}` | `{#ANOMALIES_NODE}` | `{#ANOMALIES_NODE}` | — | `{#ANOMALIES_NODE}` |
+
+> [!TIP]
+> **Aliases & Typo Support**:
+> - For Above Water, `_ABOVE`, `_TOP`, and `_ABOVE_WATER` are interchangeable.
+> - For Underwater, `_UNDER`, `_SUB`, and `_UNDERWATER` are interchangeable.
+> - `BOAT_BUMPER` and `BOATBUMPER` can also be written as `BOAT_BUMBER` or `BOATBUMBER`.
+> - Replace `ANOMALIES_` with `FINDINGS_` for findings loops (e.g. `{#FINDINGS_CONDUCTOR_GUARD_ABOVE}`, `{#FINDINGS_CAISSON_GUARD_UNDER}`, `{#FINDINGS_BOAT_BUMPER_UNDER}`).
 
 ### 7.5 Defect & Code Filter Tags
 Filter anomalies directly by defect classification or component code:
@@ -336,6 +366,12 @@ When raw tabular records are needed without full-page PDF images:
 | **GVI (All)** | `{#RECORDS_GVI}` | `{#HAS_RECORDS_GVI}` | `{#NO_RECORDS_GVI}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
 | **GVI (ROV)** | `{#RECORDS_GVI_ROV}` | `{#HAS_RECORDS_GVI_ROV}` | `{#NO_RECORDS_GVI_ROV}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
 | **GVI (Diver)** | `{#RECORDS_GVI_DIVE}` | `{#HAS_RECORDS_GVI_DIVE}` | `{#NO_RECORDS_GVI_DIVE}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Conductor Guard (Above)** | `{#RECORDS_CONDUCTOR_GUARD_ABOVE}` | `{#HAS_RECORDS_CONDUCTOR_GUARD_ABOVE}` | `{#NO_RECORDS_CONDUCTOR_GUARD_ABOVE}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Conductor Guard (Under)** | `{#RECORDS_CONDUCTOR_GUARD_UNDER}` | `{#HAS_RECORDS_CONDUCTOR_GUARD_UNDER}` | `{#NO_RECORDS_CONDUCTOR_GUARD_UNDER}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Caisson Guard (Above)** | `{#RECORDS_CAISSON_GUARD_ABOVE}` | `{#HAS_RECORDS_CAISSON_GUARD_ABOVE}` | `{#NO_RECORDS_CAISSON_GUARD_ABOVE}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Caisson Guard (Under)** | `{#RECORDS_CAISSON_GUARD_UNDER}` | `{#HAS_RECORDS_CAISSON_GUARD_UNDER}` | `{#NO_RECORDS_CAISSON_GUARD_UNDER}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Boat Bumper (Above)** | `{#RECORDS_BOAT_BUMPER_ABOVE}` | `{#HAS_RECORDS_BOAT_BUMPER_ABOVE}` | `{#NO_RECORDS_BOAT_BUMPER_ABOVE}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
+| **Boat Bumper (Under)** | `{#RECORDS_BOAT_BUMPER_UNDER}` | `{#HAS_RECORDS_BOAT_BUMPER_UNDER}` | `{#NO_RECORDS_BOAT_BUMPER_UNDER}` | `{no}`, `{qid}`, `{elevation}`, `{description}` |
 | **CP (ROV)** | `{#RECORDS_CP_ROV}` | `{#HAS_RECORDS_CP_ROV}` | `{#NO_RECORDS_CP_ROV}` | `{no}`, `{qid}`, `{elevation}`, `{cp_reading}`, `{status}` |
 | **CP (Diver)** | `{#RECORDS_CP_DIVE}` | `{#HAS_RECORDS_CP_DIVE}` | `{#NO_RECORDS_CP_DIVE}` | `{no}`, `{qid}`, `{elevation}`, `{cp_reading}`, `{status}` |
 | **FMD (General)**| `{#RECORDS_FMD}` | `{#HAS_RECORDS_FMD}` | `{#NO_RECORDS_FMD}` | `{no}`, `{qid}`, `{elevation}`, `{fmd_result}`, `{signal}` |
@@ -389,22 +425,36 @@ Insert these image tags directly into your document template:
 
 ## 11. Table of Contents & Dynamic Paragraph Numbering
 
-Use dynamic paragraph numbers in section titles to keep numbering aligned even when sections are reordered:
+Use dynamic paragraph numbers in section titles to keep numbering aligned even when sections are reordered or nested under a parent chapter:
 
-| Tag Name | Value Example | Description |
+### 11.1 Parent Section Numbering (e.g. Chapter 2: Executive Summary)
+
+When the Executive Summary is placed inside a Final Document as Section/Chapter 2 (`2.   EXECUTIVE SUMMARY`), paragraph numbers automatically match the parent chapter:
+
+1. **Auto-Detection**: The engine scans the heading immediately before `{#SECTIONS}`. If it finds `2.   EXECUTIVE SUMMARY` (or `3.`, `2.0`, `Section 2`), it automatically prefixes all subsections with `2.` (`2.1`, `2.2`, `2.3`...).
+2. **Inside `{#SECTIONS}` Loop**:
+   - `{paragraph_no}` / `{PARAGRAPH_NO}` : Outputs `2.1`, `2.2`, `2.3` (automatically matching parent `2.`).
+   - `{parent_no}` / `{PARENT_NO}` : The parent number (`2`).
+   - `{no}` : Sequential item integer (`1`, `2`, `3`). You can also write `{parent_no}.{no}` or `2.{no}` directly in Word.
+3. **Explicit Override**: You can also place an optional tag anywhere in the template: `{PARENT_SECTION_NO: 2}`.
+
+| Tag Name | Value Example (Parent = 2) | Description |
 |---|---|---|
-| `{PARAGRAPH_NO}` | `1.5` | Current section main paragraph number |
-| `{PARAGRAPH_NO_1}` | `1.5.1` | Sub-paragraph 1 |
-| `{PARAGRAPH_NO_2}` | `1.5.2` | Sub-paragraph 2 |
-| `{PARAGRAPH_NO_3}` | `1.5.3` | Sub-paragraph 3 |
-| `{PARAGRAPH_NO_4}` | `1.5.4` | Sub-paragraph 4 |
-| `{PARAGRAPH_NO_5}` | `1.5.5` | Sub-paragraph 5 |
-| `{PARAGRAPH_NO_ANOMALY_SUMMARY}` | `1.30.1` | Anomaly summary sub-heading |
-| `{PARAGRAPH_NO_SOW_STATUS}` | `1.30.2` | Scope status sub-heading |
-| `{PARAGRAPH_NO_ANOMALY_LIST}` | `1.30.3` | Anomaly register sub-heading |
-| `{PARAGRAPH_NO_FINDINGS}` | `1.30.4` | Findings register sub-heading |
-| `{PARAGRAPH_NO_INCOMPLETE_SCOPE}`| `1.31.1`| Incomplete scope sub-heading |
-| `{PARAGRAPH_NO_OUTSTANDING_TASKS}`| `1.31.2`| Outstanding tasks sub-heading |
+| `{paragraph_no}` | `2.1` | Section paragraph number inside `{#SECTIONS}` |
+| `{no}` | `1` | Sequential item integer (`1`, `2`, `3`...) |
+| `{parent_no}` | `2` | Parent chapter number |
+| `{PARAGRAPH_NO}` | `2.5` | Current section main paragraph number |
+| `{PARAGRAPH_NO_1}` | `2.5.1` | Sub-paragraph 1 |
+| `{PARAGRAPH_NO_2}` | `2.5.2` | Sub-paragraph 2 |
+| `{PARAGRAPH_NO_3}` | `2.5.3` | Sub-paragraph 3 |
+| `{PARAGRAPH_NO_4}` | `2.5.4` | Sub-paragraph 4 |
+| `{PARAGRAPH_NO_5}` | `2.5.5` | Sub-paragraph 5 |
+| `{PARAGRAPH_NO_ANOMALY_SUMMARY}` | `2.30.1` | Anomaly summary sub-heading |
+| `{PARAGRAPH_NO_SOW_STATUS}` | `2.30.2` | Scope status sub-heading |
+| `{PARAGRAPH_NO_ANOMALY_LIST}` | `2.30.3` | Anomaly register sub-heading |
+| `{PARAGRAPH_NO_FINDINGS}` | `2.30.4` | Findings register sub-heading |
+| `{PARAGRAPH_NO_INCOMPLETE_SCOPE}`| `2.31.1`| Incomplete scope sub-heading |
+| `{PARAGRAPH_NO_OUTSTANDING_TASKS}`| `2.31.2`| Outstanding tasks sub-heading |
 
 ---
 

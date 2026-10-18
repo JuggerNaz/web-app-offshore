@@ -42,7 +42,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 rov_job_id,
                 dive_job_id,
                 inspection_type:inspection_type_id!left(id, code, name),
-                structure_components:component_id!left(id, q_id, code),
+                structure_components:component_id!left(id, q_id, code, metadata),
                 insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                 insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                 insp_video_tapes:tape_id!left(tape_no),

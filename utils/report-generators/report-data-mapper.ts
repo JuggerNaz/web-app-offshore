@@ -9,7 +9,10 @@ const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orien
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 
 // Helper to load pdf.js from CDN and convert a PDF Blob to an array of images (page_image)
-const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image: any, photo: any, is_landscape: boolean, section_break: string, qid: string, elevation: string, description: string }>> => {
+const convertPdfBlobToImages = async (
+    pdfBlob: Blob,
+    onPageProgress?: (page: number, totalPages: number) => void
+): Promise<Array<{ page_image: any, photo: any, is_landscape: boolean, section_break: string, qid: string, elevation: string, description: string }>> => {
     let pdf: any = null;
     try {
         // Load pdf.js dynamically
@@ -34,6 +37,7 @@ const convertPdfBlobToImages = async (pdfBlob: Blob): Promise<Array<{ page_image
         const pages: any[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
+            onPageProgress?.(i, pdf.numPages);
             const page = await pdf.getPage(i);
             const viewport = page.getViewport({ scale: 2.0 });
 
@@ -147,10 +151,12 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-sketch-report': ['RCOND_SKETCH', 'CONDUCTOR_SKETCH', 'RCOND_SKETCH_REPORT', 'RCOND_SKETCH_PAGES'],
-    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOATLANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES'],
-    'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISERGUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES'],
-    'rov-sg-report': ['RCG', 'SG', 'CAISSONGUARD', 'CAISSONGUARD_SUB', 'RCG_REPORT', 'RCG_PAGES'],
-    'rov-cu-report': ['RCDG', 'CU', 'CONDUCTORGUARD', 'CONDUCTORGUARD_SUB', 'RCDG_REPORT', 'RCDG_PAGES'],
+    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOAT_LANDING', 'BOATLANDING_SUB', 'BOAT_LANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES', 'BOATLANDING_PAGES', 'BOAT_LANDING_PAGES'],
+    'rov-bb-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
+    'boat-bumper-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
+    'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISER_GUARD', 'RISERGUARD_SUB', 'RISER_GUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES', 'RISERGUARD_PAGES', 'RISER_GUARD_PAGES'],
+    'rov-sg-report': ['RCG', 'SG', 'CAISSONGUARD', 'CAISSON_GUARD', 'CAISSONGUARD_SUB', 'CAISSON_GUARD_SUB', 'RCG_REPORT', 'RCG_PAGES', 'CAISSONGUARD_PAGES', 'CAISSON_GUARD_PAGES'],
+    'rov-cu-report': ['RCDG', 'CU', 'CONDUCTORGUARD', 'CONDUCTOR_GUARD', 'CONDUCTORGUARD_SUB', 'CONDUCTOR_GUARD_SUB', 'RCDG_REPORT', 'RCDG_PAGES', 'CONDUCTORGUARD_PAGES', 'CONDUCTOR_GUARD_PAGES'],
     'rrisi-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT', 'RRISI_PAGES'],
     'rov-riser-report': ['RRISI', 'RISER', 'RISER_SUB', 'RRISI_REPORT', 'RRISI_PAGES'],
     'rrisi-detail-report': ['RRISI_DETAIL', 'RRISI_DETAIL_REPORT', 'RRISI_DETAIL_PAGES'],
@@ -175,6 +181,14 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'inspection-summary-graph-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_PAGES']
 };
 
+export interface DocxMappingProgress {
+    percent?: number;
+    status: string;
+    detail?: string;
+    current?: number;
+    total?: number;
+}
+
 /**
  * Maps raw inspection records into a format suitable for docxtemplater loops.
  */
@@ -185,11 +199,18 @@ export const mapInspectionDataForDocx = async (
     structure?: any,
     sowReportNo?: string,
     companySettings?: any,
-    activeTemplateTags?: Set<string> | null
+    activeTemplateTags?: Set<string> | null,
+    onProgress?: (info: DocxMappingProgress) => void
 ) => {
     records = normalizeReportRecords(records);
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
+
+    onProgress?.({
+        percent: 27,
+        status: `Querying attachments & media for ${records.length} records...`,
+        detail: `Starting parallel attachment fetch`
+    });
 
     // Fetch all attachments for these inspection records if any
     const recordIds = records.map(r => r.insp_id).filter(Boolean);
@@ -250,6 +271,12 @@ export const mapInspectionDataForDocx = async (
             console.error("Failed to fetch attachments for docx:", e);
         }
     }
+
+    onProgress?.({
+        percent: 31,
+        status: `Found ${attachments.length} attachments & photos across ${records.length} records`,
+        detail: `Sorting and associating media items`
+    });
 
     const attMap = new Map<number, any[]>();
     attachments.forEach(att => {
@@ -484,6 +511,13 @@ export const mapInspectionDataForDocx = async (
         }
     }
 
+    const activeSubReportTasks: {
+        a: { template_id: string; alias: string };
+        templateId: string;
+        alias: string;
+        targetAliases: string[];
+    }[] = [];
+
     for (const a of combinedAliases) {
         const templateId = (a.template_id || "").toLowerCase();
         const alias = (a.alias || "").trim();
@@ -533,7 +567,24 @@ export const mapInspectionDataForDocx = async (
                 continue;
             }
         }
-        
+        activeSubReportTasks.push({ a, templateId, alias, targetAliases });
+    }
+
+    const totalSubReports = activeSubReportTasks.length;
+    let totalGeneratedPages = 0;
+
+    for (let taskIdx = 0; taskIdx < activeSubReportTasks.length; taskIdx++) {
+        const { a, templateId, alias, targetAliases } = activeSubReportTasks[taskIdx];
+        const taskPctStart = 32 + (taskIdx / Math.max(1, totalSubReports)) * 34;
+        const taskPctEnd = 32 + ((taskIdx + 1) / Math.max(1, totalSubReports)) * 34;
+        const displayAlias = alias || targetAliases[0] || templateId;
+
+        onProgress?.({
+            percent: Math.round(taskPctStart),
+            status: `Compiling sub-report (${taskIdx + 1}/${totalSubReports}): ${displayAlias}...`,
+            detail: `Total sub-report pages generated: ${totalGeneratedPages}`
+        });
+
         // Filter records for this template first to check if there is data
         const recordsForTemplate = records.filter(r => {
             const code = (r.inspection_type?.code || r.inspection_type_code || r.type || "").toUpperCase();
@@ -576,11 +627,23 @@ export const mapInspectionDataForDocx = async (
             // Conductor and Caisson explicit routing
             if (['rov-rcond-report', 'rov-conductor-report', 'rov-rcond-sketch-report'].includes(templateId)) {
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                return ['RCOND', 'RCON'].includes(code) || ['CD', 'CON'].includes(compCode);
+                const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+                const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                return ['RCOND', 'RCON', 'COND'].includes(code) || 
+                       ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
+                       compQid.startsWith('CON') || compQid.startsWith('CGF') ||
+                       hasCondAssoc;
             }
             if (['rov-rcasn-report', 'rov-caisson-report', 'rov-rcasn-sketch-report'].includes(templateId)) {
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
-                return ['RCASN', 'CASN'].includes(code) || ['CS', 'CASN'].includes(compCode);
+                const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
+                const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                return ['RCASN', 'CASN'].includes(code) || 
+                       ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
+                       compQid.startsWith('CS') || compQid.startsWith('CASN') ||
+                       hasCasnAssoc;
             }
 
             // Anode explicit routing: RGANI (General Visual Anode) vs RSANI (Selected Anode)
@@ -793,7 +856,13 @@ export const mapInspectionDataForDocx = async (
                 const condRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
-                    return ['RCOND', 'RCON'].includes(typeCode) || ['CD', 'CON'].includes(compCode);
+                    const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
+                    const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    return ['RCOND', 'RCON', 'COND'].includes(typeCode) || 
+                           ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
+                           compQid.startsWith('CON') || compQid.startsWith('CGF') ||
+                           hasCondAssoc;
                 });
                 pdfBlob = await generateROVCondSketchReport(condRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rcasn-sketch-report') {
@@ -801,7 +870,13 @@ export const mapInspectionDataForDocx = async (
                 const casnRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
-                    return ['RCASN', 'CASN'].includes(typeCode) || ['CS', 'CASN'].includes(compCode);
+                    const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
+                    const meta = r.structure_components?.metadata || r.component?.metadata || {};
+                    const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    return ['RCASN', 'CASN'].includes(typeCode) || 
+                           ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
+                           compQid.startsWith('CS') || compQid.startsWith('CASN') ||
+                           hasCasnAssoc;
                 });
                 pdfBlob = await generateROVCasnSketchReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rrisi-report') {
@@ -1018,8 +1093,21 @@ export const mapInspectionDataForDocx = async (
 
         // If PDF was generated, convert its pages to images and assign to {alias}_PAGES
         if (pdfBlob) {
-            const pages = await convertPdfBlobToImages(pdfBlob);
+            const pages = await convertPdfBlobToImages(pdfBlob, (page, totalPages) => {
+                const pagePct = Math.round(taskPctStart + (page / totalPages) * (taskPctEnd - taskPctStart));
+                onProgress?.({
+                    percent: pagePct,
+                    status: `Rasterizing page ${page} of ${totalPages} for ${displayAlias}...`,
+                    detail: `Sub-report pages generated: ${totalGeneratedPages}`
+                });
+            });
             if (pages.length > 0) {
+                totalGeneratedPages += pages.length;
+                onProgress?.({
+                    percent: Math.round(taskPctEnd),
+                    status: `Attached ${pages.length} sub-report page(s) for ${displayAlias}`,
+                    detail: `Total sub-report pages: ${totalGeneratedPages}`
+                });
                 targetAliases.forEach(tAlias => {
                     const cleanT = tAlias.trim().toUpperCase();
                     if (!cleanT) return;
@@ -1163,6 +1251,12 @@ export const mapInspectionDataForDocx = async (
             });
         }
     }
+
+    onProgress?.({
+        percent: 68,
+        status: `Mapped inspection records & sub-reports (${totalGeneratedPages} pages generated)`,
+        detail: `Preparing video logs and summary matrices`
+    });
 
     // 4. Format VDR_LST_BLK and VDD_LST_BLK for video logs
     try {

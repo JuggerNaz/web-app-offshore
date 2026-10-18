@@ -178,8 +178,12 @@ Any built-in inspection sub-report can be rendered as full-page images (with con
 - `{{#RCOND_PAGES}}` / `{{#CONDUCTOR_PAGES}}` : Standard Conductor Survey Report (ROV) pages [Tabular format]
 - `{{#RGANI_REPORT_PAGES}}` / `{{#RGANI_PAGES}}` / `{{#ANODE_PAGES}}` : ROV General Anode Inspection Report pages (`rov-anode-report`)
 - `{{#RSANI_REPORT_PAGES}}` / `{{#RSANI_PAGES}}` : ROV Selected Anode Inspection Report pages (`rov-anode-rsani-report`)
-- `{{#RBLTG_PAGES}}`, `{{#RGUARD_PAGES}}`, `{{#RRISI_PAGES}}`
-- `{{#RSEAB_PAGES}}`, `{{#RSCOR_PAGES}}`, `{{#NAVIG_PAGES}}`
+- `{{#RBLTG_PAGES}}` / `{{#BOATLANDING_PAGES}}`
+- `{{#RGUARD_PAGES}}` / `{{#RISERGUARD_PAGES}}`
+- `{{#RCG_PAGES}}` / `{{#CAISSONGUARD_PAGES}}` / `{{#CAISSON_GUARD_PAGES}}`
+- `{{#RCDG_PAGES}}` / `{{#CONDUCTORGUARD_PAGES}}` / `{{#CONDUCTOR_GUARD_PAGES}}`
+- `{{#BB_PAGES}}` / `{{#BOATBUMPER_PAGES}}` / `{{#BOAT_BUMPER_PAGES}}` (alias: `{{#BOAT_BUMBER_PAGES}}`)
+- `{{#RRISI_PAGES}}`, `{{#RSEAB_PAGES}}`, `{{#RSCOR_PAGES}}`, `{{#NAVIG_PAGES}}`
 - `{{#WORK_SCOPE_STATUS_PAGES}}`, `{{#WORK_SCOPE_INCOMPLETE_PAGES}}`
 
 ---
