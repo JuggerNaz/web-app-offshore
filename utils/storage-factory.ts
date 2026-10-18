@@ -15,6 +15,7 @@ export interface StorageHandler {
   upload(file: Buffer | File, fileName: string, contentType: string): Promise<{ publicUrl: string; filePath: string }>;
   delete(filePath: string): Promise<void>;
   getSignedUrl(filePath: string, expiresIn?: number): Promise<string>;
+  download?(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null>;
 }
 
 /**
@@ -89,6 +90,56 @@ class SupabaseStorageHandler implements StorageHandler {
     }
     return data.signedUrl;
   }
+
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const supabase = useAdmin ? createAdminClient() : createClient();
+
+    let relativePath = (filePath || "").trim();
+    let bucket = "attachments";
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      const parts = relativePath.split("/");
+      const bucketIndex = parts.indexOf("attachments");
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      } else {
+        const inspIndex = parts.indexOf("inspection-media");
+        if (inspIndex !== -1 && inspIndex < parts.length - 1) {
+          relativePath = parts.slice(inspIndex + 1).join("/");
+          bucket = "inspection-media";
+        }
+      }
+    } else if (relativePath.startsWith("attachments/")) {
+      relativePath = relativePath.replace(/^attachments\//, "");
+    } else if (relativePath.startsWith("inspection-media/")) {
+      relativePath = relativePath.replace(/^inspection-media\//, "");
+      bucket = "inspection-media";
+    }
+    relativePath = relativePath.replace(/^\/+/, "");
+
+    const pathVariations = [
+      relativePath,
+      relativePath.startsWith("uploads/") ? relativePath.replace(/^uploads\//, "") : `uploads/${relativePath}`
+    ].filter(Boolean);
+
+    const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
+
+    for (const b of bucketVariations) {
+      for (const p of pathVariations) {
+        try {
+          const { data, error } = await supabase.storage.from(b).download(p);
+          if (!error && data) {
+            const arrayBuffer = await data.arrayBuffer();
+            return {
+              buffer: Buffer.from(arrayBuffer),
+              contentType: data.type || "image/jpeg"
+            };
+          }
+        } catch {}
+      }
+    }
+    return null;
+  }
 }
 
 /**
@@ -129,6 +180,25 @@ class LocalStorageHandler implements StorageHandler {
     // For local storage, we just return the virtual URL or the path
     // The actual serving would happen via a local route
     return `local://${path.basename(filePath)}`;
+  }
+
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    try {
+      let realPath = filePath;
+      if (filePath.startsWith("local://")) {
+        const filename = filePath.replace("local://", "");
+        realPath = path.join(this.basePath, "uploads", filename);
+      } else if (!path.isAbsolute(filePath)) {
+        realPath = path.join(this.basePath, filePath);
+      }
+      const buffer = await fs.readFile(realPath);
+      const ext = path.extname(realPath).toLowerCase();
+      const contentType = ext === ".png" ? "image/png" : ext === ".webp" ? "image/webp" : ext === ".pdf" ? "application/pdf" : "image/jpeg";
+      return { buffer, contentType };
+    } catch (e: any) {
+      console.warn("[LocalStorageHandler] download failed:", e?.message || e);
+      return null;
+    }
   }
 }
 
@@ -257,22 +327,46 @@ class GoogleDriveStorageHandler implements StorageHandler {
  * AWS S3 Storage Implementation
  */
 class AWSS3StorageHandler implements StorageHandler {
-  private client: S3Client;
-  private bucket: string;
-  private endpoint?: string;
+  protected client: S3Client;
+  protected bucket: string;
+  protected endpoint?: string;
+  protected hasCredentials: boolean;
 
-  constructor(config: any) {
+  constructor(config: any = {}) {
+    const safeConfig = config || {};
+    const accessKeyId = safeConfig.accessKeyId || 
+      safeConfig.keyId || 
+      safeConfig.b2KeyId || 
+      safeConfig.applicationKeyId || 
+      process.env.B2_APPLICATION_KEY_ID || 
+      process.env.BACKBLAZE_APPLICATION_KEY_ID || 
+      process.env.BACKBLAZE_KEY_ID || 
+      process.env.AWS_ACCESS_KEY_ID;
+
+    const secretAccessKey = safeConfig.secretAccessKey || 
+      safeConfig.applicationKey || 
+      safeConfig.secretKey || 
+      safeConfig.b2AppKey || 
+      safeConfig.appKey || 
+      process.env.B2_APPLICATION_KEY || 
+      process.env.BACKBLAZE_APPLICATION_KEY || 
+      process.env.BACKBLAZE_KEY || 
+      process.env.AWS_SECRET_ACCESS_KEY;
+
+    this.hasCredentials = Boolean(accessKeyId && secretAccessKey);
+
+    const creds = this.hasCredentials
+      ? { accessKeyId: String(accessKeyId).trim(), secretAccessKey: String(secretAccessKey).trim() }
+      : undefined;
+
     this.client = new S3Client({
-      region: config.region || "us-east-1",
-      endpoint: config.endpoint,
-      forcePathStyle: !!config.endpoint, // Needed for many S3-compatible providers
-      credentials: {
-        accessKeyId: config.accessKeyId,
-        secretAccessKey: config.secretAccessKey,
-      },
+      region: safeConfig.region || "us-east-1",
+      endpoint: safeConfig.endpoint,
+      forcePathStyle: !!safeConfig.endpoint, // Needed for many S3-compatible providers
+      ...(creds ? { credentials: creds } : {}),
     });
-    this.bucket = config.bucket;
-    this.endpoint = config.endpoint;
+    this.bucket = safeConfig.bucket || process.env.B2_BUCKET_NAME || process.env.AWS_BUCKET_NAME || "web-app-offshore";
+    this.endpoint = safeConfig.endpoint;
   }
 
   async upload(file: Buffer | File, fileName: string, contentType: string) {
@@ -302,69 +396,124 @@ class AWSS3StorageHandler implements StorageHandler {
   }
 
   async delete(filePath: string) {
-    // Extract key if it's a full URL
-    let key = filePath;
-    if (filePath.startsWith('http')) {
-        try {
-            const url = new URL(filePath);
-            const pathParts = url.pathname.split('/').filter(Boolean);
-            
-            // For Path-style URLs (common in B2/S3-compatible), the first part of the path is the bucket name
-            if (pathParts[0] === this.bucket) {
-                key = pathParts.slice(1).join('/');
-            } else {
-                // For Virtual-hosted style URLs, the pathname is just the key
-                key = pathParts.join('/');
-            }
-        } catch (e) {
-            console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
-        }
-    }
-    
-    console.log(`[AWSS3StorageHandler] Deleting key "${key}" from bucket "${this.bucket}"`);
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
+    console.log(`[AWSS3StorageHandler] Deleting key "${key}" from bucket "${bucket}"`);
     await this.client.send(new DeleteObjectCommand({
-      Bucket: this.bucket,
+      Bucket: bucket,
       Key: key,
     }));
   }
 
-  async getSignedUrl(filePath: string, expiresIn: number = 3600) {
-    let key = (filePath || "").trim();
-    if (key.startsWith("http://") || key.startsWith("https://")) {
-      try {
-        const url = new URL(key);
-        const pathParts = url.pathname.split("/").filter(Boolean);
-        if (pathParts[0] === this.bucket) {
-          key = pathParts.slice(1).join("/");
-        } else {
-          key = pathParts.join("/");
-        }
-      } catch (e) {
-        console.warn(`[AWSS3StorageHandler] Failed to parse URL ${filePath}, using as-is`);
-      }
-    } else if (this.bucket && key.startsWith(`${this.bucket}/`)) {
-      key = key.slice(this.bucket.length + 1);
+  async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
+    const keyCandidates = [key];
+    if (!key.startsWith("uploads/")) {
+      keyCandidates.push(`uploads/${key}`);
     }
-    key = key.replace(/^\/+/, "");
 
-    const command = new GetObjectCommand({
-      Bucket: this.bucket,
-      Key: key,
-    });
-    return await getSignedUrl(this.client, command, { expiresIn });
+    for (const testKey of keyCandidates) {
+      try {
+        const command = new GetObjectCommand({
+          Bucket: bucket,
+          Key: testKey,
+        });
+        const res = await this.client.send(command);
+        if (res.Body) {
+          const byteArray = await (res.Body as any).transformToByteArray();
+          return {
+            buffer: Buffer.from(byteArray),
+            contentType: res.ContentType || "image/jpeg",
+          };
+        }
+      } catch (e: any) {
+        // try next candidate
+      }
+    }
+    console.warn(`[${this.constructor.name}] download failed for "${filePath}" in bucket "${bucket}" (tried keys: ${keyCandidates.join(", ")})`);
+    return null;
   }
+
+  async getSignedUrl(filePath: string, expiresIn: number = 3600) {
+    const { bucket, key } = parseS3Location(filePath, this.bucket);
+
+    // If credentials are not present, do NOT invoke AWS presigner which hangs for 4.2 seconds searching IMDS
+    if (!this.hasCredentials) {
+      console.warn(`[${this.constructor.name}] No credentials configured for S3/B2. Skipping getSignedUrl.`);
+      if (filePath.startsWith("http://") || filePath.startsWith("https://")) {
+        return filePath;
+      }
+      if (this.endpoint) {
+        const urlObj = new URL(this.endpoint);
+        return `${urlObj.protocol}//${urlObj.host}/${bucket}/${key}`;
+      }
+      return filePath || "";
+    }
+
+    try {
+      const command = new GetObjectCommand({
+        Bucket: bucket,
+        Key: key,
+      });
+      return await getSignedUrl(this.client, command, { expiresIn });
+    } catch (e: any) {
+      console.warn(`[${this.constructor.name}] getSignedUrl failed:`, e?.message || e);
+      return filePath || "";
+    }
+  }
+}
+
+function parseS3Location(input: string, defaultBucket: string): { bucket: string; key: string } {
+  let clean = (input || "").trim();
+  let bucket = defaultBucket || "web-app-offshore";
+  let key = clean;
+
+  if (clean.startsWith("http://") || clean.startsWith("https://")) {
+    try {
+      const url = new URL(clean);
+      const pathParts = url.pathname.split("/").filter(Boolean);
+
+      // Virtual-hosted style: <bucket>.s3.<region>.backblazeb2.com or amazonaws.com
+      const hostParts = url.hostname.split(".");
+      if (hostParts.length > 3 && !url.hostname.startsWith("s3.")) {
+        bucket = hostParts[0];
+        key = pathParts.join("/");
+      } else if (pathParts.length > 1 && pathParts[0] !== "uploads" && pathParts[0] !== "attachments" && pathParts[0] !== "inspection-media") {
+        // Path-style: https://s3.<region>.backblazeb2.com/<bucket>/<key>
+        bucket = pathParts[0];
+        key = pathParts.slice(1).join("/");
+      } else {
+        key = pathParts.join("/");
+      }
+    } catch {
+      key = clean;
+    }
+  }
+
+  if (bucket && key.startsWith(`${bucket}/`)) {
+    key = key.slice(bucket.length + 1);
+  }
+  if (key.startsWith("attachments/")) {
+    key = key.slice("attachments/".length);
+  }
+  if (key.startsWith("inspection-media/")) {
+    key = key.slice("inspection-media/".length);
+  }
+  key = key.replace(/^\/+/, "");
+
+  return { bucket, key };
 }
 
 /**
  * Backblaze B2 Storage Implementation (S3 Compatible)
  */
 class BackblazeB2StorageHandler extends AWSS3StorageHandler {
-  constructor(config: any) {
-    let region = config.region || "us-west-004";
+  constructor(config: any = {}) {
+    const safeConfig = config || {};
+    let region = safeConfig.region || process.env.B2_REGION || "us-east-005";
     let endpoint = "";
 
     // If user pasted the full endpoint (e.g. s3.us-east-005.backblazeb2.com)
-    if (region.includes("backblazeb2.com")) {
+    if (region && region.includes("backblazeb2.com")) {
       const cleanEndpoint = region.replace(/^https?:\/\//, "");
       endpoint = `https://${cleanEndpoint}`;
       
@@ -372,10 +521,12 @@ class BackblazeB2StorageHandler extends AWSS3StorageHandler {
       const match = cleanEndpoint.match(/s3\.([^.]+)\./);
       region = match ? match[1] : region.split('.')[1] || "us-east-005";
     } else {
-      endpoint = `https://s3.${region}.backblazeb2.com`;
+      endpoint = `https://s3.${region || "us-east-005"}.backblazeb2.com`;
     }
 
-    super({ ...config, region, endpoint });
+    const bucket = safeConfig.bucket || process.env.B2_BUCKET_NAME || "web-app-offshore";
+
+    super({ ...safeConfig, region, endpoint, bucket });
   }
 }
 

@@ -518,7 +518,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         }, 250);
     };
 
-    const handleTaskDoubleClick = (taskCode: string, existingRecords: any[], displayName: string, targetComp?: any) => {
+    const handleTaskDoubleClick = async (taskCode: string, existingRecords: any[], displayName: string, targetComp?: any) => {
         const compToUse = targetComp || previewComp || selectedComp;
         if (clickTimerRef.current) {
             clearTimeout(clickTimerRef.current);
@@ -531,19 +531,43 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
             }
         }
 
-        if (!existingRecords || existingRecords.length === 0) {
+        let recordsToUse = existingRecords || [];
+        // If not in paginated memory, query Supabase directly for this component and task
+        if (recordsToUse.length === 0 && compToUse?.id && supabase) {
+            try {
+                const { data: dbRecs } = await supabase
+                    .from("insp_records")
+                    .select("*, inspection_type:inspection_type_id!left(id, code, name), structure_components:component_id!left(id, q_id, code, metadata), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_anomalies(*)")
+                    .eq("component_id", compToUse.id)
+                    .order("inspection_date", { ascending: false });
+
+                if (dbRecs && dbRecs.length > 0) {
+                    const matched = dbRecs.filter((r: any) => {
+                        const rCode = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                        return rCode === String(taskCode).toUpperCase();
+                    });
+                    if (matched.length > 0) {
+                        recordsToUse = matched;
+                    }
+                }
+            } catch (err) {
+                console.error("[WorkspaceResources] Error fetching inspection records on double-click:", err);
+            }
+        }
+
+        if (!recordsToUse || recordsToUse.length === 0) {
             handleSelect3DTaskWithCheck(taskCode, compToUse);
             return;
         }
 
-        if (existingRecords.length === 1) {
+        if (recordsToUse.length === 1) {
             if (handleEditRecord) {
-                handleEditRecord(existingRecords[0]);
+                handleEditRecord(recordsToUse[0]);
                 toast.info(`Viewing recorded ${displayName} data`);
                 if (previewComp) setPreviewComp(null);
             }
         } else {
-            setSelectedTaskRecords({ tCode: taskCode, displayName, records: existingRecords });
+            setSelectedTaskRecords({ tCode: taskCode, displayName, records: recordsToUse });
             setShowRecordSelectModal(true);
         }
     };
@@ -811,7 +835,11 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                     const compIdStr = String(c.id || c.comp_id || "");
                                                                                     const compQIdStr = String(c.q_id || c.name || "").toUpperCase();
 
-                                                                                    const taskRecords = (currentRecords || []).filter((r: any) => {
+                                                                                    const recordsSource = (c.id === selectedComp?.id && currentCompRecords?.length > 0)
+                                                                                        ? [...(currentRecords || []), ...(currentCompRecords || [])]
+                                                                                        : (currentRecords || []);
+
+                                                                                    const taskRecords = recordsSource.filter((r: any) => {
                                                                                         const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
                                                                                                             ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
                                                                                         if (!matchesComp) return false;
@@ -819,8 +847,11 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                         return rCode === String(tCode).toUpperCase();
                                                                                     });
 
-                                                                                    const isInspected = taskRecords.length > 0;
-                                                                                    const hasAnom = taskRecords.some((r: any) => r.has_anomaly);
+                                                                                    const rawTsStatus = String(ts.status || "").toLowerCase();
+                                                                                    const isCompleted = rawTsStatus === "completed" || rawTsStatus === "anomaly" || taskRecords.length > 0;
+                                                                                    const hasAnom = rawTsStatus === "anomaly" || taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly");
+                                                                                    const isIncomplete = rawTsStatus === "incomplete" || taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete");
+                                                                                    const isInspected = isCompleted || isIncomplete || hasAnom;
 
                                                                                     return (
                                                                                         <span 
@@ -835,15 +866,17 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                             }}
                                                                                             className={`inline-flex items-center gap-1 text-[9px] font-bold px-1.5 py-0.5 rounded-full cursor-pointer hover:scale-105 active:scale-95 transition-all ${
                                                                                                 isSelected ? 'bg-white/20 text-blue-100 hover:bg-white/30' : 
-                                                                                                isInspected ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
+                                                                                                hasAnom ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700' :
+                                                                                                isIncomplete ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700' :
+                                                                                                isCompleted ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
                                                                                                 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
                                                                                             }`}
-                                                                                            title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
+                                                                                            title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length > 0 ? taskRecords.length : 1} rec)` : `Start inspection for ${displayName}`}
                                                                                         >
-                                                                                            <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-red-500 animate-pulse' : isInspected ? 'bg-emerald-500' : 'bg-slate-400'}`} />
+                                                                                            <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-rose-500 animate-pulse' : isIncomplete ? 'bg-amber-500' : isCompleted ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                                                                                             {tCode}
                                                                                             {isInspected && (
-                                                                                                <span className="text-[7.5px] font-black text-emerald-600 dark:text-emerald-300">({taskRecords.length})</span>
+                                                                                                <span className={`text-[7.5px] font-black ${hasAnom ? 'text-rose-600 dark:text-rose-300' : isIncomplete ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'}`}>({taskRecords.length > 0 ? taskRecords.length : 1})</span>
                                                                                             )}
                                                                                         </span>
                                                                                     );
@@ -1077,7 +1110,9 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                      const compIdStr = String(previewComp.id || previewComp.comp_id || "");
                                                                      const compQIdStr = String(previewComp.q_id || previewComp.name || "").toUpperCase();
 
-                                                                     const taskRecords = (currentRecords || []).filter((r: any) => {
+                                                                     const taskRecords = ((previewComp.id === selectedComp?.id && currentCompRecords?.length > 0)
+                                                                         ? [...(currentRecords || []), ...(currentCompRecords || [])]
+                                                                         : (currentRecords || [])).filter((r: any) => {
                                                                          const matchesComp = String(r.component_id || r.comp_id) === compIdStr || 
                                                                                              ((r.component_qid || r.q_id) && String(r.component_qid || r.q_id).toUpperCase() === compQIdStr);
                                                                          if (!matchesComp) return false;
@@ -1085,28 +1120,42 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                          return rCode === String(tCode).toUpperCase();
                                                                      });
 
-                                                                     const isInspected = taskRecords.length > 0;
+                                                                     const rawTsStatus = String(tItem?.status || "").toLowerCase();
+                                                                     const isCompleted = rawTsStatus === "completed" || rawTsStatus === "anomaly" || taskRecords.length > 0;
+                                                                     const hasAnom = rawTsStatus === "anomaly" || taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly");
+                                                                     const isIncomplete = rawTsStatus === "incomplete" || taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete");
+                                                                     const isInspected = isCompleted || isIncomplete || hasAnom;
 
                                                                      return (
                                                                          <button
                                                                              key={idx}
                                                                              onClick={() => handleTaskSingleClick(tCode)}
-                                                                             onDoubleClick={() => handleTaskDoubleClick(tCode, taskRecords, displayName)}
+                                                                             onDoubleClick={() => handleTaskDoubleClick(tCode, taskRecords, displayName, previewComp)}
                                                                              className={`px-2.5 py-1 rounded text-[9px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer border ${
-                                                                                 isInspected
+                                                                                 hasAnom
+                                                                                     ? "bg-rose-500/20 text-rose-300 border-rose-500/50 hover:bg-rose-600 hover:text-white"
+                                                                                     : isIncomplete
+                                                                                     ? "bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-600 hover:text-white"
+                                                                                     : isCompleted
                                                                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600 hover:text-white"
                                                                                      : "bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600 hover:text-white"
                                                                              }`}
-                                                                             title={isInspected ? `Single-click: add new entry. Double-click: view recorded inspection (${taskRecords.length} rec)` : `Start inspection for ${displayName}`}
+                                                                             title={isInspected ? `Single-click: add new entry. Double-click: view recorded inspection (${taskRecords.length > 0 ? taskRecords.length : 1} rec)` : `Start inspection for ${displayName}`}
                                                                          >
                                                                              {isInspected ? (
-                                                                                 <CheckCircle2 className="w-2.5 h-2.5 text-emerald-400 fill-emerald-500/20" />
+                                                                                 <CheckCircle2 className={`w-2.5 h-2.5 ${hasAnom ? 'text-rose-400 fill-rose-500/20' : isIncomplete ? 'text-amber-400 fill-amber-500/20' : 'text-emerald-400 fill-emerald-500/20'}`} />
                                                                              ) : (
                                                                                  <Play className="w-2.5 h-2.5 fill-current" />
                                                                              )}
                                                                              <span>{displayName}</span>
                                                                              {isInspected && (
-                                                                                 <span className="text-[7.5px] font-black uppercase tracking-widest text-emerald-400 bg-emerald-950/80 px-1 py-0.2 rounded border border-emerald-500/40 ml-0.5">
+                                                                                 <span className={`text-[7.5px] font-black uppercase tracking-widest px-1 py-0.2 rounded border ml-0.5 ${
+                                                                                     hasAnom 
+                                                                                         ? "text-rose-400 bg-rose-950/80 border-rose-500/40" 
+                                                                                         : isIncomplete 
+                                                                                         ? "text-amber-400 bg-amber-950/80 border-amber-500/40" 
+                                                                                         : "text-emerald-400 bg-emerald-950/80 border-emerald-500/40"
+                                                                                 }`}>
                                                                                      {taskRecords.length > 1 ? `Inspected (${taskRecords.length})` : "Inspected"}
                                                                                  </span>
                                                                              )}

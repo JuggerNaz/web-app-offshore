@@ -17,8 +17,8 @@ export async function GET(request: NextRequest) {
     // Extract relative storage path if 'path' is a full URL
     let storagePath = decodeURIComponent(path.trim());
 
+    // 1. Direct fetch if already a public or accessible remote URL
     if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
-        // Direct remote or public Supabase URL: attempt direct fetch
         try {
             const directResp = await fetch(storagePath);
             if (directResp.ok) {
@@ -34,7 +34,94 @@ export async function GET(request: NextRequest) {
                 });
             }
         } catch {}
+    }
 
+    // 2. Multi-cloud check: If path points to Backblaze B2, S3, or external storage, use StorageHandler directly
+    const isBackblaze = storagePath.includes("backblazeb2.com");
+    const isS3 = storagePath.includes("amazonaws.com");
+
+    if (isBackblaze || isS3) {
+        try {
+            const { getStorageHandler } = await import("@/utils/storage-factory");
+            let targetCompanyId = request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+
+            // Check attachment record for tenant company_id and metadata
+            try {
+                const { data: att } = await (supabase as any)
+                    .from("attachment")
+                    .select("id, meta, company_id")
+                    .eq("path", storagePath)
+                    .limit(1)
+                    .maybeSingle();
+                if (att?.company_id) {
+                    targetCompanyId = att.company_id;
+                }
+            } catch (_) {}
+
+            let settingsQuery = (supabase as any).from("company_settings").select("storage_provider, storage_config");
+            if (targetCompanyId) {
+                settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
+            }
+            let { data: settings } = await settingsQuery.limit(1).maybeSingle();
+
+            if (!settings?.storage_config || Object.keys(settings.storage_config).length === 0) {
+                try {
+                    const { data: fallbackSettings } = await (supabase as any)
+                        .from("company_settings")
+                        .select("storage_provider, storage_config")
+                        .not("storage_config", "is", null)
+                        .filter("storage_config", "neq", "{}")
+                        .limit(1)
+                        .maybeSingle();
+                    if (fallbackSettings?.storage_config && Object.keys(fallbackSettings.storage_config).length > 0) {
+                        settings = fallbackSettings;
+                    }
+                } catch (_) {}
+            }
+
+            const cloudProvider = isBackblaze ? "Backblaze" : "AWS S3";
+            const handler = await getStorageHandler(cloudProvider, settings?.storage_config || {});
+
+            // Direct buffer download
+            if (typeof (handler as any).download === "function") {
+                const dlResult = await (handler as any).download(storagePath);
+                if (dlResult && dlResult.buffer) {
+                    return new NextResponse(dlResult.buffer, {
+                        headers: {
+                            "Content-Type": dlResult.contentType || "image/jpeg",
+                            "Content-Length": dlResult.buffer.length.toString(),
+                            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        },
+                    });
+                }
+            }
+
+            // Presigned URL fallback
+            const signedUrl = await handler.getSignedUrl(storagePath, 3600);
+            if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://")) && signedUrl !== storagePath) {
+                const resp = await fetch(signedUrl);
+                if (resp.ok) {
+                    const buffer = await resp.arrayBuffer();
+                    return new NextResponse(buffer, {
+                        headers: {
+                            "Content-Type": resp.headers.get("Content-Type") || "image/jpeg",
+                            "Content-Length": buffer.byteLength.toString(),
+                            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        },
+                    });
+                }
+            }
+        } catch (cloudErr) {
+            console.warn("[Download] Cloud handler fetch error:", cloudErr);
+        }
+    }
+
+    // 3. Extract relative storage path for Supabase Storage
+    if (storagePath.startsWith("http://") || storagePath.startsWith("https://")) {
         const parts = storagePath.split("/");
         const bucketIndex = parts.indexOf(bucket);
         if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
@@ -120,18 +207,34 @@ export async function GET(request: NextRequest) {
         }
     } catch {}
 
-    // Multi-cloud fallback (e.g. Backblaze B2, S3)
+    // 4. Multi-cloud fallback (e.g. Backblaze B2, S3, Local)
     try {
         const { getStorageHandler } = await import("@/utils/storage-factory");
-        const { data: settings } = await (supabase as any)
+        let { data: settings } = await (supabase as any)
             .from("company_settings")
             .select("storage_provider, storage_config")
+            .not("storage_config", "is", null)
+            .filter("storage_config", "neq", "{}")
             .limit(1)
             .maybeSingle();
 
         const provider = settings?.storage_provider || (path.includes("backblazeb2.com") ? "Backblaze" : null);
         if (provider && provider !== "Supabase") {
             const handler = await getStorageHandler(provider, settings?.storage_config);
+            if (typeof (handler as any).download === "function") {
+                const dlResult = await (handler as any).download(path);
+                if (dlResult && dlResult.buffer) {
+                    return new NextResponse(dlResult.buffer, {
+                        headers: {
+                            "Content-Type": dlResult.contentType || "image/jpeg",
+                            "Content-Length": dlResult.buffer.length.toString(),
+                            "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+                        },
+                    });
+                }
+            }
             const signedUrl = await handler.getSignedUrl(path, 3600);
             if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
                 const resp = await fetch(signedUrl);

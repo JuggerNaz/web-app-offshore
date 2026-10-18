@@ -2,6 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+export const dynamic = "force-dynamic";
+
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient();
@@ -46,9 +48,6 @@ export async function GET(request: NextRequest) {
             if (structureId) {
                 query = query.eq("structure_id", structureId);
             }
-            if (sowReportNo) {
-                query = query.eq("sow_report_no", sowReportNo);
-            }
         }
 
         let prefix = searchParams.get("prefix");
@@ -58,11 +57,24 @@ export async function GET(request: NextRequest) {
         }
 
         const { data: anomaliesData, error: viewError } = await query;
-        let anomalies = anomaliesData;
+        let anomalies = anomaliesData || [];
 
         if (viewError) {
             console.error("View Error:", viewError);
             throw viewError;
+        }
+
+        // If sowReportNo is provided, try filtering by normalized sow_report_no
+        if (sowReportNo && sowReportNo !== "all" && sowReportNo !== "N/A" && anomalies.length > 0) {
+            const cleanFilter = String(sowReportNo).replace(/\s+/g, "").toLowerCase();
+            const matching = anomalies.filter((a: any) => {
+                if (!a.sow_report_no) return false;
+                const cleanRep = String(a.sow_report_no).replace(/\s+/g, "").toLowerCase();
+                return cleanRep === cleanFilter;
+            });
+            if (matching.length > 0) {
+                anomalies = matching;
+            }
         }
 
         // Deduplicate anomalies (since v_anomaly_details LEFT JOIN u_lib_combo can return duplicate rows per combo entry)

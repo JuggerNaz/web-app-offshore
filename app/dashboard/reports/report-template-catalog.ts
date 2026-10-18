@@ -33,6 +33,8 @@ export const REPORT_TEMPLATES = {
         { id: "planning-overview", name: "Planning Overview", icon: FileText, description: "Complete planning documentation", requires: ["planning"] },
     ],
     inspection: [
+        { id: "inspection-summary", name: "Inspection Summary", icon: FileBarChart, description: "Executive summary dashboard with task coverage, anomaly distribution, and active task breakdown", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "inspection-summary-graph", name: "Inspection Summary by Graph", icon: FileBarChart, description: "Executive graphical dashboard with interactive visual charts, anomaly donuts, depletion meters, and survey gauges", requires: ["jobpack", "structure", "sow_report"] },
         { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline findings with reference numbers containing 'F' and combined span/burial events", requires: ["jobpack", "structure", "sow_report"] },
@@ -62,8 +64,8 @@ export const REPORT_TEMPLATES = {
         { id: "rov-itisi-detail-report", name: "I-Tube Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV I-Tube structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", icon: FileBarChart, description: "Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with Item No., QID, Elevation, Dive No., Tape No., and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", icon: FileBarChart, description: "Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV anode inspection summary with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (CVI) summary (SANI) with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-report", name: "General Visual Anode Inspection Report (RGANI / GANI)", icon: FileBarChart, description: "Detailed ROV General Visual Anode Inspection summary (GANI) with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (RSANI / SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (SANI) summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "CP Survey Report (ROV)",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-ricmi-report", name: "Inclinometer Survey Report (ROV)", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
@@ -171,8 +173,8 @@ export const TOC_SECTIONS = [
       { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 8, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
-      { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-report", name: "General Visual Anode Inspection (RGANI / GANI)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Inspection (RSANI / SANI)", mode: "ROV" },
       { id: "diving-anode-report", name: "Selected Anode Report (Diving)", mode: "Diving" }
   ]},
   { id: 9, name: "Marine Growth Survey", templates: [

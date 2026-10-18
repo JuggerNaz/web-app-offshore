@@ -206,18 +206,13 @@ export const GET = withAuth(
     const inspAttsSet = new Set((inspAtts || []).map((a: any) => a.source_id));
     const anomAttsSet = new Set(anomAtts.map((a: any) => a.source_id));
 
-    // Apply has_attachment flag and enrich with inspections/anomalies
-    // (matching by component_id OR component QID so legacy records link correctly)
+    // Apply has_attachment flag and enrich with inspections/anomalies strictly by component_id
     data.forEach((item: any) => {
       const qidUpper = item.q_id ? String(item.q_id).toUpperCase().trim() : "";
 
       item.inspections = (inspRecords || []).filter((r: any) => {
-        if (r.component_id && (r.component_id === item.id || (item.comp_id && r.component_id === item.comp_id))) return true;
-        if (qidUpper) {
-          if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
-          if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
-          if (r.inspection_data?.component_qid && String(r.inspection_data.component_qid).toUpperCase() === qidUpper) return true;
-          if (r.inspection_data?.qid && String(r.inspection_data.qid).toUpperCase() === qidUpper) return true;
+        if (r.component_id) {
+          return r.component_id === item.id || (item.comp_id && r.component_id === item.comp_id);
         }
         return false;
       }) || [];
@@ -225,10 +220,8 @@ export const GET = withAuth(
       const seenAnomKeys = new Set<string>();
       item.anomalies = (componentAnomalies || []).filter((a: any) => {
         let isMatch = false;
-        if (a.component_id && (a.component_id === item.id || (item.comp_id && a.component_id === item.comp_id))) isMatch = true;
-        else if (qidUpper) {
-          if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
-          if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
+        if (a.component_id) {
+          isMatch = a.component_id === item.id || (item.comp_id && a.component_id === item.comp_id);
         }
 
         if (isMatch) {

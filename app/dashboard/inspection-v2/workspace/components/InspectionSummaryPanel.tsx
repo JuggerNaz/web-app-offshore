@@ -1319,15 +1319,27 @@ export function InspectionSummaryPanel({
                 if (isPipelineMode) {
                   handlePrintPipelineSummary();
                 } else {
-                  window.dispatchEvent(new CustomEvent("open-platform-summary-report"));
+                  window.dispatchEvent(new CustomEvent("open-inspection-summary-report"));
                 }
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 border border-cyan-500/50 text-white hover:from-cyan-500 hover:to-blue-500 transition-all text-xs font-black shadow-md shadow-cyan-900/40"
-              title="Print Platform Summary Report (Preview & Export PDF)"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 border border-cyan-500/50 text-white hover:from-cyan-500 hover:to-blue-500 transition-all text-xs font-black shadow-md shadow-cyan-900/40"
+              title="Print Inspection Summary Report (Table Layout PDF)"
             >
               <Printer className="w-3.5 h-3.5" />
-              <span>Print Report</span>
+              <span>Print Table</span>
             </button>
+            {!isPipelineMode && (
+              <button
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent("open-inspection-summary-graph-report"));
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-teal-600 to-emerald-600 border border-teal-500/50 text-white hover:from-teal-500 hover:to-emerald-500 transition-all text-xs font-black shadow-md shadow-teal-900/40"
+                title="Print Inspection Summary by Graph (Visual Charts & Gauges PDF)"
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Print Graph</span>
+              </button>
+            )}
             <button
               onClick={fetchSummary}
               disabled={loading}

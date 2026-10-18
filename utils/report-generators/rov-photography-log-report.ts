@@ -47,8 +47,26 @@ export const generateROVPhotographyLogReport = async (
             lightGray: [248, 250, 252] as [number, number, number],
         };
 
+        // Extract and flatten attachments if inspection records were passed
+        const flatPhotos: any[] = [];
+        (photos || []).forEach((item: any) => {
+            if (!item) return;
+            const atts = item.attachments || item.attachment || item.insp_attachments || item.insp_photos || item.photos;
+            if (Array.isArray(atts) && atts.length > 0) {
+                atts.forEach((a: any) => {
+                    flatPhotos.push({
+                        ...a,
+                        anomaly_ref: a.anomaly_ref || item.insp_anomalies?.[0]?.anomaly_ref_no || item.anomaly_ref || null
+                    });
+                });
+            } else if (item.path || item.file_path || item.url || item.file_url || item.storage_path || item.id || item.name) {
+                flatPhotos.push(item);
+            }
+        });
+        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : (photos || []);
+
         // If no photos, return a document with an empty state message
-        if (!photos || photos.length === 0) {
+        if (!resolvedPhotos || resolvedPhotos.length === 0) {
             doc.setFont("helvetica", "bold");
             doc.setFontSize(16);
             doc.setTextColor(150, 150, 150);
@@ -68,8 +86,37 @@ export const generateROVPhotographyLogReport = async (
         if (companySettings.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo) {
+            try {
+                const contrId = (headerData as any)?.contractorId || (headerData as any)?.contrac || headerData?.jobpack?.metadata?.contrac || (config as any)?.jobPack?.metadata?.contrac;
+                const cRes = await fetch(`/api/library/CONTR_NAM`);
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    if (Array.isArray(cJson?.data)) {
+                        let found = contrId ? cJson.data.find((c: any) =>
+                            String(c.lib_id) === String(contrId) ||
+                            String(c.code) === String(contrId) ||
+                            String(c.lib_desc).toLowerCase() === String(contrId).toLowerCase()
+                        ) : null;
+                        if (!found && contrId) {
+                            found = cJson.data.find((c: any) =>
+                                (c.lib_id && String(contrId).toLowerCase().includes(String(c.lib_id).toLowerCase())) ||
+                                (c.code && String(contrId).toLowerCase().includes(String(c.code).toLowerCase()))
+                            );
+                        }
+                        if (!found) {
+                            found = cJson.data.find((c: any) => Boolean(c.logo_url));
+                        }
+                        if (found?.logo_url) {
+                            contractorLogo = await loadLogoWithTransparency(found.logo_url);
+                        }
+                    }
+                }
+            } catch (_) {}
         }
 
         const HEADER_H = 26;
@@ -140,7 +187,7 @@ export const generateROVPhotographyLogReport = async (
             head: [
                 ['Item No.', 'Real Time', 'Photo Title', 'Details']
             ],
-            body: photos.map((p, idx) => {
+            body: resolvedPhotos.map((p, idx) => {
                 let meta = p.meta || {};
                 if (typeof meta === 'string') {
                     try { meta = JSON.parse(meta); } catch (e) { meta = {}; }

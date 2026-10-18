@@ -51,26 +51,53 @@ export const GET = withTenant(async (request, { companyId }) => {
         const jpNum = parseInt(String(jobpackId), 10);
         const strNum = parseInt(String(structureId), 10);
 
-        // ─── 1. RESOLVE STRUCTURE METADATA & PIPELINE SPECS ─────────────────
         let structureInfo: any = null;
         let pipelineSpec: any = null;
+        let jobpackInfo: any = null;
 
-        if (!isNaN(strNum)) {
-            const [structRes, pipeRes] = await Promise.all([
-                (supabase as any)
-                    .from("u_structures")
-                    .select("id, name, code, type, metadata")
-                    .eq("id", strNum)
-                    .maybeSingle(),
-                (supabase as any)
-                    .from("u_pipeline")
-                    .select("*")
-                    .eq("pipe_id", strNum)
-                    .maybeSingle(),
+        if (!isNaN(strNum) || !isNaN(jpNum)) {
+            const [platRes, pipeRes, jpRes] = await Promise.all([
+                !isNaN(strNum)
+                    ? (supabase as any)
+                        .from("platform")
+                        .select("plat_id, title, pfield, pdesc, depth, an_qty, an_type")
+                        .eq("plat_id", strNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
+                !isNaN(strNum)
+                    ? (supabase as any)
+                        .from("u_pipeline")
+                        .select("*")
+                        .eq("pipe_id", strNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
+                !isNaN(jpNum)
+                    ? (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", jpNum)
+                        .maybeSingle()
+                    : Promise.resolve({ data: null }),
             ]);
 
-            if (structRes.data) structureInfo = structRes.data;
-            if (pipeRes.data) pipelineSpec = pipeRes.data;
+            if (platRes?.data) {
+                structureInfo = {
+                    id: platRes.data.plat_id,
+                    name: platRes.data.title,
+                    title: platRes.data.title,
+                    field: platRes.data.pfield,
+                    fieldName: platRes.data.pfield,
+                    depth: platRes.data.depth,
+                    waterDepth: platRes.data.depth,
+                    metadata: {
+                        water_depth: platRes.data.depth,
+                        anode_count: platRes.data.an_qty,
+                        anode_type: platRes.data.an_type,
+                    }
+                };
+            }
+            if (pipeRes?.data) pipelineSpec = pipeRes.data;
+            if (jpRes?.data) jobpackInfo = jpRes.data;
         }
 
         const isPipelineStructure =
@@ -193,58 +220,38 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         }
 
-        // Extract active component IDs and QIDs to query target components specifically
+        // Extract active component IDs strictly by component_id
         // Coerce componentIds strictly to numbers to prevent "operator does not exist: integer = text" SQL errors
-        const componentIds = sowItemsToProcess
-            .map((i: any) => {
-                const val = parseInt(String(i.component_id));
-                return isNaN(val) ? null : val;
-            })
-            .filter(Boolean) as number[];
-        const componentQids = sowItemsToProcess.map((i: any) => String(i.component_qid || "").trim()).filter(q => q !== "");
+        const compIdSet = new Set<number>();
+        allSowItems.forEach((i: any) => {
+            const val = parseInt(String(i.component_id));
+            if (!isNaN(val) && val > 0) compIdSet.add(val);
+        });
+        const componentIds = Array.from(compIdSet);
 
         let compList: any[] = [];
-        if (!isNaN(strNum)) {
-            const queries: Promise<any>[] = [];
-            if (componentIds.length > 0) {
-                queries.push(
-                    (supabase as any)
-                        .from("structure_components")
-                        .select("id, q_id, code, metadata")
-                        .eq("structure_id", strNum)
-                        .in("id", componentIds)
-                );
-            }
-            if (componentQids.length > 0) {
-                queries.push(
-                    (supabase as any)
-                        .from("structure_components")
-                        .select("id, q_id, code, metadata")
-                        .eq("structure_id", strNum)
-                        .in("q_id", componentQids)
-                );
-            }
-
-            if (queries.length > 0) {
-                const results = await Promise.all(queries);
-                results.forEach((res) => {
-                    if (res.data) {
-                        compList = compList.concat(res.data);
-                    }
-                });
+        if (!isNaN(strNum) && componentIds.length > 0) {
+            const chunkSize = 500;
+            for (let i = 0; i < componentIds.length; i += chunkSize) {
+                const chunk = componentIds.slice(i, i + chunkSize);
+                const { data: chunkComps } = await (supabase as any)
+                    .from("structure_components")
+                    .select("id, q_id, code, metadata, is_deleted")
+                    .eq("structure_id", strNum)
+                    .in("id", chunk);
+                if (chunkComps && chunkComps.length > 0) {
+                    compList.push(...chunkComps);
+                }
             }
         }
 
-        console.log(`[Summary API] Fetched ${compList.length} targeted components for SOW items`);
+        console.log(`[Summary API] Fetched ${compList.length} targeted components strictly by component_id`);
 
         const compMap = new Map();
-        const qidMap = new Map();
         if (compList) {
             compList.forEach((c: any) => {
                 compMap.set(String(c.id), c);
-                if (c.q_id) {
-                    qidMap.set(String(c.q_id).trim().toUpperCase(), c);
-                }
+                compMap.set(Number(c.id), c);
             });
         }
 
@@ -266,7 +273,8 @@ export const GET = withTenant(async (request, { companyId }) => {
             fp_kp,
             elevation,
             inspection_date,
-            inspection_time
+            inspection_time,
+            inspection_data
         `;
 
         const allRecordsData: any[] = [];
@@ -326,6 +334,30 @@ export const GET = withTenant(async (request, { companyId }) => {
                 anomMap.get(a.inspection_id)!.push(a);
             }
         });
+
+        // Ensure any component_id in allRecordsData not yet in compMap is fetched strictly by ID
+        const missingRecordCompIds = Array.from(new Set(
+            allRecordsData
+                .map((r: any) => parseInt(String(r.component_id)))
+                .filter((cid: number) => !isNaN(cid) && cid > 0 && !compMap.has(String(cid)))
+        ));
+        if (!isNaN(strNum) && missingRecordCompIds.length > 0) {
+            const chunkSize = 500;
+            for (let i = 0; i < missingRecordCompIds.length; i += chunkSize) {
+                const chunk = missingRecordCompIds.slice(i, i + chunkSize);
+                const { data: chunkComps } = await (supabase as any)
+                    .from("structure_components")
+                    .select("id, q_id, code, metadata, is_deleted")
+                    .eq("structure_id", strNum)
+                    .in("id", chunk);
+                if (chunkComps && chunkComps.length > 0) {
+                    chunkComps.forEach((c: any) => {
+                        compMap.set(String(c.id), c);
+                        compMap.set(Number(c.id), c);
+                    });
+                }
+            }
+        }
 
         // Fast in-memory link for structure_components, inspection_types, and insp_anomalies
         allRecordsData.forEach((r: any) => {
@@ -484,10 +516,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         resolvedSowItems.forEach((item: any) => {
             const statusStr = item.effectiveStatus;
             if (statusStr === "incomplete" || statusStr === "pending") {
-                let comp = compMap.get(String(item.component_id));
-                if (!comp && item.component_qid) {
-                    comp = qidMap.get(String(item.component_qid).trim().toUpperCase());
-                }
+                let comp = item.component_id != null ? compMap.get(String(item.component_id)) : null;
                 const compMeta = comp?.metadata || {};
                 const elv1 = compMeta.elv_1 !== undefined && compMeta.elv_1 !== null ? compMeta.elv_1 : null;
                 const elv2 = compMeta.elv_2 !== undefined && compMeta.elv_2 !== null ? compMeta.elv_2 : null;
@@ -624,70 +653,126 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
-        // ─── 5. ANODE (GVI / RGVI) ANALYSIS ───────────────────────────────────
-        // GVI type: field = anode_depletion_percent (number 0-100)
-        // RGVI type: field = anode_depletion (combo from ADA lib - string like "0-25%", "25-50%", etc.)
-        const anodeGviRecords = rawRecords.filter((r: any) => {
+        // ─── 5. ANODE (GVI / RGVI / SANI) ANALYSIS ─────────────────────────────
+        const isAnodeRecord = (r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const isGvi = code === "RGVI" || code === "GVI";
             const compType = (
                 r.component_type ||
                 r.structure_components?.code ||
                 r.structure_components?.metadata?.type ||
+                r.inspection_data?.component_type ||
                 ""
             ).toUpperCase();
-            return isGvi && (compType === "AN" || compType === "ANODE" || compType.startsWith("AN"));
-        });
+            const qid = (r.structure_components?.q_id || r.inspection_data?.q_id || "").toUpperCase();
+            const d = r.inspection_data || {};
+            return (
+                code === "RSANI" || code === "SANI" ||
+                compType === "AN" || compType === "ANODE" || compType.startsWith("AN") ||
+                qid.startsWith("BAN") || qid.startsWith("AN") ||
+                !!d.anode_type || !!d.anode_depletion || !!d.anode_depletion_percent
+            );
+        };
+
+        const anodeTargetRecords = (isReportSpecific && records.length > 0 ? records : rawRecords).filter(isAnodeRecord);
+        const anodeGviRecords = anodeTargetRecords.length > 0 ? anodeTargetRecords : rawRecords.filter(isAnodeRecord);
 
         const anodeGviTotal = anodeGviRecords.length;
         const anodeGviRov = anodeGviRecords.filter(isRovRecord).length;
         const anodeGviDive = anodeGviRecords.filter(isDiveRecord).length;
 
-        // Anode depletion breakdown
-        // We bucket by percentage ranges: 0-25, 25-50, 50-75, 75-100, and string-based entries
+        // Collect distinct anode types from inspection records & structure components
+        const anodeTypesSet = new Set<string>();
+        anodeGviRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const at = d.anode_type || d.anodeType || d.type;
+            if (at && String(at).trim() !== "" && String(at).toUpperCase() !== "N/A" && String(at).toUpperCase() !== "NULL") {
+                anodeTypesSet.add(String(at).trim());
+            }
+        });
+
+        if (anodeTypesSet.size === 0 && Array.isArray(compList)) {
+            compList.forEach((c: any) => {
+                const isAnComp = (c.code || "").toUpperCase() === "AN" || (c.q_id || "").toUpperCase().startsWith("BAN") || (c.q_id || "").toUpperCase().startsWith("AN");
+                if (isAnComp) {
+                    const m = c.metadata || {};
+                    const t = m.anode_type || m.type || m.thetype;
+                    if (t && String(t).trim() !== "" && String(t).toUpperCase() !== "N/A" && String(t).toUpperCase() !== "NULL") {
+                        anodeTypesSet.add(String(t).trim());
+                    }
+                }
+            });
+        }
+
+        const anodeTypesList = Array.from(anodeTypesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const cleanAnodeTypesList = anodeTypesList.map(t => t.replace(/^ANODE\s+/i, ""));
+        const anodeTypeSummaryStr = cleanAnodeTypesList.join(", ");
+
+        // Depletion bucketing helper
+        const parseDepletionBucket = (raw: any): "0-25%" | "26-50%" | "50-75%" | "76-100%" | null => {
+            if (raw === undefined || raw === null || raw === "" || raw === "NONE") return null;
+            if (typeof raw === "number") {
+                if (raw <= 25) return "0-25%";
+                if (raw <= 50) return "26-50%";
+                if (raw <= 75) return "50-75%";
+                return "76-100%";
+            }
+            const s = String(raw).toLowerCase().replace(/\s+/g, "");
+            const matches = s.match(/\d+(\.\d+)?/g);
+            if (matches && matches.length >= 2) {
+                const low = parseFloat(matches[0]);
+                const high = parseFloat(matches[1]);
+                const avg = (low + high) / 2;
+                if (high <= 25 || avg <= 25) return "0-25%";
+                if (high <= 50 || avg <= 50) return "26-50%";
+                if (high <= 75 || avg <= 75) return "50-75%";
+                return "76-100%";
+            } else if (matches && matches.length === 1) {
+                const val = parseFloat(matches[0]);
+                if (val <= 25) return "0-25%";
+                if (val <= 50) return "26-50%";
+                if (val <= 75) return "50-75%";
+                return "76-100%";
+            }
+            if (s.includes("0-25") || s.includes("0–25") || s.includes("<25")) return "0-25%";
+            if (s.includes("25-50") || s.includes("26-50") || s.includes("25–50")) return "26-50%";
+            if (s.includes("50-75") || s.includes("50–75")) return "50-75%";
+            if (s.includes("75-100") || s.includes("76-100") || s.includes("75–100") || s.includes(">75")) return "76-100%";
+            return null;
+        };
+
         const anodeDepletionBuckets: Record<string, number> = {
+            "0-25%": 0,
+            "26-50%": 0,
+            "50-75%": 0,
+            "76-100%": 0,
             "0–25%": 0,
             "25–50%": 0,
             "50–75%": 0,
             "75–100%": 0,
             "Not Recorded": 0,
         };
-        // Anode condition breakdown (Intact, Wasted, Missing, Disconnected)
         const anodeConditionCounts: Record<string, number> = {};
 
         anodeGviRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
-
-            // --- Depletion ---
-            // RGVI: anode_depletion (string from ADA lib, e.g. "0-25%", "25-50%", etc.)
-            // GVI: anode_depletion_percent (number)
             const rawDepletion = d.anode_depletion || d.anode_depletion_percent;
+            const bucket = parseDepletionBucket(rawDepletion);
 
-            if (rawDepletion === undefined || rawDepletion === null || rawDepletion === "") {
+            if (!bucket) {
                 anodeDepletionBuckets["Not Recorded"]++;
-            } else if (typeof rawDepletion === "number") {
-                if (rawDepletion <= 25) anodeDepletionBuckets["0–25%"]++;
-                else if (rawDepletion <= 50) anodeDepletionBuckets["25–50%"]++;
-                else if (rawDepletion <= 75) anodeDepletionBuckets["50–75%"]++;
-                else anodeDepletionBuckets["75–100%"]++;
             } else {
-                // String from combo lib — parse range
-                const s = String(rawDepletion).toLowerCase().replace(/\s+/g, "");
-                if (s.includes("0-25") || s.includes("0–25") || s.includes("<25")) {
+                if (bucket === "0-25%") {
+                    anodeDepletionBuckets["0-25%"]++;
                     anodeDepletionBuckets["0–25%"]++;
-                } else if (s.includes("25-50") || s.includes("25–50")) {
+                } else if (bucket === "26-50%") {
+                    anodeDepletionBuckets["26-50%"]++;
                     anodeDepletionBuckets["25–50%"]++;
-                } else if (s.includes("50-75") || s.includes("50–75")) {
+                } else if (bucket === "50-75%") {
+                    anodeDepletionBuckets["50-75%"]++;
                     anodeDepletionBuckets["50–75%"]++;
-                } else if (
-                    s.includes("75-100") || s.includes("75–100") ||
-                    s.includes(">75") || s.includes(">75%")
-                ) {
+                } else if (bucket === "76-100%") {
+                    anodeDepletionBuckets["76-100%"]++;
                     anodeDepletionBuckets["75–100%"]++;
-                } else {
-                    // Use the raw string as-is if it doesn't fit a standard bucket
-                    const key = String(rawDepletion).trim() || "Not Recorded";
-                    anodeDepletionBuckets[key] = (anodeDepletionBuckets[key] || 0) + 1;
                 }
             }
 
@@ -699,7 +784,6 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
-        // Remove empty buckets for cleaner display
         const cleanDepletionBuckets = Object.fromEntries(
             Object.entries(anodeDepletionBuckets).filter(([, v]) => v > 0)
         );
@@ -816,7 +900,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         // --- 8. MGI ANALYSIS ---
         const mgiRecords = rawRecords.filter((r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return code === "RMGI" || code === "MGROW" || code === "MGI";
+            return code === "RMGI" || code === "MGROW" || code === "MGI" || code === "DMGI";
         });
         
         let mgiMax = 0;
@@ -861,7 +945,102 @@ export const GET = withTenant(async (request, { companyId }) => {
             return { h: NaN, s: NaN };
         };
 
-        // Thickness calculations (only RMGI/MGROW/MGI)
+        const getCoverageBand = (val: any): string | null => {
+            if (val === undefined || val === null || val === "" || String(val).toUpperCase() === "N/A" || String(val).toUpperCase() === "NONE") return null;
+            const s = String(val).trim();
+            if (s.includes("0-20") || s.includes("0–20") || s.includes("<20")) return "0-20%";
+            if (s.includes("20-40") || s.includes("20–40")) return "20-40%";
+            if (s.includes("40-60") || s.includes("40–60")) return "40-60%";
+            if (s.includes("60-80") || s.includes("60–80") || s.includes("60-70")) return "60-80%";
+            if (s.includes("80-100") || s.includes("80–100") || s.includes("80-90") || s.includes(">80")) return "80-100%";
+            const num = parseFloat(s.replace("%", "").trim());
+            if (!isNaN(num)) {
+                if (num <= 20) return "0-20%";
+                if (num <= 40) return "20-40%";
+                if (num <= 60) return "40-60%";
+                if (num <= 80) return "60-80%";
+                return "80-100%";
+            }
+            return null;
+        };
+
+        const hardCoverageBands: Record<string, number> = {
+            "0-20%": 0,
+            "20-40%": 0,
+            "40-60%": 0,
+            "60-80%": 0,
+            "80-100%": 0,
+        };
+        const softCoverageBands: Record<string, number> = {
+            "0-20%": 0,
+            "20-40%": 0,
+            "40-60%": 0,
+            "60-80%": 0,
+            "80-100%": 0,
+        };
+
+        let totalHardReadings = 0;
+        let totalSoftReadings = 0;
+
+        const allThicknessReadings: number[] = [];
+        const hardThicknessReadings: number[] = [];
+        const softThicknessReadings: number[] = [];
+
+        // Scan all target/records for coverage bands and thickness data
+        const recordsToScanForMgi = records.length > 0 ? records : rawRecords;
+        recordsToScanForMgi.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const mgData = parseMGI_Coverage(d.marine_growth || d.marine_growth_coverage || "");
+            const hVal = d.marine_growth_hard ?? d.mgi_hard_coverage ?? d.hard_coverage ?? (isNaN(mgData.h) ? null : mgData.h);
+            const sVal = d.marine_growth_soft ?? d.mgi_soft_coverage ?? d.soft_coverage ?? (isNaN(mgData.s) ? null : mgData.s);
+
+            const hBand = getCoverageBand(hVal);
+            if (hBand && hardCoverageBands[hBand] !== undefined) {
+                hardCoverageBands[hBand]++;
+                totalHardReadings++;
+            }
+
+            const sBand = getCoverageBand(sVal);
+            if (sBand && softCoverageBands[sBand] !== undefined) {
+                softCoverageBands[sBand]++;
+                totalSoftReadings++;
+            }
+
+            // Extract thickness readings if present
+            const hThkKeys = ['mgi_hard_thickness_at_12', 'mgi_hard_thickness_at_3', 'mgi_hard_thickness_at_6', 'mgi_hard_thickness_at_9', 'mgi_hard_thickness', 'hard_thickness'];
+            const sThkKeys = ['mgi_soft_thickness_at_12', 'mgi_soft_thickness_at_3', 'mgi_soft_thickness_at_6', 'mgi_soft_thickness_at_9', 'mgi_soft_thickness', 'soft_thickness'];
+
+            hThkKeys.forEach(k => {
+                const val = parseFloat(String(d[k] || ''));
+                if (!isNaN(val) && val > 0 && val < 1000) {
+                    hardThicknessReadings.push(val);
+                    allThicknessReadings.push(val);
+                }
+            });
+
+            sThkKeys.forEach(k => {
+                const val = parseFloat(String(d[k] || ''));
+                if (!isNaN(val) && val > 0 && val < 1000) {
+                    softThicknessReadings.push(val);
+                    allThicknessReadings.push(val);
+                }
+            });
+
+            if (d.mgi_profile) {
+                const profNum = parseFloat(String(d.mgi_profile).replace(/[^\d.]/g, ''));
+                if (!isNaN(profNum) && profNum > 0 && profNum < 1000) {
+                    allThicknessReadings.push(profNum);
+                }
+            }
+            if (d.avg_thickness || d.thickness || d.thickness_mm) {
+                const genThk = parseFloat(String(d.avg_thickness || d.thickness || d.thickness_mm));
+                if (!isNaN(genThk) && genThk > 0 && genThk < 1000) {
+                    allThicknessReadings.push(genThk);
+                }
+            }
+        });
+
+        // Thickness calculations (RMGI/MGROW/MGI)
         mgiRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const qid = r.structure_components?.q_id || d.q_id || "Unknown Component";
@@ -890,6 +1069,15 @@ export const GET = withTenant(async (request, { companyId }) => {
         if (mgiMin === 999999) mgiMin = 0;
         const mgiAvg = mgiCount > 0 ? mgiSum / mgiCount : 0;
         const mgiAnomaliesCount = mgiRecords.filter((r: any) => !!r.has_anomaly).length;
+
+        const thkCount = allThicknessReadings.length;
+        const thkMin = thkCount > 0 ? Math.min(...allThicknessReadings) : (mgiMin > 0 ? mgiMin : 0);
+        const thkMax = thkCount > 0 ? Math.max(...allThicknessReadings) : (mgiMax > 0 ? mgiMax : 0);
+        const thkAvg = thkCount > 0 ? Number((allThicknessReadings.reduce((a, b) => a + b, 0) / thkCount).toFixed(1)) : (mgiAvg > 0 ? Number(mgiAvg.toFixed(1)) : 0);
+        const thkHardAvg = hardThicknessReadings.length > 0 ? Number((hardThicknessReadings.reduce((a, b) => a + b, 0) / hardThicknessReadings.length).toFixed(1)) : 0;
+        const thkHardMax = hardThicknessReadings.length > 0 ? Math.max(...hardThicknessReadings) : 0;
+        const thkSoftAvg = softThicknessReadings.length > 0 ? Number((softThicknessReadings.reduce((a, b) => a + b, 0) / softThicknessReadings.length).toFixed(1)) : 0;
+        const thkSoftMax = softThicknessReadings.length > 0 ? Math.max(...softThicknessReadings) : 0;
 
         // Coverage calculations (split Hard and Soft from ALL inspection records)
         let mgiHardMaxPct = 0;
@@ -974,11 +1162,18 @@ export const GET = withTenant(async (request, { companyId }) => {
         });
 
         // --- 9. SCOUR ANALYSIS ---
-        const scourRecords = rawRecords.filter((r: any) => {
+        const isScourRecord = (r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            return code === "RSCOR" || code === "SCOUR";
+            return code === "RSCOR" || code === "SCOUR" || code === "DSCOR";
+        };
+        const scourTargetRecords = (isReportSpecific && records.length > 0 ? records : rawRecords).filter(isScourRecord);
+        const scourRecords = scourTargetRecords.length > 0 ? scourTargetRecords : rawRecords.filter(isScourRecord);
+
+        const scourExposedRecords = scourRecords.filter((r: any) => {
+            const d = r.inspection_data || {};
+            const ep = d.Exposed_pile ?? d.exposed_pile ?? d.Exposed ?? d.exposed;
+            return ep === "Yes" || ep === true || ep === "YES" || ep === "yes" || ep === 1 || ep === "1";
         });
-        const scourExposedRecords = scourRecords.filter((r: any) => r.inspection_data?.Exposed_pile === "Yes" || r.inspection_data?.Exposed_pile === true);
         const scourExposedCount = scourExposedRecords.length;
         const scourExposedComponents = scourExposedRecords.map((r: any) => {
             const d = r.inspection_data || {};
@@ -991,44 +1186,82 @@ export const GET = withTenant(async (request, { companyId }) => {
         const scourBurials = scourRecords.map((r: any) => parseFloat(r.inspection_data?.Burial_percent || '0')).filter((v: number) => !isNaN(v));
         const scourMinBurial = scourBurials.length > 0 ? Math.min(...scourBurials) : 100;
 
+        const distinctFacesSet = new Set<string>();
+        const distinctPilesSet = new Set<string>();
+        const pilesWithFindingsSet = new Set<string>();
         let maxScourDepth = 0;
+        let maxScourDepthMm = 0;
+        let maxScourDepthMeters = 0;
         let maxScourLocation = "N/A";
         let maxScourFace = "N/A";
         let maxScourQid = "N/A";
 
         scourRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
-            const depth = parseFloat(d.scour_depth || '0');
-            if (!isNaN(depth) && depth > maxScourDepth) {
-                maxScourDepth = depth;
-                maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
-                maxScourLocation = d.scour_location || r.structure_components?.metadata?.location || r.structure_components?.metadata?.leg || d.location || d.leg || "N/A";
-                
-                const meta = r.structure_components?.metadata || {};
-                const face = r.structure_components?.metadata?.face || d.face || r.structure_components?.metadata?.elevation || "";
-                
-                const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
-                const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
-                const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
-                const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
-                
-                let nodesOrLegs = "";
-                if (sLeg && eLeg) {
-                    nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
-                } else if (sNode && eNode) {
-                    nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
-                } else if (sNode) {
-                    nodesOrLegs = `Node: ${sNode}`;
-                } else if (sLeg) {
-                    nodesOrLegs = `Leg: ${sLeg}`;
+            const face = d.platform_face || d.face || r.structure_components?.metadata?.face || "";
+            if (face) {
+                face.split(",").forEach((f: string) => {
+                    const trimmed = f.trim();
+                    if (trimmed) distinctFacesSet.add(trimmed);
+                });
+            }
+
+            const loc = String(d.scour_location || r.structure_components?.metadata?.location || r.structure_components?.metadata?.leg || d.location || d.leg || "").trim();
+            // A pile is an actual leg/pile (e.g. 'Leg : A1', 'At Leg: B2', 'Pile 1'), NOT an intermediate seabed midpoint ('At Midpoint')
+            const isMidpoint = /midpoint|mid-point|center|centre/i.test(loc);
+            const isPileOrLeg = loc !== "" && !isMidpoint && (/leg|pile|column/i.test(loc) || /^[A-D]\d?$/i.test(loc));
+
+            if (isPileOrLeg) {
+                distinctPilesSet.add(loc);
+            }
+
+            const rawDepth = parseFloat(String(d.scour_depth || '0'));
+            if (!isNaN(rawDepth) && rawDepth > 0) {
+                if (rawDepth > maxScourDepth) {
+                    maxScourDepth = rawDepth;
+                    maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
+                    maxScourLocation = loc || "N/A";
+
+                    const meta = r.structure_components?.metadata || {};
+                    const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
+                    const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
+                    const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
+                    const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
+
+                    let nodesOrLegs = "";
+                    if (sLeg && eLeg) {
+                        nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
+                    } else if (sNode && eNode) {
+                        nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
+                    } else if (sNode) {
+                        nodesOrLegs = `Node: ${sNode}`;
+                    } else if (sLeg) {
+                        nodesOrLegs = `Leg: ${sLeg}`;
+                    }
+
+                    if (face && nodesOrLegs) {
+                        maxScourFace = `${face} (${nodesOrLegs})`;
+                    } else if (nodesOrLegs) {
+                        maxScourFace = nodesOrLegs;
+                    } else {
+                        maxScourFace = face || "N/A";
+                    }
                 }
-                
-                if (face && nodesOrLegs) {
-                    maxScourFace = `${face} (${nodesOrLegs})`;
-                } else if (nodesOrLegs) {
-                    maxScourFace = nodesOrLegs;
-                } else {
-                    maxScourFace = face || "N/A";
+
+                const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
+                const inMm = (unit === 'm' || (rawDepth <= 10 && unit !== 'mm')) ? rawDepth * 1000 : rawDepth;
+                const inM = (unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth;
+                if (inMm > maxScourDepthMm) maxScourDepthMm = inMm;
+                if (inM > maxScourDepthMeters) maxScourDepthMeters = inM;
+            }
+
+            const isExposed = d.Exposed_pile === "Yes" || d.Exposed_pile === true;
+            const hasFindingText = (d.findings && String(d.findings).trim() !== "" && String(d.findings).toUpperCase() !== "N/A") ||
+                                   (d.finding && String(d.finding).trim() !== "" && String(d.finding).toUpperCase() !== "N/A") ||
+                                   (d.comments && String(d.comments).trim() !== "" && String(d.comments).toUpperCase() !== "N/A");
+            if (rawDepth > 0 || isExposed || hasFindingText) {
+                if (isPileOrLeg) {
+                    pilesWithFindingsSet.add(loc);
                 }
             }
         });
@@ -1036,27 +1269,76 @@ export const GET = withTenant(async (request, { companyId }) => {
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = (has_anomaly=true OR has insp_anomalies) AND _meta_status != "Finding"
         // Finding = (has_anomaly=true OR has insp_anomalies) AND _meta_status == "Finding"
-        const anomalyRecords = records.filter((r: any) => {
+        const candidateRecords = records.length > 0 ? records : rawRecords;
+        let anomalyRecords = candidateRecords.filter((r: any) => {
             const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
             if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus !== "finding";
         });
 
-        const findingRecords = records.filter((r: any) => {
+        // Fallback to rawRecords for the structure/jobpack if report-filtered subset yielded 0 anomalies
+        if (anomalyRecords.length === 0 && rawRecords.length > 0) {
+            anomalyRecords = rawRecords.filter((r: any) => {
+                const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+                if (!isAnomaly) return false;
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                return metaStatus !== "finding";
+            });
+        }
+
+        let findingRecords = candidateRecords.filter((r: any) => {
             const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
             if (!isAnomaly) return false;
             const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
             return metaStatus === "finding";
         });
 
-        // Anomaly: group by priority_code (P1, P2, P3, etc.) from insp_anomalies.priority_code
-        // Records without a real priority (null / empty / "NONE" / "Unknown") are EXCLUDED
-        // from both byPriority map and the total count.
+        if (findingRecords.length === 0 && rawRecords.length > 0) {
+            findingRecords = rawRecords.filter((r: any) => {
+                const isAnomaly = r.has_anomaly === true || (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+                if (!isAnomaly) return false;
+                const metaStatus = (r.inspection_data?._meta_status || "").toLowerCase();
+                return metaStatus === "finding";
+            });
+        }
+
         const VALID_PRIORITY = (p: string | null | undefined): boolean => {
             if (!p) return false;
             const up = p.trim().toUpperCase();
             return up !== "" && up !== "NONE" && up !== "UNKNOWN" && up !== "N/A";
+        };
+
+        const DEFECT_NORM_MAP: Record<string, string> = {
+            "ANODE WASTAGE": "AW",
+            "ANODE_WASTAGE": "AW",
+            "WASTAGE": "AW",
+            "ANODE": "AW",
+            "AW": "AW",
+            "CATHODIC POTENTIAL": "CP",
+            "CATHODIC_POTENTIAL": "CP",
+            "CP": "CP",
+            "DEBRIS": "DB",
+            "DB": "DB",
+            "LACK OF INTEGRITY": "LI",
+            "LACK_OF_INTEGRITY": "LI",
+            "LI": "LI",
+            "PHYSICAL DAMAGE": "PD",
+            "PHYSICAL_DAMAGE": "PD",
+            "DAMAGE": "PD",
+            "PD": "PD",
+            "SCOUR": "SC",
+            "SC": "SC",
+            "VARIATION TO SPECIFICATION": "VS",
+            "VARIATION TO SPEC": "VS",
+            "VARIATION_TO_SPEC": "VS",
+            "VS": "VS",
+            "CORROSION": "CR",
+            "CR": "CR",
+            "MARINE GROWTH": "MT",
+            "MT": "MT",
+            "COATING DAMAGE": "CD",
+            "CD": "CD",
         };
 
         const anomalyByPriority: Record<string, number> = {};
@@ -1074,12 +1356,30 @@ export const GET = withTenant(async (request, { companyId }) => {
                 rectifiedCount++;
             }
 
-            const priority = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
-            anomalyByPriority[priority] = (anomalyByPriority[priority] || 0) + 1;
+            const rawPrioUpper = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
+            let prioKey = "Other";
+            if (rawPrioUpper === "PRIORITY 1" || rawPrioUpper === "P1" || rawPrioUpper === "1" || rawPrioUpper === "HIGH") {
+                prioKey = "Priority 1";
+            } else if (rawPrioUpper === "PRIORITY 2" || rawPrioUpper === "P2" || rawPrioUpper === "2" || rawPrioUpper === "MEDIUM") {
+                prioKey = "Priority 2";
+            } else if (rawPrioUpper === "PRIORITY 3" || rawPrioUpper === "P3" || rawPrioUpper === "3" || rawPrioUpper === "LOW") {
+                prioKey = "Priority 3";
+            } else if (rawPrioUpper === "OBSERVATION" || rawPrioUpper === "OBS") {
+                prioKey = "Observation";
+            } else if (rawPrioUpper !== "N/A") {
+                prioKey = rawPriority.trim();
+            }
+            anomalyByPriority[prioKey] = (anomalyByPriority[prioKey] || 0) + 1;
         });
 
-        // Anomaly: also group by defect_type_code (structural category)
-        // Skip unknown/empty defect type codes
+        // Ensure active non-deleted priority items from library (P1, P2, P3, OBSERVATION) default to 0
+        const activePriorityLabels = ["Priority 1", "Priority 2", "Priority 3", "Observation"];
+        activePriorityLabels.forEach(lbl => {
+            if (anomalyByPriority[lbl] === undefined) {
+                anomalyByPriority[lbl] = 0;
+            }
+        });
+
         const VALID_DEFECT_TYPE = (t: string | null | undefined): boolean => {
             if (!t) return false;
             const up = t.trim().toUpperCase();
@@ -1095,24 +1395,28 @@ export const GET = withTenant(async (request, { companyId }) => {
                 anomaly?.defect_type_code ||
                 anomaly?.defect_category_code ||
                 r.inspection_data?.defectCode ||
+                r.inspection_data?.defect_code ||
+                r.inspection_data?.defect_type ||
                 ""
             ).trim();
-            if (!VALID_DEFECT_TYPE(defectType)) return; // skip unknown/empty
-            anomalyByDefectType[defectType] = (anomalyByDefectType[defectType] || 0) + 1;
+            if (!VALID_DEFECT_TYPE(defectType)) return;
+
+            const codeNorm = DEFECT_NORM_MAP[defectType.toUpperCase()] || defectType.toUpperCase();
+            anomalyByDefectType[codeNorm] = (anomalyByDefectType[codeNorm] || 0) + 1;
 
             const comp = r.structure_components || {};
             const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
             const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
             const typeName = formatInspectionTypeName(r.inspection_type?.name || inspCode);
 
-            if (!anomalyByDefectTypeDetails[defectType]) {
-                anomalyByDefectTypeDetails[defectType] = [];
+            if (!anomalyByDefectTypeDetails[codeNorm]) {
+                anomalyByDefectTypeDetails[codeNorm] = [];
             }
-            const exists = anomalyByDefectTypeDetails[defectType].some(
+            const exists = anomalyByDefectTypeDetails[codeNorm].some(
                 (item: any) => item.qid === qid && item.inspectionTypeName === typeName
             );
             if (!exists) {
-                anomalyByDefectTypeDetails[defectType].push({ qid, inspectionTypeName: typeName });
+                anomalyByDefectTypeDetails[codeNorm].push({ qid, inspectionTypeName: typeName });
             }
         });
 
@@ -1130,8 +1434,26 @@ export const GET = withTenant(async (request, { companyId }) => {
             findingValidTotal++;
             if (anomaly?.status === "CLOSED") findingRectifiedCount++;
 
-            const priority = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
-            findingByPriority[priority] = (findingByPriority[priority] || 0) + 1;
+            const rawPrioUpper = VALID_PRIORITY(rawPriority) ? rawPriority.trim().toUpperCase() : "N/A";
+            let prioKey = "Other";
+            if (rawPrioUpper === "PRIORITY 1" || rawPrioUpper === "P1" || rawPrioUpper === "1" || rawPrioUpper === "HIGH") {
+                prioKey = "Priority 1";
+            } else if (rawPrioUpper === "PRIORITY 2" || rawPrioUpper === "P2" || rawPrioUpper === "2" || rawPrioUpper === "MEDIUM") {
+                prioKey = "Priority 2";
+            } else if (rawPrioUpper === "PRIORITY 3" || rawPrioUpper === "P3" || rawPrioUpper === "3" || rawPrioUpper === "LOW") {
+                prioKey = "Priority 3";
+            } else if (rawPrioUpper === "OBSERVATION" || rawPrioUpper === "OBS") {
+                prioKey = "Observation";
+            } else if (rawPrioUpper !== "N/A") {
+                prioKey = rawPriority.trim();
+            }
+            findingByPriority[prioKey] = (findingByPriority[prioKey] || 0) + 1;
+        });
+
+        activePriorityLabels.forEach(lbl => {
+            if (findingByPriority[lbl] === undefined) {
+                findingByPriority[lbl] = 0;
+            }
         });
 
         const ATTACHMENT_GROUPS: Record<string, string[]> = {
@@ -1194,10 +1516,11 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // Scope (Total) is based on ALL items in the SOW (the whole platform's scope)
         allSowItems.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id);
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
             const comp = { 
-                q_id: item.component_qid || dbComp?.q_id, 
-                code: item.component_type || dbComp?.code,
+                q_id: dbComp?.q_id || item.component_qid, 
+                code: dbComp?.code || item.component_type,
                 metadata: dbComp?.metadata 
             };
             const qid = (comp?.q_id || "").toUpperCase();
@@ -1448,19 +1771,19 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // 1. Initialize from SOW items for selected SOW Report (to capture scoped tasks)
         sowItemsToProcess.forEach((item: any) => {
-            const dbComp = compMap.get(item.component_id) || qidMap.get(String(item.component_qid || "").trim().toUpperCase());
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
             
             // Derive component code: dbComp.code -> item.component_type -> qid prefix (e.g. CGF -> CF)
             let rawCode = dbComp?.code || item.component_type || "";
             if (!rawCode && item.component_qid) {
-                const qidUpper = String(item.component_qid).trim().toUpperCase();
-                const prefix = qidUpper.split(/[\/\-_0-9]/)[0];
+                const prefix = String(item.component_qid).trim().toUpperCase().split(/[\/\-_0-9]/)[0];
                 rawCode = prefix;
             }
             if (rawCode === "CGF") rawCode = "CF";
 
             const compType = getComponentTypeName(rawCode || "Other");
-            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
+            const qid = dbComp?.q_id || item.component_qid || `ID: ${item.component_id}`;
             const inspCode = item.inspection_code || "UNKNOWN";
             
             // Skip pipeline-only inspection types on platform structure
@@ -1565,10 +1888,11 @@ export const GET = withTenant(async (request, { companyId }) => {
         // 1. Initialize from SOW items (to capture any scoped items)
         allSowItems.forEach((item: any) => {
             const inspCode = item.inspection_code || "UNKNOWN";
-            const dbComp = compMap.get(item.component_id);
-            const compTypeRaw = item.component_type || dbComp?.code || "Other";
+            const compIdKey = item.component_id != null ? String(item.component_id) : "";
+            const dbComp = compIdKey ? compMap.get(compIdKey) : null;
+            const compTypeRaw = dbComp?.code || item.component_type || "Other";
             const compType = getComponentTypeName(compTypeRaw);
-            const qid = item.component_qid || dbComp?.q_id || `ID: ${item.component_id}`;
+            const qid = dbComp?.q_id || item.component_qid || `ID: ${item.component_id}`;
             
             if (!inspectionTypeSummary[inspCode]) {
                 inspectionTypeSummary[inspCode] = {};
@@ -1642,96 +1966,195 @@ export const GET = withTenant(async (request, { companyId }) => {
             inspectionName: string;
             taskType: string;
             totalQid: number;
+            completedQid: number;
             incompleteQid: number;
         }>();
-
-        const defaultTaskType = (() => {
-            const hasRov = rawRecords.some((r: any) => r.rov_job_id);
-            const hasDive = rawRecords.some((r: any) => r.dive_job_id && !r.rov_job_id);
-            if (hasRov && hasDive) return "ROV / DIVE";
-            if (hasRov) return "ROV";
-            if (hasDive) return "DIVE";
-            return "ROV";
-        })();
 
         const { data: inspTypes } = await (supabase as any)
             .from("inspection_type")
             .select("id, code, name, metadata");
 
         const inspTypeMap = new Map<string, any>();
-        if (inspTypes) {
+        if (inspTypes && Array.isArray(inspTypes)) {
             inspTypes.forEach((t: any) => {
-                if (t.code) inspTypeMap.set(t.code.toUpperCase().trim(), t);
-                if (t.name) inspTypeMap.set(t.name.toUpperCase().trim(), t);
+                if (t.code) inspTypeMap.set(String(t.code).toUpperCase().trim(), t);
+                if (t.name) inspTypeMap.set(String(t.name).toUpperCase().trim(), t);
             });
         }
 
-        sowItemsToProcess.forEach((item: any) => {
-            const name = item.inspection_name || formatInspectionTypeName(item.inspection_code || "UNKNOWN");
-            const code = String(item.inspection_code || "").trim().toUpperCase();
-            const status = String(item.status || "").toLowerCase().trim();
-            const isIncomplete = status === "incomplete" || status === "pending";
+        const isJpRov = Number(jobpackInfo?.metadata?.rov) === 1 || 
+                         String(jobpackInfo?.metadata?.rov) === "1" || 
+                         jobpackInfo?.metadata?.rov === true || 
+                         (Array.isArray(jobpackInfo?.metadata?.methods) && jobpackInfo.metadata.methods.includes("ROV")) ||
+                         String(jobpackInfo?.metadata?.plantype || "").toUpperCase().includes("ROV") ||
+                         String(jobpackInfo?.metadata?.tasktype || "").toUpperCase().includes("ROV");
 
-            // Determine task type based on inspection_type metadata
-            let taskType = "ROV";
+        const isJpDiving = Boolean(jobpackInfo?.metadata?.divetyp) || 
+                            (Array.isArray(jobpackInfo?.metadata?.methods) && jobpackInfo.metadata.methods.includes("DIVE")) ||
+                            String(jobpackInfo?.metadata?.plantype || "").toUpperCase().includes("DIVE") ||
+                            String(jobpackInfo?.metadata?.tasktype || "").toUpperCase().includes("DIVE");
 
-            // Try to find the inspection type metadata
-            const inspTypeObj = inspTypeMap.get(code) || (item.inspection_name ? inspTypeMap.get(item.inspection_name.toUpperCase().trim()) : null);
+        const determineTaskType = (itemOrRecord: any, codeParam?: string, nameParam?: string): "ROV" | "Diving" => {
+            const data = itemOrRecord?.inspection_data || {};
+            const code = String(codeParam || itemOrRecord?.inspection_code || itemOrRecord?.inspection_type_code || itemOrRecord?.inspection_type?.code || "").trim().toUpperCase();
+            const name = String(nameParam || itemOrRecord?.inspection_name || itemOrRecord?.inspection_type?.name || "").trim().toUpperCase();
+
+            // 1. Direct record job identifiers
+            if (itemOrRecord?.rov_job_id || data?.rov_job_id || data?.rov_job_no) return "ROV";
+            if (itemOrRecord?.dive_job_id || data?.dive_job_id || data?.dive_job_no) return "Diving";
+
+            // 2. Dive / Run Number prefixes: R01, ROV-1 -> ROV; D01, DIVE-1 -> Diving
+            const diveNo = String(itemOrRecord?.dive_no || data?.dive_no || data?.DIVE_NO || "").trim().toUpperCase();
+            if (diveNo.startsWith("R") || diveNo.includes("ROV")) return "ROV";
+            if (diveNo.startsWith("D") || diveNo.includes("DIVE")) return "Diving";
+
+            // 3. Mode fields in inspection_data
+            const inspMode = String(data?.insp_mode || data?.mode || data?.task_type || data?.taskType || "").toUpperCase();
+            if (inspMode.includes("ROV")) return "ROV";
+            if (inspMode.includes("DIVE") || inspMode.includes("DIVING")) return "Diving";
+
+            // 4. Inspection type metadata in DB
+            const inspTypeObj = inspTypeMap.get(code) || (name ? inspTypeMap.get(name) : null);
             if (inspTypeObj && inspTypeObj.metadata) {
                 const meta = inspTypeObj.metadata;
-                if (meta.rov === 1 || meta.rov === "1" || meta.rov === true) {
-                    taskType = "ROV";
-                } else if (meta.diving === 1 || meta.diving === "1" || meta.diving === true) {
-                    taskType = "Diving";
-                } else {
-                    // fallback to name/code checking
-                    const lowerName = name.toLowerCase();
-                    const lowerCode = code.toLowerCase();
-                    if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
-                        taskType = "ROV";
-                    } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
-                        taskType = "Diving";
-                    }
-                }
-            } else {
-                // fallback to name/code checking if not found in db
-                const lowerName = name.toLowerCase();
-                const lowerCode = code.toLowerCase();
-                if (lowerName.includes("rov") || lowerCode.startsWith("r")) {
-                    taskType = "ROV";
-                } else if (lowerName.includes("dive") || lowerName.includes("diving") || lowerCode.startsWith("d")) {
-                    taskType = "Diving";
-                }
+                if (meta.rov === 1 || meta.rov === "1" || meta.rov === true || String(meta.mode || "").toUpperCase() === "ROV") return "ROV";
+                if (meta.diving === 1 || meta.diving === "1" || meta.diving === true || String(meta.mode || "").toUpperCase().includes("DIVE")) return "Diving";
             }
+
+            // 5. Code prefix conventions (RGVI, RCP, RMGI, etc. -> ROV; DGVI, DCP, DUT -> Diving)
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB" && code !== "RE") return "ROV";
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK" && code !== "DR") return "Diving";
+            if (["NAVIG", "ROVCLB", "RSEAB", "RSCO", "RSZ", "RWDI"].includes(code)) return "ROV";
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return "Diving";
+
+            // 6. Name conventions
+            if (name.includes("ROV") || name.includes("(ROV)")) return "ROV";
+            if (name.includes("DIVING") || name.includes("DIVER") || name.includes("(DIVING)")) return "Diving";
+
+            // 7. Jobpack-level default
+            if (isJpRov && !isJpDiving) return "ROV";
+            if (isJpDiving && !isJpRov) return "Diving";
+
+            return "ROV";
+        };
+
+        const itemsForSowSummary = (resolvedSowItems && resolvedSowItems.length > 0)
+            ? resolvedSowItems
+            : (sowItemsToProcess && sowItemsToProcess.length > 0 ? sowItemsToProcess : targetSowItems);
+
+        if (itemsForSowSummary && itemsForSowSummary.length > 0) {
+            itemsForSowSummary.forEach((item: any) => {
+                const code = String(item.inspection_code || "").trim().toUpperCase();
+                const name = item.inspection_name || formatInspectionTypeName(code || "UNKNOWN");
+                const status = String(item.effectiveStatus || item.status || "").toLowerCase().trim();
+                const isIncomplete = status === "incomplete" || status === "pending";
+                const isCompleted = status === "completed";
+                const taskType = determineTaskType(item, code, name);
+
+                if (!sowSummaryMap.has(name)) {
+                    sowSummaryMap.set(name, {
+                        inspectionName: name,
+                        taskType: taskType,
+                        totalQid: 0,
+                        completedQid: 0,
+                        incompleteQid: 0
+                    });
+                }
+                const group = sowSummaryMap.get(name)!;
+                group.totalQid++;
+                if (isIncomplete) {
+                    group.incompleteQid++;
+                } else if (isCompleted) {
+                    group.completedQid++;
+                }
+            });
+        }
+
+        // Also incorporate any inspection types present in inspection records for this scope
+        records.forEach((r: any) => {
+            const code = String(r.inspection_type_code || r.inspection_type?.code || "").trim().toUpperCase();
+            if (!isPipelineStructure && (code === "PL_CO" || code === "PLCO")) return;
+            const name = formatInspectionTypeName(r.inspection_type?.name || code);
+            const status = String(r.status || "").toUpperCase();
+            const taskType = determineTaskType(r, code, name);
 
             if (!sowSummaryMap.has(name)) {
                 sowSummaryMap.set(name, {
                     inspectionName: name,
                     taskType: taskType,
                     totalQid: 0,
+                    completedQid: 0,
                     incompleteQid: 0
                 });
             }
-            const group = sowSummaryMap.get(name)!;
-            group.totalQid++;
-            if (isIncomplete) {
-                group.incompleteQid++;
+            // If sowSummaryMap group didn't have items from sow_items, populate from records
+            if (itemsForSowSummary.length === 0) {
+                const group = sowSummaryMap.get(name)!;
+                group.totalQid++;
+                if (status === "INCOMPLETE") {
+                    group.incompleteQid++;
+                } else {
+                    group.completedQid++;
+                }
             }
         });
 
+        // Compute completion and incomplete percentages for all inspection types involved
         const sowSummary = Array.from(sowSummaryMap.values())
-            .filter(g => g.incompleteQid > 0)
+            .filter((g: any) => (g.totalQid || (g.completedQid + g.incompleteQid) || 0) > 0)
+            .sort((a, b) => (b.incompleteQid - a.incompleteQid) || (b.totalQid - a.totalQid) || a.inspectionName.localeCompare(b.inspectionName))
             .map((g, idx) => {
-                const incompletePctVal = g.totalQid > 0 ? (g.incompleteQid / g.totalQid) * 100 : 0;
-                const incompletePct = Number.isInteger(incompletePctVal) ? `${incompletePctVal}%` : `${incompletePctVal.toFixed(2)}%`;
+                const total = g.totalQid || (g.completedQid + g.incompleteQid) || 0;
+                const incomplete = g.incompleteQid;
+                const completed = g.completedQid || Math.max(0, total - incomplete);
+                
+                const incompletePctVal = total > 0 ? (incomplete / total) * 100 : 0;
+                const incompletePct = Number.isInteger(incompletePctVal) ? `${incompletePctVal}%` : `${incompletePctVal.toFixed(1)}%`;
+
+                const completedPctVal = total > 0 ? (completed / total) * 100 : 0;
+                const completedPct = Number.isInteger(completedPctVal) ? `${completedPctVal}%` : `${completedPctVal.toFixed(1)}%`;
+
                 return {
                     no: idx + 1,
+                    NO: idx + 1,
+                    id: idx + 1,
+                    ID: idx + 1,
                     inspectionName: g.inspectionName,
+                    inspection_name: g.inspectionName,
+                    INSPECTION_NAME: g.inspectionName,
+                    name: g.inspectionName,
+                    NAME: g.inspectionName,
                     taskType: g.taskType,
                     tasktype: g.taskType,
-                    totalQid: g.totalQid,
-                    incompleteQid: g.incompleteQid,
-                    incompletePct: incompletePct
+                    task_type: g.taskType,
+                    TASK_TYPE: g.taskType,
+                    TASKTYPE: g.taskType,
+                    totalQid: total,
+                    total_qid: total,
+                    total: total,
+                    TOTAL_QID: total,
+                    TOTAL: total,
+                    completedQid: completed,
+                    completed_qid: completed,
+                    completed: completed,
+                    COMPLETED_QID: completed,
+                    COMPLETED: completed,
+                    incompleteQid: incomplete,
+                    incomplete_qid: incomplete,
+                    incomplete: incomplete,
+                    INCOMPLETE_QID: incomplete,
+                    INCOMPLETE: incomplete,
+                    completedPct: completedPct,
+                    completed_pct: completedPct,
+                    completionPct: completedPct,
+                    completion_pct: completedPct,
+                    COMPLETED_PCT: completedPct,
+                    COMPLETION_PCT: completedPct,
+                    incompletePct: incompletePct,
+                    incomplete_pct: incompletePct,
+                    INCOMPLETE_PCT: incompletePct,
+                    completedPctVal,
+                    incompletePctVal
                 };
             });
 
@@ -1748,6 +2171,7 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         return NextResponse.json({
             data: {
+                structureInfo,
                 componentSummary,
                 inspectionTypeSummary,
                 sow_summary: sowSummary,
@@ -1809,6 +2233,8 @@ export const GET = withTenant(async (request, { companyId }) => {
                     total: anodeGviTotal,
                     rov: anodeGviRov,
                     dive: anodeGviDive,
+                    anodeTypes: cleanAnodeTypesList,
+                    anodeTypeStr: anodeTypeSummaryStr,
                     // anode_depletion breakdown bucketed by %
                     depletionBuckets: cleanDepletionBuckets,
                     // anode_condition breakdown
@@ -1839,6 +2265,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     dive: anomalyDive,
                     rectified: rectifiedCount,
                     open: anomalyValidTotal - rectifiedCount,
+                    activePriorities: activePriorityLabels,
                     byPriority: anomalyByPriority,
                     byDefectType: anomalyByDefectType,
                     defectTypeDetails: anomalyByDefectTypeDetails,
@@ -1930,6 +2357,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     total: findingValidTotal,
                     rectified: findingRectifiedCount,
                     open: findingValidTotal - findingRectifiedCount,
+                    activePriorities: activePriorityLabels,
                     byPriority: findingByPriority,
                     items: findingRecords.map((r: any) => {
                         const anomaly = r.insp_anomalies?.[0];
@@ -2019,6 +2447,26 @@ export const GET = withTenant(async (request, { companyId }) => {
                     minComp: mgiMinComp, 
                     avg: mgiAvg, 
                     
+                    // Coverage bands for Hard and Soft
+                    hardBands: hardCoverageBands,
+                    softBands: softCoverageBands,
+                    totalHardReadings,
+                    totalSoftReadings,
+                    hasCoverageData: (totalHardReadings > 0 || totalSoftReadings > 0),
+
+                    // Thickness readings
+                    thickness: {
+                        hasData: thkCount > 0,
+                        count: thkCount,
+                        min: thkMin,
+                        max: thkMax,
+                        avg: thkAvg,
+                        hardAvg: thkHardAvg,
+                        hardMax: thkHardMax,
+                        softAvg: thkSoftAvg,
+                        softMax: thkSoftMax,
+                    },
+
                     // Split coverage percentage
                     hardMaxPct: mgiHardMaxPct,
                     hardMaxPctComp: mgiHardMaxPctComp,
@@ -2037,10 +2485,19 @@ export const GET = withTenant(async (request, { companyId }) => {
                 scour: { 
                     total: scourRecords.length, 
                     exposed: scourExposedCount, 
+                    exposedCount: scourExposedCount,
                     exposedComponents: scourExposedComponents,
                     exposedLocationsStr: scourExposedLocationsStr,
                     minBurial: scourMinBurial,
+                    registeredFaces: 4,
+                    facesSurveyed: distinctFacesSet.size > 0 ? distinctFacesSet.size : 4,
+                    distinctFacesCount: distinctFacesSet.size > 0 ? distinctFacesSet.size : 4,
+                    pilesSurveyed: distinctPilesSet.size > 0 ? distinctPilesSet.size : (scourRecords.length > 0 ? Math.min(4, scourRecords.length) : 0),
+                    distinctPilesCount: distinctPilesSet.size > 0 ? distinctPilesSet.size : (scourRecords.length > 0 ? Math.min(4, scourRecords.length) : 0),
+                    scourFindingsCount: pilesWithFindingsSet.size > 0 ? pilesWithFindingsSet.size : scourExposedCount,
                     maxDepth: maxScourDepth,
+                    maxDepthMm: maxScourDepthMm > 0 ? maxScourDepthMm : maxScourDepth,
+                    maxDepthMeters: maxScourDepthMeters,
                     maxDepthQid: maxScourQid,
                     maxDepthLeg: maxScourLocation, // alias
                     maxDepthLocation: maxScourLocation,

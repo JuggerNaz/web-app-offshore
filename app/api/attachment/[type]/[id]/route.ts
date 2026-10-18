@@ -69,11 +69,33 @@ export async function GET(
     return NextResponse.json(data);
   }
 
+  const isStructureVisual = type.toLowerCase() === "platform_structure_image" || type.toLowerCase() === "pipeline_structure_image";
+  const isPlatform = type.toLowerCase().startsWith("platform");
+
+  const sourceTypesToQuery = isStructureVisual
+    ? [
+        type.toLowerCase(),
+        type.toUpperCase(),
+        "structure_image",
+        "STRUCTURE_IMAGE",
+        "platform_visual",
+        "PLATFORM_VISUAL",
+        "visual",
+        "VISUAL",
+        "photo",
+        "PHOTO",
+        isPlatform ? "platform" : "pipeline",
+        isPlatform ? "PLATFORM" : "PIPELINE",
+        "structure",
+        "STRUCTURE",
+      ]
+    : [type.toLowerCase(), type.toUpperCase()];
+
   const { data: directData, error } = await supabase
     .from("attachment")
     .select("*")
     .eq("source_id", numericId)
-    .in("source_type", [type.toLowerCase(), type.toUpperCase()]);
+    .in("source_type", sourceTypesToQuery);
 
   if (error) {
     if (error.code === "PGRST116") {
@@ -87,7 +109,38 @@ export async function GET(
       );
   }
 
-  data = directData ? [...directData] : [];
+  if (isStructureVisual && directData) {
+    const isVisualAttachment = (att: any) => {
+      const st = String(att.source_type || "").toLowerCase();
+      if (st.includes("structure_image") || st.includes("visual") || st.includes("photo")) {
+        return true;
+      }
+      let meta = att.meta;
+      if (typeof meta === "string") {
+        try { meta = JSON.parse(meta); } catch {}
+      }
+      const fileType = String(meta?.file_type || att.file_type || "").toLowerCase();
+      if (fileType.startsWith("image/")) return true;
+      const fileName = String(meta?.original_file_name || meta?.file_name || att.file_name || att.name || att.path || "").toLowerCase();
+      return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(fileName);
+    };
+
+    const visuals = directData.filter(isVisualAttachment);
+
+    // Sort so dedicated structure images come first, followed by other visual records
+    visuals.sort((a, b) => {
+      const aSt = String(a.source_type || "").toLowerCase();
+      const bSt = String(b.source_type || "").toLowerCase();
+      const aIsPrimary = aSt.includes("structure_image") ? 1 : 0;
+      const bIsPrimary = bSt.includes("structure_image") ? 1 : 0;
+      if (bIsPrimary !== aIsPrimary) return bIsPrimary - aIsPrimary;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
+    });
+
+    data = visuals;
+  } else {
+    data = directData ? [...directData] : [];
+  }
 
   if (type.toLowerCase() === "component" || type.toLowerCase() === "structure_component") {
     const { searchParams } = new URL(request.url);
@@ -422,18 +475,40 @@ export async function GET(
       });
     }
 
-    // Enrich attachments with user names
-    const enrichedData = data.map((attachment) => ({
-      ...attachment,
-      user_name: attachment.user_id
-        ? userMap.get(attachment.user_id) || attachment.user_id
-        : "System",
-    }));
+    // Enrich attachments with user names and parsed meta objects
+    const enrichedData = data.map((attachment) => {
+      let metaObj = attachment.meta;
+      if (typeof metaObj === "string") {
+        try { metaObj = JSON.parse(metaObj); } catch { metaObj = {}; }
+      } else if (!metaObj || typeof metaObj !== "object") {
+        metaObj = {};
+      }
+      return {
+        ...attachment,
+        meta: metaObj,
+        user_name: attachment.user_id
+          ? userMap.get(attachment.user_id) || attachment.user_id
+          : "System",
+      };
+    });
 
     return NextResponse.json({ data: enrichedData });
   }
 
-  return NextResponse.json({ data });
+  const normalizedFallback = data.map((attachment) => {
+    let metaObj = attachment.meta;
+    if (typeof metaObj === "string") {
+      try { metaObj = JSON.parse(metaObj); } catch { metaObj = {}; }
+    } else if (!metaObj || typeof metaObj !== "object") {
+      metaObj = {};
+    }
+    return {
+      ...attachment,
+      meta: metaObj,
+    };
+  });
+
+  return NextResponse.json({ data: normalizedFallback });
 }
 
 export async function POST(

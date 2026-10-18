@@ -116,7 +116,7 @@ export const generateROVRRISIJTubeDetailReport = async (
 
         // Fetch all components to build a complete QID map for grouping
         const { data: allComps } = effectiveStructureId
-            ? await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', effectiveStructureId)
+            ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
             : { data: [] };
 
         const compRegistry = new Map<number, any>();

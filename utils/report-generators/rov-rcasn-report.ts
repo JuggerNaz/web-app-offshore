@@ -82,7 +82,10 @@ export const generateROVCasnReport = async (
         }
 
         // Fetch all components to build a complete QID map for grouping
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        const { data: allComps } = effectiveStructureId 
+            ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
+            : { data: null };
         
         const HEADER_H = 26;
 
@@ -243,14 +246,12 @@ export const generateROVCasnReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const compCond = d.component_condition || r.component_condition || "—";
-            const coatCond = d.coating_condition || r.coating_condition || "—";
+            const compCond = d.component_condition || d.comp_cond || d.general_condition || r.component_condition || "—";
+            const coatCond = d.coating_condition || d.coat_cond || r.coating_condition || "—";
 
             const baseFinding = [
                 r.description?.trim(),
                 (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
-                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
-                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
                 d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
             ].filter(Boolean).join('\n');
             const findings = formatReportFindingText(r, baseFinding);
@@ -260,8 +261,9 @@ export const generateROVCasnReport = async (
                 qid,
                 String(elevation),
                 String(diveNo),
-                String(tapeNo),
                 cpDisplay,
+                String(compCond),
+                String(coatCond),
                 findings,
             ];
         };
@@ -330,15 +332,15 @@ export const generateROVCasnReport = async (
                     2: { cellWidth: 14,   halign: "center" },
                     3: { cellWidth: 14,   halign: "center" },
                     4: { cellWidth: 14,   halign: "center" },
-                    5: { cellWidth: 18 },
-                    6: { cellWidth: 18 },
+                    5: { cellWidth: 18,   halign: "center" },
+                    6: { cellWidth: 18,   halign: "center" },
                     7: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
-                if (data.section !== "body") return;
-                const r = (typeof records !== 'undefined' ? records : [])[data.row.index];
-                applyRecordCellStyling(data.cell, r, config.printFriendly);
-            },
+                    if (data.section !== "body") return;
+                    const r = groupRecords[data.row.index];
+                    applyRecordCellStyling(data.cell, r, config.printFriendly);
+                },
                 didDrawCell: (data) => {
                 },
                 didDrawPage: (data) => {

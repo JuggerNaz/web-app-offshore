@@ -65,7 +65,10 @@ export const generateDivingRRISIDetailReport = async (
         const supabase = createClient();
 
         // Fetch all components to build parent component lookup registry
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        const { data: allComps } = effectiveStructureId 
+            ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
+            : { data: null };
 
         // Build lookup map of valid Parent Components matching code 'RS' and QID prefix
         const targetPrefix = typeConfig.prefix; // 'R', 'J', or 'I'

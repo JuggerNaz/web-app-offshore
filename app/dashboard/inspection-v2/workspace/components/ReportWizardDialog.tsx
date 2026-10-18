@@ -420,6 +420,8 @@ interface ReportWizardDialogProps {
         generateSeabedGasDetailReport: () => void;
         generateSeabedCraterDetailReport: () => void;
         generateAnomalyReport?: () => void;
+        generateInspectionSummaryReport?: () => void;
+        generateInspectionSummaryGraphReport?: () => void;
         generateFullInspectionReport: () => void;
         generateInspectionReportByType: (id: any) => void;
     };
@@ -675,6 +677,8 @@ export function ReportWizardDialog({
                 return ['GVINS', 'CVINS', 'CPSURV', 'UTWTK', 'DUTWT', 'MPINS', 'CLEAN'].includes(typeCode) && (compCode === 'CD' || compCode === 'CON' || compCode.startsWith('CD-') || compCode.startsWith('CD_'));
             }) },
 
+            { id: 'inspection_summary', code: 'INSP_SUM', name: 'Inspection Summary', description: 'Executive summary dashboard with task coverage, anomaly distribution, and dynamic task detail cards.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateInspectionSummaryReport || handlers.generateFullInspectionReport, available: true },
+            { id: 'inspection_summary_graph', code: 'INSP_SUM_GRAPH', name: 'Inspection Summary by Graph', description: 'Executive graphical dashboard with interactive visual charts, anomaly donuts, depletion meters, and survey gauges.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateInspectionSummaryGraphReport || handlers.generateInspectionSummaryReport || handlers.generateFullInspectionReport, available: true },
             { id: 'insp_report', code: 'INSP', name: 'Inspection Report', description: 'Detailed inspection findings, observations and results.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
             { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
             { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
@@ -693,7 +697,7 @@ export function ReportWizardDialog({
 
         // Base codes already handled by primary baseTemplates
         const baseCodesSet = new Set(baseTemplates.map(b => b.code.toUpperCase()));
-        const extraExcludedCodes = ['PL_IC', 'ITEM', 'ITMAIN', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC'];
+        const extraExcludedCodes = ['PL_IC', 'ITEM', 'ITMAIN', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC', 'INSP_SUM_GRAPH'];
         extraExcludedCodes.forEach(c => baseCodesSet.add(c));
 
         // Add dynamic reports (excluding any codes covered by base templates)

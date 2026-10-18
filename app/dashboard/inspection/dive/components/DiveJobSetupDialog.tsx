@@ -25,6 +25,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { toast } from "sonner";
 
 interface DiveJobSetupDialogProps {
@@ -57,8 +58,8 @@ export default function DiveJobSetupDialog({
         bell_operator: "",
         life_support_technician: "",
         dive_type: "AIR",
-        dive_date: new Date().toISOString().split("T")[0],
-        start_time: new Date().toTimeString().slice(0, 5),
+        dive_date: toLocalDateString(new Date()),
+        start_time: toLocalTimeString(new Date(), false),
     });
 
     // Team Rotation State
@@ -84,8 +85,8 @@ export default function DiveJobSetupDialog({
                 bell_operator: "",
                 life_support_technician: "",
                 dive_type: "AIR",
-                dive_date: new Date().toISOString().split("T")[0],
-                start_time: new Date().toTimeString().slice(0, 5),
+                dive_date: toLocalDateString(new Date()),
+                start_time: toLocalTimeString(new Date(), false),
             });
             setTeamCombos([]);
             setDiveHistory([]);
@@ -396,6 +397,13 @@ export default function DiveJobSetupDialog({
                 // cr_user: user.id, // Don't change creator on update
             };
 
+            // Resolve company_id from metadata, active company, or users profile
+            let compId = (user as any)?.user_metadata?.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
+            if (!compId) {
+                const { data: uRec } = await supabase.from("users").select("company_id").eq("id", user.id).maybeSingle();
+                compId = uRec?.company_id || null;
+            }
+
             if (existingJob) {
                 // UPDATE or UPGRADE LEGACY
                 // We use upsert so that if it's a legacy record (exists in insp_records but not insp_dive_jobs),
@@ -409,7 +417,8 @@ export default function DiveJobSetupDialog({
                         jobpack_id: jobpackId ? parseInt(jobpackId) : null,
                         sow_report_no: sowId,
                         status: existingJob.status || "IN_PROGRESS",
-                        cr_user: user.id
+                        cr_user: user.id,
+                        company_id: compId || existingJob.company_id || null,
                     })
                     .select()
                     .single();
@@ -424,6 +433,7 @@ export default function DiveJobSetupDialog({
                         sow_report_no: sowId,
                         status: "IN_PROGRESS",
                         cr_user: user.id,
+                        company_id: compId,
                     })
                     .select()
                     .single();

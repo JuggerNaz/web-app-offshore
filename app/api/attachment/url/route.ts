@@ -4,22 +4,101 @@ import { getStorageHandler } from "@/utils/storage-factory";
 
 export const dynamic = "force-dynamic";
 
+interface CachedAttachment {
+  buffer: Uint8Array;
+  contentType: string;
+  timestamp: number;
+}
+
+const attachmentMemoryCache = new Map<string, CachedAttachment>();
+const inFlightRequests = new Map<string, Promise<{ buffer: Uint8Array; contentType: string } | null>>();
+const MAX_CACHE_ENTRIES = 200;
+const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+
+function cleanKey(val: string): string {
+  return val.replace(/([?&])_t=\d+/g, "").replace(/[?&]$/, "").trim();
+}
+
+function getFromCache(key: string): CachedAttachment | null {
+  const item = attachmentMemoryCache.get(key);
+  if (!item) return null;
+  if (Date.now() - item.timestamp > CACHE_TTL_MS) {
+    attachmentMemoryCache.delete(key);
+    return null;
+  }
+  return item;
+}
+
+function setToCache(keys: (string | null | undefined)[], buffer: Uint8Array | ArrayBuffer | Buffer, contentType: string) {
+  if (attachmentMemoryCache.size >= MAX_CACHE_ENTRIES) {
+    const firstKey = attachmentMemoryCache.keys().next().value;
+    if (firstKey) attachmentMemoryCache.delete(firstKey);
+  }
+  const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
+  const entry: CachedAttachment = { buffer: uint8, contentType, timestamp: Date.now() };
+  for (const k of keys) {
+    if (k) {
+      const cleaned = cleanKey(k);
+      if (cleaned) attachmentMemoryCache.set(cleaned, entry);
+    }
+  }
+}
+
+function buildCachedResponse(buffer: Uint8Array, contentType: string) {
+  const headers = new Headers();
+  headers.set("Content-Type", contentType || "image/jpeg");
+  headers.set("Content-Length", buffer.byteLength.toString());
+  headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  headers.set("Access-Control-Allow-Origin", "*");
+  headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  return new Response(buffer, { status: 200, headers });
+}
+
 /**
  * GET /api/attachment/url?id=[id]&path=[path]
  * Generates/streams attachment binary or redirects to a temporary signed URL.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
-  const id = searchParams.get("id");
-  const fallbackPath = searchParams.get("path");
+  const rawId = searchParams.get("id");
+  const rawPath = searchParams.get("path");
+  const id = rawId ? cleanKey(rawId) : null;
+  const fallbackPath = rawPath ? cleanKey(rawPath) : null;
 
   if (!id && !fallbackPath) {
     return NextResponse.json({ error: "Missing attachment ID or path" }, { status: 400 });
   }
 
-  try {
-    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
-    const supabase = useAdmin ? createAdminClient() : createClient();
+  // 1. Fast-path in-memory cache check
+  const lookupKeys: string[] = [];
+  if (id) lookupKeys.push(`id:${id}`);
+  if (fallbackPath) lookupKeys.push(`path:${fallbackPath}`);
+
+  for (const k of lookupKeys) {
+    const cached = getFromCache(k);
+    if (cached) {
+      return buildCachedResponse(cached.buffer, cached.contentType);
+    }
+  }
+
+  // 2. In-flight request deduplication
+  const primaryDedupKey = lookupKeys.join("|");
+  if (inFlightRequests.has(primaryDedupKey)) {
+    try {
+      const inFlightResult = await inFlightRequests.get(primaryDedupKey);
+      if (inFlightResult) {
+        return buildCachedResponse(inFlightResult.buffer, inFlightResult.contentType);
+      }
+    } catch (_) {}
+  }
+
+  const workerPromise = (async (): Promise<{ buffer: Uint8Array; contentType: string } | null> => {
+    let supabase: any;
+    try {
+      supabase = await createClient();
+    } catch {
+      supabase = createAdminClient();
+    }
     
     let filePath = fallbackPath || "";
     let fileUrl: string | null = null;
@@ -74,7 +153,7 @@ export async function GET(request: NextRequest) {
 
     if (!filePath && !fileUrl) {
       console.warn(`[AttachmentURL] Record not found for id: ${id}, path: ${fallbackPath}`);
-      return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
+      return null;
     }
 
     const targetUrlOrPath = filePath || fileUrl || "";
@@ -84,32 +163,33 @@ export async function GET(request: NextRequest) {
       const parts = targetUrlOrPath.split(",");
       const mime = parts[0].match(/:(.*?);/)?.[1] || "image/jpeg";
       const buffer = Buffer.from(parts[1], "base64");
-      return new Response(buffer, {
-        status: 200,
-        headers: {
-          "Content-Type": mime,
-          "Content-Length": buffer.length.toString(),
-          "Cache-Control": "public, max-age=86400, stale-while-revalidate=604800",
-          "Access-Control-Allow-Origin": "*",
-        },
-      });
+      const uint8 = new Uint8Array(buffer);
+      setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, mime);
+      return { buffer: uint8, contentType: mime };
     }
 
-    // Direct HTTP(S) stream attempt
-    if (targetUrlOrPath.startsWith("http://") || targetUrlOrPath.startsWith("https://")) {
+    // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
+    const directHttpCandidates = Array.from(
+      new Set(
+        [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
+          (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://"))
+        )
+      )
+    );
+
+    for (const remoteHttpUrl of directHttpCandidates) {
       try {
-        const directResp = await fetch(targetUrlOrPath);
+        const directResp = await fetch(remoteHttpUrl);
         if (directResp.ok) {
           const buffer = await directResp.arrayBuffer();
-          const headers = new Headers();
-          headers.set("Content-Type", directResp.headers.get("Content-Type") || "image/jpeg");
-          headers.set("Content-Length", buffer.byteLength.toString());
-          headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-          headers.set("Access-Control-Allow-Origin", "*");
-          headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-          return new Response(buffer, { status: 200, headers });
+          const contentType = directResp.headers.get("Content-Type") || "image/jpeg";
+          const uint8 = new Uint8Array(buffer);
+          setToCache([...lookupKeys, `path:${targetUrlOrPath}`, `path:${remoteHttpUrl}`], uint8, contentType);
+          return { buffer: uint8, contentType };
         }
-      } catch {}
+      } catch (httpErr) {
+        console.warn(`[AttachmentURL] Direct HTTP fetch failed for ${remoteHttpUrl}:`, httpErr);
+      }
     }
 
     // 2. Direct Supabase Storage Download (if provider is Supabase)
@@ -169,13 +249,9 @@ export async function GET(request: NextRequest) {
       }
 
       if (downloadedBuffer) {
-        const headers = new Headers();
-        headers.set("Content-Type", contentType);
-        headers.set("Content-Length", downloadedBuffer.byteLength.toString());
-        headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-        headers.set("Access-Control-Allow-Origin", "*");
-        headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-        return new Response(downloadedBuffer, { status: 200, headers });
+        const uint8 = new Uint8Array(downloadedBuffer);
+        setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, contentType);
+        return { buffer: uint8, contentType };
       }
 
       // Try signed URL or public URL via Supabase Storage
@@ -186,12 +262,10 @@ export async function GET(request: NextRequest) {
           const fetchResp = await fetch(urlToFetch);
           if (fetchResp.ok) {
             const buffer = await fetchResp.arrayBuffer();
-            const headers = new Headers();
-            headers.set("Content-Type", fetchResp.headers.get("Content-Type") || "image/jpeg");
-            headers.set("Content-Length", buffer.byteLength.toString());
-            headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-            headers.set("Access-Control-Allow-Origin", "*");
-            return new Response(buffer, { status: 200, headers });
+            const ct = fetchResp.headers.get("Content-Type") || "image/jpeg";
+            const uint8 = new Uint8Array(buffer);
+            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
+            return { buffer: uint8, contentType: ct };
           }
         }
       } catch {}
@@ -203,39 +277,87 @@ export async function GET(request: NextRequest) {
     if (targetCompanyId) {
       settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
     }
-    const { data: settings } = await settingsQuery.limit(1).maybeSingle();
+    let { data: settings } = await settingsQuery.limit(1).maybeSingle();
 
-    const activeProvider = provider || settings?.storage_provider || "Supabase";
-    const handler = await getStorageHandler(activeProvider, settings?.storage_config);
-
-    const signedUrl = await handler.getSignedUrl(targetUrlOrPath, 3600);
-
-    if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+    if (!settings?.storage_config || Object.keys(settings.storage_config).length === 0) {
       try {
-        const response = await fetch(signedUrl);
-        if (response.ok) {
-          const buffer = await response.arrayBuffer();
-          const contentType = response.headers.get("Content-Type") || "image/jpeg";
-          const headers = new Headers();
-          headers.set("Content-Type", contentType);
-          headers.set("Content-Length", buffer.byteLength.toString());
-          headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
-          headers.set("Access-Control-Allow-Origin", "*");
-          headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-          return new Response(buffer, { status: 200, headers });
+        const { data: fallbackSettings } = await (supabase as any)
+          .from("company_settings")
+          .select("storage_provider, storage_config")
+          .not("storage_config", "is", null)
+          .filter("storage_config", "neq", "{}")
+          .limit(1)
+          .maybeSingle();
+        if (fallbackSettings?.storage_config && Object.keys(fallbackSettings.storage_config).length > 0) {
+          settings = fallbackSettings;
         }
-      } catch (streamErr) {
-        console.warn("[AttachmentURL] Stream fetch error on signed URL:", streamErr);
-      }
-
-      // Fallback: redirect if direct fetch failed
-      return NextResponse.redirect(signedUrl);
+      } catch (_) {}
     }
 
+    try {
+      let activeProvider = provider || settings?.storage_provider;
+      if (targetUrlOrPath.includes("backblazeb2.com") || (fallbackPath && fallbackPath.includes("backblazeb2.com"))) {
+        activeProvider = "Backblaze";
+      } else if (targetUrlOrPath.includes("amazonaws.com") || (fallbackPath && fallbackPath.includes("amazonaws.com"))) {
+        activeProvider = "AWS S3";
+      }
+      if (!activeProvider) activeProvider = "Supabase";
+
+      const handler = await getStorageHandler(activeProvider, settings?.storage_config || {});
+
+      // 1. Direct server-side download (Immune to CORS, zero redirects, fastest)
+      if (typeof (handler as any).download === "function") {
+        try {
+          const dlResult = await (handler as any).download(targetUrlOrPath);
+          if (dlResult && dlResult.buffer) {
+            const ct = dlResult.contentType || "image/jpeg";
+            const uint8 = dlResult.buffer instanceof Uint8Array ? dlResult.buffer : new Uint8Array(dlResult.buffer);
+            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
+            return { buffer: uint8, contentType: ct };
+          }
+        } catch (dlErr) {
+          console.warn("[AttachmentURL] Handler direct download error:", dlErr);
+        }
+      }
+
+      // 2. Presigned URL + server proxy
+      const signedUrl = await handler.getSignedUrl(targetUrlOrPath, 3600);
+
+      if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+        try {
+          const response = await fetch(signedUrl);
+          if (response.ok) {
+            const buffer = await response.arrayBuffer();
+            const ct = response.headers.get("Content-Type") || "image/jpeg";
+            const uint8 = new Uint8Array(buffer);
+            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
+            return { buffer: uint8, contentType: ct };
+          } else {
+            console.warn(`[AttachmentURL] Signed URL fetch returned status ${response.status}`);
+          }
+        } catch (streamErr) {
+          console.warn("[AttachmentURL] Stream fetch error on signed URL:", streamErr);
+        }
+      }
+    } catch (storageErr: any) {
+      console.warn("[AttachmentURL] Storage handler error:", storageErr?.message || storageErr);
+    }
+
+    return null;
+  })();
+
+  inFlightRequests.set(primaryDedupKey, workerPromise);
+  try {
+    const result = await workerPromise;
+    if (result) {
+      return buildCachedResponse(result.buffer, result.contentType);
+    }
     return NextResponse.json({ error: "Unable to retrieve attachment file" }, { status: 404 });
   } catch (err: any) {
     console.error(`[AttachmentURL] Exception:`, err);
     return NextResponse.json({ error: `Failed to resolve attachment URL: ${err.message}` }, { status: 500 });
+  } finally {
+    inFlightRequests.delete(primaryDedupKey);
   }
 }
 

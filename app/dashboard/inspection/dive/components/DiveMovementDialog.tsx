@@ -55,11 +55,13 @@ export default function DiveMovementDialog({
         setSaving(true);
 
         try {
+            const compId = diveJob.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
             const { error } = await supabase.from("insp_dive_movements").insert({
-                dive_job_id: diveJob.dive_job_id,
+                dive_job_id: Number(diveJob.dive_job_id),
                 movement_time: new Date().toISOString(),
                 movement_type: formData.activity,
                 remarks: formData.location ? `[${formData.location}] ${formData.notes}` : formData.notes,
+                company_id: compId,
             });
 
             if (error) throw error;

@@ -42,12 +42,20 @@ export function SearchableSelect({
   const [searchQuery, setSearchQuery] = React.useState("");
 
   const filteredOptions = React.useMemo(() => {
+    if (!searchQuery) return options;
+    const q = searchQuery.toLowerCase();
     return options.filter((option) =>
-      option.label.toLowerCase().includes(searchQuery.toLowerCase())
+      option.label.toLowerCase().includes(q)
     );
   }, [options, searchQuery]);
 
-  const selectedLabel = options.find((option) => option.value === value)?.label;
+  const displayedOptions = React.useMemo(() => {
+    return filteredOptions.slice(0, 100);
+  }, [filteredOptions]);
+
+  const selectedLabel = React.useMemo(() => {
+    return options.find((option) => option.value === value)?.label;
+  }, [options, value]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -80,28 +88,35 @@ export function SearchableSelect({
             {filteredOptions.length === 0 ? (
               <p className="p-4 text-center text-sm text-slate-500">{emptyMessage}</p>
             ) : (
-              filteredOptions.map((option) => (
-                <button
-                  key={option.value}
-                  onClick={() => {
-                    onValueChange(option.value);
-                    setOpen(false);
-                    setSearchQuery("");
-                  }}
-                  className={cn(
-                    "relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left",
-                    value === option.value && "bg-slate-100 dark:bg-slate-800 font-medium"
-                  )}
-                >
-                  <Check
+              <>
+                {displayedOptions.map((option) => (
+                  <button
+                    key={option.value}
+                    onClick={() => {
+                      onValueChange(option.value);
+                      setOpen(false);
+                      setSearchQuery("");
+                    }}
                     className={cn(
-                      "mr-2 h-4 w-4",
-                      value === option.value ? "opacity-100" : "opacity-0"
+                      "relative flex w-full cursor-default select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left",
+                      value === option.value && "bg-slate-100 dark:bg-slate-800 font-medium"
                     )}
-                  />
-                  {option.label}
-                </button>
-              ))
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === option.value ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {option.label}
+                  </button>
+                ))}
+                {filteredOptions.length > 100 && (
+                  <p className="p-2 text-center text-xs text-slate-400 border-t mt-1">
+                    Showing top 100 of {filteredOptions.length} results. Type to refine.
+                  </p>
+                )}
+              </>
             )}
           </div>
         </ScrollArea>
