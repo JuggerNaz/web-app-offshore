@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, draw3SectionHeader } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -247,57 +247,32 @@ export const generateDefectSummaryReport = async (
     const doc = new jsPDF({ orientation: "landscape" }); // Landscape for wider table
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 12;
+    const margin = 10;
     const contentWidth = pageWidth - margin * 2;
-    const headerH = 26;
-    const logoSize = 17;
-    const logoPadding = 3;
+    const headerH = 25;
     const isPrintFriendly = config.printFriendly === true;
     const FOOTER_LINE_Y = pageHeight - 8;
 
     // ── Draw Header ──────────────────────────────────────────────────────────
-    // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const sx = margin;
-        const sy = margin;
-
-        if (isPrintFriendly) {
-            d.setDrawColor(180, 180, 180);
-            d.setLineWidth(0.3);
-            d.rect(sx, sy, contentWidth, headerH);
-        } else {
-            d.setFillColor(7, 78, 136);
-            d.rect(sx, sy, contentWidth, headerH, "F");
-        }
-
-        // Left — Contractor logo + name
-        if (contractorLogo) {
-            drawLogo(d, contractorLogo, logoSize, logoSize, sx + logoPadding, sy + 3, 'left', 'center');
-        }
-        
-
-        // Right — Client logo
-        if (clientLogo) {
-            drawLogo(d, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, sy + 3, 'right', 'center');
-        }
-
-        // Centre text
-        d.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
-        d.text((companySettings.company_name || "TANJUNG OFFSHORE").toUpperCase(), pageWidth / 2, sy + 6, { align: "center" });
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8.5);
-        d.text(companySettings.department_name || companySettings.departmentName || "Engineering Department", pageWidth / 2, sy + 10.5, { align: "center" });
-        d.setFont("helvetica", "bold");
-        d.setFontSize(11);
-        const reportTitle = config.isFindingsReport ? "FINDINGS SUMMARY REPORT" : "DEFECT SUMMARY REPORT";
-        d.text(reportTitle, pageWidth / 2, sy + 16.5, { align: "center" });
-        d.setFont("helvetica", "normal");
-        d.setFontSize(8);
+        const reportTitle = config.isFindingsReport ? "Findings Summary Report" : "Defect Summary Report";
         const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
-        d.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, sy + 21, { align: "center" });
-        d.setTextColor(0, 0, 0);
+        const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
+
+        draw3SectionHeader(d, {
+            reportTitle,
+            reportNo: reportNoDisplay,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "landscape",
+        });
     };
 
     // ── Draw Sub-Header info table ───────────────────────────────────────────
@@ -491,8 +466,8 @@ export const generateDefectSummaryReport = async (
             body: sortedLabels.map(l => {
                 const { bg, text } = priorityStyle(l, colorMap);
                 return [
-                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
-                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} }
+                    { content: l.toUpperCase(), styles: {fillColor: bg, textColor: text, fontStyle: "bold" as const, halign: "left" as const, lineWidth: 0.1, lineColor: [200, 200, 200]} },
+                    { content: String(counts[l]), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200]} }
                 ];
             }),
             theme: "grid",
@@ -679,11 +654,17 @@ export const generateDefectSummaryReport = async (
         // Priority cell with colour
         const priorityCell = {
             content: isRectified ? `${priority}\n✓ RECTIFIED` : priority,
-            styles: {fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
+            styles: {
+                fillColor: isRectified ? [0, 176, 80] as [number, number, number] : bg,
                 textColor: isRectified ? [255, 255, 255] as [number, number, number] : text,
                 fontStyle: "bold" as const,
                 halign: "center" as const,
-                fontSize: 7, lineWidth: 0.1, lineColor: [203, 213, 225],},
+                valign: "middle" as const,
+                fontSize: priority.trim().length > 9 ? 6.5 : 7,
+                cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
+                lineWidth: 0.1,
+                lineColor: [200, 200, 200],
+            },
         };
 
         // Finding cell — coloured by priority
@@ -700,11 +681,11 @@ export const generateDefectSummaryReport = async (
                         ] as [number, number, number]
                     ),
                 textColor: [0, 0, 0] as [number, number, number],
-                fontSize: 7, lineWidth: 0.1, lineColor: [203, 213, 225],},
+                fontSize: 7, lineWidth: 0.1, lineColor: [200, 200, 200],},
         };
 
         return [
-            { content: String(idx + 1), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [203, 213, 225]} },
+            { content: String(idx + 1), styles: {halign: "center" as const, fontStyle: "bold" as const, lineWidth: 0.1, lineColor: [200, 200, 200]} },
             ref,
             tapeDisplay,
             defectCode,
@@ -714,16 +695,16 @@ export const generateDefectSummaryReport = async (
         ];
     });
 
-    // ── Column widths (landscape 297mm — 2×12mm margins = 273mm usable) ──────
-    // # | Ref | Tape | DefType | DefCode | Priority | Findings
+    // ── Column widths (landscape 297mm — 2×10mm margins = 277mm usable) ──────
+    // # | Ref | Tape | DefCode | DefType | Priority | Findings
     const cw = {
         no: 8,
-        ref: 28,
-        tape: 30,
-        defType: 35,
-        defCode: 22,
-        priority: 20,
-        findings: contentWidth - 8 - 28 - 30 - 35 - 22 - 20, // ~130mm
+        ref: 26,
+        tape: 26,
+        defCode: 20,
+        defType: 42,
+        priority: 28,
+        findings: contentWidth - 8 - 26 - 26 - 20 - 42 - 28, // 277 - 150 = 127mm
     };
 
     // First page: draw header and sub-header, then dashboard, then table
@@ -737,6 +718,8 @@ export const generateDefectSummaryReport = async (
         head: tableHead,
         body: tableBody,
         theme: "grid",
+        tableLineWidth: 0.1,
+        tableLineColor: [200, 200, 200],
         headStyles: {
             fillColor: isPrintFriendly ? [229, 231, 235] : [7, 78, 136],
             textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
@@ -759,8 +742,8 @@ export const generateDefectSummaryReport = async (
             0: { cellWidth: cw.no, halign: "center" },
             1: { cellWidth: cw.ref },
             2: { cellWidth: cw.tape },
-            3: { cellWidth: cw.defType },
-            4: { cellWidth: cw.defCode },
+            3: { cellWidth: cw.defCode, halign: "center" },
+            4: { cellWidth: cw.defType },
             5: { cellWidth: cw.priority, halign: "center" },
             6: { cellWidth: cw.findings },
         },

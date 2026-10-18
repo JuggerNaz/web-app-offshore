@@ -736,7 +736,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
-                    { ...sharedConfig, reportNoPrefix: sowReportNo || "" } as any
+                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
                 const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");

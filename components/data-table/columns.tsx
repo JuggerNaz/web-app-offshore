@@ -1086,37 +1086,52 @@ function AttachmentActions({ row }: { row: any }) {
 
 function AttachmentUrlCell({ attachment }: { attachment: Attachment }) {
   const [showPreview, setShowPreview] = useState(false);
+  const [imageFailed, setImageFailed] = useState(false);
   const { fileUrl, fileName } = processAttachmentUrl(attachment);
 
   if (!fileUrl) {
     return <span className="text-gray-500 text-xs">No file URL</span>;
   }
 
-  const displayText = truncateText(fileName, 30);
+  const meta = (attachment.meta || {}) as any;
+  const isLegacy = !meta.file_url && (
+    /^[A-Za-z]:[\\\/]/.test(attachment.path || "") ||
+    (attachment.path || "").startsWith("\\\\") ||
+    (attachment.path || "").includes("\\")
+  );
 
-  // Check if file is likely an image based on common extensions
+  const displayText = truncateText(fileName, 30);
   const isImage = /\.(jpg|jpeg|png|gif|webp)$/i.test(fileName);
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-3">
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2 flex-wrap">
         <a
           href={fileUrl}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-blue-600 hover:text-blue-800 underline flex items-center gap-1 max-w-[200px] text-xs font-medium transition-colors"
-          title={fileUrl}
+          className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 underline flex items-center gap-1 max-w-[200px] text-xs font-medium transition-colors"
+          title={isLegacy ? `Legacy Path: ${attachment.path}${meta.original_file_name ? ` (${meta.original_file_name})` : ''}` : fileUrl}
         >
           <span className="truncate">{displayText}</span>
           <ExternalLink className="h-3 w-3 flex-shrink-0 opacity-70" />
         </a>
 
-        {isImage && (
+        {isLegacy && (
+          <span
+            className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-900/50"
+            title={`Referenced path: ${attachment.path}`}
+          >
+            Legacy Path
+          </span>
+        )}
+
+        {isImage && !imageFailed && (
           <Button
             variant="ghost"
             size="sm"
             onClick={() => setShowPreview(!showPreview)}
-            className={`h-7 px-2 text-[10px] font-bold uppercase tracking-wider rounded-lg border flex items-center gap-1.5 transition-all
+            className={`h-6 px-1.5 text-[10px] font-bold uppercase tracking-wider rounded border flex items-center gap-1 transition-all
               ${showPreview
                 ? "bg-slate-800 text-white border-slate-800 hover:bg-slate-700 hover:text-white dark:bg-slate-200 dark:text-slate-900 dark:hover:bg-slate-300"
                 : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700 dark:bg-slate-900 dark:border-slate-800 dark:text-slate-400 dark:hover:bg-slate-800"
@@ -1128,12 +1143,13 @@ function AttachmentUrlCell({ attachment }: { attachment: Attachment }) {
         )}
       </div>
 
-      {showPreview && isImage && (
+      {showPreview && isImage && !imageFailed && (
         <div className="mt-2 rounded-xl border border-slate-200 dark:border-slate-800 overflow-hidden bg-slate-50 dark:bg-slate-900/50 relative group">
           <div className="p-1 items-center justify-center flex max-h-[250px] overflow-hidden">
             <img
               src={fileUrl}
               alt={fileName}
+              onError={() => setImageFailed(true)}
               className="object-contain max-h-[240px] w-auto h-auto rounded-lg shadow-sm"
             />
           </div>

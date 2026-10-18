@@ -1,19 +1,20 @@
 
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient } from "@/utils/supabase/server";
 
 export async function GET(request: NextRequest) {
     try {
-        const supabase = await createClient();
+        const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+        const supabase = useAdmin ? createAdminClient() : createClient();
         const { searchParams } = new URL(request.url);
 
         let rawJobpackId = searchParams.get("jobpack_id");
         let rawStructureId = searchParams.get("structure_id");
         let sowReportNo = searchParams.get("sow_report_no");
 
-        // Clean up "undefined" or "null" strings
+        // Clean up "undefined", "null", "all", or empty strings
         if (rawJobpackId === "undefined" || rawJobpackId === "null" || rawJobpackId === "") rawJobpackId = null;
-        if (rawStructureId === "undefined" || rawStructureId === "null" || rawStructureId === "") rawStructureId = null;
+        if (rawStructureId === "undefined" || rawStructureId === "null" || rawStructureId === "all" || rawStructureId === "") rawStructureId = null;
         if (sowReportNo === "undefined" || sowReportNo === "null" || sowReportNo === "all" || sowReportNo === "N/A" || sowReportNo === "") sowReportNo = null;
 
         const cleanStructureId = rawStructureId ? String(rawStructureId).replace(/^(platform|pipeline)-/, "").trim() : null;
