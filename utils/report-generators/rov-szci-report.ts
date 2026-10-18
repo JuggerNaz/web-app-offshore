@@ -154,7 +154,15 @@ export const generateROVSZCIReport = async (
         const sortedRecords = [...records].sort((a, b) => {
             const elevA = parseFloat(a.elevation) || 0;
             const elevB = parseFloat(b.elevation) || 0;
-            return elevB - elevA; // Top to bottom
+            if (elevB !== elevA) {
+                return elevB - elevA; // Top to bottom
+            }
+            const qidA = a.structure_components?.q_id || a.component?.q_id || a.component_qid || a.qid || '';
+            const qidB = b.structure_components?.q_id || b.component?.q_id || b.component_qid || b.qid || '';
+            if (qidA !== qidB) {
+                return qidA.localeCompare(qidB);
+            }
+            return (b.insp_id || 0) - (a.insp_id || 0);
         });
 
         autoTable(doc, {
@@ -181,20 +189,29 @@ export const generateROVSZCIReport = async (
             ],
             body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
-                const qid = r.structure_components?.q_id || 'N/A';
+                const qid = r.structure_components?.q_id || r.component?.q_id || r.component_qid || r.qid || d.q_id || d.qid || 'N/A';
                 const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
                                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
+                               r.dive_no || r.deployment_no || d.dive_no || d.deployment_no ||
                                r.rov_job_id || r.dive_job_id || 'N/A';
                 
-                const primaryCP = d.cp_rdg || d.cp || '';
+                const rawCP = d.cp_rdg ?? d.cp ?? d.cp_reading ?? d.cp_reading_mv ?? d.cprdg ?? d.cp_value ?? r.cp_reading ?? r.cp ?? '';
+                const primaryCP = rawCP !== undefined && rawCP !== null && rawCP !== '' && rawCP !== '-' ? String(rawCP) : '';
                 const addCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || [];
                 const additionalCPs = Array.isArray(addCP)
-                    ? addCP.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '')
+                    ? addCP.map((cr: any) => cr.reading ?? cr.cp_rdg ?? '').filter((v: any) => v !== undefined && v !== null && v !== '' && v !== '-')
                     : [];
                 const cpList = [primaryCP, ...additionalCPs].filter(Boolean);
                 const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                const compCond = d.component_condition || d.comp_condition || d.comp_cond || r.component_condition || '-';
+                const ut12 = d.ut_12_o_clock ?? d.ut_12 ?? d.ut12 ?? d.ut_12_oclock ?? d.wt_12 ?? d.wall_thickness_12 ?? d.reading_12 ?? d.clock_12 ?? d.readings?.clock_12 ?? d.readings?.['12'] ?? d.ut_readings?.['12'];
+                const ut3  = d.ut_3_o_clock ?? d.ut_3 ?? d.ut3 ?? d.ut_3_oclock ?? d.wt_3 ?? d.wall_thickness_3 ?? d.reading_3 ?? d.clock_3 ?? d.readings?.clock_3 ?? d.readings?.['3'] ?? d.ut_readings?.['3'];
+                const ut6  = d.ut_6_o_clock ?? d.ut_6 ?? d.ut6 ?? d.ut_6_oclock ?? d.wt_6 ?? d.wall_thickness_6 ?? d.reading_6 ?? d.clock_6 ?? d.readings?.clock_6 ?? d.readings?.['6'] ?? d.ut_readings?.['6'];
+                const ut9  = d.ut_9_o_clock ?? d.ut_9 ?? d.ut9 ?? d.ut_9_oclock ?? d.wt_9 ?? d.wall_thickness_9 ?? d.reading_9 ?? d.clock_9 ?? d.readings?.clock_9 ?? d.readings?.['9'] ?? d.ut_readings?.['9'];
+
+                const fmtUT = (val: any) => (val !== undefined && val !== null && val !== '' && val !== '-' ? String(val) : '-');
+
+                const compCond = d.component_condition || d.comp_condition || d.comp_cond || r.component_condition || d.condition || '-';
                 const coatCond = d.coating_condition || d.coat_condition || d.coat_cond || r.coating_condition || '-';
 
                 const findings = formatReportFindingText(r);
@@ -203,10 +220,10 @@ export const generateROVSZCIReport = async (
                     idx + 1,
                     qid,
                     cpDisplay,
-                    d.ut_12_o_clock || '-',
-                    d.ut_3_o_clock || '-',
-                    d.ut_6_o_clock || '-',
-                    d.ut_9_o_clock || '-',
+                    fmtUT(ut12),
+                    fmtUT(ut3),
+                    fmtUT(ut6),
+                    fmtUT(ut9),
                     getRecordNominalThickness(r),
                     compCond,
                     coatCond,

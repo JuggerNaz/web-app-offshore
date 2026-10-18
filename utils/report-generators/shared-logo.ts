@@ -380,10 +380,12 @@ export const getRecordNominalThickness = (r: any): string => {
     const compMeta = safeParseJson(comp.metadata || compRaw.metadata || comp.component_metadata || comp.additionalInfo || comp.props);
     const compSpec = safeParseJson(comp.spec || compRaw.spec || compMeta.spec || compMeta.specs || compMeta.details || compMeta.additional_details);
     const compData = safeParseJson(comp.data || compRaw.data);
+    const compAddInfo = safeParseJson(compMeta.additionalInfo || comp.additionalInfo || compRaw.additionalInfo);
 
     const sources = [
         d,
         r,
+        compAddInfo,
         compMeta,
         compSpec,
         compData,

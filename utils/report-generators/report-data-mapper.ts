@@ -4,6 +4,7 @@ import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/R
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isROVRecord, hasCPReading } from "./rov-cp-report";
 import { isDivingCPSURVRecord } from "./diving-cpsurv-report";
+import { isExcludedFromRGVI } from "./rov-rgvi-report";
 
 const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
@@ -212,6 +213,46 @@ export const mapInspectionDataForDocx = async (
         detail: `Starting parallel attachment fetch`
     });
 
+    // Pre-load all structure components into a lookup map to resolve parent-child hierarchy (e.g. FD and associated components)
+    const effectiveStructureId = structure?.id || structure?.structure_id || jobPack?.structure_id || jobPack?.structure?.id || records.find(r => r.structure_id)?.structure_id;
+    const structureCompMap = new Map<string | number, any>();
+    if (effectiveStructureId) {
+        try {
+            const { createClient } = await import("@/utils/supabase/client");
+            const supabase = createClient();
+            const { data: allComps } = await supabase
+                .from('structure_components')
+                .select('id, q_id, code, metadata')
+                .eq('structure_id', effectiveStructureId);
+            if (allComps) {
+                for (const c of allComps) {
+                    structureCompMap.set(c.id, c);
+                    structureCompMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        structureCompMap.set(String(c.q_id).toUpperCase(), c);
+                        structureCompMap.set(String(c.q_id), c);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[report-data-mapper] Error pre-loading structure components for FD association check:", e);
+        }
+    }
+    for (const r of records) {
+        const sc = r.structure_components || r.component;
+        if (sc && (sc.id || sc.q_id)) {
+            if (sc.id) {
+                if (!structureCompMap.has(sc.id)) structureCompMap.set(sc.id, sc);
+                if (!structureCompMap.has(String(sc.id))) structureCompMap.set(String(sc.id), sc);
+            }
+            if (sc.q_id) {
+                const uq = String(sc.q_id).toUpperCase();
+                if (!structureCompMap.has(uq)) structureCompMap.set(uq, sc);
+                if (!structureCompMap.has(String(sc.q_id))) structureCompMap.set(String(sc.q_id), sc);
+            }
+        }
+    }
+
     // Fetch all attachments for these inspection records if any
     const recordIds = records.map(r => r.insp_id).filter(Boolean);
     let attachments: any[] = [];
@@ -347,11 +388,11 @@ export const mapInspectionDataForDocx = async (
     // GVI Table (ROV GVI Table of Results for inline Word tables)
     const rgviRecsForTable = records.filter(r => {
         const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-        return c === "RGVI" || c === "GVI";
+        return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
     });
+    reportData.HAS_GVI = rgviRecsForTable.length > 0;
+    reportData.HAS_RGVI = rgviRecsForTable.length > 0;
     if (rgviRecsForTable.length > 0) {
-        reportData.HAS_GVI = true;
-        reportData.HAS_RGVI = true;
         reportData.GVI_TABLE = rgviRecsForTable.map((r, idx) => {
             const d = r.inspection_data || r.inspection_dat || {};
             return {
@@ -367,6 +408,9 @@ export const mapInspectionDataForDocx = async (
             };
         });
         reportData.RGVI_TABLE = reportData.GVI_TABLE;
+    } else {
+        reportData.GVI_TABLE = [];
+        reportData.RGVI_TABLE = [];
     }
 
     // 3. Handle System Aliases
@@ -629,7 +673,15 @@ export const mapInspectionDataForDocx = async (
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
                 const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                const assocId = meta.associated_comp_id || meta.parent_id;
+                const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                const parentCode = String(parentComp?.code || '').toUpperCase();
+                const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                const isParentCond = ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(parentCode) || 
+                                     parentQid.startsWith('CON') || parentQid.startsWith('CGF') ||
+                                     assocQid.startsWith('CON') || assocQid.startsWith('CGF');
+                const hasCondAssoc = Boolean(isParentCond);
                 return ['RCOND', 'RCON', 'COND'].includes(code) || 
                        ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
                        compQid.startsWith('CON') || compQid.startsWith('CGF') ||
@@ -639,7 +691,14 @@ export const mapInspectionDataForDocx = async (
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
                 const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                const assocId = meta.associated_comp_id || meta.parent_id;
+                const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                const parentCode = String(parentComp?.code || '').toUpperCase();
+                const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                const isParentCasn = ['CS', 'CAS', 'CASN'].includes(parentCode) || 
+                                     parentQid.startsWith('CAS') || assocQid.startsWith('CAS');
+                const hasCasnAssoc = Boolean(isParentCasn);
                 return ['RCASN', 'CASN'].includes(code) || 
                        ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
                        compQid.startsWith('CS') || compQid.startsWith('CASN') ||
@@ -657,6 +716,11 @@ export const mapInspectionDataForDocx = async (
                 const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
                 const typeName = String(r.inspection_type?.name || r.inspection_type_name || "").toUpperCase();
                 return (code === "RSANI" || code === "SANI" || typeName.includes("SELECTED ANODE")) && (compCode === 'AN' || compType === 'ANODE' || !compCode);
+            }
+
+            // ROV GVI (RGVI) explicit routing: exclude dedicated templates and FD & its associated components
+            if (['rov-rgvi-report', 'rov-gvi-report', 'rgvi-report', 'gvi-report'].includes(templateId)) {
+                return (code === "RGVI" || code === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
             }
 
             // Activity-specific reports routing
@@ -791,10 +855,10 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'rov-rgvi-report' || templateId === 'rov-gvi-report') {
-                const { generateROVRGVIReport, isExcludedFromRGVI } = await import("./rov-rgvi-report");
+                const { generateROVRGVIReport } = await import("./rov-rgvi-report");
                 const rgviRecords = records.filter(r => {
                     const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                    return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r);
+                    return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
                 });
                 pdfBlob = await generateROVRGVIReport(
                     rgviRecords,
@@ -858,7 +922,15 @@ export const mapInspectionDataForDocx = async (
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
                     const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
                     const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                    const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    const assocId = meta.associated_comp_id || meta.parent_id;
+                    const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                    const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                    const parentCode = String(parentComp?.code || '').toUpperCase();
+                    const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                    const isParentCond = ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(parentCode) || 
+                                         parentQid.startsWith('CON') || parentQid.startsWith('CGF') ||
+                                         assocQid.startsWith('CON') || assocQid.startsWith('CGF');
+                    const hasCondAssoc = Boolean(isParentCond);
                     return ['RCOND', 'RCON', 'COND'].includes(typeCode) || 
                            ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
                            compQid.startsWith('CON') || compQid.startsWith('CGF') ||
@@ -872,7 +944,14 @@ export const mapInspectionDataForDocx = async (
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
                     const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
                     const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                    const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    const assocId = meta.associated_comp_id || meta.parent_id;
+                    const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                    const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                    const parentCode = String(parentComp?.code || '').toUpperCase();
+                    const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                    const isParentCasn = ['CS', 'CAS', 'CASN'].includes(parentCode) || 
+                                         parentQid.startsWith('CAS') || assocQid.startsWith('CAS');
+                    const hasCasnAssoc = Boolean(isParentCasn);
                     return ['RCASN', 'CASN'].includes(typeCode) || 
                            ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
                            compQid.startsWith('CS') || compQid.startsWith('CASN') ||
@@ -907,7 +986,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateROVSZCIReport } = await import("./rov-szci-report");
                 pdfBlob = await generateROVSZCIReport(records.filter(r => {
                     const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                    return ["RSZCI", "SZCI", "SZONE", "SPLASH"].includes(code);
+                    return ["RSZCI", "SZCI", "SZONE", "SPLASH", "DSZCI"].includes(code);
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-anode-report' || templateId === 'anode-report' || templateId === 'rgani-report') {
                 const { generateROVAnodeReport } = await import("./rov-anode-report");

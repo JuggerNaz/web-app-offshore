@@ -3312,19 +3312,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
+            // Fetch type IDs for Splash Zone inspection types to query efficiently in SQL
+            const { data: typeRows } = await supabase
+                .from('inspection_type')
+                .select('id, code')
+                .or('code.ilike.%SZ%,code.ilike.%SPLASH%,code.ilike.%SZONE%');
+
+            const szTypeIds = typeRows ? typeRows.map(t => t.id) : [];
+
             // 1. Fetch records with all necessary joins for SZCI
-            const { data: records, error: fetchError } = await supabase
+            let szciQuery = supabase
                 .from('insp_records')
                 .select(`
                     *,
                     inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code),
+                    structure_components:component_id!left(id, q_id, code, metadata),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);
+
+            if (szTypeIds.length > 0) {
+                szciQuery = szciQuery.in('inspection_type_id', szTypeIds);
+            }
+            if (selections.jobPackId) {
+                szciQuery = szciQuery.eq('jobpack_id', Number(selections.jobPackId));
+            }
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                szciQuery = szciQuery.or(`sow_report_no.eq."${selections.sowReportNo}",sow_report_no.is.null`);
+            }
+
+            const { data: records, error: fetchError } = await szciQuery
+                .order('inspection_date', { ascending: false })
+                .order('insp_id', { ascending: false })
+                .limit(5000);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -3333,16 +3356,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // FILTER MANUALLY
+            const szCodes = ['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI'];
             const szciRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    selections.sowReportNo === "all" ||
+                    selections.sowReportNo === "N/A" ||
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase()) ||
+                    String(selections.sowReportNo).toLowerCase().includes(String(r.sow_report_no || '').toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRSZCI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSZCI';
-                return sowMatches && jobPackMatches && isRSZCI;
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isSZ = szCodes.includes(code);
+                return sowMatches && jobPackMatches && isSZ;
             });
 
             if (!szciRecords || szciRecords.length === 0) {
-                alert(`No ROV Splash Zone records (RSZCI) found for structure "${structure.str_name}" in this SOW.`);
+                alert(`No Splash Zone records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
@@ -4207,7 +4235,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     .select(`
                         *,
                         inspection_type:inspection_type_id!left(id, code, name),
-                        structure_components:component_id!left(q_id, code),
+                        structure_components:component_id!left(id, q_id, code, metadata),
                         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                         insp_video_tapes:tape_id!left(tape_no),
@@ -4222,13 +4250,36 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
 
+                // Pre-load structure components to resolve parent-child hierarchy (e.g. FD and associated components)
+                const compMap = new Map<string | number, any>();
+                if (structId) {
+                    try {
+                        const { data: allComps } = await supabase
+                            .from("structure_components")
+                            .select("id, q_id, code, metadata")
+                            .eq("structure_id", structId);
+                        if (allComps) {
+                            for (const c of allComps) {
+                                compMap.set(c.id, c);
+                                compMap.set(String(c.id), c);
+                                if (c.q_id) {
+                                    compMap.set(String(c.q_id).toUpperCase(), c);
+                                    compMap.set(String(c.q_id), c);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("[ReportWizard] Error pre-loading structure components for FD association check:", e);
+                    }
+                }
+
                 const { isExcludedFromRGVI } = await import("@/utils/report-generators/rov-rgvi-report");
                 rgviRecords = (records || []).filter((r: any) => {
                     const sowMatches = !selections.sowReportNo ||
                         String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                     const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
                     const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
-                    return sowMatches && jobPackMatches && isRGVI && !isExcludedFromRGVI(r);
+                    return sowMatches && jobPackMatches && isRGVI && !isExcludedFromRGVI(r, compMap);
                 });
 
                 if (!rgviRecords || rgviRecords.length === 0) {
