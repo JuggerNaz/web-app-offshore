@@ -2,14 +2,17 @@
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import Link from "next/link";
-import { Building2, Waves, ArrowRight, LayoutGrid, List, Search, Plus } from "lucide-react";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import { useSearchParams } from "next/navigation";
 import Image from "next/image";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { getStoragePublicUrl } from "@/utils/storage";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { Building2, ArrowRight, LayoutGrid, List, Search, Waves, Plus } from "lucide-react";
 
 interface Platform {
     plat_id: number;
@@ -50,29 +53,54 @@ export default function StructuresPage() {
     const [randomImages, setRandomImages] = useState<Map<number, string>>(new Map());
     const [viewMode, setViewMode] = useState<ViewMode>("card");
     const [searchQuery, setSearchQuery] = useState("");
+    const debouncedSearch = useDebouncedValue(searchQuery, 300);
 
-    const { data: platformsData, error: platformsError, isLoading: platformsLoading } = useSWR(
-        fieldId ? `/api/platform?field=${fieldId}` : null,
-        fetcher
-    );
+    // Scroll-to-load structure lists for this field; the APIs page rows and
+    // apply the title search server-side (?q=).
+    const {
+        items: platforms,
+        totalItems: platformTotal,
+        isLoading: platformsLoading,
+        error: platformsError,
+        hasNextPage: platformsHasNextPage,
+        isFetchingNextPage: platformsFetchingNext,
+        fetchNextPage: fetchNextPlatforms,
+    } = useInfiniteList<Platform>({
+        queryKey: ["field", "structures", "platforms", fieldId ?? "all", debouncedSearch],
+        getPageUrl: (page) =>
+            `/api/platform?page=${page}&pageSize=50${
+                fieldId ? `&field=${fieldId}` : ""
+            }${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+        enabled: Boolean(fieldId),
+    });
 
-    const { data: pipelinesData, error: pipelinesError, isLoading: pipelinesLoading } = useSWR(
-        fieldId ? `/api/pipeline?field=${fieldId}` : null,
-        fetcher
-    );
+    const {
+        items: pipelines,
+        totalItems: pipelineTotal,
+        isLoading: pipelinesLoading,
+        error: pipelinesError,
+        hasNextPage: pipelinesHasNextPage,
+        isFetchingNextPage: pipelinesFetchingNext,
+        fetchNextPage: fetchNextPipelines,
+    } = useInfiniteList<Pipeline>({
+        queryKey: ["field", "structures", "pipelines", fieldId ?? "all", debouncedSearch],
+        getPageUrl: (page) =>
+            `/api/pipeline?page=${page}&pageSize=50${
+                fieldId ? `&field=${fieldId}` : ""
+            }${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+        enabled: Boolean(fieldId),
+    });
 
     const { data: fieldData } = useSWR(
         fieldId ? `/api/library/field/${fieldId}` : null,
         fetcher
     );
 
-    const platforms: Platform[] = useMemo(() => platformsData?.data || [], [platformsData]);
-    const pipelines: Pipeline[] = useMemo(() => pipelinesData?.data || [], [pipelinesData]);
     const field: FieldInfo | null = fieldData?.data || null;
 
     // Generate random image selection for platforms with multiple images
     useEffect(() => {
-        if (!platformsData) return;
+        if (platforms.length === 0) return;
 
         const imageMap = new Map<number, string>();
         platforms.forEach((platform) => {
@@ -84,16 +112,7 @@ export default function StructuresPage() {
             }
         });
         setRandomImages(imageMap);
-    }, [platformsData]);
-
-    // Filter structures based on search query
-    const filteredPlatforms = platforms.filter((platform) =>
-        platform.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    const filteredPipelines = pipelines.filter((pipeline) =>
-        pipeline.title.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    }, [platforms]);
 
     if (platformsError || pipelinesError) {
         return (
@@ -111,7 +130,9 @@ export default function StructuresPage() {
         );
     }
 
-    const totalStructures = filteredPlatforms.length + filteredPipelines.length;
+    // Search moved server-side (?q=); counts prefer the server-reported totals.
+    const totalStructures =
+        (platformTotal ?? platforms.length) + (pipelineTotal ?? pipelines.length);
 
     // Improved Oil Platform SVG Icon Component
     const OilPlatformIcon = ({ className = "w-20 h-20" }: { className?: string }) => (
@@ -174,7 +195,7 @@ export default function StructuresPage() {
                     {field?.lib_desc || "Field"} Structures
                 </h1>
                 <p className="text-muted-foreground mt-2">
-                    {totalStructures} structure{totalStructures !== 1 ? 's' : ''} ({filteredPlatforms.length} platform{filteredPlatforms.length !== 1 ? 's' : ''}, {filteredPipelines.length} pipeline{filteredPipelines.length !== 1 ? 's' : ''})
+                    {totalStructures} structure{totalStructures !== 1 ? 's' : ''} ({platforms.length} platform{platforms.length !== 1 ? 's' : ''}, {pipelines.length} pipeline{pipelines.length !== 1 ? 's' : ''})
                 </p>
             </div>
 
@@ -243,7 +264,7 @@ export default function StructuresPage() {
             {viewMode === "card" && (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
                     {/* Platform Cards */}
-                    {filteredPlatforms.map((platform) => {
+                    {platforms.map((platform) => {
                         const imageUrl = randomImages.get(platform.plat_id);
                         const hasImage = !!imageUrl;
 
@@ -332,8 +353,16 @@ export default function StructuresPage() {
                         );
                     })}
 
+                    <ScrollSentinel
+                        hasNextPage={Boolean(platformsHasNextPage)}
+                        isFetchingNextPage={platformsFetchingNext}
+                        onLoadMore={fetchNextPlatforms}
+                        loadedCount={platforms.length}
+                        totalItems={platformTotal}
+                    />
+
                     {/* Pipeline Cards */}
-                    {filteredPipelines.map((pipeline) => (
+                    {pipelines.map((pipeline) => (
                         <Link
                             key={`pipeline-${pipeline.pipe_id}`}
                             href={`/dashboard/field/pipeline/${pipeline.pipe_id}`}
@@ -412,6 +441,14 @@ export default function StructuresPage() {
                             </div>
                         </Link>
                     ))}
+
+                    <ScrollSentinel
+                        hasNextPage={Boolean(pipelinesHasNextPage)}
+                        isFetchingNextPage={pipelinesFetchingNext}
+                        onLoadMore={fetchNextPipelines}
+                        loadedCount={pipelines.length}
+                        totalItems={pipelineTotal}
+                    />
                 </div>
             )}
 
@@ -419,7 +456,7 @@ export default function StructuresPage() {
             {viewMode === "list" && (
                 <div className="space-y-3">
                     {/* Platform List Items */}
-                    {filteredPlatforms.map((platform) => {
+                    {platforms.map((platform) => {
                         const imageUrl = randomImages.get(platform.plat_id);
                         const hasImage = !!imageUrl;
 
@@ -484,15 +521,23 @@ export default function StructuresPage() {
 
                                     {/* Arrow */}
                                     <div className="h-12 w-12 rounded-2xl bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-300 group-hover:text-blue-600 group-hover:bg-blue-50 dark:group-hover:bg-blue-900/20 transition-all duration-300 flex-shrink-0">
-                                        <ArrowRight className="w-6 h-6 transform group-hover:translate-x-1 transition-transform" />
+                                    <ArrowRight className="w-6 h-6 transform group-hover:translate-x-1 transition-transform" />
                                     </div>
                                 </div>
                             </Link>
                         );
                     })}
 
+                    <ScrollSentinel
+                        hasNextPage={Boolean(platformsHasNextPage)}
+                        isFetchingNextPage={platformsFetchingNext}
+                        onLoadMore={fetchNextPlatforms}
+                        loadedCount={platforms.length}
+                        totalItems={platformTotal}
+                    />
+
                     {/* Pipeline List Items */}
-                    {filteredPipelines.map((pipeline) => (
+                    {pipelines.map((pipeline) => (
                         <Link
                             key={`pipeline-${pipeline.pipe_id}`}
                             href={`/dashboard/field/pipeline/${pipeline.pipe_id}`}
@@ -546,10 +591,18 @@ export default function StructuresPage() {
                             </div>
                         </Link>
                     ))}
+
+                    <ScrollSentinel
+                        hasNextPage={Boolean(pipelinesHasNextPage)}
+                        isFetchingNextPage={pipelinesFetchingNext}
+                        onLoadMore={fetchNextPipelines}
+                        loadedCount={pipelines.length}
+                        totalItems={pipelineTotal}
+                    />
                 </div>
             )}
 
-            {totalStructures === 0 && (
+            {(platforms.length === 0 && pipelines.length === 0) && (
                 <div className="text-center py-12">
                     <Building2 className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
                     <p className="text-muted-foreground">

@@ -1,6 +1,9 @@
 "use client";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import Link from "next/link";
 import { Building2, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, Layers2, Activity, Plus } from "lucide-react";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -110,13 +113,26 @@ function PlatformPageContent() {
   const router = useRouter();
   const fieldId = searchParams.get("field");
 
-  // Fetch platforms first so 'data' is available for following hooks
-  const { data, error, isLoading } = useSWR(
-    fieldId ? `/api/platform?field=${fieldId}` : `/api/platform`,
-    fetcher
-  );
-
-  const platforms: Platform[] = useMemo(() => data?.data || [], [data]);
+  // Scroll-to-load platform list; the API pages rows and applies the title
+  // search server-side (?q=).
+  const [rawSearchQuery, setRawSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(rawSearchQuery, 300);
+  const {
+    items: platforms,
+    totalItems,
+    isLoading,
+    error: listError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteList<Platform>({
+    queryKey: ["field", "platforms", fieldId ?? "all", debouncedSearch],
+    getPageUrl: (page) =>
+      `/api/platform?page=${page}&pageSize=50${
+        fieldId ? `&field=${fieldId}` : ""
+      }${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+  });
 
   const [randomImages, setRandomImages] = useState<Map<number, string>>(new Map());
   const [viewMode, setViewMode] = useState<ViewMode>(() => {
@@ -125,7 +141,8 @@ function PlatformPageContent() {
     }
     return 'list';
   });
-  const [searchQuery, setSearchQuery] = useState("");
+  const searchQuery = rawSearchQuery;
+  const setSearchQuery = setRawSearchQuery;
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
@@ -151,15 +168,15 @@ function PlatformPageContent() {
     return Array.from(legs).sort((a, b) => Number(a) - Number(b));
   }, [platforms]);
 
-  // Derive unique platform types from current data if possible, or use standard
+  // Derive unique platform types from the loaded window if possible, or use standard
   const platTypes = useMemo(() => {
-    if (!data?.data) return ["JACKET", "TRIPOD", "MONOPILE", "JACK-UP"];
+    if (platforms.length === 0) return ["JACKET", "TRIPOD", "MONOPILE", "JACK-UP"];
     const types = new Set<string>();
-    data.data.forEach((p: Platform) => {
+    platforms.forEach((p) => {
       if (p.ptype) types.add(p.ptype);
     });
     return Array.from(types).sort();
-  }, [data]);
+  }, [platforms]);
 
   const activeFilterCount = useMemo(() => {
     return Object.values(filters).filter(value => value !== null).length;
@@ -175,7 +192,7 @@ function PlatformPageContent() {
 
   // Generate random image selection for platforms with multiple images
   useEffect(() => {
-    if (!data) return;
+    if (platforms.length === 0) return;
 
     const imageMap = new Map<number, string>();
     platforms.forEach((platform) => {
@@ -187,7 +204,7 @@ function PlatformPageContent() {
       }
     });
     setRandomImages(imageMap);
-  }, [data]);
+  }, [platforms]);
 
   // Persist view mode
   useEffect(() => {
@@ -196,16 +213,9 @@ function PlatformPageContent() {
     }
   }, [viewMode]);
 
-  // Filter and sort platforms
+  // Filter and sort the loaded window (search moved server-side via ?q=)
   const filteredAndSortedPlatforms = useMemo(() => {
     const filtered = platforms.filter((platform) => {
-      // Search query filter
-      const matchesSearch = platform.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          platform.field_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          `PLAT-${platform.plat_id}`.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (!matchesSearch) return false;
-
       // Legs filter
       if (filters.legs && String(platform.plegs) !== filters.legs) return false;
 
@@ -239,7 +249,7 @@ function PlatformPageContent() {
     });
 
     return filtered;
-  }, [platforms, searchQuery, sortField, sortOrder, filters]);
+  }, [platforms, sortField, sortOrder, filters]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -261,14 +271,14 @@ function PlatformPageContent() {
     );
   };
 
-  if (error) return (
+  if (listError) return (
     <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl mb-4 text-red-500">
         <Activity className="h-8 w-8" />
       </div>
       <h2 className="text-xl font-black tracking-tight mb-2">Sync Error</h2>
       <p className="text-slate-500 max-w-xs mx-auto mb-6">Failed to retrieve platform data. Please check your connection.</p>
-      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-black uppercase tracking-widest border-2 hover:bg-slate-50 transition-all">Retry</Button>
+      <Button onClick={refetch} variant="outline" className="rounded-xl px-8 font-black uppercase tracking-widest border-2 hover:bg-slate-50 transition-all">Retry</Button>
     </div>
   );
 
@@ -555,9 +565,19 @@ function PlatformPageContent() {
                     </div>
                   </div>
                 </Link>
-              );
+                );
             })}
           </div>
+        )}
+
+        {viewMode === "card" && (
+          <ScrollSentinel
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={fetchNextPage}
+            loadedCount={filteredAndSortedPlatforms.length}
+            totalItems={totalItems}
+          />
         )}
 
         {/* Table View */}
@@ -682,10 +702,17 @@ function PlatformPageContent() {
                 })}
               </TableBody>
             </Table>
+            <ScrollSentinel
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              onLoadMore={fetchNextPage}
+              loadedCount={filteredAndSortedPlatforms.length}
+              totalItems={totalItems}
+            />
           </div>
         )}
 
-        {filteredAndSortedPlatforms.length === 0 && (
+        {filteredAndSortedPlatforms.length === 0 && !isLoading && (
           <div className="text-center py-12">
             <Building2 className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground">
