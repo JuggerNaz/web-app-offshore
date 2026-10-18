@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -47,7 +47,7 @@ export const generateROVRSCORSurveyReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
@@ -63,7 +63,7 @@ export const generateROVRSCORSurveyReport = async (
 
         const dateRangeStr = isBlank ? "" : getInspectionDateRange(records, headerData, config);
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         // ── Pre-load logos ──────────────────────────────────────────────────────
         let companyLogo: any = null;
@@ -76,61 +76,33 @@ export const generateROVRSCORSurveyReport = async (
         }
 
         // ── Synchronous page header ─────────────────────────────────────────────
-        const drawPageHeader = (d: jsPDF) => {
-            const isPF = config.printFriendly;
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4,              margin + 3, "left",  "center");
-
-            d.setFontSize(11);  d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6,  { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11);  d.setFont("helvetica", "bold");
-            d.text("Scour Survey Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8);   d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `Scour Survey Report (ROV) - ${extraTitleInfo}` : "Scour Survey Report (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: config.printFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+            });
         };
 
-        // ── Context boxes ───────────────────────────────────────────────────────
-        const ROW_H = 7;
         const drawContextRow = (d: jsPDF, y: number) => {
-            const isPF = config.printFriendly;
-            const half = contentWidth / 2;
-            const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
-                d.setDrawColor(...colors.border);
-                d.setLineWidth(0.1);
-                if (!isPF) {
-                    d.setFillColor(...colors.lightGray);
-                    d.rect(x, ty, w, ROW_H, "F");
-                }
-                d.rect(x, ty, w, ROW_H, "S");
-                d.setTextColor(...colors.text);
-                d.setFontSize(7.5);
-                d.setFont("helvetica", "bold");
-                d.text(label, x + 2, ty + 4.8);
-                d.setFont("helvetica", "normal");
-                d.text(String(value || ""), x + 36, ty + 4.8);
-            };
-            drawBox("Structure:",        headerData.platformName || "N/A", margin,        half, y);
-            drawBox("Vessel:",           headerData.vessel       || "N/A", margin + half, half, y);
-            drawBox("Job Pack:",         headerData.jobpackName  || "N/A", margin,        half, y + ROW_H);
-            drawBox("Insp. Date Range:", dateRangeStr,                     margin + half, half, y + ROW_H);
-            return y + ROW_H * 2 + 4;
+            return drawStandardContextRow(d, y, {
+                structure: headerData.platformName,
+                vessel: headerData.vessel,
+                jobpack: headerData.jobpackName,
+                dateRange: dateRangeStr,
+            }, config.printFriendly, margin);
         };
 
-        // ── Pre-fetch Structure Components if missing metadata ─────────────────
-        const compRegistry = new Map<string, any>();
+        const compRegistry = new Map<string | number, any>();
         const effectiveStructureId = config?.structureId || records.find(r => r.structure_components?.structure_id || r.structure_id)?.structure_components?.structure_id || records.find(r => r.structure_id)?.structure_id;
 
         if (effectiveStructureId && typeof window !== "undefined") {
@@ -144,6 +116,8 @@ export const generateROVRSCORSurveyReport = async (
 
                 if (allComps && allComps.length > 0) {
                     allComps.forEach(c => {
+                        compRegistry.set(String(c.id), c);
+                        compRegistry.set(Number(c.id), c);
                         if (c.q_id) compRegistry.set(c.q_id.toUpperCase().trim(), c);
                     });
                 }
@@ -169,9 +143,13 @@ export const generateROVRSCORSurveyReport = async (
         const resolveRecordFace = (r: any): string => {
             const d = r.inspection_data || r.inspection_dat || {};
             let comp = r.structure_components || r.component || {};
+            const compId = r.component_id || r.structure_components?.id || r.component?.id;
             const qid = String(comp.q_id || comp.id_no || comp.name || r.qid || "").toUpperCase().trim();
 
-            if (qid && compRegistry.has(qid)) {
+            if (compId && compRegistry.has(compId)) {
+                const regComp = compRegistry.get(compId);
+                comp = { ...regComp, ...comp, metadata: regComp.metadata || comp.metadata };
+            } else if (qid && compRegistry.has(qid)) {
                 const regComp = compRegistry.get(qid);
                 comp = { ...regComp, ...comp, metadata: regComp.metadata || comp.metadata };
             }

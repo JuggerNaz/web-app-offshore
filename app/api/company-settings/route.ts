@@ -66,10 +66,13 @@ export const GET = withTenant(async (request, { companyId, company }) => {
         if (normalizedUnit === "M") normalizedUnit = "METRIC";
         if (normalizedUnit === "I") normalizedUnit = "IMPERIAL";
 
+        const clientShort = settings.client_short || settings.storage_config?.client_short || companyRecord?.short_name || "";
+
         return NextResponse.json({
             data: {
                 ...settings,
                 company_name: companyRecord?.name || settings.company_name || "Company",
+                client_short: clientShort,
                 logo_url: logoUrl,
                 has_structures: hasStructures,
                 def_unit: normalizedUnit,
@@ -91,18 +94,23 @@ export const PUT = withTenant(async (request, { companyId, company }) => {
         const supabase = createClient();
         const body = await request.json();
 
-        const { company_name, department_name, def_unit, storage_provider, storage_config } = body;
+        const { company_name, client_short, department_name, def_unit, storage_provider, storage_config } = body;
 
         let normalizedUnit = def_unit || "METRIC";
         if (normalizedUnit === "M") normalizedUnit = "METRIC";
         if (normalizedUnit === "I") normalizedUnit = "IMPERIAL";
+
+        const mergedStorageConfig = {
+            ...(storage_config || {}),
+            client_short: client_short !== undefined ? client_short : (storage_config?.client_short || "")
+        };
 
         const updateData: any = {
             company_name: company_name || company?.name || "Company",
             department_name: department_name || null,
             def_unit: normalizedUnit,
             storage_provider: storage_provider || "Supabase",
-            storage_config: storage_config || {},
+            storage_config: mergedStorageConfig,
             company_id: companyId,
             updated_at: new Date().toISOString(),
         };
@@ -117,25 +125,46 @@ export const PUT = withTenant(async (request, { companyId, company }) => {
         let resultData: any;
         let resultError: any;
 
+        // Try with client_short column first, fallback gracefully if column doesn't exist yet in DB
+        const saveWithColumn = { ...updateData, client_short: client_short || null };
+
         if (existing?.id) {
             // Update existing record
-            const { data, error } = await (supabase as any)
+            let res = await (supabase as any)
                 .from("company_settings")
-                .update(updateData)
+                .update(saveWithColumn)
                 .eq("id", existing.id)
                 .select()
                 .single();
-            resultData = data;
-            resultError = error;
+
+            if (res.error && (res.error.code === "42703" || res.error.message?.includes("client_short"))) {
+                res = await (supabase as any)
+                    .from("company_settings")
+                    .update(updateData)
+                    .eq("id", existing.id)
+                    .select()
+                    .single();
+            }
+            resultData = res.data;
+            resultError = res.error;
         } else {
             // Insert new record for this company
-            const { data, error } = await (supabase as any)
+            let res = await (supabase as any)
                 .from("company_settings")
-                .insert(updateData)
+                .insert(saveWithColumn)
                 .select()
                 .single();
-            resultData = data;
-            resultError = error;
+
+            if (res.error && (res.error.code === "42703" || res.error.message?.includes("client_short"))) {
+                res = await (supabase as any)
+                    .from("company_settings")
+                    .insert(updateData)
+                    .select()
+                    .single();
+            }
+
+            resultData = res.data;
+            resultError = res.error;
 
             if (resultError) {
                 console.warn("[PUT /api/company-settings] Insert fallback:", resultError.message);
@@ -155,7 +184,12 @@ export const PUT = withTenant(async (request, { companyId, company }) => {
             return NextResponse.json({ error: resultError.message }, { status: 500 });
         }
 
-        return NextResponse.json({ data: resultData });
+        return NextResponse.json({
+            data: {
+                ...resultData,
+                client_short: client_short !== undefined ? client_short : (resultData?.client_short || mergedStorageConfig.client_short || "")
+            }
+        });
     } catch (error: any) {
         console.error("Error in PUT /api/company-settings:", error);
         return NextResponse.json(

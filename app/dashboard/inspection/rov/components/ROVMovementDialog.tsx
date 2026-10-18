@@ -71,12 +71,14 @@ export default function ROVMovementDialog({
         setSaving(true);
 
         try {
+            const compId = rovJob.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
             const { error } = await supabase.from("insp_rov_movements").insert({
-                rov_job_id: rovJob.rov_job_id,
+                rov_job_id: Number(rovJob.rov_job_id),
                 movement_time: new Date().toISOString(),
                 movement_type: formData.movement_type,
                 remarks: formData.remarks,
                 depth_meters: formData.depth ? parseFloat(formData.depth) : null,
+                company_id: compId,
             });
 
             if (error) throw error;

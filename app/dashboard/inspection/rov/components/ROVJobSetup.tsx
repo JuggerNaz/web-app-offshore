@@ -8,6 +8,7 @@ import { SmartTimeInput } from "@/components/ui/smart-time-input";
 import { Label } from "@/components/ui/label";
 import { Ship, Settings2, Info } from "lucide-react";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { toast } from "sonner";
 import Link from "next/link";
 
@@ -32,8 +33,8 @@ export default function ROVJobSetup({
         rov_operator: "",
         rov_supervisor: "",
         report_coordinator: "",
-        deployment_date: new Date().toISOString().split("T")[0],
-        start_time: new Date().toTimeString().slice(0, 5),
+        deployment_date: toLocalDateString(new Date()),
+        start_time: toLocalTimeString(new Date(), false),
     });
 
     const [loading, setLoading] = useState(false);
@@ -79,6 +80,7 @@ export default function ROVJobSetup({
                     auto_capture_data: true,
                     auto_grab_video: true,
                     status: "IN_PROGRESS",
+                    company_id: typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null,
                 })
                 .select()
                 .single();

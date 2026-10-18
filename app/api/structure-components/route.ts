@@ -68,30 +68,17 @@ export async function GET(request: NextRequest) {
             .select("anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name, structure_id")
             .eq("structure_id", parseInt(structureId));
 
-        // Map data: match inspection records & anomalies by component_id OR component QID
+        // Map data: match inspection records & anomalies strictly by component_id
         const mappedData = (data || []).map((item: any) => {
             const metadata = item.metadata || {};
-            const qidUpper = item.q_id ? item.q_id.toUpperCase() : "";
 
             const compInsps = (inspRecords || []).filter((r: any) => {
-                if (r.component_id && r.component_id === item.id) return true;
-                if (qidUpper) {
-                    if (r.component_qid && String(r.component_qid).toUpperCase() === qidUpper) return true;
-                    if (r.inspection_data?.component && String(r.inspection_data.component).toUpperCase() === qidUpper) return true;
-                    if (r.inspection_data?.component_qid && String(r.inspection_data.component_qid).toUpperCase() === qidUpper) return true;
-                    if (r.inspection_data?.qid && String(r.inspection_data.qid).toUpperCase() === qidUpper) return true;
-                }
+                if (r.component_id) return r.component_id === item.id;
                 return false;
             });
 
             const compAnoms = (componentAnomalies || []).filter((a: any) => {
-                if (a.component_id && a.component_id === item.id) return true;
-                if (qidUpper) {
-                    if (a.component_qid && String(a.component_qid).toUpperCase() === qidUpper) return true;
-                    if (a.component_name && String(a.component_name).toUpperCase() === qidUpper) return true;
-                    if (a.q_id && String(a.q_id).toUpperCase() === qidUpper) return true;
-                    if (a.description && String(a.description).toUpperCase().includes(qidUpper)) return true;
-                }
+                if (a.component_id) return a.component_id === item.id;
                 return false;
             });
 

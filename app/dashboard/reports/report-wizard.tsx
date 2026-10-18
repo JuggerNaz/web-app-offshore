@@ -141,7 +141,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
         reportYear: new Date().getFullYear().toString(),
-        preparedBy: { name: "", date: new Date().toISOString().split('T')[0] },
+        preparedBy: { name: "", date: "" },
         reviewedBy: { name: "", date: "" },
         approvedBy: { name: "", date: "" },
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
@@ -2175,7 +2175,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
                     const mergedPdfBytes = await mergedPdf.save();
-                    const finalBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                    const finalBlob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
 
                     if (returnBlob) {
                         return finalBlob;
@@ -2200,7 +2200,107 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, showSignatures: true, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+        }
+
+        // Inspection Summary Report
+        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+            }
+
+            let summaryData: any = null;
+            if (!selections.printBlankReport) {
+                try {
+                    const params = new URLSearchParams();
+                    if (reportConfig.structureId) params.set("structure_id", String(reportConfig.structureId));
+                    if (reportConfig.jobPackId) params.set("jobpack_id", String(reportConfig.jobPackId));
+                    if (selections.sowReportNo && selections.sowReportNo !== "all") params.set("sow_report_no", selections.sowReportNo);
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data;
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary for report:", e);
+                }
+            }
+
+            const { generateInspectionSummaryReport } = await import("@/utils/report-generators/inspection-summary-report");
+            return await generateInspectionSummaryReport(
+                summaryData || jobPack || {},
+                {
+                    ...(structure || {}),
+                    structure_id: reportConfig.structureId,
+                    platformName: structure?.str_name || structure?.name || "OFFSHORE PLATFORM",
+                    fieldName: structure?.field_name || structure?.field || "",
+                    waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
+                    depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
+                    contractorLogoUrl,
+                    sowReportNo: selections.sowReportNo
+                },
+                companySettings,
+                reportConfig
+            );
+        }
+
+        // Inspection Summary by Graph
+        if (currentTemplateId === "inspection-summary-graph" || currentTemplateId === "inspection-summary-graph-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+            }
+
+            let summaryData: any = null;
+            if (!selections.printBlankReport) {
+                try {
+                    const params = new URLSearchParams();
+                    if (reportConfig.structureId) params.set("structure_id", String(reportConfig.structureId));
+                    if (reportConfig.jobPackId) params.set("jobpack_id", String(reportConfig.jobPackId));
+                    if (selections.sowReportNo && selections.sowReportNo !== "all") params.set("sow_report_no", selections.sowReportNo);
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data;
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary for graph report:", e);
+                }
+            }
+
+            const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
+            return await generateInspectionSummaryGraphReport(
+                summaryData || jobPack || {},
+                {
+                    ...(structure || {}),
+                    structure_id: reportConfig.structureId,
+                    platformName: structure?.str_name || structure?.name || "OFFSHORE PLATFORM",
+                    fieldName: structure?.field_name || structure?.field || "",
+                    waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
+                    depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
+                    contractorLogoUrl,
+                    sowReportNo: selections.sowReportNo
+                },
+                companySettings,
+                reportConfig
+            );
         }
 
         // Defect Summary Report / Findings Summary Report
@@ -2245,8 +2345,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            let jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!jobPack && !selections.printBlankReport && selections.jobPackId) {
+                jobPack = jobPacks.find((jp: any) => String(jp.id) === String(selections.jobPackId)) || { id: selections.jobPackId, name: "JobPack " + selections.jobPackId, metadata: {} };
+            }
+
+            let structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if (!structure && !selections.printBlankReport && selections.structureId) {
+                const cleanStrId = String(selections.structureId).replace(/^(platform|pipeline)-/, "");
+                structure = structures.find((s: any) => String(s.id) === String(cleanStrId) || String(s.str_id) === String(cleanStrId)) || { id: cleanStrId, str_name: "Structure " + cleanStrId };
+            }
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
@@ -2254,8 +2362,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Video Log Report
         if (currentTemplateId === "video-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : (await fetchJobPackData() || jobPacks.find((jp: any) => jp.id?.toString() === selections.jobPackId?.toString()));
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (await fetchStructureData() || structures.find((s: any) => s.id?.toString() === selections.structureId?.toString()));
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateVideoLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);
@@ -4113,7 +4221,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         insp_video_tapes:tape_id!left(tape_no),
                         insp_anomalies(*)
                     `)
-                    .eq("structure_id", structId);
+                    .eq("structure_id", structId)
+                    .order("inspection_date", { ascending: false })
+                    .order("insp_id", { ascending: false });
 
                 if (fetchError) {
                     alert(`Database error: ${fetchError.message}`);
@@ -6938,8 +7048,41 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             title="Report Preview"
                         />
                     ) : (
-                        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                            Preview not available (Check if generator supports blob)
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 p-6 text-center">
+                            <div className="w-12 h-12 rounded-full bg-slate-200/60 dark:bg-slate-800/60 flex items-center justify-center text-slate-500">
+                                <FileText className="w-6 h-6" />
+                            </div>
+                            <div className="space-y-1">
+                                <p className="text-base font-semibold text-slate-700 dark:text-slate-200">
+                                    Preview not available
+                                </p>
+                                <p className="text-xs text-muted-foreground max-w-sm">
+                                    No records were returned for this report or the preview could not be generated. You can retry or preview as a blank report template.
+                                </p>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => generatePreview()}
+                                    className="text-xs"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                                    Retry Preview
+                                </Button>
+                                {!selections.printBlankReport && (
+                                    <Button
+                                        variant="default"
+                                        size="sm"
+                                        onClick={() => {
+                                            setSelections((prev: any) => ({ ...prev, printBlankReport: true }));
+                                        }}
+                                        className="text-xs"
+                                    >
+                                        Preview as Blank Template
+                                    </Button>
+                                )}
+                            </div>
                         </div>
                     )}
                 </div>

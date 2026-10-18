@@ -57,9 +57,11 @@ export function AttachmentSlideOver() {
     const isAddMode = !activeAttachment;
     const isMedia = activeAttachment ? isMediaAttachment(activeAttachment) : false;
 
-    // Components of the selected platform (add mode)
+    // Components of the selected platform (add mode, slim projection)
     const { data: componentsData } = useSWR(
-        isSlideOverOpen && isAddMode && selectedPlatformId ? `/api/structure-components/${selectedPlatformId}` : null,
+        isSlideOverOpen && isAddMode && selectedPlatformId
+            ? `/api/structure-components/lookup?structure_id=${selectedPlatformId}&pageSize=1000`
+            : null,
         fetcher
     );
     const components: any[] = componentsData?.data || [];
@@ -161,7 +163,7 @@ export function AttachmentSlideOver() {
                     return;
                 }
 
-                let sourceType: TargetType = targetType;
+                const sourceType: TargetType = targetType;
                 let sourceId: number | null = null;
                 if (targetType === "platform") sourceId = selectedPlatformId;
                 if (targetType === "component") sourceId = targetComponentId ? Number(targetComponentId) : null;
@@ -223,6 +225,11 @@ export function AttachmentSlideOver() {
     const category = activeAttachment ? getAttachmentCategory(activeAttachment) : "OTHER";
     const enriched = (activeAttachment as any) || {};
     const meta = (enriched.meta || {}) as any;
+    const isLegacy = !meta.file_url && (
+        /^[A-Za-z]:[\\\/]/.test((activeAttachment as any)?.path || "") ||
+        ((activeAttachment as any)?.path || "").startsWith("\\\\") ||
+        ((activeAttachment as any)?.path || "").includes("\\")
+    );
 
     return (
         <Sheet open={isSlideOverOpen} onOpenChange={(open: boolean) => !open && closeSlideOver()}>
@@ -292,6 +299,18 @@ export function AttachmentSlideOver() {
                                     </div>
                                 </div>
                             </div>
+
+                            {isLegacy && (
+                                <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex flex-col gap-1.5">
+                                    <div className="flex items-center gap-1.5 font-bold text-[11px] uppercase tracking-wider">
+                                        <span>⚠️</span> Legacy File Path
+                                    </div>
+                                    <p className="text-[11px] leading-relaxed opacity-90">
+                                        This attachment references a legacy local/network path: <code className="bg-amber-500/20 px-1 py-0.5 rounded font-mono text-[10px] break-all">{meta.file_path || (activeAttachment as any).path}</code>.
+                                        If the drive is unmounted, you can upload the physical file below using <strong>Choose</strong> to make it accessible in the cloud.
+                                    </p>
+                                </div>
+                            )}
 
                             {/* Replace file */}
                             <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 flex items-center justify-between gap-3">

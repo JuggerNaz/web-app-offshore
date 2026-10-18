@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -42,7 +42,7 @@ export const generateDivingRRISIReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const rType = config.reportType || 'R';
@@ -72,7 +72,10 @@ export const generateDivingRRISIReport = async (
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
         // Fetch all components to build parent component lookup registry
-        const { data: allComps } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').eq('structure_id', config.structureId);
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        const { data: allComps } = effectiveStructureId 
+            ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
+            : { data: null };
 
         // Build lookup map of valid Parent Components matching code 'RS' and QID prefix
         const targetPrefix = typeConfig.prefix; // 'R', 'J', or 'I'
@@ -307,34 +310,22 @@ export const generateDivingRRISIReport = async (
             ? `${format(startDate, 'dd MMM yyyy')} to ${format(endDate, 'dd MMM yyyy')}`
             : 'N/A';
 
-        const headerH = 26;
+        const headerH = 25;
         const drawHeader = (d: jsPDF) => {
-            
-            const isPF = config.printFriendly;
-            
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, headerH, 'S');
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, headerH, 'F');
-                d.setTextColor(255);
-            }
-
-            if (companyLogo)    drawLogo(d, companyLogo,    16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4,              margin + 3, 'left',  'center');
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth/2), margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(typeConfig.title, margin + (contentWidth/2), margin + 16.5, { align: 'center' });
-
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + (contentWidth / 2), margin + 21, { align: 'center' });
+            draw3SectionHeader(d, {
+                reportTitle: typeConfig.title,
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData?.platformName,
+                jobpackName: headerData?.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                margin,
+                headerH,
+                headerY: 7,
+            });
         };
 
         const drawContext = (d: jsPDF, y: number) => {
@@ -466,10 +457,9 @@ export const generateDivingRRISIReport = async (
             }
             doc.setFontSize(9); doc.setFont("helvetica", "bold");
             doc.text(`${typeConfig.componentLabel}: ${parentQid}`, margin + 5, startY + 5);
-
             const sketchY = startY + 10;
-            const gW = contentWidth * 0.38; // Left sketch panel width
-            const dW = contentWidth * 0.60; // Right autoTable panel width
+            const gW = 75; // Left sketch panel width
+            const dW = contentWidth - gW - 4; // Right autoTable panel width
             const gX = margin;
             const dX = margin + gW + 4;
 

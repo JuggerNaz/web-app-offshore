@@ -60,12 +60,26 @@ export async function PATCH(
             (key) => updateData[key] === undefined && delete updateData[key]
         );
 
-        const { data, error } = await (supabase as any)
+        let { data, error } = await (supabase as any)
             .from('defect_criteria_rules')
             .update(updateData)
             .eq('id', Number(id))
             .select()
             .single();
+
+        // If DB has check constraint preventing 'LIKE', gracefully fallback to null operator with operator metadata
+        if (error && error.code === '23514' && updateData.threshold_operator === 'LIKE') {
+            updateData.threshold_operator = null;
+            updateData.custom_parameters = { ...(updateData.custom_parameters || {}), operator: 'LIKE' };
+            const retry = await (supabase as any)
+                .from('defect_criteria_rules')
+                .update(updateData)
+                .eq('id', Number(id))
+                .select()
+                .single();
+            data = retry.data;
+            error = retry.error;
+        }
 
         if (error) {
             return NextResponse.json({ error: error.message }, { status: 500 });

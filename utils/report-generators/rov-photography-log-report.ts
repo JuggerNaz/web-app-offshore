@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -37,7 +37,7 @@ export const generateROVPhotographyLogReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -47,8 +47,26 @@ export const generateROVPhotographyLogReport = async (
             lightGray: [248, 250, 252] as [number, number, number],
         };
 
+        // Extract and flatten attachments if inspection records were passed
+        const flatPhotos: any[] = [];
+        (photos || []).forEach((item: any) => {
+            if (!item) return;
+            const atts = item.attachments || item.attachment || item.insp_attachments || item.insp_photos || item.photos;
+            if (Array.isArray(atts) && atts.length > 0) {
+                atts.forEach((a: any) => {
+                    flatPhotos.push({
+                        ...a,
+                        anomaly_ref: a.anomaly_ref || item.insp_anomalies?.[0]?.anomaly_ref_no || item.anomaly_ref || null
+                    });
+                });
+            } else if (item.path || item.file_path || item.url || item.file_url || item.storage_path || item.id || item.name) {
+                flatPhotos.push(item);
+            }
+        });
+        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : (photos || []);
+
         // If no photos, return a document with an empty state message
-        if (!photos || photos.length === 0) {
+        if (!resolvedPhotos || resolvedPhotos.length === 0) {
             doc.setFont("helvetica", "bold");
             doc.setFontSize(16);
             doc.setTextColor(150, 150, 150);
@@ -68,38 +86,60 @@ export const generateROVPhotographyLogReport = async (
         if (companySettings.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+        const contrLogoUrl = headerData?.contractorLogoUrl || (config as any)?.contractorLogoUrl || (config as any)?.contrLogoUrl;
+        if (contrLogoUrl) {
+            try { contractorLogo = await loadLogoWithTransparency(contrLogoUrl); } catch (_) {}
+        }
+        if (!contractorLogo) {
+            try {
+                const contrId = (headerData as any)?.contractorId || (headerData as any)?.contrac || headerData?.jobpack?.metadata?.contrac || (config as any)?.jobPack?.metadata?.contrac;
+                const cRes = await fetch(`/api/library/CONTR_NAM`);
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    if (Array.isArray(cJson?.data)) {
+                        let found = contrId ? cJson.data.find((c: any) =>
+                            String(c.lib_id) === String(contrId) ||
+                            String(c.code) === String(contrId) ||
+                            String(c.lib_desc).toLowerCase() === String(contrId).toLowerCase()
+                        ) : null;
+                        if (!found && contrId) {
+                            found = cJson.data.find((c: any) =>
+                                (c.lib_id && String(contrId).toLowerCase().includes(String(c.lib_id).toLowerCase())) ||
+                                (c.code && String(contrId).toLowerCase().includes(String(c.code).toLowerCase()))
+                            );
+                        }
+                        if (!found) {
+                            found = cJson.data.find((c: any) => Boolean(c.logo_url));
+                        }
+                        if (found?.logo_url) {
+                            contractorLogo = await loadLogoWithTransparency(found.logo_url);
+                        }
+                    }
+                }
+            } catch (_) {}
         }
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         const drawHeaderFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
             const isPF = config.printFriendly;
-            
-            // Header
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
+            const reportNo = (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A";
+            const structName = headerData.platformName || "N/A";
 
-            if (companyLogo) drawLogo(d, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 16, 16, margin + 4, margin + 3, "left", "center");
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Photography Log Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+            draw3SectionHeader(d, {
+                reportTitle: "Photography Log Report (ROV)",
+                reportNo,
+                structureName: structName,
+                companySettings,
+                config,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: isPF,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "portrait"
+            });
 
             // Context Row
             const rowY = margin + HEADER_H + 2;
@@ -140,7 +180,7 @@ export const generateROVPhotographyLogReport = async (
             head: [
                 ['Item No.', 'Real Time', 'Photo Title', 'Details']
             ],
-            body: photos.map((p, idx) => {
+            body: resolvedPhotos.map((p, idx) => {
                 let meta = p.meta || {};
                 if (typeof meta === 'string') {
                     try { meta = JSON.parse(meta); } catch (e) { meta = {}; }

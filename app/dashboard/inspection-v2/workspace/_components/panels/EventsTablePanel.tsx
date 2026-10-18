@@ -901,19 +901,38 @@ export function EventsTablePanel({
                       );
                     case "cp_reading":
                       return <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs truncate block">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>; })()}</td>;
-                    case "dive_no":
-                      return <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200 overflow-hidden"><span className="text-xs font-medium truncate block">{r.insp_dive_jobs?.job_no || r.insp_rov_jobs?.job_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span></td>;
+                    case "dive_no": {
+                      const matchedDep = deployments?.find((d: any) => 
+                        (r.dive_job_id && String(d.id) === String(r.dive_job_id)) ||
+                        (r.rov_job_id && String(d.id) === String(r.rov_job_id))
+                      );
+                      const diveDisplay = r.insp_dive_jobs?.job_no || 
+                        r.insp_rov_jobs?.job_no || 
+                        r.dive_no || 
+                        r.deployment_no || 
+                        matchedDep?.jobNo || 
+                        matchedDep?.dive_no || 
+                        matchedDep?.deployment_no;
+                      return (
+                        <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200 overflow-hidden">
+                          <span className="text-xs font-medium truncate block">{diveDisplay || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
+                        </td>
+                      );
+                    }
                     case "tape_no": {
                       const counterDisplay = r.inspection_data?._meta_timecode || r.inspection_data?.counter_no || r.inspection_data?.counter || r.inspection_data?.timecode || r.tape_count_no;
+                      const matchedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(r.tape_id));
+                      const tapeDisplay = r.insp_video_tapes?.tape_no || matchedTape?.tape_no || r.tape_no || r.inspection_data?.tape_no;
                       const chapterNo = r.insp_video_tapes?.chapter_no 
+                        ?? matchedTape?.chapter_no
                         ?? r.chapter_no 
                         ?? r.inspection_data?.chapter_no 
                         ?? r.inspection_data?.chapter 
-                        ?? (jobTapes?.find((t: any) => t.tape_id === r.tape_id || (t.tape_no && r.insp_video_tapes?.tape_no && t.tape_no === r.insp_video_tapes.tape_no))?.chapter_no);
+                        ?? (jobTapes?.find((t: any) => (t.tape_no && tapeDisplay && t.tape_no === tapeDisplay))?.chapter_no);
                       const hasChapter = chapterNo !== undefined && chapterNo !== null && String(chapterNo).trim() !== "";
                       return (
                         <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-200 overflow-hidden">
-                          <span className="text-xs font-medium truncate block">{r.insp_video_tapes?.tape_no || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
+                          <span className="text-xs font-medium truncate block">{tapeDisplay || <span className="text-slate-300 dark:text-slate-600">-</span>}</span>
                           {(hasChapter || counterDisplay) && (
                             <div className="text-[11px] font-mono font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 mt-1 truncate">
                               {hasChapter && (

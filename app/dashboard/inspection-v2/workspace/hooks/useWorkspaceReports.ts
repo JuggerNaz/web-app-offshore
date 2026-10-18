@@ -78,9 +78,9 @@ export function useWorkspaceReports(
     allInspectionTypes: any[]
 ) {
     const [reportConfig, setReportConfig] = useState({
-        preparedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
-        reviewedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
-        approvedBy: { name: "", date: format(new Date(), "yyyy-MM-dd") },
+        preparedBy: { name: "", date: "" },
+        reviewedBy: { name: "", date: "" },
+        approvedBy: { name: "", date: "" },
         watermark: { enabled: false, text: "DRAFT", transparency: 0.15, color: "gray" },
         showSignatures: true
     });
@@ -188,7 +188,7 @@ export function useWorkspaceReports(
             const config: any = {
                 reportNoPrefix: headerData?.sowReportNo || "ANOMALY",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 reviewedBy: reportConfig.reviewedBy || { name: "", date: "" },
                 approvedBy: reportConfig.approvedBy || { name: "", date: "" },
                 watermark: reportConfig.watermark || { enabled: false, text: "", transparency: 0.1 },
@@ -296,7 +296,7 @@ export function useWorkspaceReports(
             {
                 reportNoPrefix: "SEABED",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 showContractorLogo: true,
                 showPageNumbers: true,
                 printFriendly: printFriendly || false,
@@ -462,7 +462,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -499,7 +499,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -536,7 +536,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -573,7 +573,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -614,7 +614,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -656,7 +656,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -698,7 +698,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -734,7 +734,7 @@ export function useWorkspaceReports(
                 jobPackId: Number(jobPackId),
                 structureId: Number(structureId),
                 sowReportNo: headerData.sowReportNo,
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 returnBlob: true,
                 printFriendly: printFriendly || false,
                 showSignatures: showSignatures ?? reportConfig.showSignatures
@@ -2125,7 +2125,7 @@ export function useWorkspaceReports(
             {
                 reportNoPrefix: type?.code || "REPORT",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 reviewedBy: { name: "", date: "" },
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
@@ -2157,7 +2157,7 @@ export function useWorkspaceReports(
             {
                 reportNoPrefix: "FULL_INSPECTION",
                 reportYear: new Date().getFullYear().toString(),
-                preparedBy: { name: "Inspector", date: new Date().toLocaleDateString() },
+                preparedBy: { name: reportConfig.preparedBy?.name || "Inspector", date: reportConfig.preparedBy?.date || "" },
                 reviewedBy: { name: "", date: "" },
                 approvedBy: { name: "", date: "" },
                 watermark: { enabled: false, text: "", transparency: 0.1 },
@@ -2544,6 +2544,60 @@ export function useWorkspaceReports(
                 { ...headerData, contractorLogoUrl },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
                 { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, showSignatures: showSignatures ?? reportConfig.showSignatures } as any
+            ) as Blob;
+        },
+        generateInspectionSummaryReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+
+            // Fetch live inspection summary data for this SOW report
+            const params = new URLSearchParams();
+            if (structureId) params.set("structure_id", structureId);
+            if (jobPackId) params.set("jobpack_id", jobPackId);
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A") params.set("sow_report_no", headerData.sowReportNo);
+
+            const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+            const json = await res.json();
+            const summaryData = json.data || {};
+
+            const { generateInspectionSummaryReport } = await import("@/utils/report-generators/inspection-summary-report");
+            return await generateInspectionSummaryReport(
+                summaryData,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures } as any
+            ) as Blob;
+        },
+        generateInspectionSummaryGraphReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
+            const settings = await getReportHeaderData();
+            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+            let contractorLogoUrl = '';
+            if (jobPack?.metadata?.contrac) {
+                const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+                contractorLogoUrl = contrData?.logo_url || '';
+            }
+
+            // Fetch live inspection summary data for this SOW report
+            const params = new URLSearchParams();
+            if (structureId) params.set("structure_id", structureId);
+            if (jobPackId) params.set("jobpack_id", jobPackId);
+            if (headerData.sowReportNo && headerData.sowReportNo !== "N/A") params.set("sow_report_no", headerData.sowReportNo);
+
+            const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+            const json = await res.json();
+            const summaryData = json.data || {};
+
+            const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
+            return await generateInspectionSummaryGraphReport(
+                summaryData,
+                { ...headerData, contractorLogoUrl },
+                { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures } as any
             ) as Blob;
         },
         generateSZONEReport,

@@ -1,10 +1,13 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState } from "react";
 import { useUserRole } from "@/utils/hooks/use-user-role";
 import { UserRole } from "@/utils/role-auth-base";
 import { InviteDialog } from "./invite-dialog";
 import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import {
   Table,
   TableBody,
@@ -68,12 +71,37 @@ const AVAILABLE_MODULES = [
 
 export default function UserManagementPage() {
   const { profile: currentProfile, activeCompanyId, role, isLoading: isRoleLoading } = useUserRole();
-  const [members, setMembers] = useState<any[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
-  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  // Scroll-to-load member list; the API pages memberships and applies the
+  // search server-side (name / email / designation).
+  const {
+    items: members,
+    totalItems,
+    isLoading,
+    error: listError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    refetch,
+    updateItem,
+    prependItem,
+  } = useInfiniteList<any>({
+    queryKey: ["admin", "users", activeCompanyId, debouncedSearch],
+    getPageUrl: (page) =>
+      `/api/admin/users?page=${page}&pageSize=50${
+        debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""
+      }`,
+    getHeaders: () =>
+      activeCompanyId ? { "x-company-id": activeCompanyId } : ({} as Record<string, string>),
+    enabled: !isRoleLoading,
+  });
+
+  const errorMsg = listError;
+  const isLoadingList = isLoading || isRoleLoading;
 
   // Access Configuration Dialog States
   const [editingMember, setEditingMember] = useState<any | null>(null);
@@ -146,9 +174,7 @@ export default function UserManagementPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
-          setMembers((prev) =>
-            prev.map((m) => (m.id === editingMember.id ? json.data : m))
-          );
+          updateItem((m: any) => (m.id === editingMember.id ? json.data : m));
           setEditingMember(null);
         }
       } else {
@@ -161,46 +187,6 @@ export default function UserManagementPage() {
       setIsSavingAccess(false);
     }
   };
-
-  const fetchMembers = async () => {
-    try {
-      setIsLoading(true);
-      setErrorMsg(null);
-
-      const headers: HeadersInit = {};
-      if (activeCompanyId) {
-        headers["x-company-id"] = activeCompanyId;
-      }
-
-      const res = await fetch("/api/admin/users", { headers });
-      if (res.ok) {
-        const json = await res.json();
-        if (json.success) {
-          setMembers(json.data || []);
-        } else {
-          setErrorMsg(json.error || "Failed to load company members.");
-        }
-      } else {
-        let errText = `Error ${res.status}: ${res.statusText}`;
-        try {
-          const json = await res.json();
-          if (json.error) errText = json.error;
-        } catch (_) {}
-        setErrorMsg(errText);
-      }
-    } catch (err: any) {
-      console.warn("[UserManagement] Error loading members:", err?.message || err);
-      setErrorMsg(err?.message || "An unexpected error occurred while loading members.");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (!isRoleLoading) {
-      fetchMembers();
-    }
-  }, [activeCompanyId, isRoleLoading]);
 
   const handleRoleChange = async (membershipId: string, newRole: UserRole) => {
     try {
@@ -219,9 +205,7 @@ export default function UserManagementPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
-          setMembers((prev) =>
-            prev.map((m) => (m.id === membershipId ? json.data : m))
-          );
+          updateItem((m: any) => (m.id === membershipId ? json.data : m));
         }
       } else {
         const json = await res.json();
@@ -251,9 +235,7 @@ export default function UserManagementPage() {
       if (res.ok) {
         const json = await res.json();
         if (json.success) {
-          setMembers((prev) =>
-            prev.map((m) => (m.id === membershipId ? json.data : m))
-          );
+          updateItem((m: any) => (m.id === membershipId ? json.data : m));
         }
       } else {
         const json = await res.json();
@@ -282,9 +264,7 @@ export default function UserManagementPage() {
       });
 
       if (res.ok) {
-        setMembers((prev) =>
-          prev.map((m) => m.id === membershipId ? { ...m, is_active: false } : m)
-        );
+        updateItem((m: any) => (m.id === membershipId ? { ...m, is_active: false } : m));
       } else {
         const json = await res.json();
         alert(json.error || "Failed to deactivate member");
@@ -297,18 +277,8 @@ export default function UserManagementPage() {
   };
 
   const handleUserInvited = (newMembership: any) => {
-    setMembers((prev) => [newMembership, ...prev]);
+    prependItem(newMembership);
   };
-
-  // Filter members based on search query
-  const filteredMembers = members.filter((member) => {
-    const user = member.user || {};
-    const name = (user.full_name || "").toLowerCase();
-    const email = (user.email || "").toLowerCase();
-    const designation = (user.designation || "").toLowerCase();
-    const q = searchQuery.toLowerCase();
-    return name.includes(q) || email.includes(q) || designation.includes(q);
-  });
 
   return (
     <div className="flex-1 space-y-6 p-8 overflow-y-auto">
@@ -356,7 +326,7 @@ export default function UserManagementPage() {
                 {errorMsg}
               </p>
               <Button 
-                onClick={fetchMembers} 
+                onClick={refetch} 
                 variant="outline" 
                 className="mt-4 border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800"
               >
@@ -364,12 +334,12 @@ export default function UserManagementPage() {
               </Button>
             </div>
           </div>
-        ) : isLoading && members.length === 0 ? (
+        ) : isLoadingList && members.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 space-y-4">
             <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
             <p className="text-sm font-bold text-slate-400 uppercase tracking-widest">Loading company members...</p>
           </div>
-        ) : filteredMembers.length === 0 ? (
+        ) : members.length === 0 ? (
           <div className="flex flex-col items-center justify-center p-20 text-center space-y-3">
             <ShieldAlert className="h-10 w-10 text-slate-400" />
             <div className="space-y-1">
@@ -391,7 +361,7 @@ export default function UserManagementPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredMembers.map((member) => {
+              {members.map((member) => {
                 const user = member.user || {};
                 const isSelf = user.id === currentProfile?.id;
                 const isPending = actionInProgress === member.id;
@@ -557,6 +527,14 @@ export default function UserManagementPage() {
             </TableBody>
           </Table>
         )}
+
+        <ScrollSentinel
+          hasNextPage={hasNextPage}
+          isFetchingNextPage={isFetchingNextPage}
+          onLoadMore={fetchNextPage}
+          loadedCount={members.length}
+          totalItems={totalItems}
+        />
       </div>
 
       {/* Invite/Create Member modal */}

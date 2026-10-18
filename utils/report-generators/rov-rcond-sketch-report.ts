@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -38,7 +38,7 @@ export const generateROVCondSketchReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const colors = {
@@ -60,44 +60,93 @@ export const generateROVCondSketchReport = async (
             return null;
         }
 
-        const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
+        const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
+        const { data: platform } = effectiveStructureId 
+            ? await supabase.from('u_platform').select('water_depth').eq('id', effectiveStructureId).maybeSingle()
+            : { data: null };
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
+
+        const compRegistry = new Map<string, any>();
+
+        // Preload all components for the structure to ensure complete hierarchy & metadata
+        if (effectiveStructureId) {
+            try {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', effectiveStructureId);
+                if (allComps) {
+                    allComps.forEach(c => {
+                        compRegistry.set(String(c.id), c);
+                        if (c.q_id) compRegistry.set(String(c.q_id).toUpperCase(), c);
+                    });
+                }
+            } catch (e) {
+                console.warn("[ROV Cond Sketch] Error loading all structure components:", e);
+            }
+        }
 
         // --- Dynamic Parent Resolution ---
         const parentIdSet = new Set<string>();
         records.forEach(r => {
-            const comp = r.structure_components || r.component || {};
+            let comp = r.structure_components || r.component;
+            if (comp?.id && compRegistry.has(String(comp.id))) {
+                const reg = compRegistry.get(String(comp.id));
+                if (!comp.metadata && reg.metadata) comp.metadata = reg.metadata;
+                if (!r.structure_components) r.structure_components = reg;
+            }
+            comp = comp || {};
             let metadata = comp.metadata || {};
             if (typeof metadata === 'string') {
                 try { metadata = JSON.parse(metadata); } catch (e) { metadata = {}; }
             }
             
             // USE IDENTICAL PRIORITY AS GROUPING LOOP
-            const associateId = metadata.associated_comp_qid || 
-                               metadata.associated_comp_id || 
-                               metadata.parent_id || 
-                               metadata.comp_id_parent || 
-                               metadata.parent_comp_id || 
-                               metadata.associated_id || null;
+            let associateId = metadata.associated_comp_qid || 
+                              metadata.associated_comp_id || 
+                              metadata.parent_id || 
+                              metadata.comp_id_parent || 
+                              metadata.parent_comp_id || 
+                              metadata.associated_id || null;
+
+            if (!associateId && comp.id) {
+                const regComp = compRegistry.get(String(comp.id));
+                const regMeta = regComp?.metadata || {};
+                associateId = regMeta.associated_comp_qid || 
+                              regMeta.associated_comp_id || 
+                              regMeta.parent_id || 
+                              regMeta.comp_id_parent || 
+                              regMeta.parent_comp_id || 
+                              regMeta.associated_id || null;
+            }
             
             if (associateId) parentIdSet.add(String(associateId));
             if (comp.id) parentIdSet.add(String(comp.id));
         });
 
-        const compRegistry = new Map<string, any>();
-        const identifierList = Array.from(parentIdSet);
+        const identifierList = Array.from(parentIdSet).filter(id => !compRegistry.has(String(id)) && !compRegistry.has(String(id).toUpperCase()));
         
         if (identifierList.length > 0) {
             // Path 1: Resolve by numeric IDs
             const numericIds = identifierList.map(v => Number(v)).filter(v => !isNaN(v));
             if (numericIds.length > 0) {
-                const { data: byId } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').in('id', numericIds);
-                if (byId) byId.forEach(c => compRegistry.set(String(c.id), c));
+                const { data: byId } = await supabase.from('structure_components').select('id, q_id, code, metadata').in('id', numericIds);
+                if (byId) {
+                    byId.forEach(c => {
+                        compRegistry.set(String(c.id), c);
+                        if (c.q_id) compRegistry.set(String(c.q_id).toUpperCase(), c);
+                    });
+                }
             }
             
             // Path 2: Resolve by QIDs (for string associations)
-            const { data: byQid } = await supabase.from('structure_components').select('id, q_id, code, name, metadata').in('q_id', identifierList);
-            if (byQid) byQid.forEach(c => compRegistry.set(String(c.q_id), c));
+            const { data: byQid } = await supabase.from('structure_components').select('id, q_id, code, metadata').in('q_id', identifierList);
+            if (byQid) {
+                byQid.forEach(c => {
+                    compRegistry.set(String(c.q_id).toUpperCase(), c);
+                    compRegistry.set(String(c.id), c);
+                });
+            }
         }
 
         // --- Grouping Logic (Phase 1: Raw Grouping) ---
@@ -111,12 +160,23 @@ export const generateROVCondSketchReport = async (
             }
             
             // Priority for identifier: associated_comp_qid > associated_comp_id > others
-            const associateId = metadata.associated_comp_qid || 
-                               metadata.associated_comp_id || 
-                               metadata.parent_id || 
-                               metadata.comp_id_parent || 
-                               metadata.parent_comp_id || 
-                               metadata.associated_id || null;
+            let associateId = metadata.associated_comp_qid || 
+                              metadata.associated_comp_id || 
+                              metadata.parent_id || 
+                              metadata.comp_id_parent || 
+                              metadata.parent_comp_id || 
+                              metadata.associated_id || null;
+
+            if (!associateId && comp.id) {
+                const regComp = compRegistry.get(String(comp.id));
+                const regMeta = regComp?.metadata || {};
+                associateId = regMeta.associated_comp_qid || 
+                              regMeta.associated_comp_id || 
+                              regMeta.parent_id || 
+                              regMeta.comp_id_parent || 
+                              regMeta.parent_comp_id || 
+                              regMeta.associated_id || null;
+            }
             
             const rawId = String(associateId || comp.id || "");
             if (rawId) {
@@ -129,21 +189,34 @@ export const generateROVCondSketchReport = async (
         const resolvedGroups: Record<string, { parentComp: any, records: any[] }> = {};
         
         for (const [rawId, groupRecords] of Object.entries(rawGroups)) {
-            let resolved = compRegistry.get(rawId);
+            let resolved = compRegistry.get(rawId) || compRegistry.get(rawId.toUpperCase());
             
             // AGGRESSIVE LATE-BINDING FETCH
             if (!resolved && !isNaN(Number(rawId))) {
                 try {
-                    const { data: late } = await supabase.from('structure_components').select('*').eq('id', Number(rawId)).maybeSingle();
+                    const { data: late } = await supabase.from('structure_components').select('id, q_id, code, metadata').eq('id', Number(rawId)).maybeSingle();
                     if (late) {
                         resolved = late;
                         compRegistry.set(rawId, late);
-                        if (late.q_id) compRegistry.set(String(late.q_id), late);
+                        if (late.q_id) compRegistry.set(String(late.q_id).toUpperCase(), late);
                     }
                 } catch (e) { console.error("Late binding error", e); }
             }
 
-            const finalKey = resolved ? String(resolved.id) : rawId;
+            // If the resolved component is itself a child (e.g. guide frame), climb to its parent
+            if (resolved) {
+                const resMeta = resolved.metadata || {};
+                const parentAssoc = resMeta.associated_comp_id || resMeta.associated_comp_qid || resMeta.parent_id;
+                if (parentAssoc) {
+                    const parentComp = compRegistry.get(String(parentAssoc)) || compRegistry.get(String(parentAssoc).toUpperCase());
+                    if (parentComp) {
+                        resolved = parentComp;
+                    }
+                }
+            }
+
+            // Normalise group key: prefer parent QID uppercase (e.g. CON009) or ID
+            const finalKey = resolved ? (resolved.q_id ? String(resolved.q_id).toUpperCase() : String(resolved.id)) : rawId.toUpperCase();
             
             if (!resolvedGroups[finalKey]) {
                 resolvedGroups[finalKey] = { 
@@ -172,18 +245,22 @@ export const generateROVCondSketchReport = async (
         if (companySettings.logo_url) { try { coLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {} }
         if (headerData.contractorLogoUrl) { try { ctLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {} }
 
-        const hH = 26;
+        const hH = 25;
         const drawHeader = (d: jsPDF) => {
-             const isPF = config.printFriendly;
-            if (isPF) { d.setDrawColor(...colors.navy); d.setLineWidth(0.5); d.rect(margin, margin, contentWidth, hH, 'S'); d.setTextColor(...colors.navy); }
-            else { d.setFillColor(...colors.navy); d.rect(margin, margin, contentWidth, hH, 'F'); d.setTextColor(255, 255, 255); }
-            if (coLogo) drawLogo(d, coLogo, 16, 16, pageWidth - margin - 20, margin + 3, 'right', 'center');
-            if (ctLogo) drawLogo(d, ctLogo, 16, 16, margin + 4, margin + 3, 'left', 'center');
-            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + contentWidth/2, margin + 6, { align: 'center' });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal"); d.text(companySettings.department_name || 'Technical Division', margin + contentWidth/2, margin + 10.5, { align: 'center' });
-            d.setFontSize(11); d.setFont("helvetica", "bold"); d.text("Conductor Survey (Sketch) Report (ROV)", margin + contentWidth/2, margin + 16.5, { align: 'center' });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || 'N/A'}`, margin + contentWidth/2, margin + 21, { align: 'center' });
+            draw3SectionHeader(d, {
+                reportTitle: "Conductor Survey (Sketch) Report (ROV)",
+                reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
+                structureName: headerData?.platformName,
+                jobpackName: headerData?.jobpackName,
+                companySettings,
+                config,
+                headerData,
+                contractorLogoData: ctLogo,
+                clientLogoData: coLogo,
+                margin,
+                headerH: hH,
+                headerY: 7,
+            });
         };
 
         const drawFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
@@ -240,8 +317,10 @@ export const generateROVCondSketchReport = async (
             doc.text(`CONDUCTOR QID: ${displayQid}`, margin + 5, currentY + 5);
             currentY += 10;
 
-            const gW = contentWidth * 0.38; const dW = contentWidth * 0.60;
-            const gX = margin; const dX = margin + gW + 4;
+            const gW = 75;
+            const dW = contentWidth - gW - 4;
+            const gX = margin;
+            const dX = margin + gW + 4;
 
             // --- Elev Processing ---
             const pMeta = parent?.metadata || {};
@@ -318,10 +397,12 @@ export const generateROVCondSketchReport = async (
                 const isA = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0);
                 const col = isA ? colors.anomaly : colors.navy;
                 
-                const cName = (c.name || '').toLowerCase();
-                const cQid = (c.q_id || '').toLowerCase();
-                const isClamp = cName.includes('clamp') || cQid.includes('clp') || cQid.includes('supp');
-                const isGuide = cName.includes('guide') || cName.includes('frame') || cQid.includes('gf');
+                const meta = c.metadata || {};
+                const cDesc = String(c.name || c.description || meta.description || '').toLowerCase();
+                const cQid = String(c.q_id || '').toLowerCase();
+                const cCode = String(c.code || '').toUpperCase();
+                const isClamp = cDesc.includes('clamp') || cQid.includes('clp') || cQid.includes('supp');
+                const isGuide = cDesc.includes('guide') || cDesc.includes('frame') || cQid.includes('gf') || cCode === 'CF' || cCode === 'CGF';
 
                 if (isClamp) {
                     const cw = rWidth + 10; const ch = 4;

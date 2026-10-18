@@ -354,7 +354,7 @@ export default function Spec1({ data, onSaved }: Props) {
                 <FormFieldWrap label="Conductors" name="conduct" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Internal Piles" name="pileint" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Slots" name="cslota" form={form} ftype="vertical" type="number" />
-                <FormFieldWrap label="Fenders" name="fender" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Boatlanding" name="fender" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Risers" name="riser" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Sumps" name="sump" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Skirt Piles" name="pileskt" form={form} ftype="vertical" type="number" />

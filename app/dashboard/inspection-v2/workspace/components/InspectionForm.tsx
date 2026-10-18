@@ -41,6 +41,7 @@ import SeabedDebrisPlot from "@/components/inspection/seabed-debris-plot";
 import { FindingsSuggestionEngine } from "./FindingsSuggestionEngine";
 import { VoiceInspectionAssistant } from "@/components/inspection/VoiceInspectionAssistant";
 import { createClient } from "@/utils/supabase/client";
+import { toLocalDateString, toLocalTimeString } from "@/utils/client-date";
 import { calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
 
@@ -201,30 +202,30 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
     const currentTapeId = dynamicProps?.tape_id ?? (isEditing ? (originalRecordContext?.tape_id ?? originalRecordContext?.raw?.tape_id) : tapeId);
 
     const displayTapeNo = (() => {
-        if (dynamicProps?.tape_no) return String(dynamicProps.tape_no);
         if (currentTapeId) {
             const found = jobTapes?.find((t: any) => String(t.tape_id) === String(currentTapeId));
             if (found?.tape_no) return found.tape_no;
         }
+        if (dynamicProps?.tape_no) return String(dynamicProps.tape_no);
         if (isEditing && originalRecordContext) {
             return (
                 originalRecordContext.tape_no ||
                 originalRecordContext.raw?.insp_video_tapes?.tape_no ||
-                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.tape_no ||
+                jobTapes?.find((t: any) => String(t.tape_id) === String(originalRecordContext.tape_id))?.tape_no ||
                 tapeNo ||
                 "-"
             );
         }
-        return tapeNo || jobTapes?.find((t: any) => t.tape_id === tapeId)?.tape_no || "-";
+        return tapeNo || jobTapes?.find((t: any) => String(t.tape_id) === String(tapeId))?.tape_no || "-";
     })();
 
     const displayChapter = (() => {
-        if (dynamicProps?.chapter_no !== undefined && dynamicProps?.chapter_no !== null && dynamicProps?.chapter_no !== "") {
-            return String(dynamicProps.chapter_no);
-        }
         if (currentTapeId) {
             const found = jobTapes?.find((t: any) => String(t.tape_id) === String(currentTapeId));
             if (found?.chapter_no !== undefined && found?.chapter_no !== null) return String(found.chapter_no);
+        }
+        if (dynamicProps?.chapter_no !== undefined && dynamicProps?.chapter_no !== null && dynamicProps?.chapter_no !== "") {
+            return String(dynamicProps.chapter_no);
         }
         if (isEditing && originalRecordContext) {
             const ch = (
@@ -233,7 +234,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                 originalRecordContext.raw?.chapter_no ??
                 originalRecordContext.raw?.inspection_data?.chapter_no ??
                 originalRecordContext.raw?.inspection_data?.chapter ??
-                jobTapes?.find((t: any) => t.tape_id === originalRecordContext.tape_id)?.chapter_no
+                jobTapes?.find((t: any) => String(t.tape_id) === String(originalRecordContext.tape_id))?.chapter_no
             );
             return ch !== undefined && ch !== null ? String(ch) : "1";
         }
@@ -281,11 +282,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             try {
                 const dObj = new Date(rawDate);
                 if (!isNaN(dObj.getTime())) {
-                    recDate = dObj.toISOString().split("T")[0];
-                    const hours = String(dObj.getHours()).padStart(2, "0");
-                    const mins = String(dObj.getMinutes()).padStart(2, "0");
-                    const secs = String(dObj.getSeconds()).padStart(2, "0");
-                    recTime = `${hours}:${mins}:${secs}`;
+                    recDate = toLocalDateString(dObj);
+                    recTime = toLocalTimeString(dObj, true);
                 }
             } catch (_) {}
         }
@@ -342,11 +340,8 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             try {
                 const dObj = new Date(rawTime);
                 if (!isNaN(dObj.getTime())) {
-                    recDate = dObj.toISOString().split("T")[0];
-                    const hours = String(dObj.getHours()).padStart(2, "0");
-                    const mins = String(dObj.getMinutes()).padStart(2, "0");
-                    const secs = String(dObj.getSeconds()).padStart(2, "0");
-                    recTime = `${hours}:${mins}:${secs}`;
+                    recDate = toLocalDateString(dObj);
+                    recTime = toLocalTimeString(dObj, true);
                 }
             } catch (_) {}
         }
@@ -383,9 +378,11 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         if (inspMethod === 'DIVING') {
             handleDynamicPropChange?.('dive_job_id', newDiveId ? Number(newDiveId) : newDiveId);
             handleDynamicPropChange?.('dive_no', newDiveNo);
+            handleDynamicPropChange?.('deployment_no', newDiveNo);
         } else {
             handleDynamicPropChange?.('rov_job_id', newDiveId ? Number(newDiveId) : newDiveId);
             handleDynamicPropChange?.('dive_no', newDiveNo);
+            handleDynamicPropChange?.('deployment_no', newDiveNo);
         }
 
         if (newTapeId) {
@@ -430,12 +427,19 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             const { data } = await supabase
                 .from("defect_criteria_rules")
                 .select("*")
-                .or(`structure_group.eq.${group},structure_group.eq.All Structure Groups`)
                 .order("rule_order");
 
-            if (data && data.length > 0) {
+            const targetGroup = (group || "").trim().toLowerCase();
+            const matchedRules = (data || []).filter((r: any) => {
+                const sg = (r.structure_group || "").trim().toLowerCase();
+                if (!sg || sg === "all structure groups" || sg === "*") return true;
+                const groups = sg.split(",").map((s: string) => s.trim().toLowerCase());
+                return groups.includes(targetGroup);
+            });
+
+            if (matchedRules.length > 0) {
                 setActiveCriteriaRules(
-                    data.map((r: any) => ({
+                    matchedRules.map((r: any) => ({
                         id: String(r.id),
                         fieldName: r.field_name,
                         priorityId: r.priority_id,
@@ -1286,6 +1290,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         const targetText = String(rule.thresholdText).trim().toLowerCase();
                         if (rule.thresholdOperator === "==") isMatch = actualText === targetText;
                         else if (rule.thresholdOperator === "!=") isMatch = actualText !== targetText;
+                        else if (rule.thresholdOperator === "LIKE" || rule.thresholdOperator === "like") isMatch = actualText.includes(targetText);
                         else isMatch = actualText.includes(targetText);
                     }
 

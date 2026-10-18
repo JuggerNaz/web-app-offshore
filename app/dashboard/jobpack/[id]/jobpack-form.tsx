@@ -68,6 +68,7 @@ import { FormFieldWrap } from "@/components/forms/form-field-wrap";
 import moment from "moment";
 import { VesselManager, VesselRecord } from "@/components/jobpack/vessel-manager";
 import { SOWDialog } from "@/components/jobpack/sow-dialog";
+import { StructurePicker, type StructureOption } from "@/components/structure-picker";
 
 
 type JobpackValues = z.infer<typeof JobpackSchema>;
@@ -224,7 +225,6 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
   const id = isNew ? null : rawId;
 
   const router = useRouter();
-  const [searchQuery, setSearchQuery] = useState("");
   const [inspectionSearch, setInspectionSearch] = useState("");
   const [inspectionModeTab, setInspectionModeTab] = useState("diving");
   const [selectedStructures, setSelectedStructures] = useState<any[]>([]);
@@ -253,8 +253,7 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
 
 
   const { data, isLoading } = useSWR(id ? `/api/jobpack/${id}` : null, fetcher);
-  const { data: platforms } = useSWR("/api/platform", fetcher);
-  const { data: pipelines } = useSWR("/api/pipeline", fetcher);
+  // Structures are picked via the paged StructurePicker (no full fleet fetch).
   const { data: inspectionTypes } = useSWR("/api/inspection-type?pageSize=1000", fetcher);
   const { data: contractors } = useSWR("/api/library/CONTR_NAM", fetcher);
   const { data: compTypesLib } = useSWR("/api/components", fetcher);
@@ -389,36 +388,6 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data, contractorOptions]);
 
-  const availableStructures = useMemo(() => {
-    const plats = platforms?.data?.map((p: any) => ({
-      id: p.plat_id,
-      str_id: p.plat_id,
-      title: p.title,
-      fieldName: p.pfield,
-      type: "PLATFORM",
-    })) || [];
-    const pipes = pipelines?.data?.map((p: any) => ({
-      id: p.pipe_id,
-      str_id: p.pipe_id,
-      title: p.title,
-      fieldName: p.pfield,
-      type: "PIPELINE",
-    })) || [];
-    return [...plats, ...pipes];
-  }, [platforms, pipelines]);
-
-  const filteredStructures = useMemo(() => {
-    const query = searchQuery.toLowerCase().trim();
-    if (!query) return availableStructures;
-    const words = query.split(/\s+/);
-
-    return availableStructures.filter((s: any) => {
-      const title = (s.title || "").toLowerCase();
-      const field = (s.fieldName || "").toLowerCase();
-      return words.every(word => title.includes(word) || field.includes(word));
-    });
-  }, [availableStructures, searchQuery]);
-
   const filteredInspections = useMemo(() => {
     const query = inspectionSearch.toLowerCase().trim();
     if (!query) return (inspectionTypes?.data || []);
@@ -516,6 +485,17 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
         }
       }
     }
+  };
+
+  // StructurePicker callback: add picked structures to the scope (no duplicates)
+  const handleStructurePicked = (s: StructureOption | null) => {
+    if (!s) return;
+    const exists = selectedStructures.some((item) => item.id === s.id && item.type === s.type);
+    if (exists) {
+      toast.info(`${s.title} is already in the scope`);
+      return;
+    }
+    toggleStructure({ id: s.id, str_id: s.id, title: s.title, fieldName: s.fieldName ?? null, type: s.type });
   };
 
   // Sync activeStructKey with selection
@@ -1093,56 +1073,18 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
                 {/* 1. Asset Inventory (Add to Scope) - Hidden if Closed */}
                 {!isClosed && (
                   <Card className="rounded-[2rem] border-slate-200/60 dark:border-slate-800/60 shadow-lg overflow-hidden border-orange-100 dark:border-slate-800 bg-orange-50/10 dark:bg-slate-900/20">
-                    <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 py-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2 bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg"><Search className="w-4 h-4" /></div>
-                          <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Structure to Scope</span>
-                        </div>
-                        <Input
-                          placeholder="Search & Add Structure..."
-                          className="w-64 h-8 text-xs rounded-lg bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
-                          value={searchQuery}
-                          onChange={(e) => setSearchQuery(e.target.value)}
-                        />
+                  <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg"><Search className="w-4 h-4" /></div>
+                        <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Structure to Scope</span>
                       </div>
                     </CardHeader>
-                    {searchQuery && (
-                      <CardContent className="p-0 border-b border-slate-100 dark:border-slate-800 max-h-[200px] overflow-y-auto custom-scrollbar bg-white dark:bg-slate-950">
-                        <table className="w-full text-left">
-                          <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
-                            {filteredStructures.slice(0, 50).map((s: any) => {
-                              const isSelected = selectedStructures.some(sel => sel.id === s.id && sel.type === s.type);
-                              return (
-                                <tr key={`${s.type}-${s.id}`} className="hover:bg-slate-50 dark:hover:bg-slate-900/50 transition-colors">
-                                  <td className="px-4 py-2 text-xs font-bold text-slate-700 dark:text-slate-200">{s.title}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-500 dark:text-slate-400">{s.fieldName}</td>
-                                  <td className="px-4 py-2 text-xs text-slate-400 dark:text-slate-500 uppercase">{s.type}</td>
-                                  <td className="px-4 py-2 text-right">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 text-[10px] uppercase font-bold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20"
-                                      onClick={() => toggleStructure(s)}
-                                      disabled={isSelected}
-                                    >
-                                      {isSelected ? "Added" : "Add"}
-                                    </Button>
-                                  </td>
-                                </tr>
-                              );
-                            })}
-                            {filteredStructures.length === 0 && (
-                              <tr>
-                                <td colSpan={4} className="px-4 py-8 text-center text-xs text-slate-400 uppercase font-bold">
-                                  No structures found
-                                </td>
-                              </tr>
-                            )}
-                          </tbody>
-                        </table>
-                      </CardContent>
-                    )}
+                    <CardContent className="p-4">
+                      <StructurePicker
+                        placeholder="Search & add structure..."
+                        onChange={handleStructurePicked}
+                      />
+                    </CardContent>
                   </Card>
                 )}
 

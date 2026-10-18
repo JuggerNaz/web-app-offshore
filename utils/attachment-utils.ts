@@ -20,7 +20,11 @@ export function getAttachmentUrl(attachment: any, supabase?: any): string {
         return `/api/attachment/download?path=${encodeURIComponent(str)}`;
     }
 
-    const rawPath = attachment.path || attachment.file_path || attachment.url || attachment.file_url || attachment.storage_path || attachment.meta?.file_url || attachment.meta?.file_path;
+    let rawPath = attachment.path || attachment.file_path || attachment.url || attachment.file_url || attachment.storage_path || attachment.meta?.file_url || attachment.meta?.file_path;
+    const originalFileName = attachment.meta?.original_file_name || attachment.name || "";
+    if (typeof rawPath === 'string' && (rawPath.endsWith('\\') || rawPath.endsWith('/')) && originalFileName) {
+        rawPath = `${rawPath}${originalFileName}`;
+    }
 
     // If we have an ID, always prefer the backend proxy endpoint `/api/attachment/url` which handles Supabase & S3/Backblaze streaming
     if (attachment.id) {

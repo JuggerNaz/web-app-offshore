@@ -243,8 +243,17 @@ function filterApplicableRules(
     }
 ): DefectCriteriaRule[] {
     return rules.filter(rule => {
-        // Check structure group match - 'All Structure Groups' acts as a wildcard
-        if (rule.structureGroup !== 'All Structure Groups' && rule.structureGroup !== context.structureGroup) {
+        // Check structure group match - 'All Structure Groups' acts as a wildcard, supports comma-separated multiple groups
+        const ruleGroups = (rule.structureGroup || '')
+            .split(',')
+            .map((g: string) => g.trim().toLowerCase());
+        const isWildcard = !rule.structureGroup || 
+                           rule.structureGroup === 'All Structure Groups' || 
+                           ruleGroups.includes('all structure groups') || 
+                           ruleGroups.includes('*');
+        const matchesContext = context.structureGroup && 
+                               ruleGroups.includes(context.structureGroup.trim().toLowerCase());
+        if (!isWildcard && !matchesContext) {
             return false;
         }
 
@@ -284,6 +293,21 @@ function evaluateThreshold(
         case '!=': return value !== threshold;
         default: return false;
     }
+}
+
+/**
+ * Evaluate a single rule's text condition (LIKE, ==, !=)
+ */
+function evaluateTextThreshold(
+    value: string,
+    operator: string | undefined,
+    threshold: string
+): boolean {
+    const actual = String(value).trim().toLowerCase();
+    const target = String(threshold).trim().toLowerCase();
+    if (operator === '==') return actual === target;
+    if (operator === '!=') return actual !== target;
+    return actual.includes(target);
 }
 
 /**
@@ -397,6 +421,16 @@ export async function evaluateCriteria(
                 rule.thresholdOperator,
                 rule.thresholdValue
             );
+        } else if (
+            rule.thresholdText &&
+            ((inspectionData as any).textValue !== undefined || inspectionData.measurementValue !== undefined)
+        ) {
+            const raw = (inspectionData as any).textValue !== undefined ? String((inspectionData as any).textValue) : String(inspectionData.measurementValue);
+            ruleMatches = evaluateTextThreshold(
+                raw,
+                rule.thresholdOperator,
+                rule.thresholdText
+            );
         }
 
         // Evaluate custom parameters if defined
@@ -460,6 +494,16 @@ export function evaluateCriteriaSync(
                 inspectionData.measurementValue,
                 rule.thresholdOperator,
                 rule.thresholdValue
+            );
+        } else if (
+            rule.thresholdText &&
+            ((inspectionData as any).textValue !== undefined || inspectionData.measurementValue !== undefined)
+        ) {
+            const raw = (inspectionData as any).textValue !== undefined ? String((inspectionData as any).textValue) : String(inspectionData.measurementValue);
+            ruleMatches = evaluateTextThreshold(
+                raw,
+                rule.thresholdOperator,
+                rule.thresholdText
             );
         }
 

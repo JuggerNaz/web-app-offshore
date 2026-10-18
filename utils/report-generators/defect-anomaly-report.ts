@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -16,9 +16,9 @@ export interface CompanySettings {
 export interface ReportConfig {
     reportNoPrefix?: string;
     reportYear: string;
-    preparedBy: { name: string; date: string };
-    reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
+    preparedBy: { name: string; date: string; position?: string };
+    reviewedBy?: { name: string; date: string; position?: string };
+    approvedBy?: { name: string; date: string; position?: string };
     watermark?: { enabled: boolean; text: string; transparency: number };
     showContractorLogo: boolean;
     showPageNumbers: boolean;
@@ -39,19 +39,27 @@ interface LoadedImageData {
     aspect: number;
 }
 
+const reportImageCache = new Map<string, LoadedImageData>();
+
 const loadImage = async (url: string): Promise<LoadedImageData | null> => {
     if (!url || typeof url !== 'string' || !url.trim()) return null;
+
+    if (reportImageCache.has(url)) {
+        return reportImageCache.get(url)!;
+    }
 
     // Helper using standard Image element
     const tryLoadViaImage = (src: string): Promise<LoadedImageData | null> => {
         return new Promise((resolve) => {
             const img = new Image();
-            img.crossOrigin = "Anonymous";
+            if (!src.startsWith("data:")) {
+                img.crossOrigin = "Anonymous";
+            }
             const timeout = setTimeout(() => {
                 img.onload = null;
                 img.onerror = null;
                 resolve(null);
-            }, 4000);
+            }, 3000);
             img.onload = () => {
                 clearTimeout(timeout);
                 try {
@@ -85,13 +93,22 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
         });
     };
 
-    // 1. Try normal image load
-    const result1 = await tryLoadViaImage(url);
-    if (result1) return result1;
+    // 1. Direct Data URI
+    if (url.startsWith("data:")) {
+        const directRes = await tryLoadViaImage(url);
+        if (directRes) {
+            reportImageCache.set(url, directRes);
+            return directRes;
+        }
+    }
 
-    // 2. Fallback: Fetch as Blob and convert to Data URL (bypasses browser canvas taint & CORS issues)
+    // 2. Fetch as Blob and convert to Data URL (fastest for API endpoints, avoids canvas taint & CORS issues)
     try {
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(url, { signal: controller.signal });
+        clearTimeout(timeoutId);
+
         if (response.ok) {
             const blob = await response.blob();
             const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -101,11 +118,22 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
                 reader.readAsDataURL(blob);
             });
             if (dataUrl) {
-                return await tryLoadViaImage(dataUrl);
+                const res = await tryLoadViaImage(dataUrl);
+                if (res) {
+                    reportImageCache.set(url, res);
+                    return res;
+                }
             }
         }
     } catch {
-        // Fallback failed
+        // Fallback to direct image loading
+    }
+
+    // 3. Fallback: Image element direct
+    const fallbackRes = await tryLoadViaImage(url);
+    if (fallbackRes) {
+        reportImageCache.set(url, fallbackRes);
+        return fallbackRes;
     }
 
     return null;
@@ -122,7 +150,7 @@ export const generateDefectAnomalyReport = async (
     const doc = new jsPDF();
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 15;
+    const margin = 10;
     const contentWidth = pageWidth - (margin * 2);
 
     let anomalies: any[] = [];
@@ -264,69 +292,28 @@ export const generateDefectAnomalyReport = async (
     }
 
     // Header Dimensions
-    const headerH = 26;
-    const logoSize = 16;
-    const logoPadding = 4;
-
+    const headerH = 25;
     const isPrintFriendly = config.printFriendly === true;
 
     const drawHeader = (doc: jsPDF) => {
-        const startX = margin;
-        const startY = margin;
-
-        if (isPrintFriendly) {
-            // Print-Friendly: White background with light border (matches table lines)
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.rect(startX, startY, contentWidth, headerH);
-        } else {
-            // Screen/Color: Dark Blue Filled Background
-            doc.setFillColor(7, 78, 136); // Dark Blue #1f375d
-            doc.rect(startX, startY, contentWidth, headerH, "F");
-        }
-
-        // --- Left Side: Contractor Logo + Name ---
-        const logoX = startX + logoPadding;
-
-        if (contractorLogo) {
-            drawLogo(doc, contractorLogo, logoSize, logoSize, logoX, startY + 3, 'left', 'center');
-        }
-
-        // --- Right Side: Client Logo ---
-        if (clientLogo) {
-            drawLogo(doc, clientLogo, logoSize, logoSize, pageWidth - margin - logoSize - logoPadding, startY + 3, 'right', 'center');
-        }
-
-        // --- Center: Text ---
-        // Print-Friendly: Dark text on white. Normal: White text on dark blue.
-        doc.setTextColor(isPrintFriendly ? 7 : 255, isPrintFriendly ? 78 : 255, isPrintFriendly ? 136 : 255);
-
-        // Company Name - SAME size as Report Title
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        const companyName = (companySettings.company_name || "NasQuest Resources Sdn Bhd").toUpperCase();
-        doc.text(companyName, pageWidth / 2, startY + 6, { align: "center" });
-
-        // Department (Sub-header) - slightly increased font size
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8.5);
-        const deptName = companySettings.department_name || companySettings.departmentName || "Technical Inspection Division";
-        doc.text(deptName, pageWidth / 2, startY + 10.5, { align: "center" });
-
-        // Report Title - SAME size as Company Title
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(11);
-        const reportTitle = config.isFindingsReport ? "FINDINGS REPORT" : "DEFECT / ANOMALY REPORT";
-        doc.text(reportTitle, pageWidth / 2, startY + 16.5, { align: "center" });
-
-        // Report No
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(8);
+        const reportTitle = config.isFindingsReport ? "Findings Report" : "Defect / Anomaly Report";
         const reportNoDisplay = sowReportNo || (anomalies.length > 0 ? anomalies[0].sow_report_no : null) || (jobPack?.metadata && jobPack?.metadata?.report_no) || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
-        doc.text(`Report No: ${reportNoDisplay}`, pageWidth / 2, startY + 21, { align: "center" });
+        const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
-        // Reset Text Color
-        doc.setTextColor(0, 0, 0);
+        draw3SectionHeader(doc, {
+            reportTitle,
+            reportNo: reportNoDisplay,
+            structureName: structName,
+            companySettings,
+            config,
+            contractorLogoData: contractorLogo,
+            clientLogoData: clientLogo,
+            isPrintFriendly,
+            margin: 10,
+            headerY: 7,
+            headerH: 25,
+            orientation: "portrait"
+        });
     };
 
     if (anomalies.length === 0) {
@@ -478,7 +465,7 @@ export const generateDefectAnomalyReport = async (
 
         const headStylesString = isPrintFriendly
             ? { fillColor: [255, 255, 255], textColor: [7, 78, 136], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] }
-            : { fillColor: [7, 78, 136], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [255, 255, 255] };
+            : { fillColor: [7, 78, 136], textColor: [255, 255, 255], fontStyle: 'bold', lineWidth: 0.1, lineColor: [200, 200, 200] };
 
 
         // Component & Elevation Vals
@@ -518,7 +505,7 @@ export const generateDefectAnomalyReport = async (
                     { content: "Jobpack:", styles: headStylesString },
                     { content: record.jobpack_name || jobPack.name || "N/A" },
                     { content: "Priority:", styles: headStylesString },
-                    { content: priority, styles: {fillColor: priorityColor, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [203, 213, 225]} }
+                    { content: priority, styles: {fillColor: priorityColor, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: [200, 200, 200]} }
                 ],
                 [
                     { content: "Field:", styles: headStylesString }, { content: field },
@@ -546,6 +533,8 @@ export const generateDefectAnomalyReport = async (
                 ]
             ] as any,
             theme: 'grid',
+            tableLineWidth: 0.1,
+            tableLineColor: [200, 200, 200],
             styles: { fontSize: 8, cellPadding: 2, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [0, 0, 0] },
             columnStyles: {
                 0: { cellWidth: labelColWidth },
@@ -689,55 +678,61 @@ export const generateDefectAnomalyReport = async (
             : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
             ? record.insp_photos
             : [];
-        const processedImages: { data: string; att: any; aspect: number }[] = [];
+        // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
+        const loadedImages = await Promise.all(
+            images.map(async (rawAtt: any) => {
+                const att = typeof rawAtt === 'string' ? { path: rawAtt, name: 'Photo' } : (rawAtt || {});
+                const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
+                if (!rawPath && !att.id) return null;
+                const bucket = att.bucket_id || att.bucket || "attachments";
 
-        // Load images while maintaining association with their metadata and aspect ratio
-        for (const att of images) {
-            const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
-            if (!rawPath && !att.id) continue;
-            const bucket = att.bucket_id || att.bucket || "attachments";
+                const urlCandidates: string[] = [];
+                // 1. Server-side proxy with attachment ID (direct stream, bypasses CORS)
+                if (att.id) {
+                    urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
+                }
+                // 2. Server-side proxy with raw path / S3 URL
+                if (rawPath) {
+                    urlCandidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
+                    urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+                }
+                // 3. Direct URL fallback
+                if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
+                    urlCandidates.push(rawPath);
+                }
 
-            const urlCandidates: string[] = [];
-            if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
-                urlCandidates.push(rawPath);
-            }
-            if (att.id) {
-                urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
-            }
-            if (rawPath) {
-                urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
-            }
-
-            let loadedImgRes: LoadedImageData | null = null;
-            for (const testUrl of urlCandidates) {
-                try {
-                    const imgRes = await loadImage(testUrl);
-                    if (imgRes && imgRes.data) {
-                        loadedImgRes = imgRes;
-                        break;
+                let loadedImgRes: LoadedImageData | null = null;
+                for (const testUrl of urlCandidates) {
+                    try {
+                        const imgRes = await loadImage(testUrl);
+                        if (imgRes && imgRes.data) {
+                            loadedImgRes = imgRes;
+                            break;
+                        }
+                    } catch {
+                        // Try next candidate
                     }
-                } catch {
-                    // Try next candidate
                 }
-            }
 
-            if (loadedImgRes && loadedImgRes.data) {
-                // Robust meta parsing
-                let meta = att.meta || {};
-                if (typeof meta === 'string') {
-                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                if (loadedImgRes && loadedImgRes.data) {
+                    let meta = att.meta || {};
+                    if (typeof meta === 'string') {
+                        try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                    }
+                    return { data: loadedImgRes.data, att: { ...att, meta }, aspect: loadedImgRes.aspect };
+                } else {
+                    console.warn("Failed to load image for report", att.name || rawPath || att.id);
+                    return null;
                 }
-                processedImages.push({ data: loadedImgRes.data, att: { ...att, meta }, aspect: loadedImgRes.aspect });
-            } else {
-                console.warn("Failed to load image for report", att.name || rawPath || att.id);
-            }
-        }
+            })
+        );
+        const processedImages = loadedImages.filter((img): img is NonNullable<typeof img> => img !== null);
 
-        // Define Footer Height for Signatories Box
-        const footerH = 22; // Compact signatory height (22mm)
-        const footerY = pageHeight - margin - footerH; // 260mm
-
-        const maxYForContent = footerY - 3; // 257mm max for content box before footer
+        // Standardized signatory box dimensions (uniform across all pages/records)
+        const signatoryH = 21; // Standard box height (21mm)
+        const signatoryBottomY = pageHeight - margin - 0.5; // 286.5mm (leaves clean breathing space above footer text)
+        const sigTopY = signatoryBottomY - signatoryH; // 265.5mm
+        const maxYForContent = sigTopY - 0.6; // 264.9mm max for photos before signatory box (0.6mm hairline margin)
 
         if (processedImages.length > 0) {
             for (let j = 0; j < processedImages.length; j++) {
@@ -756,10 +751,10 @@ export const generateDefectAnomalyReport = async (
 
                 const aspect = imgAspect && imgAspect > 0 ? imgAspect : (4 / 3);
 
-                // Minimum height threshold for a legible inspection photo (45mm):
-                // If remaining space on current page is too small (maxPhotoSpace < 45mm),
+                // Minimum height threshold for a legible inspection photo (40mm):
+                // If remaining space on current page is too small (maxPhotoSpace < 40mm),
                 // cleanly add a page break so photos render at balanced size on the next page!
-                if (maxPhotoSpace < 45) {
+                if (maxPhotoSpace < 40) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
@@ -790,8 +785,17 @@ export const generateDefectAnomalyReport = async (
 
                 // Check remaining photos in queue to optimize multi-photo page density
                 const remainingPhotos = processedImages.length - j;
-                // If on a fresh page and there are 2 or more photos, target ~75mm per photo so BOTH fit on 1 page!
-                const targetMaxH = (remainingPhotos >= 2) ? 75 : 98;
+                
+                // Dynamically calculate target max height:
+                // If this is the final photo, allow it to utilize the full available height down to maxYForContent
+                // If multiple photos remain, calculate fair share so 2 photos fit on this page if space allows
+                let targetMaxH = maxPhotoSpace;
+                if (remainingPhotos >= 2) {
+                    const spaceForTwo = Math.floor((availableH - (boxOverhead * 2) - 2) / 2);
+                    if (spaceForTwo >= 40) {
+                        targetMaxH = spaceForTwo;
+                    }
+                }
 
                 let photoH = Math.max(35, Math.min(targetMaxH, maxPhotoSpace));
                 let photoW = photoH * aspect;
@@ -841,8 +845,8 @@ export const generateDefectAnomalyReport = async (
                     doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 3.5, { align: "center" });
                 }
 
-                // Update Y for next photo
-                lastY += totalBlockH + 3;
+                // Update Y for next photo (clean 1.5mm spacing)
+                lastY += totalBlockH + 1.5;
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
@@ -853,42 +857,69 @@ export const generateDefectAnomalyReport = async (
         // User requested "footer part". Usually implies on the report page.
         // Let's add it to the LAST page of the anomaly (where photos end).
 
-        // Check if we need a new page for footer if content overlapped?
-        // Photos logic uses availableH. We should reduce availableH to reserve space for footer.
-        // But for now, let's just draw it at the bottom.
-
         const drawSignatories = () => {
-            const colW = contentWidth / 3;
+            const gap = 2;
+            const colW = (contentWidth - gap * 2) / 3;
             const names = [
-                { title: "Prepared By", name: config.preparedBy?.name, date: config.preparedBy?.date },
-                { title: "Reviewed By", name: config.reviewedBy?.name, date: config.reviewedBy?.date },
-                { title: "Approved By", name: config.approvedBy?.name, date: config.approvedBy?.date }
+                { title: "PREPARED BY", name: config.preparedBy?.name, position: config.preparedBy?.position, date: config.preparedBy?.date },
+                { title: "REVIEWED BY", name: config.reviewedBy?.name, position: config.reviewedBy?.position, date: config.reviewedBy?.date },
+                { title: "APPROVED BY", name: config.approvedBy?.name, position: config.approvedBy?.position, date: config.approvedBy?.date }
             ];
 
-            doc.setDrawColor(0);
-            doc.setLineWidth(0.1);
-            doc.setFontSize(8);
+            const headerBarH = 4.5;
+            const boxH = signatoryH; // 21mm uniform box size across all pages in this report
+            const y = sigTopY;
 
             names.forEach((p, idx) => {
-                const x = margin + (idx * colW);
-                const y = footerY;
+                const x = margin + idx * (colW + gap);
 
-                // Box
-                doc.rect(x, y, colW, footerH);
+                // 1. Box Outer Border - closed individual rectangle with no connecting lines across the gaps
+                doc.setDrawColor(7, 78, 136);
+                doc.setLineWidth(0.1);
+                doc.rect(x, y, colW, boxH);
 
-                // Title
+                // 2. Blue Column Header Bar (like in Pic 1)
+                if (!isPrintFriendly) {
+                    doc.setFillColor(7, 78, 136);
+                    doc.rect(x, y, colW, headerBarH, "F");
+                    doc.setTextColor(255, 255, 255);
+                } else {
+                    doc.setFillColor(240, 240, 240);
+                    doc.rect(x, y, colW, headerBarH, "F");
+                    doc.setTextColor(7, 78, 136);
+                }
+
                 doc.setFont("helvetica", "bold");
-                doc.text(p.title, x + 2, y + 4);
+                doc.setFontSize(7);
+                doc.text(p.title, x + 2.5, y + 3.2);
 
-                // Labels & Values
+                // 3. Space for signature:
+                // Dedicated blank signing space from (y + headerBarH) down to (nameY - 2)
+
+                // 4. Content fields: Name, Position, Date moved lower with closer spacing
+                doc.setTextColor(30, 41, 59);
                 doc.setFont("helvetica", "normal");
-                doc.text("Name:", x + 2, y + 9);
-                if (p.name) doc.text(p.name, x + 14, y + 9);
+                doc.setFontSize(6.5);
 
-                doc.text("Sign:", x + 2, y + 14);
+                const labelX = x + 2.5;
+                const valueX = x + 15;
 
-                doc.text("Date:", x + 2, y + 19);
-                if (p.date) doc.text(formatPdfDate(p.date), x + 14, y + 19);
+                const lineSpacing = 2.6; // closer spacing with each other
+                const dateY = signatoryBottomY - 1.5; // moved lower, neatly placed near bottom border
+                const posY = dateY - lineSpacing; // signatoryBottomY - 4.1
+                const nameY = posY - lineSpacing; // signatoryBottomY - 6.7
+
+                // Name:
+                doc.text("Name:", labelX, nameY);
+                if (p.name) doc.text(p.name, valueX, nameY);
+
+                // Position:
+                doc.text("Position:", labelX, posY);
+                if (p.position) doc.text(p.position, valueX, posY);
+
+                // Date:
+                doc.text("Date:", labelX, dateY);
+                if (p.date) doc.text(formatPdfDate(p.date), valueX, dateY);
             });
         };
 
@@ -943,10 +974,14 @@ export const generateDefectAnomalyReport = async (
         if (config.showPageNumbers !== false) {
             const footerLineY = pageHeight - 10;
 
-            // Horizontal line across content width
-            doc.setDrawColor(180, 180, 180);
-            doc.setLineWidth(0.3);
-            doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+            // Only draw horizontal divider line on pages that do NOT have the signatory boxes,
+            // so the 3 signatory cards remain completely detached with no connecting lines across the bottom gaps
+            const isSignatoryPage = config.showSignatures !== false && anomalyPageRanges.some(r => r.end === i);
+            if (!isSignatoryPage) {
+                doc.setDrawColor(180, 180, 180);
+                doc.setLineWidth(0.3);
+                doc.line(margin, footerLineY, pageWidth - margin, footerLineY);
+            }
 
             // App Name & Version - left aligned
             doc.setFontSize(7);

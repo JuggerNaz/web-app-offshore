@@ -5,7 +5,9 @@ import {
   drawLogo as drawSharedLogo,
   applyWatermarkAndSignaturesGlobal,
   REPORT_FOOTER_APP_TEXT,
-  formatPdfDate
+  formatPdfDate,
+  formatReportHeaderTitle,
+  formatHeaderInfoText
 } from "./report-generators/shared-logo";
 
 // Helper to load image for PDF with transparency support
@@ -28,6 +30,8 @@ const getPublicStorageUrl = (pathOrUrl: string): string => {
   return supabaseUrl ? `${supabaseUrl}/storage/v1/object/public/attachments/${cleanPath}` : str;
 };
 
+const pdfImageCache = new Map<string, string>();
+
 const loadImage = async (url: string, id?: number | string): Promise<string> => {
   if (!url || typeof url !== 'string' || !url.trim()) {
     if (id) {
@@ -40,6 +44,11 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   const cleanUrl = url.trim();
   if (cleanUrl.startsWith("data:image/")) {
     return cleanUrl;
+  }
+
+  const cacheKey = `${id || ''}::${cleanUrl}`;
+  if (pdfImageCache.has(cacheKey)) {
+    return pdfImageCache.get(cacheKey)!;
   }
 
   // Helper: convert a Blob to a base64 data URL string
@@ -65,41 +74,61 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
     }
   };
 
-  // ── Strategy 1: /api/attachment/url proxy (server-side download, NO CORS) ──
-  // This is the most reliable method. The server downloads from Supabase storage
-  // using the service role key and streams the binary back as a same-origin response.
+  // ── Strategy 1: /api/attachment/url proxy (server-side download, bypasses CORS) ──
   if (id) {
-    const proxyUrl = `/api/attachment/url?id=${id}`;
+    const hasPath = cleanUrl && !cleanUrl.startsWith("/api/") ? `&path=${encodeURIComponent(cleanUrl)}` : "";
+    const proxyUrl = `/api/attachment/url?id=${id}${hasPath}`;
     const result = await fetchAsDataUrl(proxyUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
   // If the url is already an /api/ proxy path, try it directly
   if (cleanUrl.startsWith("/api/")) {
     const result = await fetchAsDataUrl(cleanUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
-  // ── Strategy 2: Direct fetch (works for same-origin or CORS-enabled URLs) ──
+  // ── Strategy 2: If external S3 / Backblaze / storage URL, try server proxy first to avoid CORS ──
+  if (cleanUrl.includes("backblazeb2.com") || cleanUrl.includes("amazonaws.com") || cleanUrl.startsWith("uploads/")) {
+    const proxyPathUrl = `/api/attachment/url?path=${encodeURIComponent(cleanUrl)}`;
+    const result = await fetchAsDataUrl(proxyPathUrl);
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
+    const downloadPathUrl = `/api/attachment/download?path=${encodeURIComponent(cleanUrl)}&bucket=attachments`;
+    const resDl = await fetchAsDataUrl(downloadPathUrl);
+    if (resDl) {
+      pdfImageCache.set(cacheKey, resDl);
+      return resDl;
+    }
+  }
+
+  // ── Strategy 3: Direct fetch (works for same-origin or CORS-enabled URLs) ──
   const fullUrl = getPublicStorageUrl(cleanUrl);
   {
     const result = await fetchAsDataUrl(fullUrl);
-    if (result) return result;
+    if (result) {
+      pdfImageCache.set(cacheKey, result);
+      return result;
+    }
   }
 
-  // ── Strategy 3: Next.js image proxy ──
-  if (fullUrl.startsWith("http://") || fullUrl.startsWith("https://")) {
-    const nextProxyUrl = `/_next/image?url=${encodeURIComponent(fullUrl)}&w=1200&q=85`;
-    const result = await fetchAsDataUrl(nextProxyUrl);
-    if (result) return result;
-  }
-
-  // ── Strategy 4: /api/attachment/url?path= proxy ──
-  if (fullUrl.includes("structure-images") || fullUrl.includes("attachments")) {
+  // ── Strategy 4: Server-side proxy for any relative storage paths ──
+  {
     const p = fullUrl.replace(/^https?:\/\/[^/]+\/storage\/v1\/object\/public\/attachments\//, "").replace(/^\/?attachments\//, "");
     if (p) {
       const result = await fetchAsDataUrl(`/api/attachment/url?path=${encodeURIComponent(p)}`);
-      if (result) return result;
+      if (result) {
+        pdfImageCache.set(cacheKey, result);
+        return result;
+      }
     }
   }
 
@@ -302,26 +331,51 @@ const draw3SectionHeader = async (
   doc.rect(x2, headerY, col2W, headerH, "S");
 
   const titleCenterX = x2 + col2W / 2;
-  doc.setFontSize(10.5);
+
+  const rawCompanyName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+  const companyName = formatHeaderInfoText(rawCompanyName);
+
+  const rawDeptName = companySettings?.department_name || (companySettings as any)?.departmentName || "Technical Services Department";
+  const deptName = formatHeaderInfoText(rawDeptName);
+
+  const formattedReportTitle = formatReportHeaderTitle(reportTitle);
+
+  const rawReportNo = reportNo || (config as any)?.sowReportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
+  const baseReportNoStr = rawReportNo && String(rawReportNo).trim() !== "" && String(rawReportNo).trim() !== "N/A"
+    ? (String(rawReportNo).trim().toLowerCase().startsWith("report no") ? String(rawReportNo).trim() : `Report No: ${String(rawReportNo).trim()}`)
+    : "Report No: N/A";
+  const reportNoStr = formatHeaderInfoText(baseReportNoStr);
+
+  // Line 1: Company Name (bold, size 8)
+  doc.setFontSize(8);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(...titleTextColor);
-  doc.text(reportTitle.toUpperCase(), titleCenterX, headerY + 8, { align: "center" });
+  const compLines = doc.splitTextToSize(companyName, col2W - 8);
+  doc.text(compLines[0] || companyName, titleCenterX, headerY + 5.8, { align: "center" });
 
-  const reportNoStr = reportNo || (config ? `${config.reportNoPrefix}-${config.reportYear}` : (companySettings?.serial_no ? `${companySettings.serial_no}` : ""));
-  if (reportNoStr) {
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(...titleSubTextColor);
-    doc.text(`Report No: ${reportNoStr}`, titleCenterX, headerY + 14, { align: "center" });
-  }
+  // Line 2: Department Name (no bold, size 8)
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...titleSubTextColor);
+  const deptLines = doc.splitTextToSize(deptName, col2W - 8);
+  doc.text(deptLines[0] || deptName, titleCenterX, headerY + 10.6, { align: "center" });
 
-  if (structureName) {
-    doc.setFontSize(7.5);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(...titleTextColor);
-    const structLines = doc.splitTextToSize(structureName, col2W - 8);
-    doc.text(structLines[0] || "", titleCenterX, headerY + 19.5, { align: "center" });
+  // Line 3: Report Title (bold, size 8, dynamically adjusted for long titles)
+  let titleFontSize = 8;
+  if (formattedReportTitle.length > 36) {
+    titleFontSize = formattedReportTitle.length > 44 ? 6.8 : 7.2;
   }
+  doc.setFontSize(titleFontSize);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(...titleTextColor);
+  const titleLines = doc.splitTextToSize(formattedReportTitle, col2W - 8);
+  doc.text(titleLines[0] || formattedReportTitle, titleCenterX, headerY + 15.4, { align: "center" });
+
+  // Line 4: Report No (no bold, size 8)
+  doc.setFontSize(8);
+  doc.setFont("helvetica", "normal");
+  doc.setTextColor(...titleSubTextColor);
+  doc.text(reportNoStr, titleCenterX, headerY + 20.2, { align: "center" });
 
   // --- 3. RIGHT BOX: CLIENT (White Background + Border) ---
   doc.setFillColor(255, 255, 255);
@@ -385,7 +439,6 @@ const generatePipelineReport = async (
     companySettings,
     config,
     reportTitle: "Pipeline Specifications Report",
-    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
     isPrintFriendly,
     headerBlue,
   });
@@ -692,12 +745,13 @@ const generatePlatformReport = async (
   const isPrintFriendly = config?.printFriendly === true;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
+  const sowReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || (structure as any)?.sow_report_no || (structure as any)?.sowReportNo;
   await draw3SectionHeader(doc, {
     pageWidth,
     companySettings,
     config,
     reportTitle: "Platform Specifications Report",
-    structureName: structure.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : undefined,
+    reportNo: sowReportNo,
     isPrintFriendly,
     headerBlue,
   });
@@ -726,21 +780,33 @@ const generatePlatformReport = async (
   };
 
   // Helper function for compact field rendering
-  const drawCompactField = (label: string, value: string, x: number, y: number, width: number) => {
+  const drawCompactField = (label: string, value: string, x: number, y: number, width: number, customValOffset?: number, rowHeight: number = 5) => {
     doc.setFontSize(7);
     doc.setFont("helvetica", "bold");
     doc.setTextColor(60, 60, 60);
-    doc.text(label, x + 1, y + 3);
+    doc.text(label, x + 1, y + 3.2);
+
+    const labelW = doc.getTextWidth(label);
+    const minValX = x + 1 + labelW + 1.5;
+    const defaultValX = x + (customValOffset || (width * 0.44));
+    const valX = Math.max(defaultValX, minValX);
 
     doc.setFont("helvetica", "normal");
     doc.setTextColor(0, 0, 0);
-    const valX = x + (width * 0.42);
-    doc.text(value, valX, y + 3);
+    let displayVal = String(value ?? "");
+    const maxValW = (x + width - 1) - valX;
+    if (doc.getTextWidth(displayVal) > maxValW && maxValW > 5) {
+      while (displayVal.length > 3 && doc.getTextWidth(displayVal + "...") > maxValW) {
+        displayVal = displayVal.slice(0, -1);
+      }
+      displayVal += "...";
+    }
+    doc.text(displayVal, valX, y + 3.2);
 
     doc.setDrawColor(230, 230, 230);
-    doc.line(x, y + 4.5, x + width, y + 4.5);
+    doc.line(x, y + rowHeight - 0.5, x + width, y + rowHeight - 0.5);
 
-    return y + 5;
+    return y + rowHeight;
   };
 
   // ===== THREE COLUMN LAYOUT FOR COMPACTNESS =====
@@ -756,14 +822,15 @@ const generatePlatformReport = async (
   doc.setDrawColor(200, 200, 200);
   const genStart = col1Y;
 
-  col1Y = drawCompactField("Structure:", structure.str_name || structure.title || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Install Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth);
+  const col1Offset = 23;
+  const col1RowH = 6;
+  col1Y = drawCompactField("Structure Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Oil Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Installation Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Water Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
 
-  doc.rect(col1X, genStart, colWidth, col1Y - genStart);
+  doc.rect(col1X, genStart, colWidth, 30);
 
   // COLUMN 2: Configuration
   drawSectionBar(col2X, yPos, colWidth, 5, "CONFIGURATION", col2X + 2, yPos + 3.5);
@@ -771,21 +838,26 @@ const generatePlatformReport = async (
   let col2Y = yPos + 5;
   const configStart = col2Y;
 
-  col2Y = drawCompactField("Type:", structure.ptype || structure.str_type || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Corrosion:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth);
-  col2Y = drawCompactField("Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth);
+  const col2Offset = 28.5;
+  const col2RowH = 5;
+  const structTypeVal = "Platform";
+  col2Y = drawCompactField("Structure Type:", structTypeVal, col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Function:", structure.function || structure.process || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Material:", structure.material || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("CP System:", structure.cp_system || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Corrosion Coating:", structure.corr_ctg || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
+  col2Y = drawCompactField("Installation Contractor:", structure.inst_contractor || structure.inst_ctr || "N/A", col2X, col2Y, colWidth, col2Offset, col2RowH);
 
-  doc.rect(col2X, configStart, colWidth, col2Y - configStart);
+  doc.rect(col2X, configStart, colWidth, 30);
 
   // COLUMN 3: Location & Dimensions
-  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMS", col3X + 2, yPos + 3.5);
+  drawSectionBar(col3X, yPos, colWidth, 5, "LOCATION & DIMENSION", col3X + 2, yPos + 3.5);
 
   let col3Y = yPos + 5;
   const locStart = col3Y;
 
+  const col3Offset = 26.5;
+  const col3RowH = 5;
   const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A");
   const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A");
   const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A");
@@ -793,16 +865,16 @@ const generatePlatformReport = async (
   const maxWallThkVal = (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A");
   const isHelipad = structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true;
 
-  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("True North:", northAngleVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Leg Dia:", maxLegDiaVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Max Wall:", maxWallThkVal, col3X, col3Y, colWidth);
-  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth);
+  col3Y = drawCompactField("Northing:", northingVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Easting:", eastingVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("True North Angle:", northAngleVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Max Leg Diameter:", maxLegDiaVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Max Wall Thickness:", maxWallThkVal, col3X, col3Y, colWidth, col3Offset, col3RowH);
+  col3Y = drawCompactField("Helipad:", isHelipad ? "Yes" : "No", col3X, col3Y, colWidth, col3Offset, col3RowH);
 
-  doc.rect(col3X, locStart, colWidth, col3Y - locStart);
+  doc.rect(col3X, locStart, colWidth, 30);
 
-  yPos = Math.max(col1Y, col2Y, col3Y) + 5;
+  yPos = genStart + 30 + 5;
 
   // ===== STRUCTURE VISUALS =====
   interface VisualItem {
@@ -838,13 +910,31 @@ const generatePlatformReport = async (
     return str.trim() || "Structure Visual";
   };
 
-  // Helper: check if an attachment looks like an image file
+  // Helper: check if an attachment is an explicit platform/structure visual photo
+  const isStructurePhoto = (item: any): boolean => {
+    const st = String(item.source_type || "").toLowerCase();
+    const p = String(item.path || item.file_url || "").toLowerCase();
+    return st.includes("structure_image") || st.includes("visual") || p.includes("structure-images");
+  };
+
+  // Helper: check if an attachment looks like an image file and has a reachable URL
   const isImageAttachment = (item: any): boolean => {
     if (!item || typeof item !== 'object') return false;
     const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
     const fileType = String(meta?.file_type || item.file_type || "").toLowerCase();
-    if (fileType.startsWith("image/")) return true;
     const filePath = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+
+    // Reject legacy local drive paths (e.g. c:\..., p:\...) without valid remote/cloud URL
+    const rawPath = String(item.path || meta?.file_path || "").trim();
+    const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+    const hasValidRemoteUrl = Boolean(
+      (item.file_url && !/^[a-zA-Z]:[\\/]/.test(item.file_url) && !item.file_url.includes("/api/attachment/url")) ||
+      (meta?.file_url && !/^[a-zA-Z]:[\\/]/.test(meta.file_url)) ||
+      (item.url && !item.url.includes("c%3A") && !item.url.includes("C%3A") && !/^[a-zA-Z]:[\\/]/.test(item.url) && !item.url.includes("/api/attachment/url"))
+    );
+    if (isLocalDrive && !hasValidRemoteUrl) return false;
+
+    if (fileType.startsWith("image/")) return true;
     return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(filePath);
   };
 
@@ -855,7 +945,7 @@ const generatePlatformReport = async (
 
   const addVisualItem = (item: any) => {
     if (!item || typeof item !== 'object') return;
-    // Skip non-image attachments
+    // Skip non-image attachments or dead local disk paths
     if (!isImageAttachment(item)) return;
     // Deduplicate by attachment id
     const itemId = String(item.id || "");
@@ -867,6 +957,17 @@ const generatePlatformReport = async (
       try { metaObj = JSON.parse(metaObj); } catch {}
     }
 
+    const rawPath = String(item.path || metaObj?.file_path || "").trim();
+    const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+    const directUrl = metaObj?.file_url || item.file_url || item.url || item.path || "";
+    const hasValidRemoteUrl = Boolean(
+      directUrl &&
+      (directUrl.startsWith("http://") || directUrl.startsWith("https://") || directUrl.startsWith("data:")) &&
+      !/^[a-zA-Z]:[\\/]/.test(directUrl)
+    );
+
+    if (isLocalDrive && !hasValidRemoteUrl) return;
+
     // Build the URL — PRIORITIZE proxy_url (server-side, no CORS) over direct Supabase URL
     let url = "";
     if (item.id) {
@@ -874,7 +975,6 @@ const generatePlatformReport = async (
     } else if (item.proxy_url) {
       url = item.proxy_url;
     } else {
-      const directUrl = metaObj?.file_url || item.file_url || item.url || item.path || "";
       url = directUrl;
     }
     if (!url || typeof url !== 'string' || !url.trim()) return;
@@ -892,19 +992,28 @@ const generatePlatformReport = async (
     rawVisuals.push({ id: item.id, url: url.trim(), title, path: item.path || metaObj?.file_path });
   };
 
+  // Sort source so explicit structure photos come first
+  const sortVisualSources = (list: any[]) => {
+    return [...list].sort((a, b) => {
+      const aIs = isStructurePhoto(a) ? 1 : 0;
+      const bIs = isStructurePhoto(b) ? 1 : 0;
+      return bIs - aIs;
+    });
+  };
+
   // Only iterate structure.visuals (structure.photos is the same array from the API — don't double-count)
   if (Array.isArray(structure.visuals)) {
-    structure.visuals.forEach((v: any) => addVisualItem(v));
+    sortVisualSources(structure.visuals).forEach((v: any) => addVisualItem(v));
   }
   // Fallback: if visuals was empty, try photos/images/attachments
   if (rawVisuals.length === 0 && Array.isArray(structure.photos)) {
-    structure.photos.forEach((p: any) => addVisualItem(p));
+    sortVisualSources(structure.photos).forEach((p: any) => addVisualItem(p));
   }
   if (rawVisuals.length === 0 && Array.isArray(structure.images)) {
-    structure.images.forEach((i: any) => addVisualItem(i));
+    sortVisualSources(structure.images).forEach((i: any) => addVisualItem(i));
   }
   if (rawVisuals.length === 0 && Array.isArray((structure as any).attachments)) {
-    (structure as any).attachments.forEach((a: any) => addVisualItem(a));
+    sortVisualSources((structure as any).attachments).forEach((a: any) => addVisualItem(a));
   }
   // photo_url string fallback
   if (rawVisuals.length === 0 && structure.photo_url && typeof structure.photo_url === 'string') {
@@ -913,102 +1022,153 @@ const generatePlatformReport = async (
   }
 
   const uniquePhotos = rawVisuals;
+  let page1RenderedCount = 0;
 
   if (uniquePhotos.length > 0) {
-    const page1Photos = uniquePhotos.slice(0, 4);
-    const count = page1Photos.length;
-    drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${uniquePhotos.length})`, 12, yPos + 3.5);
-    yPos += 5;
+    // Attempt loading candidate photos (up to 8 for page 1) in parallel
+    const maxPage1 = 8;
+    const candidatesToLoad = uniquePhotos.slice(0, maxPage1);
+    const candidateResults = await Promise.all(
+      candidatesToLoad.map(async (p) => {
+        try {
+          const imgData = await loadImage(p.url, p.id);
+          return imgData ? { photo: p, data: imgData } : null;
+        } catch (e) {
+          console.warn(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
+          return null;
+        }
+      })
+    );
+    const loadedCandidates = candidateResults.filter((r): r is { photo: VisualItem; data: string } => r !== null);
 
-    const gap = count === 4 ? 3.5 : 5;
-    const totalWidth = pageWidth - 20;
-    const imgWidth = (totalWidth - (gap * (count - 1))) / count;
-    const imgHeight = count === 4 ? 50 : (count === 3 ? 54 : 58);
+    if (loadedCandidates.length > 0) {
+      const count = loadedCandidates.length;
+      page1RenderedCount = count;
+      drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUALS (${count})`, 12, yPos + 3.5);
+      yPos += 5;
 
-    let currentX = 10;
-    const padding = 1; // Inner padding for border
+      const totalWidth = pageWidth - 20;
+      const padding = 1; // Inner padding for border
 
-    // Load images SEQUENTIALLY through the /api/attachment/url proxy to avoid CORS and rate-limiting
-    const loadedImages: (string | null)[] = [];
-    for (const p of page1Photos) {
-      try {
-        const imgData = await loadImage(p.url, p.id);
-        loadedImages.push(imgData);
-      } catch (e) {
-        console.error(`[StructureReport] Failed to load image id=${p.id} url=${p.url}`, e);
-        loadedImages.push(null);
-      }
-    }
+      if (count <= 4) {
+        // Single row layout (1-4 images)
+        const gap = count === 4 ? 3.5 : 5;
+        const imgWidth = (totalWidth - (gap * (count - 1))) / count;
+        const imgHeight = count === 4 ? 48 : (count === 3 ? 52 : 56);
+        let currentX = 10;
 
-    try {
-      loadedImages.forEach((imgData, idx) => {
-        const photoItem = page1Photos[idx];
+        loadedCandidates.forEach(({ photo, data }) => {
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(currentX, yPos, imgWidth, imgHeight);
 
-        // Draw border container
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(currentX, yPos, imgWidth, imgHeight);
-
-        if (imgData) {
           try {
-            // Add image with slight padding inside the box
-            doc.addImage(imgData, 'JPEG', currentX + padding, yPos + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
+            doc.addImage(data, 'JPEG', currentX + padding, yPos + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
           } catch (e) {
             console.error("Error adding PDF image", e);
-            doc.setFont("helvetica", "normal");
-            doc.setFontSize(6);
-            doc.setTextColor(150, 150, 150);
-            doc.text("Error", currentX + 5, yPos + 10);
           }
-        } else {
-          doc.setFont("helvetica", "normal");
-          doc.setFontSize(6);
-          doc.setTextColor(150, 150, 150);
-          doc.text("No Img", currentX + 5, yPos + 10);
-        }
 
-        // Semi-transparent Title Overlay over the photo (bottom bar)
-        if (photoItem && photoItem.title) {
-          const bannerH = count === 4 ? 5.5 : 6;
-          const bannerY = yPos + imgHeight - bannerH - padding;
-          const bannerX = currentX + padding;
-          const bannerW = imgWidth - (padding * 2);
+          // Semi-transparent Title Overlay over the photo (bottom bar)
+          if (photo && photo.title) {
+            const bannerH = count === 4 ? 5.5 : 6;
+            const bannerY = yPos + imgHeight - bannerH - padding;
+            const bannerX = currentX + padding;
+            const bannerW = imgWidth - (padding * 2);
 
-          doc.saveGraphicsState();
+            doc.saveGraphicsState();
+            try {
+              if ((doc as any).GState) {
+                doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+              }
+              doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
+              doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+            } finally {
+              doc.restoreGraphicsState();
+            }
+
+            // Overlay Title Text
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(count === 4 ? 5.5 : 6.5);
+            doc.setTextColor(255, 255, 255);
+
+            const maxTextW = bannerW - 3;
+            let displayTitle = photo.title;
+            if (doc.getTextWidth(displayTitle) > maxTextW) {
+              while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+                displayTitle = displayTitle.slice(0, -1);
+              }
+              displayTitle += "...";
+            }
+
+            doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
+          }
+
+          currentX += imgWidth + gap;
+        });
+
+        yPos += imgHeight + 5;
+
+      } else {
+        // Multi-row grid layout for 5-8 images (2 rows)
+        const cols = count <= 6 ? 3 : 4;
+        const gapX = cols === 4 ? 3.5 : 5;
+        const gapY = 3.5;
+        const imgWidth = (totalWidth - (gapX * (cols - 1))) / cols;
+        const imgHeight = 32;
+
+        loadedCandidates.forEach(({ photo, data }, idx) => {
+          const col = idx % cols;
+          const row = Math.floor(idx / cols);
+          const cellX = 10 + col * (imgWidth + gapX);
+          const cellY = yPos + row * (imgHeight + gapY);
+
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(cellX, cellY, imgWidth, imgHeight);
+
           try {
-            if ((doc as any).GState) {
-              doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
-            }
-            doc.setFillColor(15, 23, 42); // slate-900 semi-transparent dark
-            doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
-          } finally {
-            doc.restoreGraphicsState();
+            doc.addImage(data, 'JPEG', cellX + padding, cellY + padding, imgWidth - (padding * 2), imgHeight - (padding * 2));
+          } catch (e) {
+            console.error("Error adding PDF image", e);
           }
 
-          // Overlay Title Text
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(count === 4 ? 5.5 : 6.5);
-          doc.setTextColor(255, 255, 255);
+          // Title Overlay
+          if (photo && photo.title) {
+            const bannerH = 4.5;
+            const bannerY = cellY + imgHeight - bannerH - padding;
+            const bannerX = cellX + padding;
+            const bannerW = imgWidth - (padding * 2);
 
-          const maxTextW = bannerW - 3;
-          let displayTitle = photoItem.title;
-          if (doc.getTextWidth(displayTitle) > maxTextW) {
-            while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
-              displayTitle = displayTitle.slice(0, -1);
+            doc.saveGraphicsState();
+            try {
+              if ((doc as any).GState) {
+                doc.setGState(new (doc as any).GState({ opacity: 0.65 }));
+              }
+              doc.setFillColor(15, 23, 42);
+              doc.rect(bannerX, bannerY, bannerW, bannerH, 'F');
+            } finally {
+              doc.restoreGraphicsState();
             }
-            displayTitle += "...";
+
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(5);
+            doc.setTextColor(255, 255, 255);
+
+            const maxTextW = bannerW - 2;
+            let displayTitle = photo.title;
+            if (doc.getTextWidth(displayTitle) > maxTextW) {
+              while (displayTitle.length > 3 && doc.getTextWidth(displayTitle + "...") > maxTextW) {
+                displayTitle = displayTitle.slice(0, -1);
+              }
+              displayTitle += "...";
+            }
+            doc.text(displayTitle, bannerX + bannerW / 2, bannerY + 3.2, { align: "center" });
           }
+        });
 
-          doc.text(displayTitle, bannerX + bannerW / 2, bannerY + (count === 4 ? 3.8 : 4.2), { align: "center" });
-        }
-
-        currentX += imgWidth + gap;
-      });
-
-      yPos += imgHeight + 5;
-
-    } catch (err) {
-      console.error("Critical error in image section", err);
-      yPos += 10;
+        const numRows = Math.ceil(count / cols);
+        yPos += (numRows * (imgHeight + gapY)) + 2;
+      }
     }
   }
 
@@ -1023,7 +1183,7 @@ const generatePlatformReport = async (
     ["Conductors", structure.conductors || 0],
     ["Int. Piles", structure.internal_piles || 0],
     ["Slots", structure.slots || "N/A"],
-    ["Fenders", structure.fenders || 0],
+    ["Boatlanding", structure.fenders ?? structure.fender ?? (structure as any).boatlanding ?? 0],
     ["Risers", structure.risers || 0],
     ["Sumps", structure.sumps || 0],
     ["Skirt Piles", structure.skirt_piles || 0],
@@ -1071,47 +1231,65 @@ const generatePlatformReport = async (
     drawSectionBar(10, yPos, pageWidth - 20, 5, `PLATFORM LEGS (${structure.legs.length} Active)`, 12, yPos + 3.5);
     yPos += 5;
 
-    // Display legs in compact grid
-    const legColWidth = (pageWidth - 20) / 10;
+    // Display legs with auto and uniform column spacing across full width
+    const totalLegs = Math.min(structure.legs.length, 30);
+    const numRows = Math.ceil(totalLegs / 10);
+    const colsPerRow = Math.ceil(totalLegs / numRows);
+    const legColWidth = (pageWidth - 20) / colsPerRow;
     const legRowHeight = 9;
-    const numRows = Math.ceil(Math.min(structure.legs.length, 20) / 10);
 
     doc.setDrawColor(200, 200, 200);
     doc.rect(10, yPos, pageWidth - 20, numRows * legRowHeight);
 
-    structure.legs.slice(0, 20).forEach((leg: any, idx: number) => {
-      const col = idx % 10;
-      const row = Math.floor(idx / 10);
+    structure.legs.slice(0, totalLegs).forEach((leg: any, idx: number) => {
+      const row = Math.floor(idx / colsPerRow);
+      const col = idx % colsPerRow;
       const x = 10 + (col * legColWidth);
       const y = yPos + (row * legRowHeight);
 
       if (col > 0) doc.line(x, y, x, y + legRowHeight);
       if (row > 0) doc.line(10, y, pageWidth - 10, y);
 
-      doc.setFontSize(6);
+      doc.setFontSize(6.5);
       doc.setFont("helvetica", "normal");
-      doc.setTextColor(0, 0, 0);
-      doc.text(`Leg ${idx + 1}`, x + legColWidth / 2, y + 3, { align: "center" });
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Leg ${idx + 1}`, x + legColWidth / 2, y + 3.2, { align: "center" });
+      doc.setFontSize(7.5);
       doc.setFont("helvetica", "bold");
-      doc.text(leg.leg_name || leg.designation || `L${idx + 1}`, x + legColWidth / 2, y + 7, { align: "center" });
+      doc.setTextColor(0, 0, 0);
+      doc.text(leg.leg_name || leg.designation || `L${idx + 1}`, x + legColWidth / 2, y + 7.2, { align: "center" });
     });
 
     yPos += (numRows * legRowHeight) + 3;
   }
 
-  // ===== ELEVATIONS & LEVELS TABLES (Side-by-side) =====
+  // ===== ELEVATIONS, LEVELS & FACES TABLES (All 3 in One Row) =====
   const hasElevations = structure.elevations && structure.elevations.length > 0;
   const hasLevels = structure.levels && structure.levels.length > 0;
+  const hasFaces = structure.faces && structure.faces.length > 0;
 
-  if (hasElevations || hasLevels) {
+  if (hasElevations || hasLevels || hasFaces) {
     if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
 
     const tablesStartY = yPos;
     let maxTableY = yPos;
 
-    // ELEVATIONS TABLE (Left)
+    const activeSections: string[] = [];
+    if (hasElevations) activeSections.push('elevations');
+    if (hasLevels) activeSections.push('levels');
+    if (hasFaces) activeSections.push('faces');
+
+    const secCount = activeSections.length;
+    const secGap = 5;
+    const secWidth = secCount === 3 ? 60 : (secCount === 2 ? (pageWidth - 20 - secGap) / 2 : pageWidth - 20);
+
+    let secIdx = 0;
+
+    // 1. ELEVATIONS TABLE
     if (hasElevations) {
-      const elevWidth = (pageWidth - 25) / 2;
+      const elevX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
+
       autoTable(doc, {
         startY: tablesStartY,
         head: [
@@ -1156,17 +1334,20 @@ const generatePlatformReport = async (
           lineWidth: 0.2,
           lineColor: [200, 200, 200],
         },
-        margin: { left: 10 },
-        tableWidth: elevWidth,
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 32 },
+          1: { cellWidth: 28 }
+        } : undefined,
+        margin: { left: elevX },
+        tableWidth: secWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
 
-    // LEVELS TABLE (Right)
+    // 2. LEVELS TABLE
     if (hasLevels) {
-      // Start slightly right of center (pageWidth/2 + 2.5) to create 5mm gap
-      const rightTableX = pageWidth / 2 + 2.5;
-      const levelsWidth = (pageWidth - 25) / 2;
+      const levelsX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
 
       autoTable(doc, {
         startY: tablesStartY,
@@ -1213,68 +1394,79 @@ const generatePlatformReport = async (
           lineWidth: 0.2,
           lineColor: [200, 200, 200],
         },
-        margin: { left: rightTableX },
-        tableWidth: levelsWidth,
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 17 },
+          2: { cellWidth: 17 }
+        } : undefined,
+        margin: { left: levelsX },
+        tableWidth: secWidth,
       });
       maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
     }
-    yPos = maxTableY + 3;
-  }
 
-  // ===== FACES (if available) =====
-  if (structure.faces && structure.faces.length > 0) {
-    if (yPos > pageHeight - 30) { doc.addPage(); yPos = 15; }
+    // 3. FACES TABLE
+    if (hasFaces) {
+      const facesX = 10 + secIdx * (secWidth + secGap);
+      secIdx++;
 
-    autoTable(doc, {
-      startY: yPos,
-      head: [
-        [{
-          content: 'PLATFORM FACES',
-          colSpan: 3,
-          styles: {
-            halign: 'left',
-            fontStyle: 'bold',
-            fontSize: 8,
-            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
-          }
-        }],
-        ['Face Name', 'From', 'To']
-      ],
-      body: structure.faces.slice(0, 4).map((face: any) => [
-        face.face || face.face_name || face.name || "Face",
-        face.face_from || face.from || "N/A",
-        face.face_to || face.to || "N/A"
-      ]),
-      theme: 'grid',
-      styles: {
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-        cellPadding: 1.5,
-        valign: 'middle',
-      },
-      headStyles: {
-        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-        fontSize: 7,
-        halign: 'center',
-        fontStyle: 'bold',
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      bodyStyles: {
-        fontSize: 6.5,
-        halign: 'center',
-        textColor: [0, 0, 0],
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      margin: { left: 10, right: 10 },
-      tableWidth: pageWidth - 20,
-    });
+      autoTable(doc, {
+        startY: tablesStartY,
+        head: [
+          [{
+            content: 'PLATFORM FACES',
+            colSpan: 3,
+            styles: {
+              halign: 'left',
+              fontStyle: 'bold',
+              fontSize: 8,
+              fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+              textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+              cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+            }
+          }],
+          ['Face Name', 'From', 'To']
+        ],
+        body: (structure.faces || []).slice(0, 6).map((face: any) => [
+          face.face || face.face_name || face.name || "Face",
+          face.face_from || face.from || "N/A",
+          face.face_to || face.to || "N/A"
+        ]),
+        theme: 'grid',
+        styles: {
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+          cellPadding: 1.5,
+          valign: 'middle',
+        },
+        headStyles: {
+          fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+          textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+          fontSize: 7,
+          halign: 'center',
+          fontStyle: 'bold',
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        bodyStyles: {
+          fontSize: 6.5,
+          halign: 'center',
+          textColor: [0, 0, 0],
+          lineWidth: 0.2,
+          lineColor: [200, 200, 200],
+        },
+        columnStyles: secCount === 3 ? {
+          0: { cellWidth: 26 },
+          1: { cellWidth: 17 },
+          2: { cellWidth: 17 }
+        } : undefined,
+        margin: { left: facesX },
+        tableWidth: secWidth,
+      });
+      maxTableY = Math.max(maxTableY, (doc as any).lastAutoTable.finalY);
+    }
 
-    yPos = (doc as any).lastAutoTable.finalY + 3;
+    yPos = maxTableY + 4;
   }
 
   // ===== DISCUSSIONS / COMMENTS =====
@@ -1349,58 +1541,70 @@ const generatePlatformReport = async (
     yPos += boxHeight + 4;
   }
 
-  // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos > 4) =====
-  if (uniquePhotos.length > 4) {
-    const remainingPhotos = uniquePhotos.slice(4);
-    const photosPerPage = 4; // 2x2 grid per page
+  // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos beyond Page 1) =====
+  // User Requirement: If not more than 4 visuals attached, NO NEED to print the second page.
+  // Strictly prevent Page 2 whenever uniquePhotos.length <= 4, or when remaining images are not renderable.
+  if (uniquePhotos.length > 4 && uniquePhotos.length > page1RenderedCount && page1RenderedCount > 0) {
+    const remainingPhotos = uniquePhotos.slice(page1RenderedCount);
+    // Pre-load all remaining photos to verify at least one actually succeeds
+    const loadedBatchPromises = remainingPhotos.map(p => loadImage(p.url, p.id).catch(() => null));
+    const loadedBatch = await Promise.all(loadedBatchPromises);
 
-    for (let pageIdx = 0; pageIdx < Math.ceil(remainingPhotos.length / photosPerPage); pageIdx++) {
-      doc.addPage();
-      yPos = 15;
+    const hasAnyValidRemaining = loadedBatch.some(Boolean);
 
-      // Header bar for additional visuals page
-      drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUAL DOCUMENTATION (Page ${pageIdx + 2})`, 12, yPos + 3.5);
-      yPos += 8;
+    // Only add page(s) if there are actual loaded images to render
+    if (hasAnyValidRemaining) {
+      const photosPerPage = 4; // 2x2 grid per page
+      for (let pageIdx = 0; pageIdx < Math.ceil(remainingPhotos.length / photosPerPage); pageIdx++) {
+        const batchStart = pageIdx * photosPerPage;
+        const batchEnd = (pageIdx + 1) * photosPerPage;
+        const currentBatch = remainingPhotos.slice(batchStart, batchEnd);
+        const currentLoaded = loadedBatch.slice(batchStart, batchEnd);
 
-      const currentBatch = remainingPhotos.slice(pageIdx * photosPerPage, (pageIdx + 1) * photosPerPage);
-      const gridCols = 2;
-      const gridGap = 6;
-      const cellWidth = (pageWidth - 20 - gridGap) / 2;
-      const cellHeight = 90;
+        // If no image on this page loaded successfully, do not create an empty page
+        if (!currentLoaded.some(Boolean)) continue;
 
-      // Load batch images
-      const batchPromises = currentBatch.map(p => loadImage(p.url, p.id).catch(e => null));
-      const loadedBatch = await Promise.all(batchPromises);
+        doc.addPage();
+        yPos = 15;
 
-      loadedBatch.forEach((imgData, idx) => {
-        const photoItem = currentBatch[idx];
-        const row = Math.floor(idx / gridCols);
-        const col = idx % gridCols;
-        const x = 10 + (col * (cellWidth + gridGap));
-        const y = yPos + (row * (cellHeight + gridGap));
+        // Header bar for additional visuals page
+        drawSectionBar(10, yPos, pageWidth - 20, 5, `STRUCTURE VISUAL DOCUMENTATION (Page ${pageIdx + 2})`, 12, yPos + 3.5);
+        yPos += 8;
 
-        // Draw border container
-        doc.setDrawColor(200, 200, 200);
-        doc.rect(x, y, cellWidth, cellHeight);
+        const gridCols = 2;
+        const gridGap = 6;
+        const cellWidth = (pageWidth - 20 - gridGap) / 2;
+        const cellHeight = 90;
 
-        if (imgData) {
+        currentLoaded.forEach((imgData, idx) => {
+          if (!imgData) return; // Do not draw empty border box if image failed to load
+          const photoItem = currentBatch[idx];
+          const row = Math.floor(idx / gridCols);
+          const col = idx % gridCols;
+          const x = 10 + (col * (cellWidth + gridGap));
+          const y = yPos + (row * (cellHeight + gridGap));
+
+          // Draw border container
+          doc.setDrawColor(200, 200, 200);
+          doc.rect(x, y, cellWidth, cellHeight);
+
           try {
             doc.addImage(imgData, 'JPEG', x + 1, y + 1, cellWidth - 2, cellHeight - 8);
           } catch (e) {
             console.error("Error adding PDF gallery image", e);
           }
-        }
 
-        // Title banner
-        if (photoItem && photoItem.title) {
-          doc.setFillColor(15, 23, 42);
-          doc.rect(x + 1, y + cellHeight - 7, cellWidth - 2, 6, 'F');
-          doc.setFont("helvetica", "bold");
-          doc.setFontSize(6.5);
-          doc.setTextColor(255, 255, 255);
-          doc.text(photoItem.title, x + cellWidth / 2, y + cellHeight - 3, { align: "center" });
-        }
-      });
+          // Title banner
+          if (photoItem && photoItem.title) {
+            doc.setFillColor(15, 23, 42);
+            doc.rect(x + 1, y + cellHeight - 7, cellWidth - 2, 6, 'F');
+            doc.setFont("helvetica", "bold");
+            doc.setFontSize(6.5);
+            doc.setTextColor(255, 255, 255);
+            doc.text(photoItem.title, x + cellWidth / 2, y + cellHeight - 3, { align: "center" });
+          }
+        });
+      }
     }
   }
 
@@ -1693,17 +1897,17 @@ const generatePlatformHTML = (
         
         <!-- Centered title and company info -->
         <div style="text-align: center; margin: 0 auto; max-width: calc(100% - 200px);">
-          <!-- Company Name - SAME size as Report Title -->
-          <h1 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "NasQuest Resources Sdn Bhd"}</h1>
+          <!-- Company Name -->
+          <h1 style="margin: 0 0 2px 0; font-size: 16px; font-weight: 700; letter-spacing: 0.5px;">${companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)"}</h1>
           
-          <!-- Department Name (Sub-header) - Slightly increased font size -->
-          <p style="margin: 0 0 6px 0; font-size: 13px; opacity: 0.9;">${companySettings?.department_name || "Technical Inspection Division"}</p>
+          <!-- Department Name -->
+          <p style="margin: 0 0 4px 0; font-size: 12px; opacity: 0.9;">${companySettings?.department_name || "Technical Services Department"}</p>
           
-          <!-- Report Title - SAME size as Company Title -->
-          <h2 style="margin: 0 0 4px 0; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
+          <!-- Report Title -->
+          <h2 style="margin: 0 0 3px 0; font-size: 16px; font-weight: 700; letter-spacing: 0.5px; opacity: 0.95;">Platform Specifications Report</h2>
           
-          <!-- Report No - Centered below Report Title -->
-          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report: ${companySettings?.serial_no || "N/A"}</p>
+          <!-- Report No -->
+          <p style="margin: 0; font-size: 11px; opacity: 0.85; font-weight: 400;">Report No: ${(structure as any)?.sow_report_no || (structure as any)?.sowReportNo || companySettings?.serial_no || "AM26-016-01"}</p>
         </div>
       </div>
 
@@ -1711,20 +1915,39 @@ const generatePlatformHTML = (
         
         <!-- Platform Picture (Dynamic: 1, 2, or 3+ photos) -->
         ${(() => {
-          // Only use structure.visuals (structure.photos is the same array from the API)
-          const sourceVisuals: any[] = Array.isArray(structure.visuals) ? structure.visuals : [];
+          const isStructurePhoto = (item: any): boolean => {
+            const st = String(item.source_type || "").toLowerCase();
+            const p = String(item.path || item.file_url || "").toLowerCase();
+            return st.includes("structure_image") || st.includes("visual") || p.includes("structure-images");
+          };
 
-          const seenIds = new Set<string>();
-          const uniqueItems: any[] = [];
-          
           const isImage = (item: any): boolean => {
             if (!item || typeof item !== 'object') return false;
             const meta = typeof item.meta === 'string' ? (() => { try { return JSON.parse(item.meta); } catch { return {}; } })() : (item.meta || {});
             const ft = String(meta?.file_type || item.file_type || "").toLowerCase();
-            if (ft.startsWith("image/")) return true;
             const fp = String(meta?.file_path || meta?.file_url || item.path || item.file_url || item.name || "").toLowerCase();
+
+            // Reject legacy local drive paths (e.g. c:\..., p:\...) without valid remote/cloud URL
+            const rawPath = String(item.path || meta?.file_path || "").trim();
+            const isLocalDrive = /^[a-zA-Z]:[\\/]/.test(rawPath);
+            const hasValidRemoteUrl = (item.file_url && !/^[a-zA-Z]:[\\/]/.test(item.file_url)) ||
+                                      (meta?.file_url && !/^[a-zA-Z]:[\\/]/.test(meta.file_url)) ||
+                                      (item.url && !item.url.includes("c%3A") && !item.url.includes("C%3A") && !/^[a-zA-Z]:[\\/]/.test(item.url));
+            if (isLocalDrive && !hasValidRemoteUrl) return false;
+
+            if (ft.startsWith("image/")) return true;
             return /\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i.test(fp);
           };
+
+          // Only use structure.visuals, sorted by explicit structure photos first
+          const sourceVisuals: any[] = [...(Array.isArray(structure.visuals) ? structure.visuals : [])].sort((a, b) => {
+            const aIs = isStructurePhoto(a) ? 1 : 0;
+            const bIs = isStructurePhoto(b) ? 1 : 0;
+            return bIs - aIs;
+          });
+
+          const seenIds = new Set<string>();
+          const uniqueItems: any[] = [];
 
           for (const v of sourceVisuals) {
             if (!v || typeof v !== 'object') continue;
@@ -1750,15 +1973,17 @@ const generatePlatformHTML = (
 
           if (uniqueItems.length === 0) return '';
 
+          const displayItems = uniqueItems.slice(0, 8);
+
           return `
             <div style="margin-bottom: 20px;">
               <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-                Structure Visuals (${uniqueItems.length})
+                Structure Visuals (${displayItems.length})
               </div>
               <div style="border: 1px solid #cbd5e0; border-top: none; padding: 15px; background: #f8fafc; text-align: center;">
                 <div style="display: flex; justify-content: center; align-items: stretch; gap: 12px; flex-wrap: wrap;">
-                  ${uniqueItems.slice(0, 4).map((photo: any) => {
-                    const count = Math.min(uniqueItems.length, 4);
+                  ${displayItems.map((photo: any) => {
+                    const count = displayItems.length;
                     let width = '100%';
                     if (count === 2) width = '48%';
                     else if (count === 3) width = '31%';
@@ -1787,15 +2012,14 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Structure", structure.str_name || structure.title || "N/A"],
-      ["Title", structure.title || structure.str_name || "N/A"],
-      ["Field", structure.pfield || structure.field_name || "N/A"],
-      ["Install Date", formatDisplayDate(structure.inst_date)],
-      ["Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
+      ["Structure Title", structure.title || structure.str_name || "N/A"],
+      ["Oil Field", structure.pfield || structure.field_name || "N/A"],
+      ["Installation Date", formatDisplayDate(structure.inst_date)],
+      ["Water Depth", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A"],
       ["Design Life", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1811,15 +2035,15 @@ const generatePlatformHTML = (
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
-      ["Type", structure.ptype || structure.str_type || "N/A"],
+      ["Structure Type", "Platform"],
       ["Function", structure.function || structure.process || "N/A"],
       ["Material", structure.material || "N/A"],
       ["CP System", structure.cp_system || "N/A"],
-      ["Corrosion", structure.corr_ctg || "N/A"],
-      ["Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
+      ["Corrosion Coating", structure.corr_ctg || "N/A"],
+      ["Installation Contractor", structure.inst_contractor || structure.inst_ctr || "N/A"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1830,20 +2054,20 @@ const generatePlatformHTML = (
           <!-- Column 3: Location & Dimensions -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-              Location & Dims
+              Location & Dimension
             </div>
             <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
               <tbody>
                 ${[
       ["Northing", (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : "N/A")],
       ["Easting", (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : "N/A")],
-      ["True North", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
-      ["Max Leg Dia", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
-      ["Max Wall", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
+      ["True North Angle", (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : "N/A")],
+      ["Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? `${structure.max_leg_dia} mm` : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? `${structure.dleg} mm` : "N/A")],
+      ["Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? `${structure.max_wall_thk} mm` : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? `${structure.wall_thk} mm` : "N/A")],
       ["Helipad", (structure.helipad === "YES" || structure.helipad === "Yes" || structure.helipad === "1" || structure.helipad === true) ? "Yes" : "No"]
     ].map(([label, value], i) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
-                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 45%;">${label}</td>
+                    <td style="padding: 5px 8px; font-weight: 600; color: #4a5568; width: 50%;">${label}</td>
                     <td style="padding: 5px 8px; color: #1a202c;">${value || "N/A"}</td>
                   </tr>
                 `).join('')}
@@ -1864,7 +2088,7 @@ const generatePlatformHTML = (
       ["Conductors", structure.conductors ?? structure.conduct ?? 0],
       ["Int. Piles", structure.internal_piles ?? structure.pileint ?? 0],
       ["Slots", structure.slots ?? structure.cslot ?? structure.cslota ?? "N/A"],
-      ["Fenders", structure.fenders ?? structure.fender ?? 0],
+      ["Boatlanding", structure.fenders ?? structure.fender ?? (structure as any).boatlanding ?? 0],
       ["Risers", structure.risers ?? structure.riser ?? 0]
     ].map(([label, value]) => `
                   <td style="padding: 8px; text-align: center; border-right: 1px solid #e2e8f0;">
@@ -1896,7 +2120,7 @@ const generatePlatformHTML = (
           <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
             Platform Legs ${structure.legs && structure.legs.length > 0 ? `(${structure.legs.length} Active)` : ''}
           </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? 'display: grid; grid-template-columns: repeat(10, 1fr); gap: 5px;' : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
+          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; min-height: 60px; ${structure.legs && structure.legs.length > 0 ? `display: grid; grid-template-columns: repeat(${Math.min(structure.legs.length, 10)}, 1fr); gap: 5px;` : 'display: flex; align-items: center; justify-content: center; background: #f8fafc;'}">
             ${structure.legs && structure.legs.length > 0
       ? structure.legs.slice(0, 20).map((leg: any, idx: number) => `
                 <div style="text-align: center; padding: 5px; background: #f7fafc; border: 1px solid #e2e8f0; border-radius: 4px;">
@@ -1909,10 +2133,10 @@ const generatePlatformHTML = (
           </div>
         </div>
 
-        <!-- Two Column: Elevations & Levels (ALWAYS SHOW) -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 15px;">
+        <!-- Three Column: Elevations, Levels & Faces in One Row -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px;">
           
-          <!-- Elevations (ALWAYS SHOW) -->
+          <!-- Elevations -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Elevations (m)
@@ -1938,7 +2162,7 @@ const generatePlatformHTML = (
             </table>
           </div>
 
-          <!-- Levels (ALWAYS SHOW) -->
+          <!-- Levels -->
           <div>
             <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
               Platform Levels
@@ -1965,24 +2189,23 @@ const generatePlatformHTML = (
               </tbody>
             </table>
           </div>
-        </div>
 
-        <!-- Faces (ALWAYS SHOW) -->
-        <div style="margin-bottom: 15px;">
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Platform Faces
-          </div>
-          <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
-            <thead>
-              <tr style="background-color: #edf2f7;">
-                <th style="padding: 5px; text-align: left; font-weight: 600; color: #4a5568;">Face Name</th>
-                <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">From</th>
-                <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">To</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${structure.faces && structure.faces.length > 0
-      ? structure.faces.slice(0, 4).map((face: any, i: number) => `
+          <!-- Faces -->
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Platform Faces
+            </div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 9px; border: 1px solid #cbd5e0; border-top: none;">
+              <thead>
+                <tr style="background-color: #edf2f7;">
+                  <th style="padding: 5px; text-align: left; font-weight: 600; color: #4a5568;">Face Name</th>
+                  <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">From</th>
+                  <th style="padding: 5px; text-align: center; font-weight: 600; color: #4a5568;">To</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${structure.faces && structure.faces.length > 0
+      ? structure.faces.slice(0, 6).map((face: any, i: number) => `
                   <tr style="border-bottom: 1px solid #e2e8f0; background-color: ${i % 2 === 0 ? '#ffffff' : '#f7fafc'};">
                     <td style="padding: 5px 8px;">${face.face || face.face_name || face.name || "Face"}</td>
                     <td style="padding: 5px 8px; text-align: center;">${face.face_from || face.from || "N/A"}</td>
@@ -1991,8 +2214,9 @@ const generatePlatformHTML = (
                 `).join('')
       : `<tr><td colspan="3" style="padding: 15px; text-align: center; color: #a0aec0; font-style: italic;">No face data available</td></tr>`
     }
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <!-- Comments -->
@@ -2164,7 +2388,6 @@ export const generateComponentSummaryReport = async (
       margin: { left: 10 },
       head: [['GENERAL INFO', '']],
       body: [
-        ['Structure', structure.str_name || structure.title || '-'],
         ['Title', structure.title || structure.str_name || '-'],
         ['Field', structure.field_name || structure.pfield || '-'],
         ['Install Date', formatDisplayDate(structure.inst_date)],
@@ -2189,7 +2412,7 @@ export const generateComponentSummaryReport = async (
         ['Function', structure.function || structure.process || '-'],
         ['Material', structure.material || '-'],
         ['CP System', structure.cp_system || '-'],
-        ['Corrosion', structure.corr_ctg || '-'],
+        ['Corrosion Coating', structure.corr_ctg || '-'],
         ['Contractor', structure.inst_contractor || structure.inst_ctr || '-']
       ],
       theme: 'grid',
@@ -2200,7 +2423,7 @@ export const generateComponentSummaryReport = async (
       showHead: 'firstPage'
     });
 
-    // Table 3: Location & Dims
+    // Table 3: Location & Dimension
     const northingVal = (structure.northing !== undefined && structure.northing !== null && String(structure.northing).trim() !== "") ? `${structure.northing} m` : (structure.st_north !== undefined && structure.st_north !== null && String(structure.st_north).trim() !== "" ? `${structure.st_north} m` : 'N/A');
     const eastingVal = (structure.easting !== undefined && structure.easting !== null && String(structure.easting).trim() !== "") ? `${structure.easting} m` : (structure.st_east !== undefined && structure.st_east !== null && String(structure.st_east).trim() !== "" ? `${structure.st_east} m` : 'N/A');
     const northAngleVal = (structure.true_north_angle !== undefined && structure.true_north_angle !== null && String(structure.true_north_angle).trim() !== "") ? `${structure.true_north_angle}°` : (structure.north_angle !== undefined && structure.north_angle !== null && String(structure.north_angle).trim() !== "" ? `${structure.north_angle}°` : 'N/A');
@@ -2211,7 +2434,7 @@ export const generateComponentSummaryReport = async (
     autoTable(doc, {
       startY: infoY,
       margin: { left: 10 + (tableWidth + colGap) * 2 },
-      head: [['LOCATION & DIMS', '']],
+      head: [['LOCATION & DIMENSION', '']],
       body: [
         ['Northing', northingVal],
         ['Easting', eastingVal],
@@ -2496,7 +2719,6 @@ export const generateComponentSummaryHTML = (
                 <table style="${infoTableStyle}">
                     <thead><tr><th colspan="2" style="${thStyle}">GENERAL INFO</th></tr></thead>
                     <tbody>
-                        ${InfoRow("Structure", structure.str_name || structure.title)}
                         ${InfoRow("Title", structure.title || structure.str_name)}
                         ${InfoRow("Field", structure.field_name || structure.pfield)}
                         ${InfoRow("Install Date", formatDisplayDate(structure.inst_date))}
@@ -2513,14 +2735,14 @@ export const generateComponentSummaryHTML = (
                         ${InfoRow("Function", structure.function || structure.process)}
                         ${InfoRow("Material", structure.material)}
                         ${InfoRow("CP System", structure.cp_system)}
-                        ${InfoRow("Corrosion", structure.corr_ctg)}
+                        ${InfoRow("Corrosion Coating", structure.corr_ctg)}
                         ${InfoRow("Contractor", structure.inst_contractor || structure.inst_ctr)}
                     </tbody>
                 </table>
             </div>
             <div>
                 <table style="${infoTableStyle}">
-                    <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMS</th></tr></thead>
+                    <thead><tr><th colspan="2" style="${thStyle}">LOCATION & DIMENSION</th></tr></thead>
                     <tbody>
                         ${InfoRow("Northing", northingVal)}
                         ${InfoRow("Easting", eastingVal)}
@@ -3153,7 +3375,7 @@ export const generateTechnicalSpecsHTML = (
                 <tbody>
                      ${Row("Number of Legs", structure.legs?.length || structure.components?.filter((c: any) => c.type === 'LEG').length, "Max Leg Diameter", (structure.max_leg_dia !== undefined && structure.max_leg_dia !== null && String(structure.max_leg_dia).trim() !== "") ? structure.max_leg_dia + ' mm' : (structure.dleg !== undefined && structure.dleg !== null && String(structure.dleg).trim() !== "" ? structure.dleg + ' mm' : null))}
                      ${Row("Number of Piles", structure.skirt_piles || structure.internal_piles || structure.pileint, "Max Wall Thickness", (structure.max_wall_thk !== undefined && structure.max_wall_thk !== null && String(structure.max_wall_thk).trim() !== "") ? structure.max_wall_thk + ' mm' : (structure.wall_thk !== undefined && structure.wall_thk !== null && String(structure.wall_thk).trim() !== "" ? structure.wall_thk + ' mm' : null))}
-                     ${Row("Material Grade", structure.material, "Corrosion Cat.", structure.corr_ctg)}
+                     ${Row("Material Grade", structure.material, "Corrosion Coating", structure.corr_ctg)}
                      ${Row("CP System", structure.cp_system, "Unit System", structure.unit_system || structure.def_unit)}
                 </tbody>
             </table>

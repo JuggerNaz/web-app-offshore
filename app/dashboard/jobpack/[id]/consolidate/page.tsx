@@ -21,8 +21,20 @@ export default function ConsolidatePage() {
     const router = useRouter();
 
     const { data, mutate, isLoading } = useSWR(id ? `/api/jobpack/${id}` : null, fetcher);
-    const { data: platforms } = useSWR("/api/platform", fetcher);
-    const { data: pipelines } = useSWR("/api/pipeline", fetcher);
+
+    // Resolve only the structure ids referenced by this jobpack's metadata
+    // (avoids fetching the entire fleet for title lookup).
+    const metaStructures: any[] = data?.data?.metadata?.structures || [];
+    const platIds = metaStructures
+        .filter((s: any) => s.type === "PLATFORM")
+        .map((s: any) => s.id)
+        .join(",");
+    const pipeIds = metaStructures
+        .filter((s: any) => s.type === "PIPELINE")
+        .map((s: any) => s.id)
+        .join(",");
+    const { data: platforms } = useSWR(platIds ? `/api/platform?ids=${platIds}` : null, fetcher);
+    const { data: pipelines } = useSWR(pipeIds ? `/api/pipeline?ids=${pipeIds}` : null, fetcher);
 
     // State
     const [structureStatus, setStructureStatus] = useState<Record<string, any>>({});
@@ -80,11 +92,11 @@ export default function ConsolidatePage() {
             let title = s.title;
             if (!title) {
                 if (s.type === "PLATFORM") {
-                    const pf = platforms?.data?.find((p: any) => p.id == s.id); // Loose equality
-                    if (pf) title = pf.name;
+                    const pf = platforms?.data?.find((p: any) => Number(p.plat_id) === Number(s.id));
+                    if (pf) title = pf.title;
                 } else if (s.type === "PIPELINE") {
-                    const pp = pipelines?.data?.find((p: any) => p.id == s.id);
-                    if (pp) title = pp.name;
+                    const pp = pipelines?.data?.find((p: any) => Number(p.pipe_id) === Number(s.id));
+                    if (pp) title = pp.title;
                 }
             }
             return { ...s, title: title || `${s.type} ${s.id}` };

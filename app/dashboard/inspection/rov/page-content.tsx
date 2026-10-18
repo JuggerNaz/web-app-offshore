@@ -813,13 +813,15 @@ export function ROVInspectionContent({ hideHeader = false }: { hideHeader?: bool
         return;
       }
 
+      const compId = (selectedROVJob as any)?.company_id || (typeof window !== "undefined" ? localStorage.getItem("active_company_id") : null);
       const { error } = await supabase.from("insp_rov_movements").insert({
-        rov_job_id: selectedROVJob.rov_job_id,
+        rov_job_id: Number(selectedROVJob.rov_job_id),
         movement_type: actionValue,
         movement_time: new Date().toISOString(),
         depth_meters: 0,
         cr_user: user?.id || "system",
         workunit: "000",
+        company_id: compId,
       });
 
       if (error) throw error;

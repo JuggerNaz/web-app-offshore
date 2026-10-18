@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 
@@ -32,10 +32,16 @@ interface LoadedPhoto {
     aspect: number;
 }
 
+const photoDataCache = new Map<string, LoadedPhoto>();
+
 // Multi-strategy image loader for PDF generation (immune to CORS & canvas tainting)
 const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
     if (!url || typeof url !== "string" || !url.trim()) {
         return null;
+    }
+
+    if (photoDataCache.has(url)) {
+        return photoDataCache.get(url)!;
     }
 
     const tryViaImageElement = (src: string, useCrossOrigin = true): Promise<LoadedPhoto | null> => {
@@ -109,7 +115,10 @@ const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
             });
             if (dataUrl) {
                 const res = await tryViaImageElement(dataUrl, false);
-                if (res) return res;
+                if (res) {
+                    photoDataCache.set(url, res);
+                    return res;
+                }
             }
         }
     } catch (e) {
@@ -118,10 +127,17 @@ const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
 
     // 3. Fallback: Image element with crossOrigin
     const resCrossOrigin = await tryViaImageElement(url, true);
-    if (resCrossOrigin) return resCrossOrigin;
+    if (resCrossOrigin) {
+        photoDataCache.set(url, resCrossOrigin);
+        return resCrossOrigin;
+    }
 
     // 4. Fallback: Image element without crossOrigin
-    return await tryViaImageElement(url, false);
+    const resFallback = await tryViaImageElement(url, false);
+    if (resFallback) {
+        photoDataCache.set(url, resFallback);
+    }
+    return resFallback;
 };
 
 /**
@@ -138,7 +154,7 @@ export const generateROVPhotographyReport = async (
         const doc = new jsPDF({ orientation: "portrait" });
         const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
-        const margin = 12;
+        const margin = 10;
         const contentWidth = pageWidth - (margin * 2);
 
         const supabase = createClient();
@@ -239,34 +255,27 @@ export const generateROVPhotographyReport = async (
             } catch (_) {}
         }
 
-        const HEADER_H = 26;
+        const HEADER_H = 25;
 
         const drawHeaderFooter = (d: jsPDF, pageNum: number, totalPages: number) => {
             const isPF = config.printFriendly;
-            
-            // Header
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.5);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
+            const reportNo = (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A";
+            const structName = headerData.platformName || "N/A";
 
-            if (companyLogo) drawLogo(d, companyLogo, 18, 18, pageWidth - margin - 22, margin + 3, "right", "center");
-            if (contractorLogo) drawLogo(d, contractorLogo, 18, 18, margin + 4, margin + 3, "left", "center");
-
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text(companySettings.company_name || "NasQuest Resources Sdn Bhd", margin + contentWidth / 2, margin + 6, { align: "center" });
-            d.setFontSize(8.5); d.setFont("helvetica", "normal");
-            d.text(companySettings.department_name || "Technical Inspection Division", margin + contentWidth / 2, margin + 10.5, { align: "center" });
-            d.setFontSize(11); d.setFont("helvetica", "bold");
-            d.text("Photography Report (ROV)", margin + contentWidth / 2, margin + 16.5, { align: "center" });
-            d.setFontSize(8); d.setFont("helvetica", "normal");
-            d.text(`Report No: ${(config?.reportNoPrefix || headerData?.sowReportNo) || "N/A"}`, margin + contentWidth / 2, margin + 21, { align: "center" });
+            draw3SectionHeader(d, {
+                reportTitle: "Photography Report (ROV)",
+                reportNo,
+                structureName: structName,
+                companySettings,
+                config,
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: isPF,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "portrait"
+            });
 
             // Context Row
             const rowY = margin + HEADER_H + 2;
@@ -303,8 +312,8 @@ export const generateROVPhotographyReport = async (
         
         const imgGap = 6;
         const imgWidth = (contentWidth - imgGap) / 2;
-        const imgHeight = 52;
-        const rowHeight = 68; // 3.5 for title, 52 for image, 12.5 for description and padding
+        const imgHeight = 48;
+        const rowHeight = 70;
         
         let currentPhotoIdx = 0;
 
@@ -313,7 +322,8 @@ export const generateROVPhotographyReport = async (
             
             drawHeaderFooter(doc, p, totalPages);
             
-            const yPos = margin + HEADER_H + 11;
+            // Start grid below context row (context row ends at y = margin + HEADER_H + 2 + 7 = 47mm)
+            const gridStartY = margin + HEADER_H + 15; // 53mm
             
             for (let i = 0; i < PHOTOS_PER_PAGE; i++) {
                 if (currentPhotoIdx >= resolvedPhotos.length) break;
@@ -323,44 +333,54 @@ export const generateROVPhotographyReport = async (
                 const row = Math.floor(i / 2);
                 
                 const xPos = margin + (col * (imgWidth + imgGap));
-                const currentY = yPos + (row * rowHeight);
+                const rowSlotY = gridStartY + (row * rowHeight);
                 
-                // 1. Photo Title (Top)
+                // 1. Photo Title (Top of card)
                 let meta = photo.meta || {};
                 if (typeof meta === 'string') {
                     try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
                 }
                 
                 const title = (meta.title || photo.name || photo.file_name || `Photo ${currentPhotoIdx + 1}`).toUpperCase();
-                doc.setFontSize(7); doc.setFont("helvetica", "bold");
+                doc.setFontSize(7.5);
+                doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
-                doc.text(title, xPos + imgWidth / 2, currentY - 1.5, { align: "center", maxWidth: imgWidth });
+                doc.text(title, xPos + imgWidth / 2, rowSlotY + 3.5, { align: "center", maxWidth: imgWidth - 2 });
 
                 // 2. Image Loading & Rendering
+                const imgY = rowSlotY + 5.5;
                 try {
                     const rawPath = photo.path || photo.file_path || photo.url || photo.file_url || photo.storage_path || photo.previewUrl || "";
                     const bucket = photo.bucket_id || photo.bucket || photo.meta?.bucket || "attachments";
 
                     const urlCandidates: string[] = [];
-                    if (typeof rawPath === "string" && (rawPath.startsWith("http://") || rawPath.startsWith("https://") || rawPath.startsWith("data:") || rawPath.startsWith("blob:"))) {
-                        urlCandidates.push(rawPath);
-                    }
+                    // 1. Prioritize internal server proxy endpoints (immune to CORS)
                     if (photo.id) {
                         urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(photo.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ""}`);
                     }
+                    const fallbackUrl = getAttachmentUrl(photo, supabase);
+                    if (fallbackUrl && !urlCandidates.includes(fallbackUrl)) {
+                        urlCandidates.push(fallbackUrl);
+                    }
                     if (rawPath) {
+                        urlCandidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
                         urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
+                    }
+                    // 2. Direct HTTP or Data URL
+                    if (typeof rawPath === "string" && (rawPath.startsWith("http://") || rawPath.startsWith("https://") || rawPath.startsWith("data:") || rawPath.startsWith("blob:"))) {
+                        urlCandidates.push(rawPath);
+                    }
+                    if (photo.meta?.file_url && !urlCandidates.includes(photo.meta.file_url)) {
+                        urlCandidates.push(photo.meta.file_url);
                     }
                     if (rawPath && typeof rawPath === "string" && !rawPath.startsWith("http") && !rawPath.startsWith("data:")) {
                         try {
                             const cleanStoragePath = rawPath.replace(/^attachments\//, "");
                             const pub = supabase.storage.from(bucket).getPublicUrl(cleanStoragePath);
-                            if (pub?.data?.publicUrl) urlCandidates.push(pub.data.publicUrl);
+                            if (pub?.data?.publicUrl && !urlCandidates.includes(pub.data.publicUrl)) {
+                                urlCandidates.push(pub.data.publicUrl);
+                            }
                         } catch (_) {}
-                    }
-                    const fallbackUrl = getAttachmentUrl(photo, supabase);
-                    if (fallbackUrl && !urlCandidates.includes(fallbackUrl)) {
-                        urlCandidates.push(fallbackUrl);
                     }
 
                     let imgData: LoadedPhoto | null = null;
@@ -377,11 +397,11 @@ export const generateROVPhotographyReport = async (
                         let renderW = imgWidth;
                         let renderH = imgHeight;
                         let renderX = xPos;
-                        let renderY = currentY;
+                        let renderY = imgY;
 
                         if (imgData.aspect > boxAspect) {
                             renderH = imgWidth / imgData.aspect;
-                            renderY = currentY + (imgHeight - renderH) / 2;
+                            renderY = imgY + (imgHeight - renderH) / 2;
                         } else {
                             renderW = imgHeight * imgData.aspect;
                             renderX = xPos + (imgWidth - renderW) / 2;
@@ -389,31 +409,35 @@ export const generateROVPhotographyReport = async (
 
                         // Light border box
                         doc.setDrawColor(220, 226, 235);
-                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.setLineWidth(0.2);
+                        doc.rect(xPos, imgY, imgWidth, imgHeight);
                         doc.addImage(imgData.data, "JPEG", renderX, renderY, renderW, renderH);
                     } else {
                         doc.setDrawColor(200);
-                        doc.rect(xPos, currentY, imgWidth, imgHeight);
+                        doc.setLineWidth(0.2);
+                        doc.rect(xPos, imgY, imgWidth, imgHeight);
                         doc.setFontSize(8);
                         doc.setTextColor(150);
-                        doc.text("Image Load Failed", xPos + imgWidth / 2, currentY + imgHeight / 2, { align: "center" });
+                        doc.text("Image Load Failed", xPos + imgWidth / 2, imgY + imgHeight / 2, { align: "center" });
                     }
                 } catch (e) {
                     doc.setDrawColor(200);
-                    doc.rect(xPos, currentY, imgWidth, imgHeight);
+                    doc.rect(xPos, imgY, imgWidth, imgHeight);
                 }
 
-                // 3. Description (Bottom)
+                // 3. Description (Bottom of card)
                 let description = meta.description || photo.description || "";
                 if (photo.anomaly_ref) {
                     description = description ? `${description} (Anomaly Ref: ${photo.anomaly_ref})` : `Anomaly Ref: ${photo.anomaly_ref}`;
                 }
                 
                 if (description) {
-                    doc.setFontSize(6.5); doc.setFont("helvetica", "normal");
-                    doc.setTextColor(60, 60, 60);
-                    const splitDesc = doc.splitTextToSize(description, imgWidth);
-                    doc.text(splitDesc, xPos + imgWidth / 2, currentY + imgHeight + 3.5, { align: "center" });
+                    doc.setFontSize(6.5); 
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(51, 65, 85);
+                    const splitDesc = doc.splitTextToSize(description, imgWidth - 2);
+                    const linesToPrint = splitDesc.slice(0, 3);
+                    doc.text(linesToPrint, xPos + imgWidth / 2, imgY + imgHeight + 3.5, { align: "center" });
                 }
 
                 currentPhotoIdx++;
@@ -425,7 +449,7 @@ export const generateROVPhotographyReport = async (
             const lastPage = doc.internal.pages.length - 1;
             doc.setPage(lastPage);
             
-            const sigY = pageHeight - 27;
+            const sigY = pageHeight - 28;
             const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1); doc.rect(lx, sigY, sigW - 5, 15);

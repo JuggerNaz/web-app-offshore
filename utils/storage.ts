@@ -92,15 +92,20 @@ export const processAttachmentUrl = (
   }
 
   // If we have an ID, route through URL proxy which handles both Supabase & multi-cloud (Backblaze/S3)
+  const metaObj = (attachment.meta && typeof attachment.meta === "object") ? (attachment.meta as any) : null;
+  const resolvedPath = (metaObj?.original_file_name && typeof fileUrl === "string" && (fileUrl.endsWith("\\") || fileUrl.endsWith("/")))
+    ? `${fileUrl}${metaObj.original_file_name}`
+    : fileUrl;
+
   if (attachment.id) {
-    const pathParam = fileUrl ? `&path=${encodeURIComponent(fileUrl)}` : '';
+    const pathParam = resolvedPath ? `&path=${encodeURIComponent(resolvedPath)}` : '';
     fileUrl = `/api/attachment/url?id=${encodeURIComponent(attachment.id)}${pathParam}`;
   } else if (fileUrl && (fileUrl.includes("backblazeb2.com") || fileUrl.includes("amazonaws.com"))) {
     fileUrl = `/api/attachment/download?path=${encodeURIComponent(fileUrl)}`;
   } else if (fileUrl && !isCompleteUrl(fileUrl)) {
     // Determine bucket from meta or default to "attachments"
-    const bucket = (attachment.meta && (attachment.meta as any).bucket) || "attachments";
-    fileUrl = `/api/attachment/download?path=${encodeURIComponent(fileUrl)}&bucket=${bucket}`;
+    const bucket = metaObj?.bucket || "attachments";
+    fileUrl = `/api/attachment/download?path=${encodeURIComponent(resolvedPath)}&bucket=${bucket}`;
   }
 
   return { fileUrl, fileName, isImage, fileType };

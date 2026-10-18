@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     ChevronRight, 
@@ -39,6 +39,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { toast } from "sonner";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { EXECUTIVE_SUMMARY_TOC, isItemMatchingSection } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
 // Heavy dialogs are lazy-loaded client-side; Radix Dialog renders nothing while
@@ -91,11 +92,13 @@ export default function ExecutiveSummaryPage() {
         percent: number;
         title: string;
         status: string;
+        detail?: string;
     }>({
         isOpen: false,
         percent: 0,
         title: "",
         status: "",
+        detail: "",
     });
 
     // Fetch context data
@@ -146,11 +149,12 @@ export default function ExecutiveSummaryPage() {
         fetcher
     );
 
-    const checkJobPackMatchesStructure = (jp: any, structureIdStr: string) => {
-        if (!jp || !structureIdStr) return false;
-        const selStructId = structureIdStr.replace(/^(platform|pipeline)-/, "");
-        const structObj = structures.find((s: any) => s.id?.toString() === selStructId);
-        const selStructName = structObj?.str_name?.toLowerCase().trim();
+    const checkJobPackMatchesStructureFast = (
+        jp: any, 
+        selStructId: string, 
+        selStructName: string | undefined
+    ) => {
+        if (!jp || !selStructId) return false;
 
         // 1. Direct structure columns on jobpack
         if (jp.structure_id !== undefined && jp.structure_id !== null && jp.structure_id.toString() === selStructId) return true;
@@ -200,6 +204,10 @@ export default function ExecutiveSummaryPage() {
     const filteredJobpacks = useMemo(() => {
         if (!selections.structureId) return jobpacks;
         
+        const selStructId = selections.structureId.replace(/^(platform|pipeline)-/, "");
+        const structObj = structures.find((s: any) => s.id?.toString() === selStructId);
+        const selStructName = structObj?.str_name?.toLowerCase().trim();
+
         const inspectedJpIds = new Set(
             (structureInspectionFiltersRes?.data || []).map((f: any) => f.jobpack_id?.toString()).filter(Boolean)
         );
@@ -213,32 +221,76 @@ export default function ExecutiveSummaryPage() {
             const idStr = jp.id?.toString();
             if (inspectedJpIds.has(idStr)) return true;
             if (sowJpIds.has(idStr)) return true;
-            return checkJobPackMatchesStructure(jp, selections.structureId);
+            return checkJobPackMatchesStructureFast(jp, selStructId, selStructName);
         });
 
         // Fallback to all jobpacks if nothing matched so user isn't locked out
         return matches.length > 0 ? matches : jobpacks;
     }, [selections.structureId, jobpacks, structureInspectionFiltersRes, sowsForStructureData, structures]);
 
-    // Fetch SOW and inspection filters for the selected Jobpack and Structure
+    // Check if we already have SOW records in memory from structure data
+    const hasSowReportsFromStructure = useMemo(() => {
+        if (!selections.jobpackId) return false;
+        if (Array.isArray(sowsForStructureData?.data)) {
+            const hasSow = sowsForStructureData.data.some((s: any) => 
+                s.jobpack_id?.toString() === selections.jobpackId && 
+                Array.isArray(s.report_numbers) && 
+                s.report_numbers.length > 0
+            );
+            if (hasSow) return true;
+        }
+        if (Array.isArray(structureInspectionFiltersRes?.data)) {
+            const hasInsp = structureInspectionFiltersRes.data.some((f: any) => 
+                f.jobpack_id?.toString() === selections.jobpackId && !!f.sow_report_no
+            );
+            if (hasInsp) return true;
+        }
+        return false;
+    }, [selections.jobpackId, sowsForStructureData, structureInspectionFiltersRes]);
+
+    // Fetch SOW and inspection filters for the selected Jobpack and Structure only as fallback
     const { data: jobpackInspFiltersRes } = useSWR(
-        selections.jobpackId && cleanStructureId
+        selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/reports/inspection-filters?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}`
             : null,
         fetcher
     );
 
     const { data: sowsData } = useSWR(
-        selections.jobpackId && cleanStructureId 
+        selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}` 
             : null, 
         fetcher
     );
 
-    const availableSowReports = useMemo(() => {
+    const getSowReportsForJobpack = useCallback((jpId: string) => {
+        if (!jpId) return [];
         const reportsSet = new Set<string>();
 
-        // 1. From SOW data report_numbers
+        // 1. From structure-level SOW data (already in memory)
+        if (Array.isArray(sowsForStructureData?.data)) {
+            sowsForStructureData.data.forEach((s: any) => {
+                if (s.jobpack_id?.toString() === jpId && Array.isArray(s.report_numbers)) {
+                    s.report_numbers.forEach((r: any) => {
+                        const val = r?.number || r;
+                        if (val && typeof val === 'string' && val.trim()) {
+                            reportsSet.add(val.trim());
+                        }
+                    });
+                }
+            });
+        }
+
+        // 2. From structure-level inspection filters if matches jobpack (already in memory)
+        if (structureInspectionFiltersRes?.data && Array.isArray(structureInspectionFiltersRes.data)) {
+            structureInspectionFiltersRes.data.forEach((f: any) => {
+                if (f.jobpack_id?.toString() === jpId && f.sow_report_no?.trim()) {
+                    reportsSet.add(f.sow_report_no.trim());
+                }
+            });
+        }
+
+        // 3. Fallback from SOW data report_numbers
         if (sowsData?.data && typeof sowsData.data === 'object') {
             const reportNumbers = sowsData.data.report_numbers;
             if (Array.isArray(reportNumbers)) {
@@ -251,7 +303,7 @@ export default function ExecutiveSummaryPage() {
             }
         }
 
-        // 2. From inspection filters (distinct sow_report_no in insp_records)
+        // 4. Fallback from jobpack-specific inspection filters
         if (jobpackInspFiltersRes?.data && Array.isArray(jobpackInspFiltersRes.data)) {
             jobpackInspFiltersRes.data.forEach((f: any) => {
                 if (f.sow_report_no && typeof f.sow_report_no === 'string' && f.sow_report_no.trim()) {
@@ -260,19 +312,36 @@ export default function ExecutiveSummaryPage() {
             });
         }
 
-        // 3. From structure-level inspection filters if matches jobpack
-        if (structureInspectionFiltersRes?.data && Array.isArray(structureInspectionFiltersRes.data)) {
-            structureInspectionFiltersRes.data.forEach((f: any) => {
-                if (f.jobpack_id?.toString() === selections.jobpackId && f.sow_report_no?.trim()) {
-                    reportsSet.add(f.sow_report_no.trim());
-                }
-            });
-        }
-
         return Array.from(reportsSet).sort((a, b) => 
             String(a).localeCompare(String(b), undefined, { numeric: true })
         );
-    }, [sowsData, jobpackInspFiltersRes, structureInspectionFiltersRes, selections.jobpackId]);
+    }, [sowsForStructureData, structureInspectionFiltersRes, sowsData, jobpackInspFiltersRes]);
+
+    const availableSowReports = useMemo(() => {
+        return getSowReportsForJobpack(selections.jobpackId);
+    }, [getSowReportsForJobpack, selections.jobpackId]);
+
+    // Auto-select SOW report number when reports become available if none is currently selected
+    useEffect(() => {
+        if (selections.jobpackId && !selections.sowReportNo && availableSowReports.length > 0) {
+            setSelections(s => ({
+                ...s,
+                sowReportNo: availableSowReports.length === 1 ? availableSowReports[0] : (s.sowReportNo || availableSowReports[0])
+            }));
+        }
+    }, [selections.jobpackId, selections.sowReportNo, availableSowReports]);
+
+    const structureOptions = useMemo(() => {
+        return structures.map((s: any) => ({ value: s.id.toString(), label: s.str_name }));
+    }, [structures]);
+
+    const jobpackOptions = useMemo(() => {
+        return filteredJobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }));
+    }, [filteredJobpacks]);
+
+    const sowReportOptions = useMemo(() => {
+        return availableSowReports.map((no: string) => ({ value: no, label: no }));
+    }, [availableSowReports]);
 
     // Fetch existing summary
     const { data: summaryData, mutate: refreshSummary } = useSWR(
@@ -428,37 +497,172 @@ export default function ExecutiveSummaryPage() {
         setIsGenerating(true);
         setExportProgress({
             isOpen: true,
-            percent: 5,
+            percent: 3,
             title: `Generating ${reportType === "preliminary" ? "Preliminary" : "Final"} Executive Summary`,
-            status: "Initializing report configuration and templates...",
+            status: "Initializing export configuration...",
+            detail: `Structure: ${str?.str_name || "N/A"} | Job Pack: ${jp?.name || "N/A"}`
         });
 
+        let preloadedTemplateBuffer: ArrayBuffer | null = null;
+        let allRecords: any[] = [];
+        let mappedData: any = {};
+        let structureVisuals: any[] = [];
+        let reportData: Record<string, any> = {};
+
         try {
+            // Step 1: Preload template early to inspect required tags and eliminate duplicate download
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 8,
+                status: "Analyzing document template structure...",
+                detail: `Inspecting ${template.name || "template"} tags...`
+            }));
+
+            const activeTemplateTags = new Set<string>();
+
+            try {
+                const tPath = template.storage_path;
+                const tUrl = tPath.startsWith("data:") ? tPath : `${tPath}${tPath.includes("?") ? "&" : "?"}_t=${Date.now()}`;
+                const tRes = await fetch(tUrl, { cache: "no-store" });
+                if (tRes.ok) {
+                    preloadedTemplateBuffer = await tRes.arrayBuffer();
+                    const PizZip = (await import("pizzip")).default || (await import("pizzip"));
+                    const zip = new PizZip(preloadedTemplateBuffer);
+                    const { normalizeDelimiters } = await import("@/utils/report-generators/template-report-generator");
+                    normalizeDelimiters(zip);
+                    preloadedTemplateBuffer = zip.generate({ type: "arraybuffer" });
+                    const docFiles = zip.file(/word\/(document|header\d*|footer\d*)\.xml/);
+                    for (const df of docFiles) {
+                        const xmlText = df.asText();
+                        const tagRegex = /\{[#/\%^!?$@]?([A-Za-z0-9_]+)\}/g;
+                        let m: RegExpExecArray | null;
+                        while ((m = tagRegex.exec(xmlText)) !== null) {
+                            activeTemplateTags.add(m[1].toUpperCase());
+                        }
+                    }
+                    let detectedParentPrefix = "1";
+                    try {
+                        const docFile = zip.file("word/document.xml");
+                        if (docFile) {
+                            const docXml = docFile.asText();
+                            // 1. Check for explicit tag like {PARENT_SECTION_NO: 2}, {SECTION_NO: 2}, {CHAPTER_NO: 2}, {PARENT_NO: 2}
+                            const explicitMatch = docXml.match(/\{(?:PARENT_SECTION_NO|SECTION_NO|CHAPTER_NO|PARENT_NO|SECTION_PREFIX)\s*[:=]\s*(\d+(?:\.\d+)*)\}/i);
+                            if (explicitMatch) {
+                                detectedParentPrefix = explicitMatch[1];
+                            } else {
+                                // 2. Scan the paragraph immediately preceding {#SECTIONS} or {SECTIONS}
+                                const sectionsPos = docXml.search(/\{#?SECTIONS\}/i);
+                                if (sectionsPos !== -1) {
+                                    const textBefore = docXml.substring(0, sectionsPos);
+                                    const pMatches = Array.from(textBefore.matchAll(/<w:p\b[^>]*>([\s\S]*?)<\/w:p>/gi));
+                                    if (pMatches.length > 0) {
+                                        for (let i = pMatches.length - 1; i >= Math.max(0, pMatches.length - 5); i--) {
+                                            const rawPContent = pMatches[i][1];
+                                            const cleanText = rawPContent.replace(/<[^>]+>/g, "").trim();
+                                            if (!cleanText) continue;
+                                            const numMatch = cleanText.match(/^(\d+(?:\.\d+)*)\.?\s+/i) || cleanText.match(/^(?:Section|Chapter)\s+(\d+(?:\.\d+)*)/i);
+                                            if (numMatch) {
+                                                detectedParentPrefix = numMatch[1];
+                                                console.log(`[ExecutiveSummary] Auto-detected parent section number from template: ${detectedParentPrefix} (from "${cleanText}")`);
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch (detectErr) {
+                        console.warn("[ExecutiveSummary] Could not auto-detect parent section number:", detectErr);
+                    }
+                    (template as any)._detectedParentPrefix = detectedParentPrefix;
+                    setExportProgress(prev => ({
+                        ...prev,
+                        percent: 14,
+                        status: `Template analyzed (${activeTemplateTags.size} tags detected, parent section: ${detectedParentPrefix})`,
+                        detail: `Found ${activeTemplateTags.size} dynamic tags in DOCX template`
+                    }));
+                }
+            } catch (tErr) {
+                console.warn("[ExecutiveSummary] Could not preload/analyze template tags:", tErr);
+            }
+
             const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             
+            const activeParentPrefix = (template as any)?._detectedParentPrefix || "1";
+
             const sections = EXECUTIVE_SUMMARY_TOC.map((s, idx) => {
+                const isIntro = s.id === "intro" || idx === 0;
+                const pNo = `${activeParentPrefix}.${idx + 1}`;
                 const sectionData: any = {
                     id: s.id,
                     title: s.title,
                     content: sectionsData[s.id] || "",
                     no: idx + 1,
-                    paragraph_no: `1.${idx + 1}`
+                    parent_no: activeParentPrefix,
+                    PARENT_NO: activeParentPrefix,
+                    paragraph_no: pNo,
+                    PARAGRAPH_NO: pNo,
+                    sub_paragraph_no_1: `${pNo}.1`,
+                    SUB_PARAGRAPH_NO_1: `${pNo}.1`,
+                    paragraph_no_1: `${pNo}.1`,
+                    PARAGRAPH_NO_1: `${pNo}.1`,
+                    sub_paragraph_no_2: `${pNo}.2`,
+                    SUB_PARAGRAPH_NO_2: `${pNo}.2`,
+                    paragraph_no_2: `${pNo}.2`,
+                    PARAGRAPH_NO_2: `${pNo}.2`,
+                    sub_paragraph_no_3: `${pNo}.3`,
+                    SUB_PARAGRAPH_NO_3: `${pNo}.3`,
+                    paragraph_no_3: `${pNo}.3`,
+                    PARAGRAPH_NO_3: `${pNo}.3`,
+                    sub_paragraph_no_4: `${pNo}.4`,
+                    SUB_PARAGRAPH_NO_4: `${pNo}.4`,
+                    paragraph_no_4: `${pNo}.4`,
+                    PARAGRAPH_NO_4: `${pNo}.4`,
+                    sub_paragraph_no_5: `${pNo}.5`,
+                    SUB_PARAGRAPH_NO_5: `${pNo}.5`,
+                    paragraph_no_5: `${pNo}.5`,
+                    PARAGRAPH_NO_5: `${pNo}.5`,
+                    is_intro: isIntro,
+                    IS_INTRO: isIntro,
                 };
                 
-                // Create a boolean flag like 'is_seabed' or 'is_marine_growth'
+                // Specific paragraph numbers for anomaly sub-headings
+                if (s.id === "anomaly_finding") {
+                    sectionData.paragraph_no_anomaly_summary = `${pNo}.1`;
+                    sectionData.PARAGRAPH_NO_ANOMALY_SUMMARY = `${pNo}.1`;
+                    sectionData.paragraph_no_sow_status = `${pNo}.2`;
+                    sectionData.PARAGRAPH_NO_SOW_STATUS = `${pNo}.2`;
+                    sectionData.paragraph_no_sow_summary = `${pNo}.2`;
+                    sectionData.PARAGRAPH_NO_SOW_SUMMARY = `${pNo}.2`;
+                    sectionData.paragraph_no_anomaly_list = `${pNo}.3`;
+                    sectionData.PARAGRAPH_NO_ANOMALY_LIST = `${pNo}.3`;
+                    sectionData.paragraph_no_findings = `${pNo}.4`;
+                    sectionData.PARAGRAPH_NO_FINDINGS = `${pNo}.4`;
+                }
+
+                if (s.id === "incomplete") {
+                    sectionData.paragraph_no_incomplete_scope = `${pNo}.1`;
+                    sectionData.PARAGRAPH_NO_INCOMPLETE_SCOPE = `${pNo}.1`;
+                    sectionData.paragraph_no_outstanding_tasks = `${pNo}.2`;
+                    sectionData.PARAGRAPH_NO_OUTSTANDING_TASKS = `${pNo}.2`;
+                }
+                
+                // Create boolean flags like 'is_seabed' or 'is_marine_growth'
                 sectionData[`is_${s.id}`] = true;
+                sectionData[`IS_${s.id.toUpperCase()}`] = true;
                 
                 return sectionData;
             });
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 15,
+                percent: 18,
                 status: "Fetching report aliases and contractor profiles...",
+                detail: "Loading report configurations"
             }));
 
             // Fetch Aliases
-            const aliasesRes = await fetch("/api/report-aliases");
+            const aliasesRes = await fetch(`/api/report-aliases?_t=${Date.now()}`, { cache: "no-store" });
             let aliases: any[] = [];
             if (aliasesRes.ok) {
                 const aliasesData = await aliasesRes.json();
@@ -466,209 +670,579 @@ export default function ExecutiveSummaryPage() {
             }
 
             // Fetch Contractors
-            const contractorsRes = await fetch("/api/jobpack/utils/contractors");
+            const contractorsRes = await fetch(`/api/jobpack/utils/contractors?_t=${Date.now()}`, { cache: "no-store" });
             let contractors: any[] = [];
             if (contractorsRes.ok) {
                 const contrData = await contractorsRes.json();
                 contractors = Array.isArray(contrData?.data) ? contrData.data : [];
             }
-            const activeContractor = contractors.find((c: any) => String(c.lib_id) === String(jp?.metadata?.contrac));
+            const activeContracVal = String(jp?.metadata?.contrac || jp?.metadata?.contractor || "").trim().toLowerCase();
+            let activeContractor = contractors.find((c: any) => 
+                String(c.lib_id).toLowerCase() === activeContracVal ||
+                String(c.id).toLowerCase() === activeContracVal ||
+                String(c.code || "").toLowerCase() === activeContracVal ||
+                String(c.lib_desc || "").toLowerCase() === activeContracVal
+            );
+            if (!activeContractor && activeContracVal) {
+                activeContractor = contractors.find((c: any) => 
+                    (c.lib_id && activeContracVal.includes(String(c.lib_id).toLowerCase())) ||
+                    (c.code && activeContracVal.includes(String(c.code).toLowerCase())) ||
+                    (c.lib_desc && activeContracVal.includes(String(c.lib_desc).toLowerCase()))
+                );
+            }
+            if (!activeContractor) {
+                activeContractor = contractors.find((c: any) => Boolean(c.logo_url));
+            }
 
             setExportProgress(prev => ({
                 ...prev,
-                percent: 30,
-                status: "Loading and mapping detailed inspection records...",
+                percent: 22,
+                status: `Querying inspection records for ${str?.str_name || "structure"}...`,
+                detail: `SOW Report No: ${selections.sowReportNo}`
             }));
 
             // Fetch Detailed Records
-            const recordsRes = await fetch(`/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${selections.sowReportNo}`);
+            const recordsRes = await fetch(
+                `/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${encodeURIComponent(selections.sowReportNo || "")}&_t=${Date.now()}`,
+                { cache: "no-store" }
+            );
             if (!recordsRes.ok) {
                 const errText = await recordsRes.text();
                 throw new Error(`Failed to fetch inspection records: ${recordsRes.status} ${recordsRes.statusText}`);
             }
             const recordsData = await recordsRes.json();
-            const allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
+            allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 26,
+                status: `Retrieved ${allRecords.length} inspection records from database`,
+                detail: `Mapping records & generating sub-reports for ${allRecords.length} items...`
+            }));
 
             // Map data for DOCX
-            const mappedData = await mapInspectionDataForDocx(
+            mappedData = await mapInspectionDataForDocx(
                 allRecords,
                 aliases,
                 jp,
                 str,
                 selections.sowReportNo,
-                companySettings?.data
-            );
-
-            // Generate MGI Graph if applicable
-            const mgiRecords = allRecords.filter((r: any) => 
-                (r.inspection_type?.code || "").toUpperCase() === "RMGI" || 
-                (r.inspection_type?.code || "").toUpperCase() === "MGROW"
-            );
-            if (mgiRecords.length > 0) {
-                const mgiGraph = await generateMgiProfileImage(mgiRecords);
-                if (mgiGraph) {
-                    mappedData.MGI_GRAPH = {
-                        data: mgiGraph,
-                        extension: '.png'
-                    };
+                companySettings?.data,
+                activeTemplateTags,
+                (info) => {
+                    setExportProgress(prev => ({
+                        ...prev,
+                        percent: info.percent !== undefined ? info.percent : prev.percent,
+                        status: info.status || prev.status,
+                        detail: info.detail || prev.detail
+                    }));
                 }
-            }
-
-            // Generate Seabed Map Graph if applicable
-            const seabedRecords = allRecords.filter((r: any) => 
-                (r.inspection_type?.code || "").toUpperCase() === "RSEAB"
             );
-            if (seabedRecords.length > 0) {
-                const seabedGraph = await generateSeabedMapImage(seabedRecords);
-                if (seabedGraph) {
-                    mappedData.SEABED_GRAPH = {
-                        data: seabedGraph,
-                        extension: '.png'
-                    };
-                }
-            }
 
-            // Fetch Structure Visuals (Visual Documentation from Engineering Library)
-            let structureVisuals: any[] = [];
-            try {
-                const structType = (str?.str_type || "PLATFORM").toLowerCase();
-                const sourceType = `${structType}_structure_image`;
-                const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}`);
-                if (apiRes.ok) {
-                    const apiJson = await apiRes.json();
-                    const visualAtts = apiJson.data;
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 70,
+                status: "Generating MGI thickness profile and Seabed survey graphs...",
+                detail: "Rendering graphs & visual documentation"
+            }));
 
-                    if (visualAtts && Array.isArray(visualAtts)) {
-                        const { createClient } = await import("@/utils/supabase/client");
-                        const supabase = createClient();
-
-                        structureVisuals = await Promise.all(visualAtts.map(async (att: any) => {
-                            const title = att.meta?.title || att.name || "Visual Documentation";
-                            const description = att.meta?.description || att.description || "";
-
-                            let imgData: any = null;
-                            try {
-                                const { data: blob, error: downloadError } = await supabase.storage
-                                    .from("attachments")
-                                    .download(att.path);
-
-                                if (blob && !downloadError) {
-                                    const arrayBuffer = await blob.arrayBuffer();
-                                    imgData = new Uint8Array(arrayBuffer);
-                                } else if (downloadError) {
-                                    console.error("Error downloading visual attachment:", downloadError);
-                                }
-                            } catch (downloadErr) {
-                                console.error("Failed to download attachment from storage:", downloadErr);
-                            }
-
-                            if (!imgData) {
-                                imgData = `/api/attachment/url?id=${att.id}`;
-                            }
-
-                            const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
-
-                            return {
-                                title,
-                                description,
-                                photo: { data: imgData, extension: fileExt }
-                            };
-                        }));
+            // Generate MGI Graph if applicable and requested by template
+            if (!activeTemplateTags.size || activeTemplateTags.has("MGI_GRAPH") || activeTemplateTags.has("HAS_MGI_GRAPH")) {
+                const mgiRecords = allRecords.filter((r: any) => 
+                    (r.inspection_type?.code || "").toUpperCase() === "RMGI" || 
+                    (r.inspection_type?.code || "").toUpperCase() === "MGROW"
+                );
+                if (mgiRecords.length > 0) {
+                    const mgiGraph = await generateMgiProfileImage(mgiRecords);
+                    if (mgiGraph) {
+                        mappedData.MGI_GRAPH = {
+                            data: mgiGraph,
+                            extension: '.png'
+                        };
                     }
                 }
-            } catch (e) {
-                console.error("Error fetching structure visuals for docx:", e);
             }
 
-            let rawAnomalies = insightData?.data?.anomalies?.items || [];
+            // Generate Seabed Map Graph if applicable and requested by template
+            if (!activeTemplateTags.size || activeTemplateTags.has("SEABED_GRAPH") || activeTemplateTags.has("HAS_SEABED_GRAPH")) {
+                const seabedRecords = allRecords.filter((r: any) => 
+                    (r.inspection_type?.code || "").toUpperCase() === "RSEAB"
+                );
+                if (seabedRecords.length > 0) {
+                    const seabedGraph = await generateSeabedMapImage(seabedRecords);
+                    if (seabedGraph) {
+                        mappedData.SEABED_GRAPH = {
+                            data: seabedGraph,
+                            extension: '.png'
+                        };
+                    }
+                }
+            }
+
+            // Fetch Structure Visuals only if the template actually uses them
+            structureVisuals = [];
+            const needsVisuals = !activeTemplateTags.size || 
+                activeTemplateTags.has("STRUCTURE_VISUALS") || 
+                activeTemplateTags.has("HAS_VISUALS") || 
+                activeTemplateTags.has("VISUALS");
+
+            if (needsVisuals) {
+                try {
+                    const structType = (str?.str_type || "PLATFORM").toLowerCase();
+                    const sourceType = `${structType}_structure_image`;
+                    const apiRes = await fetch(`/api/attachment/${sourceType}/${cleanStructureId || selections.structureId}?_t=${Date.now()}`, { cache: "no-store" });
+                    if (apiRes.ok) {
+                        const apiJson = await apiRes.json();
+                        const visualAtts = Array.isArray(apiJson.data) ? apiJson.data.slice(0, 6) : [];
+
+                        if (visualAtts.length > 0) {
+                            const { createClient } = await import("@/utils/supabase/client");
+                            const supabase = createClient();
+
+                            structureVisuals = await Promise.all(visualAtts.map(async (att: any) => {
+                                const title = att.meta?.title || att.name || "Visual Documentation";
+                                const description = att.meta?.description || att.description || "";
+
+                                let imgData: any = null;
+                                const isExternal = typeof att.path === "string" && (att.path.startsWith("http://") || att.path.startsWith("https://"));
+                                if (!isExternal && att.path) {
+                                    try {
+                                        // 4-second timeout guard to prevent storage downloads from hanging
+                                        const downloadPromise = supabase.storage
+                                            .from("attachments")
+                                            .download(att.path);
+                                        const timeoutPromise = new Promise<{ data: null; error: Error }>((_, reject) => 
+                                            setTimeout(() => reject(new Error("Timeout")), 4000)
+                                        );
+                                        const { data: blob, error: downloadError } = await Promise.race([downloadPromise, timeoutPromise]) as any;
+
+                                        if (blob && !downloadError) {
+                                            const arrayBuffer = await blob.arrayBuffer();
+                                            imgData = new Uint8Array(arrayBuffer);
+                                        } else if (downloadError) {
+                                            console.warn("Storage download failed, using URL fallback:", downloadError);
+                                        }
+                                    } catch (downloadErr) {
+                                        console.warn("Storage download skipped or timed out, using URL fallback:", downloadErr);
+                                    }
+                                }
+
+                                if (!imgData) {
+                                    const pathParam = att.path ? `&path=${encodeURIComponent(att.path)}` : "";
+                                    imgData = `/api/attachment/url?id=${att.id}${pathParam}`;
+                                }
+
+                                const fileExt = att.meta?.file_type?.split('/')[1] ? `.${att.meta.file_type.split('/')[1]}` : '.jpg';
+
+                                return {
+                                    title,
+                                    description,
+                                    photo: { data: imgData, extension: fileExt }
+                                };
+                            }));
+                        }
+                    }
+                } catch (e) {
+                    console.warn("Error fetching visual attachments:", e);
+                }
+            }
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 74,
+                status: "Fetching anomaly and defect records from register...",
+                detail: `SOW Report: ${selections.sowReportNo}`
+            }));
+
+            let anomaliesResData: any[] = [];
+            try {
+                const anomRes = await fetch(`/api/reports/anomaly-report?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${encodeURIComponent(selections.sowReportNo)}&_t=${Date.now()}`, { cache: "no-store" });
+                if (anomRes.ok) {
+                    const json = await anomRes.json();
+                    if (Array.isArray(json?.data)) {
+                        anomaliesResData = json.data;
+                    }
+                }
+            } catch (err) {
+                console.warn("Failed to fetch anomaly report API:", err);
+            }
+
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 77,
+                status: `Retrieved ${anomaliesResData.length} anomaly and defect records`,
+                detail: "Computing priority matrices and category summaries..."
+            }));
+
+            const buildAnomalyFindingsText = (item: any): string => {
+                if (!item) return "-";
+                const d = (typeof item.inspection_data === "string" ? (() => { try { return JSON.parse(item.inspection_data); } catch { return {}; } })() : item.inspection_data) || {};
+
+                // 1. Inspection Findings
+                let cleanInsp = String(
+                    item.observations || 
+                    item.inspection_description || 
+                    item.inspectionDescription || 
+                    item.findings || 
+                    d.findings || 
+                    d.comments || 
+                    ""
+                ).trim();
+                if (cleanInsp === "-" || cleanInsp.toUpperCase() === "N/A" || cleanInsp.toUpperCase() === "NONE") {
+                    cleanInsp = "";
+                }
+
+                // 2. Anomaly Findings / Defect Description
+                let cleanDefect = String(
+                    item.defect_description || 
+                    item.defectDescription || 
+                    item.defect_desc || 
+                    item.description || 
+                    item.insp_anomalies?.[0]?.defect_description || 
+                    item.insp_anomalies?.[0]?.description || 
+                    ""
+                ).trim();
+                if (cleanDefect === "-" || cleanDefect.toUpperCase() === "N/A" || cleanDefect.toUpperCase() === "NONE") {
+                    cleanDefect = "";
+                }
+
+                // 3. Readings
+                const readingLines: string[] = [];
+
+                // 3a. Primary CP Reading
+                const primaryCp = item.cp_reading ?? item.cp_rdg ?? item.cp_reading_mv ?? item.cp ?? item.cp_stab ?? item.cp_val ?? d.cp_reading ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_stab ?? d.cp_val;
+                if (primaryCp !== null && primaryCp !== undefined && String(primaryCp).trim() !== "" && String(primaryCp).trim() !== "-" && String(primaryCp).trim().toUpperCase() !== "N/A") {
+                    let cpStr = String(primaryCp).trim();
+                    if (cpStr.toLowerCase().startsWith("cp")) {
+                        readingLines.push(cpStr);
+                    } else {
+                        const cpUnit = cpStr.toLowerCase().includes("mv") ? "" : " mV";
+                        readingLines.push(`CP Reading: ${cpStr}${cpUnit}`);
+                    }
+                }
+
+                // 3b. Additional CP Reading
+                const rawAddCp = item.cp_rdg_additional ?? item.cp_additional ?? item.cp_readings ?? item.additional_cp ?? item.add_cp ?? item.add_cp_reading ?? d.cp_rdg_additional ?? d.cp_additional ?? d.cp_readings ?? d.additional_cp ?? d.add_cp ?? d.add_cp_reading;
+                if (Array.isArray(rawAddCp)) {
+                    rawAddCp.forEach((entry: any, idx: number) => {
+                        if (entry === null || entry === undefined) return;
+                        if (typeof entry === "object") {
+                            const val = entry.reading ?? entry.cp_rdg ?? entry.value ?? entry.cp ?? "";
+                            if (val !== "" && val !== null && val !== undefined && String(val).trim() !== "" && String(val).trim() !== "-") {
+                                const cpUnit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                                const loc = entry.location || entry.position ? ` (${entry.location || entry.position})` : (rawAddCp.length > 1 ? ` #${idx + 1}` : "");
+                                readingLines.push(`Additional CP Reading${loc}: ${String(val).trim()}${cpUnit}`);
+                            }
+                        } else if (String(entry).trim() !== "" && String(entry).trim() !== "-" && String(entry).trim().toUpperCase() !== "N/A") {
+                            let addCpStr = String(entry).trim();
+                            if (addCpStr.toLowerCase().startsWith("additional cp") || addCpStr.toLowerCase().startsWith("cp")) {
+                                readingLines.push(addCpStr);
+                            } else {
+                                const cpUnit = addCpStr.toLowerCase().includes("mv") ? "" : " mV";
+                                const num = rawAddCp.length > 1 ? ` #${idx + 1}` : "";
+                                readingLines.push(`Additional CP Reading${num}: ${addCpStr}${cpUnit}`);
+                            }
+                        }
+                    });
+                } else if (rawAddCp && typeof rawAddCp === "object") {
+                    const val = rawAddCp.reading ?? rawAddCp.cp_rdg ?? rawAddCp.value ?? "";
+                    if (val !== "" && val !== null && String(val).trim() !== "" && String(val).trim() !== "-") {
+                        const cpUnit = String(val).toLowerCase().includes("mv") ? "" : " mV";
+                        const loc = rawAddCp.location || rawAddCp.position ? ` (${rawAddCp.location || rawAddCp.position})` : "";
+                        readingLines.push(`Additional CP Reading${loc}: ${String(val).trim()}${cpUnit}`);
+                    }
+                } else if (rawAddCp && String(rawAddCp).trim() !== "" && String(rawAddCp).trim() !== "-" && String(rawAddCp).trim().toUpperCase() !== "N/A") {
+                    let addCpStr = String(rawAddCp).trim();
+                    if (addCpStr.toLowerCase().startsWith("additional cp")) {
+                        readingLines.push(addCpStr);
+                    } else if (addCpStr.toLowerCase().startsWith("cp")) {
+                        readingLines.push(`Additional ${addCpStr}`);
+                    } else {
+                        const cpUnit = addCpStr.toLowerCase().includes("mv") ? "" : " mV";
+                        readingLines.push(`Additional CP Reading: ${addCpStr}${cpUnit}`);
+                    }
+                }
+
+                // 3c. Additional UT Reading
+                const rawAddUt = item.additional_ut ?? item.add_ut ?? item.ut_readings ?? item.ut_reading ?? item.ut_reading_mm ?? item.ut_rdg ?? item.ut_val ?? item.ut_thickness ?? item.nominal_wt ?? d.additional_ut ?? d.add_ut ?? d.ut_readings ?? d.ut_reading ?? d.ut_reading_mm ?? d.ut_rdg ?? d.ut_val ?? d.ut_thickness ?? d.nominal_wt;
+                const clockPts = ['ut_12_o_clock', 'ut_3_o_clock', 'ut_6_o_clock', 'ut_9_o_clock'];
+                const clockLabels = ['12h', '3h', '6h', '9h'];
+                const clockDetails: string[] = [];
+                clockPts.forEach((k, idx) => {
+                    const ptVal = d[k] ?? item[k];
+                    if (ptVal != null && String(ptVal).trim() !== '' && String(ptVal).trim() !== '-' && String(ptVal).trim().toUpperCase() !== 'N/A') {
+                        clockDetails.push(`${clockLabels[idx]}: ${ptVal}mm`);
+                    }
+                });
+
+                if (clockDetails.length > 0) {
+                    readingLines.push(`Additional UT Reading: ${clockDetails.join(', ')}`);
+                } else if (Array.isArray(rawAddUt)) {
+                    rawAddUt.forEach((entry: any, idx: number) => {
+                        if (entry === null || entry === undefined) return;
+                        const val = typeof entry === "object" ? (entry.reading ?? entry.ut_rdg ?? entry.value ?? entry.ut ?? "") : entry;
+                        if (val !== "" && val !== null && String(val).trim() !== "" && String(val).trim() !== "-" && String(val).trim().toUpperCase() !== "N/A") {
+                            const utUnit = String(val).toLowerCase().includes("mm") ? "" : " mm";
+                            const num = rawAddUt.length > 1 ? ` #${idx + 1}` : "";
+                            readingLines.push(`Additional UT Reading${num}: ${String(val).trim()}${utUnit}`);
+                        }
+                    });
+                } else if (rawAddUt && String(rawAddUt).trim() !== "" && String(rawAddUt).trim() !== "-" && String(rawAddUt).trim().toUpperCase() !== "N/A") {
+                    let addUtStr = String(rawAddUt).trim();
+                    if (addUtStr.toLowerCase().startsWith("additional ut") || addUtStr.toLowerCase().startsWith("ut")) {
+                        readingLines.push(addUtStr);
+                    } else {
+                        const utUnit = addUtStr.toLowerCase().includes("mm") ? "" : " mm";
+                        readingLines.push(`Additional UT Reading: ${addUtStr}${utUnit}`);
+                    }
+                }
+
+                // Assemble text blocks:
+                // 1. Inspection findings
+                // [one blank line: \n\n]
+                // 2. Anomaly findings or Defect Description
+                // [one blank line: \n\n]
+                // 3. Readings (CP reading + Additional CP reading + Additional UT reading)
+                const textBlocks: string[] = [];
+
+                if (cleanInsp) {
+                    textBlocks.push(cleanInsp);
+                }
+
+                if (cleanDefect && cleanDefect !== cleanInsp) {
+                    textBlocks.push(cleanDefect);
+                }
+
+                if (readingLines.length > 0) {
+                    textBlocks.push(readingLines.join("\n"));
+                }
+
+                if (textBlocks.length === 0) {
+                    return cleanDefect || cleanInsp || "-";
+                }
+
+                return textBlocks.join("\n\n");
+            };
+
+            const rawAnomaliesMap = new Map<string, any>();
+
+            // 1. From anomaly-report API (already strictly scoped to jobpack_id, structure_id, and sow_report_no)
+            anomaliesResData.forEach((a: any) => {
+                const key = String(a.anomaly_id || a.id || a.display_ref_no || a.ref_no || Math.random());
+                rawAnomaliesMap.set(key, {
+                    ...a,
+                    ref: a.display_ref_no || a.anomaly_ref_no || a.ref_no || `ID: ${a.id || a.anomaly_id}`,
+                    ref_no: a.display_ref_no || a.anomaly_ref_no || a.ref_no || `ID: ${a.id || a.anomaly_id}`,
+                    anom_no: a.display_ref_no || a.anomaly_ref_no || a.ref_no || `ID: ${a.id || a.anomaly_id}`,
+                    qid: a.component_qid || a.qid || a.structure_components?.q_id || "N/A",
+                    elevation: a.elevation || a.elev || "-",
+                    priority: a.priority || a.priority_code || "N/A",
+                    defectCode: a.defect_type || a.defect_type_code || a.category || "N/A",
+                    defect_code: a.defect_type || a.defect_type_code || a.category || "N/A",
+                    description: a.defect_description || a.description || a.observations || a.findings || "-",
+                    defect_description: a.defect_description || a.description || a.observations || "-",
+                    inspection_description: a.observations || a.inspection_description || a.findings || "-",
+                    status: a.status || a.anomaly_status || "OPEN",
+                    is_rectified: a.rectified === true || a.rectified === 1 || String(a.status || "").toLowerCase() === "rectified",
+                    rectified_remarks: a.rectified_remarks || "-",
+                    rectification_date: a.rectified_date || "-"
+                });
+            });
+
+            // 2. Only fallback to insightData or allRecords IF anomaliesResData returned nothing
+            if (rawAnomaliesMap.size === 0) {
+                (insightData?.data?.anomalies?.items || []).forEach((a: any) => {
+                    const key = String(a.anomaly_id || a.id || a.ref || a.ref_no || Math.random());
+                    if (!rawAnomaliesMap.has(key)) {
+                        rawAnomaliesMap.set(key, a);
+                    }
+                });
+
+                if (rawAnomaliesMap.size === 0) {
+                    allRecords.forEach((r: any) => {
+                        const isAnom = (r.insp_anomalies && r.insp_anomalies.length > 0) || String(r.status || "").toUpperCase() === "ANOMALY";
+                        if (isAnom) {
+                            const key = `rec_${r.insp_id}`;
+                            if (!rawAnomaliesMap.has(key)) {
+                                const anomObj = r.insp_anomalies?.[0] || {};
+                                const d = r.inspection_data || {};
+                                const p = anomObj.priority_code || d.priority || "N/A";
+                                const isRect = anomObj.status === "CLOSED" || anomObj.is_rectified || d.rectify || d.is_rectified;
+                                rawAnomaliesMap.set(key, {
+                                    ref: anomObj.anomaly_ref_no || `ID: ${r.insp_id}`,
+                                    ref_no: anomObj.anomaly_ref_no || `ID: ${r.insp_id}`,
+                                    anom_no: anomObj.anomaly_ref_no || `ID: ${r.insp_id}`,
+                                    qid: r.structure_components?.q_id || d.q_id || "N/A",
+                                    elevation: r.elevation || d.elevation || "-",
+                                    priority: p,
+                                    status: isRect ? "RECTIFIED" : "OPEN",
+                                    is_rectified: isRect,
+                                    defectCode: anomObj.defect_type_code || d.defectCode || r.inspection_type?.code || "N/A",
+                                    defect_code: anomObj.defect_type_code || d.defectCode || r.inspection_type?.code || "N/A",
+                                    description: anomObj.defect_description || r.description || d.findings || d.comments || "-",
+                                    defect_description: anomObj.defect_description || r.description || "-",
+                                    inspection_description: d.findings || r.description || "-"
+                                });
+                            }
+                        }
+                    });
+                }
+            }
+
+            let rawAnomalies = Array.from(rawAnomaliesMap.values());
             const getFilteredAnomalies = (filterFn: (item: any) => boolean) => {
                 return rawAnomalies
                     .filter(filterFn)
                     .map((item: any, idx: number) => ({
                         ...item,
                         id: idx + 1,
-                        no: idx + 1
+                        no: idx + 1,
+                        ID: idx + 1,
+                        NO: idx + 1
                     }));
             };
 
-            // Fetch Priority Colors from AMLYCLR combo
+            // Fetch Priority Colors based on u_lib_list & u_lib_combo (ANMLYCLR)
+            // Default palette with distinct colors for each priority tier:
             const priorityColors: Record<string, string> = {
-                "P1": "255,0,0",
-                "P2": "255,255,0",
-                "P3": "0,255,0",
-                "OBSERVATION": "255,165,0"
+                "P1": "255,0,0",          // Priority 1: Red (#FF0000)
+                "P2": "255,165,0",        // Priority 2: Orange (#FFA500)
+                "P3": "255,255,0",        // Priority 3: Yellow (#FFFF00)
+                "OBSERVATION": "59,130,246" // Observation / Informational: Blue (#3B82F6)
+            };
+
+            const parseColorValueToRgbAndHex = (rawVal: string, colorLibMap: Record<string, string>): { rgb: string; hex: string } => {
+                if (!rawVal) return { rgb: "255,255,255", hex: "FFFFFF" };
+                const clean = rawVal.trim();
+                const upper = clean.toUpperCase().replace(/^#/, '');
+
+                // 1. Check if it's in COLOR library map
+                if (colorLibMap[clean.toLowerCase()]) {
+                    return parseColorValueToRgbAndHex(colorLibMap[clean.toLowerCase()], {});
+                }
+
+                // 2. Named colors
+                const namedColors: Record<string, { rgb: string; hex: string }> = {
+                    "RED": { rgb: "255,0,0", hex: "FF0000" },
+                    "ORANGE": { rgb: "255,165,0", hex: "FFA500" },
+                    "AMBER": { rgb: "245,158,11", hex: "F59E0B" },
+                    "YELLOW": { rgb: "255,255,0", hex: "FFFF00" },
+                    "GREEN": { rgb: "34,197,94", hex: "22C55E" },
+                    "BLUE": { rgb: "59,130,246", hex: "3B82F6" },
+                    "CYAN": { rgb: "6,182,212", hex: "06B6D4" },
+                    "PURPLE": { rgb: "139,92,246", hex: "8B5CF6" },
+                    "WHITE": { rgb: "255,255,255", hex: "FFFFFF" },
+                    "GRAY": { rgb: "226,232,240", hex: "E2E8F0" },
+                    "GREY": { rgb: "226,232,240", hex: "E2E8F0" }
+                };
+                if (namedColors[upper]) {
+                    return namedColors[upper];
+                }
+
+                // 3. Hex code (6 or 3 chars)
+                if (/^[0-9A-F]{6}$/i.test(upper)) {
+                    const r = parseInt(upper.substring(0, 2), 16);
+                    const g = parseInt(upper.substring(2, 4), 16);
+                    const b = parseInt(upper.substring(4, 6), 16);
+                    return { rgb: `${r},${g},${b}`, hex: upper.toUpperCase() };
+                }
+                if (/^[0-9A-F]{3}$/i.test(upper)) {
+                    const r = parseInt(upper[0] + upper[0], 16);
+                    const g = parseInt(upper[1] + upper[1], 16);
+                    const b = parseInt(upper[2] + upper[2], 16);
+                    const hex = (upper[0] + upper[0] + upper[1] + upper[1] + upper[2] + upper[2]).toUpperCase();
+                    return { rgb: `${r},${g},${b}`, hex };
+                }
+
+                // 4. Comma-separated RGB string
+                const parts = clean.split(',').map(x => parseInt(x.trim(), 10));
+                if (parts.length === 3 && parts.every(x => !isNaN(x) && x >= 0 && x <= 255)) {
+                    const hex = parts.map(x => x.toString(16).padStart(2, '0').toUpperCase()).join('');
+                    return { rgb: `${parts[0]},${parts[1]},${parts[2]}`, hex };
+                }
+
+                return { rgb: "255,255,255", hex: "FFFFFF" };
+            };
+
+            const getPriorityKey = (prioStr: string) => {
+                const clean = String(prioStr || "").trim().toUpperCase();
+                if (clean === "P1" || clean === "PRIORITY 1" || clean === "PRIORITY_1" || clean === "1" || clean === "HIGH" || clean === "CRITICAL") return "P1";
+                if (clean === "P2" || clean === "PRIORITY 2" || clean === "PRIORITY_2" || clean === "2" || clean === "MEDIUM") return "P2";
+                if (clean === "P3" || clean === "PRIORITY 3" || clean === "PRIORITY_3" || clean === "3" || clean === "LOW") return "P3";
+                if (clean === "OBS" || clean === "OBSERVATION" || clean === "O" || clean === "FINDING" || clean === "INFORMATIONAL" || clean === "INFO") return "OBSERVATION";
+                return "OBSERVATION";
             };
 
             try {
-                const colorsRes = await fetch("/api/library/combo/ANMLYCLR");
-                if (colorsRes.ok) {
-                    const colorsJson = await colorsRes.json();
-                    const items = Array.isArray(colorsJson?.data) ? colorsJson.data : [];
-                    items.forEach((item: any) => {
+                // Fetch library lists (AMLY_TYP, COLOR) and combo mappings (ANMLYCLR)
+                const [comboRes, prioLibRes, colorLibRes] = await Promise.all([
+                    fetch(`/api/library/combo/ANMLYCLR?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null),
+                    fetch(`/api/library/AMLY_TYP?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null),
+                    fetch(`/api/library/COLOR?_t=${Date.now()}`, { cache: "no-store" }).catch(() => null)
+                ]);
+
+                const colorLibMap: Record<string, string> = {};
+                if (colorLibRes && colorLibRes.ok) {
+                    const cData = await colorLibRes.json();
+                    const cItems = Array.isArray(cData?.data) ? cData.data : (Array.isArray(cData) ? cData : []);
+                    cItems.forEach((item: any) => {
+                        const val = item.code_1 || item.lib_desc || item.lib_name || item.lib_id;
+                        if (item.lib_id) colorLibMap[String(item.lib_id).toLowerCase()] = String(val);
+                        if (item.lib_desc) colorLibMap[String(item.lib_desc).toLowerCase()] = String(val);
+                    });
+                }
+
+                const prioIdToKeyMap: Record<string, string> = {};
+                if (prioLibRes && prioLibRes.ok) {
+                    const pData = await prioLibRes.json();
+                    const pItems = Array.isArray(pData?.data) ? pData.data : (Array.isArray(pData) ? pData : []);
+                    pItems.forEach((p: any) => {
+                        const desc = String(p.lib_desc || "").trim();
+                        const key = getPriorityKey(desc || p.lib_id);
+                        if (p.lib_id) prioIdToKeyMap[String(p.lib_id).trim().toUpperCase()] = key;
+                        if (p.lib_desc) prioIdToKeyMap[String(p.lib_desc).trim().toUpperCase()] = key;
+                    });
+                }
+
+                if (comboRes && comboRes.ok) {
+                    const comboJson = await comboRes.json();
+                    const comboItems = Array.isArray(comboJson?.data) ? comboJson.data : [];
+                    comboItems.forEach((item: any) => {
                         if (item.lib_delete !== 1 && item.lib_delete !== true) {
                             const code1 = String(item.code_1 || "").trim().toUpperCase();
-                            const colorVal = String(item.code_2 || "").trim();
-                            if (code1 && colorVal) {
-                                priorityColors[code1] = colorVal;
+                            const code2 = String(item.code_2 || "").trim();
+                            if (code1 && code2) {
+                                const targetKey = prioIdToKeyMap[code1] || getPriorityKey(code1);
+                                if (targetKey) {
+                                    const parsed = parseColorValueToRgbAndHex(code2, colorLibMap);
+                                    if (parsed.rgb) {
+                                        priorityColors[targetKey] = parsed.rgb;
+                                        priorityColors[`${targetKey}_HEX`] = parsed.hex;
+                                    }
+                                }
                             }
                         }
                     });
                 }
             } catch (err) {
-                console.error("Failed to fetch AMLYCLR colors:", err);
+                console.warn("Library color lookup error:", err);
             }
 
-            const rgbToHex = (rgbStr: string): string => {
-                const clean = rgbStr.trim().toUpperCase();
-                if (clean === "RED" || clean === "FF0000") return "FF0000";
-                if (clean === "YELLOW" || clean === "FFFF00") return "FFFF00";
-                if (clean === "GREEN" || clean === "00FF00") return "00FF00";
-                if (clean === "ORANGE" || clean === "FFA500") return "FFA500";
-                if (clean === "BLUE" || clean === "0000FF") return "0000FF";
-                
-                const parts = clean.split(',').map(x => parseInt(x.trim()));
-                if (parts.length === 3 && parts.every(x => !isNaN(x))) {
-                    return parts.map(x => {
-                        const hex = x.toString(16).toUpperCase();
-                        return hex.length === 1 ? '0' + hex : hex;
-                    }).join('');
-                }
-                return "FFFFFF";
-            };
+            const p1Parsed = parseColorValueToRgbAndHex(priorityColors["P1_HEX"] || priorityColors["P1"] || "255,0,0", {});
+            const p2Parsed = parseColorValueToRgbAndHex(priorityColors["P2_HEX"] || priorityColors["P2"] || "255,165,0", {});
+            const p3Parsed = parseColorValueToRgbAndHex(priorityColors["P3_HEX"] || priorityColors["P3"] || "255,255,0", {});
+            const obsParsed = parseColorValueToRgbAndHex(priorityColors["OBSERVATION_HEX"] || priorityColors["OBSERVATION"] || "59,130,246", {});
 
-            const obsColorRgb = priorityColors["OBSERVATION"] || "255,165,0";
-            const p1ColorRgb = priorityColors["P1"] || "255,0,0";
-            const p2ColorRgb = priorityColors["P2"] || "255,255,0";
-            const p3ColorRgb = priorityColors["P3"] || "0,255,0";
+            const p1ColorRgb = p1Parsed.rgb;
+            const p1ColorHex = p1Parsed.hex;
+            const p2ColorRgb = p2Parsed.rgb;
+            const p2ColorHex = p2Parsed.hex;
+            const p3ColorRgb = p3Parsed.rgb;
+            const p3ColorHex = p3Parsed.hex;
+            const obsColorRgb = obsParsed.rgb;
+            const obsColorHex = obsParsed.hex;
 
-            const obsColorHex = rgbToHex(obsColorRgb);
-            const p1ColorHex = rgbToHex(p1ColorRgb);
-            const p2ColorHex = rgbToHex(p2ColorRgb);
-            const p3ColorHex = rgbToHex(p3ColorRgb);
-
-            const getPriorityFilter = (prioName: string) => {
-                const upper = prioName.toUpperCase();
-                return (x: any) => {
-                    const itemPrio = String(x.priority || "").trim().toUpperCase();
-                    return itemPrio === upper || 
-                           itemPrio === `PRIORITY ${upper}` || 
-                           itemPrio === `PRIORITY_${upper}` ||
-                           (upper === "P1" && itemPrio === "PRIORITY 1") ||
-                           (upper === "P2" && itemPrio === "PRIORITY 2") ||
-                           (upper === "P3" && itemPrio === "PRIORITY 3") ||
-                           (upper === "OBS" && (itemPrio === "OBSERVATION" || itemPrio === "OBS"));
-                };
-            };
-            const getPriorityKey = (prioStr: string) => {
-                const clean = String(prioStr || "").trim().toUpperCase();
-                if (clean === "P1" || clean === "PRIORITY 1") return "P1";
-                if (clean === "P2" || clean === "PRIORITY 2") return "P2";
-                if (clean === "P3" || clean === "PRIORITY 3") return "P3";
-                if (clean === "OBS" || clean === "OBSERVATION" || clean === "O") return "OBSERVATION";
-                return null;
-            };
-
-            rawAnomalies = rawAnomalies.map((item: any) => {
+            rawAnomalies = rawAnomalies.map((item: any, idx: number) => {
                 const key = getPriorityKey(item.priority || item.priority_code);
                 let hex = "FFFFFF";
                 let rgb = "255,255,255";
@@ -680,15 +1254,48 @@ export default function ExecutiveSummaryPage() {
 
                 const defectDesc = item.defect_description || item.defectDescription || item.defect_desc || item.description || item.findings || item.comments || "-";
                 const inspDesc = item.inspection_description || item.inspectionDescription || item.inspection_data?.findings || item.findings || item.description || item.comments || "-";
+                const combinedFindings = buildAnomalyFindingsText(item);
                 const isRect = item.is_rectified === true || item.is_rectified === 1 || String(item.status || "").toLowerCase() === "rectified" || item.rectified === true || item.rectified === 1;
                 const rectRemarks = item.rectified_remarks || item.rectification_remarks || item.rectified_action || item.remedial_action || item.action_taken || item.rectified_comments || (isRect ? (item.remarks || item.comments || "Rectified during campaign") : "-");
                 const rectDate = item.rectification_date || item.rectified_date || item.rect_date || (isRect ? (item.date || "-") : "-");
 
+                const refVal = item.ref || item.ref_no || item.anom_no || item.defect_ref_no || item.id || "-";
+                const defCode = item.defect_code || item.defectCode || item.defect || item.defect_type || "-";
+                const qidVal = item.qid || item.structure_components?.q_id || item.component_code || item.component_id || "N/A";
+                const elvVal = item.elevation || item.elev || item.inspection_data?.elevation || "-";
+
                 return {
                     ...item,
+                    id: idx + 1,
+                    no: idx + 1,
+                    ID: idx + 1,
+                    NO: idx + 1,
+                    qid: qidVal,
+                    QID: qidVal,
+                    elevation: elvVal,
+                    elev: elvVal,
+                    ELEVATION: elvVal,
+                    ELEV: elvVal,
+                    defect_code: defCode,
+                    defect: defCode,
+                    DEFECT_CODE: defCode,
+                    DEFECT: defCode,
+                    ref: refVal,
+                    ref_no: refVal,
+                    anom_no: refVal,
+                    REF: refVal,
+                    REF_NO: refVal,
+                    ANOM_NO: refVal,
+                    findings: combinedFindings,
+                    FINDINGS: combinedFindings,
+                    findings_text: combinedFindings,
+                    FINDINGS_TEXT: combinedFindings,
+                    description: combinedFindings,
+                    DESCRIPTION: combinedFindings,
                     defect_description: defectDesc,
+                    DEFECT_DESCRIPTION: defectDesc,
                     inspection_description: inspDesc,
-                    description: defectDesc,
+                    INSPECTION_DESCRIPTION: inspDesc,
                     is_rectified: isRect,
                     rectified: isRect ? "Yes" : "No",
                     rectified_status: isRect ? "Rectified" : "Not Rectified",
@@ -703,49 +1310,134 @@ export default function ExecutiveSummaryPage() {
                     color_xml: `<w:tcPr><w:shd w:fill="${hex}"/></w:tcPr>`
                 };
             });
-            const p1Anoms = rawAnomalies.filter(getPriorityFilter("P1"));
-            const p2Anoms = rawAnomalies.filter(getPriorityFilter("P2"));
-            const p3Anoms = rawAnomalies.filter(getPriorityFilter("P3"));
-            const obsAnoms = rawAnomalies.filter(getPriorityFilter("OBS"));
+
+            const p1Anoms = rawAnomalies.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P1");
+            const p2Anoms = rawAnomalies.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P2");
+            const p3Anoms = rawAnomalies.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P3");
+            const obsAnoms = rawAnomalies.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "OBSERVATION");
 
             const getRectifiedCount = (items: any[]) => items.filter((x: any) => x.is_rectified === true || x.is_rectified === 1 || String(x.status || "").toLowerCase() === "rectified" || (x.rectified === true || x.rectified === 1)).length;
 
             const categoryStats = [
                 {
                     name: "Observation",
+                    NAME: "OBSERVATION",
+                    category: "Observation",
+                    CATEGORY: "OBSERVATION",
+                    category_name: "Observation",
+                    CATEGORY_NAME: "OBSERVATION",
+                    Category: "Observation",
                     not_rectified: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    NOT_RECTIFIED: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    notRectified: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    open: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    OPEN: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    unrectified: obsAnoms.length - getRectifiedCount(obsAnoms),
+                    UNRECTIFIED: obsAnoms.length - getRectifiedCount(obsAnoms),
                     rectified: getRectifiedCount(obsAnoms),
+                    RECTIFIED: getRectifiedCount(obsAnoms),
+                    closed: getRectifiedCount(obsAnoms),
+                    CLOSED: getRectifiedCount(obsAnoms),
                     total: obsAnoms.length,
+                    TOTAL: obsAnoms.length,
+                    count: obsAnoms.length,
+                    COUNT: obsAnoms.length,
                     color_hex: obsColorHex,
+                    COLOR_HEX: obsColorHex,
                     color_rgb: obsColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
+                    COLOR_RGB: obsColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 1",
+                    NAME: "PRIORITY 1",
+                    category: "Priority 1",
+                    CATEGORY: "PRIORITY 1",
+                    category_name: "Priority 1",
+                    CATEGORY_NAME: "PRIORITY 1",
+                    Category: "Priority 1",
                     not_rectified: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    NOT_RECTIFIED: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    notRectified: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    open: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    OPEN: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    unrectified: p1Anoms.length - getRectifiedCount(p1Anoms),
+                    UNRECTIFIED: p1Anoms.length - getRectifiedCount(p1Anoms),
                     rectified: getRectifiedCount(p1Anoms),
+                    RECTIFIED: getRectifiedCount(p1Anoms),
+                    closed: getRectifiedCount(p1Anoms),
+                    CLOSED: getRectifiedCount(p1Anoms),
                     total: p1Anoms.length,
+                    TOTAL: p1Anoms.length,
+                    count: p1Anoms.length,
+                    COUNT: p1Anoms.length,
                     color_hex: p1ColorHex,
+                    COLOR_HEX: p1ColorHex,
                     color_rgb: p1ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p1ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 2",
+                    NAME: "PRIORITY 2",
+                    category: "Priority 2",
+                    CATEGORY: "PRIORITY 2",
+                    category_name: "Priority 2",
+                    CATEGORY_NAME: "PRIORITY 2",
+                    Category: "Priority 2",
                     not_rectified: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    NOT_RECTIFIED: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    notRectified: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    open: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    OPEN: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    unrectified: p2Anoms.length - getRectifiedCount(p2Anoms),
+                    UNRECTIFIED: p2Anoms.length - getRectifiedCount(p2Anoms),
                     rectified: getRectifiedCount(p2Anoms),
+                    RECTIFIED: getRectifiedCount(p2Anoms),
+                    closed: getRectifiedCount(p2Anoms),
+                    CLOSED: getRectifiedCount(p2Anoms),
                     total: p2Anoms.length,
+                    TOTAL: p2Anoms.length,
+                    count: p2Anoms.length,
+                    COUNT: p2Anoms.length,
                     color_hex: p2ColorHex,
+                    COLOR_HEX: p2ColorHex,
                     color_rgb: p2ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p2ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 3",
+                    NAME: "PRIORITY 3",
+                    category: "Priority 3",
+                    CATEGORY: "PRIORITY 3",
+                    category_name: "Priority 3",
+                    CATEGORY_NAME: "PRIORITY 3",
+                    Category: "Priority 3",
                     not_rectified: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    NOT_RECTIFIED: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    notRectified: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    open: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    OPEN: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    unrectified: p3Anoms.length - getRectifiedCount(p3Anoms),
+                    UNRECTIFIED: p3Anoms.length - getRectifiedCount(p3Anoms),
                     rectified: getRectifiedCount(p3Anoms),
+                    RECTIFIED: getRectifiedCount(p3Anoms),
+                    closed: getRectifiedCount(p3Anoms),
+                    CLOSED: getRectifiedCount(p3Anoms),
                     total: p3Anoms.length,
+                    TOTAL: p3Anoms.length,
+                    count: p3Anoms.length,
+                    COUNT: p3Anoms.length,
                     color_hex: p3ColorHex,
+                    COLOR_HEX: p3ColorHex,
                     color_rgb: p3ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p3ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
                 }
             ];
 
@@ -794,10 +1486,10 @@ export default function ExecutiveSummaryPage() {
                 };
             });
 
-            const obsFindings = rawFindings.filter(getPriorityFilter("OBS"));
-            const p1Findings = rawFindings.filter(getPriorityFilter("P1"));
-            const p2Findings = rawFindings.filter(getPriorityFilter("P2"));
-            const p3Findings = rawFindings.filter(getPriorityFilter("P3"));
+            const obsFindings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "OBSERVATION");
+            const p1Findings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P1");
+            const p2Findings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P2");
+            const p3Findings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P3");
 
             const incompleteRecords = allRecords
                 .filter((r: any) => {
@@ -835,39 +1527,107 @@ export default function ExecutiveSummaryPage() {
             const findingsCategoryStats = [
                 {
                     name: "Observation",
+                    NAME: "OBSERVATION",
+                    category: "Observation",
+                    CATEGORY: "OBSERVATION",
+                    category_name: "Observation",
+                    CATEGORY_NAME: "OBSERVATION",
+                    Category: "Observation",
                     not_rectified: obsFindings.length - getRectifiedCount(obsFindings),
+                    NOT_RECTIFIED: obsFindings.length - getRectifiedCount(obsFindings),
+                    notRectified: obsFindings.length - getRectifiedCount(obsFindings),
+                    open: obsFindings.length - getRectifiedCount(obsFindings),
+                    OPEN: obsFindings.length - getRectifiedCount(obsFindings),
                     rectified: getRectifiedCount(obsFindings),
+                    RECTIFIED: getRectifiedCount(obsFindings),
                     total: obsFindings.length,
+                    TOTAL: obsFindings.length,
+                    count: obsFindings.length,
+                    COUNT: obsFindings.length,
                     color_hex: obsColorHex,
+                    COLOR_HEX: obsColorHex,
                     color_rgb: obsColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
+                    COLOR_RGB: obsColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${obsColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 1",
+                    NAME: "PRIORITY 1",
+                    category: "Priority 1",
+                    CATEGORY: "PRIORITY 1",
+                    category_name: "Priority 1",
+                    CATEGORY_NAME: "PRIORITY 1",
+                    Category: "Priority 1",
                     not_rectified: p1Findings.length - getRectifiedCount(p1Findings),
+                    NOT_RECTIFIED: p1Findings.length - getRectifiedCount(p1Findings),
+                    notRectified: p1Findings.length - getRectifiedCount(p1Findings),
+                    open: p1Findings.length - getRectifiedCount(p1Findings),
+                    OPEN: p1Findings.length - getRectifiedCount(p1Findings),
                     rectified: getRectifiedCount(p1Findings),
+                    RECTIFIED: getRectifiedCount(p1Findings),
                     total: p1Findings.length,
+                    TOTAL: p1Findings.length,
+                    count: p1Findings.length,
+                    COUNT: p1Findings.length,
                     color_hex: p1ColorHex,
+                    COLOR_HEX: p1ColorHex,
                     color_rgb: p1ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p1ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p1ColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 2",
+                    NAME: "PRIORITY 2",
+                    category: "Priority 2",
+                    CATEGORY: "PRIORITY 2",
+                    category_name: "Priority 2",
+                    CATEGORY_NAME: "PRIORITY 2",
+                    Category: "Priority 2",
                     not_rectified: p2Findings.length - getRectifiedCount(p2Findings),
+                    NOT_RECTIFIED: p2Findings.length - getRectifiedCount(p2Findings),
+                    notRectified: p2Findings.length - getRectifiedCount(p2Findings),
+                    open: p2Findings.length - getRectifiedCount(p2Findings),
+                    OPEN: p2Findings.length - getRectifiedCount(p2Findings),
                     rectified: getRectifiedCount(p2Findings),
+                    RECTIFIED: getRectifiedCount(p2Findings),
                     total: p2Findings.length,
+                    TOTAL: p2Findings.length,
+                    count: p2Findings.length,
+                    COUNT: p2Findings.length,
                     color_hex: p2ColorHex,
+                    COLOR_HEX: p2ColorHex,
                     color_rgb: p2ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p2ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p2ColorHex}"/></w:tcPr>`
                 },
                 {
                     name: "Priority 3",
+                    NAME: "PRIORITY 3",
+                    category: "Priority 3",
+                    CATEGORY: "PRIORITY 3",
+                    category_name: "Priority 3",
+                    CATEGORY_NAME: "PRIORITY 3",
+                    Category: "Priority 3",
                     not_rectified: p3Findings.length - getRectifiedCount(p3Findings),
+                    NOT_RECTIFIED: p3Findings.length - getRectifiedCount(p3Findings),
+                    notRectified: p3Findings.length - getRectifiedCount(p3Findings),
+                    open: p3Findings.length - getRectifiedCount(p3Findings),
+                    OPEN: p3Findings.length - getRectifiedCount(p3Findings),
                     rectified: getRectifiedCount(p3Findings),
+                    RECTIFIED: getRectifiedCount(p3Findings),
                     total: p3Findings.length,
+                    TOTAL: p3Findings.length,
+                    count: p3Findings.length,
+                    COUNT: p3Findings.length,
                     color_hex: p3ColorHex,
+                    COLOR_HEX: p3ColorHex,
                     color_rgb: p3ColorRgb,
-                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
+                    COLOR_RGB: p3ColorRgb,
+                    color_xml: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`,
+                    COLOR_XML: `<w:tcPr><w:shd w:fill="${p3ColorHex}"/></w:tcPr>`
                 }
             ];
 
@@ -877,17 +1637,198 @@ export default function ExecutiveSummaryPage() {
 
             const outstandingRawList = insightData?.data?.outstanding_tasks || [];
 
-            // Sections (User-Written) with section-specific filtered lists and global tables
             // Helper functions for ROV/Diving and Above/Underwater filtering
-            const isROV = (item: any) => {
-                if (item.rov_job_id) return true;
-                const code = String(item.inspection_type_code || item.inspectionType || item.inspection_data?.insp_type || "").toUpperCase();
-                if (code === "NAVIG" || code === "ROVCLB" || (code.startsWith("R") && code !== "RISER" && code !== "RB")) return true;
-                const diveNo = String(item.inspection_data?.dive_no || item.inspection_data?.DIVE_NO || item.dive_no || "").toUpperCase();
-                if (diveNo.startsWith("R")) return true;
-                return false;
+            const isJpRov = Number(jp?.metadata?.rov) === 1 || 
+                             String(jp?.metadata?.rov) === "1" || 
+                             jp?.metadata?.rov === true || 
+                             (Array.isArray(jp?.metadata?.methods) && jp.metadata.methods.includes("ROV")) ||
+                             String(jp?.metadata?.plantype || "").toUpperCase().includes("ROV") ||
+                             String(jp?.metadata?.tasktype || "").toUpperCase().includes("ROV");
+
+            const isJpDiving = Boolean(jp?.metadata?.divetyp) || 
+                                (Array.isArray(jp?.metadata?.methods) && jp.metadata.methods.includes("DIVE")) ||
+                                String(jp?.metadata?.plantype || "").toUpperCase().includes("DIVE") ||
+                                String(jp?.metadata?.tasktype || "").toUpperCase().includes("DIVE");
+
+            const determineTaskType = (item: any): "ROV" | "Diving" => {
+                const data = item?.inspection_data || {};
+                const code = String(item?.inspection_type_code || item?.inspection_type?.code || item?.inspection_code || "").trim().toUpperCase();
+                const name = String(item?.inspection_type?.name || item?.inspection_name || item?.name || item?.inspectionName || "").trim().toUpperCase();
+
+                if (item?.rov_job_id || data?.rov_job_id || data?.rov_job_no) return "ROV";
+                if (item?.dive_job_id || data?.dive_job_id || data?.dive_job_no) return "Diving";
+
+                const diveNo = String(item?.dive_no || data?.dive_no || data?.DIVE_NO || "").trim().toUpperCase();
+                if (diveNo.startsWith("R") || diveNo.includes("ROV")) return "ROV";
+                if (diveNo.startsWith("D") || diveNo.includes("DIVE")) return "Diving";
+
+                const inspMode = String(data?.insp_mode || data?.mode || data?.task_type || data?.taskType || "").toUpperCase();
+                if (inspMode.includes("ROV")) return "ROV";
+                if (inspMode.includes("DIVE") || inspMode.includes("DIVING")) return "Diving";
+
+                if (code.startsWith("R") && code !== "RISER" && code !== "RB" && code !== "RE") return "ROV";
+                if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK" && code !== "DR") return "Diving";
+                if (["NAVIG", "ROVCLB", "RSEAB", "RSCO", "RSZ", "RWDI"].includes(code)) return "ROV";
+                if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return "Diving";
+
+                if (name.includes("ROV") || name.includes("(ROV)")) return "ROV";
+                if (name.includes("DIVING") || name.includes("DIVER") || name.includes("(DIVING)")) return "Diving";
+
+                if (isJpRov && !isJpDiving) return "ROV";
+                if (isJpDiving && !isJpRov) return "Diving";
+
+                return "ROV";
             };
-            const isDiving = (item: any) => !isROV(item);
+
+            const isROV = (item: any) => determineTaskType(item) === "ROV";
+            const isDiving = (item: any) => determineTaskType(item) === "Diving";
+
+            // Build SOW summary strictly scoped to the active jobpack, structure, and sow_report_no
+            const apiSowSummary = insightData?.data?.sow_summary || [];
+
+            // Index incomplete counts per inspection type from incompleteRecords & outstanding tasks
+            const incompleteCountByType = new Map<string, number>();
+            incompleteRecords.forEach((r: any) => {
+                const name = formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_code || r.inspection_type?.code || "Inspection");
+                incompleteCountByType.set(name, (incompleteCountByType.get(name) || 0) + 1);
+            });
+            outstandingRawList.forEach((t: any) => {
+                const name = formatInspectionTypeName(t.inspectionType || t.inspection_type || "Inspection");
+                incompleteCountByType.set(name, Math.max(incompleteCountByType.get(name) || 0, 1));
+            });
+
+            const sowSummaryRows = (apiSowSummary.length > 0
+                ? apiSowSummary.map((item: any) => {
+                    const name = formatInspectionTypeName(item.inspectionName || item.inspection_name || item.name || "Inspection");
+                    const taskType = item.taskType || determineTaskType(item);
+                    let total = Number(item.totalQid ?? item.total ?? 0);
+                    let incomplete = Number(item.incompleteQid ?? item.incomplete ?? 0);
+
+                    const foundIncomplete = incompleteCountByType.get(name) || 0;
+                    if (incomplete === 0 && foundIncomplete > 0) {
+                        incomplete = foundIncomplete;
+                    }
+                    if (incomplete > total) total = incomplete;
+                    const completed = Number(item.completedQid ?? item.completed ?? Math.max(0, total - incomplete));
+                    
+                    const incPctVal = total > 0 ? (incomplete / total) * 100 : 0;
+                    const compPctVal = total > 0 ? (completed / total) * 100 : 0;
+
+                    return {
+                        ...item,
+                        inspectionName: name,
+                        inspection_name: name,
+                        INSPECTION_NAME: name,
+                        name: name,
+                        NAME: name,
+                        taskType: taskType,
+                        tasktype: taskType,
+                        task_type: taskType,
+                        TASK_TYPE: taskType,
+                        TASKTYPE: taskType,
+                        totalQid: total,
+                        total_qid: total,
+                        total: total,
+                        TOTAL_QID: total,
+                        TOTAL: total,
+                        completedQid: completed,
+                        completed_qid: completed,
+                        completed: completed,
+                        COMPLETED_QID: completed,
+                        COMPLETED: completed,
+                        incompleteQid: incomplete,
+                        incomplete_qid: incomplete,
+                        incomplete: incomplete,
+                        INCOMPLETE_QID: incomplete,
+                        INCOMPLETE: incomplete,
+                        completedPct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        completed_pct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        completionPct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        completion_pct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        COMPLETED_PCT: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        COMPLETION_PCT: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                        incompletePct: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`,
+                        incomplete_pct: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`,
+                        INCOMPLETE_PCT: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`
+                    };
+                })
+                : (() => {
+                    const gMap = new Map<string, { name: string; taskType: string; total: number; incomplete: number; completed: number }>();
+                    allRecords.forEach((r: any) => {
+                        const code = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                        if (code === "PL_CO" || code === "PLCO") return;
+                        const name = formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_name || code || "Inspection");
+                        const st = String(r.status || r.inspection_data?.status || "").toUpperCase();
+                        const ft = String(r.finding_type || r.inspection_data?.finding_type || "").toUpperCase();
+                        const isInc = st === "INCOMPLETE" || ft === "INCOMPLETE" || Boolean(r.incomplete_reason || r.inspection_data?.incomplete_reason) || r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1;
+                        const taskType = determineTaskType(r);
+                        
+                        if (!gMap.has(name)) {
+                            gMap.set(name, { name, taskType, total: 0, incomplete: 0, completed: 0 });
+                        }
+                        const g = gMap.get(name)!;
+                        g.total++;
+                        if (isInc) g.incomplete++;
+                        else g.completed++;
+                    });
+
+                    return Array.from(gMap.values()).map(g => {
+                        const foundIncomplete = incompleteCountByType.get(g.name) || 0;
+                        if (g.incomplete === 0 && foundIncomplete > 0) {
+                            g.incomplete = foundIncomplete;
+                        }
+                        if (g.incomplete > g.total) g.total = g.incomplete;
+                        g.completed = Math.max(0, g.total - g.incomplete);
+
+                        const incPctVal = g.total > 0 ? (g.incomplete / g.total) * 100 : 0;
+                        const compPctVal = g.total > 0 ? (g.completed / g.total) * 100 : 0;
+
+                        return {
+                            inspectionName: g.name,
+                            inspection_name: g.name,
+                            INSPECTION_NAME: g.name,
+                            name: g.name,
+                            NAME: g.name,
+                            taskType: g.taskType,
+                            tasktype: g.taskType,
+                            task_type: g.taskType,
+                            TASK_TYPE: g.taskType,
+                            TASKTYPE: g.taskType,
+                            totalQid: g.total,
+                            total_qid: g.total,
+                            total: g.total,
+                            TOTAL_QID: g.total,
+                            TOTAL: g.total,
+                            completedQid: g.completed,
+                            completed_qid: g.completed,
+                            completed: g.completed,
+                            COMPLETED_QID: g.completed,
+                            COMPLETED: g.completed,
+                            incompleteQid: g.incomplete,
+                            incomplete_qid: g.incomplete,
+                            incomplete: g.incomplete,
+                            INCOMPLETE_QID: g.incomplete,
+                            INCOMPLETE: g.incomplete,
+                            completedPct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            completed_pct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            completionPct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            completion_pct: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            COMPLETED_PCT: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            COMPLETION_PCT: Number.isInteger(compPctVal) ? `${compPctVal}%` : `${compPctVal.toFixed(1)}%`,
+                            incompletePct: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`,
+                            incomplete_pct: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`,
+                            INCOMPLETE_PCT: Number.isInteger(incPctVal) ? `${incPctVal}%` : `${incPctVal.toFixed(1)}%`
+                        };
+                    });
+                })()
+            ).filter((item: any) => Number(item.totalQid ?? item.total ?? 0) > 0)
+            .map((item: any, idx: number) => ({
+                ...item,
+                no: idx + 1,
+                NO: idx + 1,
+                id: idx + 1,
+                ID: idx + 1
+            }));
             const isAboveWater = (item: any) => {
                 const elvStr = String(item.elevation || item.inspection_data?.elevation || item.elev || "").trim();
                 if (elvStr) {
@@ -925,6 +1866,7 @@ export default function ExecutiveSummaryPage() {
                     .map((a: any, i: number) => {
                         const defectDesc = a.defect_description || a.defectDescription || a.defect_desc || a.description || a.comments || "-";
                         const inspDesc = a.inspection_description || a.inspectionDescription || a.findings || a.description || "-";
+                        const combinedFindings = buildAnomalyFindingsText(a);
                         const refVal = a.ref || a.ref_no || a.anom_no || a.defect_ref_no || a.id || "-";
                         const defCode = a.defect_code || a.defectCode || a.defect || a.defect_type || "-";
                         const qidVal = a.qid || a.structure_components?.q_id || a.component_code || a.component_id || "N/A";
@@ -934,19 +1876,34 @@ export default function ExecutiveSummaryPage() {
                             ...a,
                             no: i + 1,
                             id: i + 1,
+                            NO: i + 1,
+                            ID: i + 1,
                             qid: qidVal,
+                            QID: qidVal,
                             elevation: elvVal,
                             elev: elvVal,
+                            ELEVATION: elvVal,
+                            ELEV: elvVal,
                             defect_code: defCode,
                             defect: defCode,
+                            DEFECT_CODE: defCode,
+                            DEFECT: defCode,
                             ref: refVal,
                             ref_no: refVal,
                             anom_no: refVal,
-                            findings: inspDesc,
-                            findings_text: inspDesc,
+                            REF: refVal,
+                            REF_NO: refVal,
+                            ANOM_NO: refVal,
+                            findings: combinedFindings,
+                            FINDINGS: combinedFindings,
+                            findings_text: combinedFindings,
+                            FINDINGS_TEXT: combinedFindings,
+                            description: combinedFindings,
+                            DESCRIPTION: combinedFindings,
                             defect_description: defectDesc,
+                            DEFECT_DESCRIPTION: defectDesc,
                             inspection_description: inspDesc,
-                            description: defectDesc
+                            INSPECTION_DESCRIPTION: inspDesc
                         };
                     });
             };
@@ -1040,21 +1997,90 @@ export default function ExecutiveSummaryPage() {
                     HAS_SECTION_OUTSTANDING_TASKS: secOutstanding.length > 0,
 
                     // Global summary tables (also accessible inside section)
-                    HAS_ANOMALIES: totalAnomCount > 0,
+                    HAS_ANOMALIES: totalAnomCount > 0 || rawAnomalies.length > 0,
+                    has_anomalies: totalAnomCount > 0 || rawAnomalies.length > 0,
                     HAS_FINDINGS: totalFindingsCount > 0,
-                    HAS_SOW_SUMMARY: (insightData?.data?.sow_summary || []).length > 0,
+                    has_findings: totalFindingsCount > 0,
                     HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
                     NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
                     ANOMALY_SUMMARY_TABLE: categoryStats,
+                    anomaly_summary_table: categoryStats,
+                    ANOMALIES_SUMMARY_TABLE: categoryStats,
+                    anomalies_summary_table: categoryStats,
+                    ANOMALY_SUMMARY: categoryStats,
+                    anomaly_summary: categoryStats,
+                    ANOMALIES_SUMMARY: categoryStats,
+                    anomalies_summary: categoryStats,
+                    SUMMARY_OF_ANOMALY: categoryStats,
+                    summary_of_anomaly: categoryStats,
+                    SUMMARY_OF_ANOMALIES: categoryStats,
+                    summary_of_anomalies: categoryStats,
+                    ANOMALY_STATS_TABLE: categoryStats,
+                    ANOMALY_STATS: categoryStats,
+                    CATEGORY_STATS: categoryStats,
+
                     ANOMALY_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                    anomaly_summary_total_not_rectified: totalNotRectified,
+                    ANOMALIES_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                    anomalies_summary_total_not_rectified: totalNotRectified,
+                    TOTAL_NOT_RECTIFIED: totalNotRectified,
+                    total_not_rectified: totalNotRectified,
+                    ANOMALY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                    anomaly_total_not_rectified: totalNotRectified,
+                    ANOMALIES_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                    anomalies_total_not_rectified: totalNotRectified,
+                    NOT_RECTIFIED_TOTAL: totalNotRectified,
+                    not_rectified_total: totalNotRectified,
+
                     ANOMALY_SUMMARY_TOTAL_RECTIFIED: totalRectified,
+                    anomaly_summary_total_rectified: totalRectified,
+                    ANOMALIES_SUMMARY_TOTAL_RECTIFIED: totalRectified,
+                    anomalies_summary_total_rectified: totalRectified,
+                    TOTAL_RECTIFIED: totalRectified,
+                    total_rectified: totalRectified,
+                    ANOMALY_TOTAL_RECTIFIED: totalRectified,
+                    anomaly_total_rectified: totalRectified,
+                    ANOMALIES_TOTAL_RECTIFIED: totalRectified,
+                    anomalies_total_rectified: totalRectified,
+                    RECTIFIED_TOTAL: totalRectified,
+                    rectified_total: totalRectified,
+
                     ANOMALY_SUMMARY_TOTAL: totalAnomCount,
+                    anomaly_summary_total: totalAnomCount,
+                    ANOMALIES_SUMMARY_TOTAL: totalAnomCount,
+                    anomalies_summary_total: totalAnomCount,
+                    TOTAL_ANOMALIES: totalAnomCount,
+                    total_anomalies: totalAnomCount,
+                    TOTAL_ANOMALY: totalAnomCount,
+                    total_anomaly: totalAnomCount,
+                    ANOMALY_TOTAL: totalAnomCount,
+                    anomaly_total: totalAnomCount,
+                    ANOMALIES_TOTAL: totalAnomCount,
+                    anomalies_total: totalAnomCount,
+                    ALL_ANOMALIES_TOTAL: totalAnomCount,
+
                     FINDINGS_SUMMARY_TABLE: findingsCategoryStats,
+                    findings_summary_table: findingsCategoryStats,
+                    FINDING_SUMMARY_TABLE: findingsCategoryStats,
+                    finding_summary_table: findingsCategoryStats,
+                    FINDINGS_SUMMARY: findingsCategoryStats,
+                    findings_summary: findingsCategoryStats,
+                    FINDING_SUMMARY: findingsCategoryStats,
+                    finding_summary: findingsCategoryStats,
                     FINDINGS_SUMMARY_TOTAL_NOT_RECTIFIED: totalFindingsNotRectified,
+                    FINDING_SUMMARY_TOTAL_NOT_RECTIFIED: totalFindingsNotRectified,
                     FINDINGS_SUMMARY_TOTAL_RECTIFIED: totalFindingsRectified,
+                    FINDING_SUMMARY_TOTAL_RECTIFIED: totalFindingsRectified,
                     FINDINGS_SUMMARY_TOTAL: totalFindingsCount,
-                    SOW_SUMMARY: insightData?.data?.sow_summary || [],
+                    FINDING_SUMMARY_TOTAL: totalFindingsCount,
+                    SOW_SUMMARY: sowSummaryRows,
+                    sow_summary: sowSummaryRows,
+                    SOW_STATUS: sowSummaryRows,
+                    sow_status: sowSummaryRows,
+                    HAS_SOW_SUMMARY: sowSummaryRows.length > 0,
+                    has_sow_summary: sowSummaryRows.length > 0,
                     ANOMALIES: rawAnomalies,
+                    anomalies: rawAnomalies,
                     ANOMALIES_P1: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P1"),
                     ANOMALIES_P2: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P2"),
                     ANOMALIES_P3: getFilteredAnomalies((x: any) => String(x.priority || "").trim().toUpperCase() === "P3"),
@@ -1063,6 +2089,7 @@ export default function ExecutiveSummaryPage() {
                     HAS_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => a.is_rectified),
                     HAS_NOT_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => !a.is_rectified),
                     FINDINGS: rawFindings,
+                    findings: rawFindings,
                     OUTSTANDING_TASKS: outstandingRawList.map((t: any, idx: number) => ({
                         ...t,
                         no: idx + 1
@@ -1081,11 +2108,13 @@ export default function ExecutiveSummaryPage() {
                 };
             });
 
-            const reportData: Record<string, any> = {
+            reportData = {
                 STRUCTURE_VISUALS: structureVisuals,
                 HAS_VISUALS: structureVisuals.length > 0,
-                HAS_ANOMALIES: totalAnomCount > 0,
+                HAS_ANOMALIES: totalAnomCount > 0 || rawAnomalies.length > 0,
+                has_anomalies: totalAnomCount > 0 || rawAnomalies.length > 0,
                 HAS_FINDINGS: totalFindingsCount > 0,
+                has_findings: totalFindingsCount > 0,
 
                 // Global ROV vs Diver Anomalies & Findings
                 ANOMALIES_ROV: rawAnomalies.filter(isROV).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
@@ -1112,15 +2141,76 @@ export default function ExecutiveSummaryPage() {
 
                 // ── Anomaly Summary Table Data ───────────────────────
                 ANOMALY_SUMMARY_TABLE: categoryStats,
+                anomaly_summary_table: categoryStats,
+                ANOMALIES_SUMMARY_TABLE: categoryStats,
+                anomalies_summary_table: categoryStats,
+                ANOMALY_SUMMARY: categoryStats,
+                anomaly_summary: categoryStats,
+                ANOMALIES_SUMMARY: categoryStats,
+                anomalies_summary: categoryStats,
+                SUMMARY_OF_ANOMALY: categoryStats,
+                summary_of_anomaly: categoryStats,
+                SUMMARY_OF_ANOMALIES: categoryStats,
+                summary_of_anomalies: categoryStats,
+                ANOMALY_STATS_TABLE: categoryStats,
+                ANOMALY_STATS: categoryStats,
+                CATEGORY_STATS: categoryStats,
+
                 ANOMALY_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                anomaly_summary_total_not_rectified: totalNotRectified,
+                ANOMALIES_SUMMARY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                anomalies_summary_total_not_rectified: totalNotRectified,
+                TOTAL_NOT_RECTIFIED: totalNotRectified,
+                total_not_rectified: totalNotRectified,
+                ANOMALY_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                anomaly_total_not_rectified: totalNotRectified,
+                ANOMALIES_TOTAL_NOT_RECTIFIED: totalNotRectified,
+                anomalies_total_not_rectified: totalNotRectified,
+                NOT_RECTIFIED_TOTAL: totalNotRectified,
+                not_rectified_total: totalNotRectified,
+
                 ANOMALY_SUMMARY_TOTAL_RECTIFIED: totalRectified,
+                anomaly_summary_total_rectified: totalRectified,
+                ANOMALIES_SUMMARY_TOTAL_RECTIFIED: totalRectified,
+                anomalies_summary_total_rectified: totalRectified,
+                TOTAL_RECTIFIED: totalRectified,
+                total_rectified: totalRectified,
+                ANOMALY_TOTAL_RECTIFIED: totalRectified,
+                anomaly_total_rectified: totalRectified,
+                ANOMALIES_TOTAL_RECTIFIED: totalRectified,
+                anomalies_total_rectified: totalRectified,
+                RECTIFIED_TOTAL: totalRectified,
+                rectified_total: totalRectified,
+
                 ANOMALY_SUMMARY_TOTAL: totalAnomCount,
+                anomaly_summary_total: totalAnomCount,
+                ANOMALIES_SUMMARY_TOTAL: totalAnomCount,
+                anomalies_summary_total: totalAnomCount,
+                TOTAL_ANOMALIES: totalAnomCount,
+                total_anomalies: totalAnomCount,
+                TOTAL_ANOMALY: totalAnomCount,
+                total_anomaly: totalAnomCount,
+                ANOMALY_TOTAL: totalAnomCount,
+                anomaly_total: totalAnomCount,
+                ANOMALIES_TOTAL: totalAnomCount,
+                anomalies_total: totalAnomCount,
+                ALL_ANOMALIES_TOTAL: totalAnomCount,
 
                 // ── Findings Summary Table Data ──────────────────────
                 FINDINGS_SUMMARY_TABLE: findingsCategoryStats,
+                findings_summary_table: findingsCategoryStats,
+                FINDING_SUMMARY_TABLE: findingsCategoryStats,
+                finding_summary_table: findingsCategoryStats,
+                FINDINGS_SUMMARY: findingsCategoryStats,
+                findings_summary: findingsCategoryStats,
+                FINDING_SUMMARY: findingsCategoryStats,
+                finding_summary: findingsCategoryStats,
                 FINDINGS_SUMMARY_TOTAL_NOT_RECTIFIED: totalFindingsNotRectified,
+                FINDING_SUMMARY_TOTAL_NOT_RECTIFIED: totalFindingsNotRectified,
                 FINDINGS_SUMMARY_TOTAL_RECTIFIED: totalFindingsRectified,
+                FINDING_SUMMARY_TOTAL_RECTIFIED: totalFindingsRectified,
                 FINDINGS_SUMMARY_TOTAL: totalFindingsCount,
+                FINDING_SUMMARY_TOTAL: totalFindingsCount,
 
                 OBS_NOT_RECTIFIED: obsAnoms.length - getRectifiedCount(obsAnoms),
                 OBS_RECTIFIED: getRectifiedCount(obsAnoms),
@@ -1182,6 +2272,10 @@ export default function ExecutiveSummaryPage() {
                 // ── Company / Client Info ────────────────────────────
                 CLIENT_NAME: companySettings?.data?.company_name || jp?.metadata?.contrac || "N/A",
                 CLIENT_SHORT: (() => {
+                    const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+                    if (customShort && String(customShort).trim()) {
+                        return String(customShort).trim();
+                    }
                     const clientName = companySettings?.data?.company_name;
                     if (!clientName) return "N/A";
                     const matched = contractors.find((c: any) => 
@@ -1250,6 +2344,19 @@ export default function ExecutiveSummaryPage() {
                 CONTRACTOR_SHORT_UPPER: (jp?.metadata?.contrac || "N/A").toUpperCase(),
                 CONTRACTOR_ADDRESS: activeContractor?.lib_com || "N/A",
                 CONTRACTOR_LOGO: activeContractor?.logo_url ? { data: activeContractor.logo_url, extension: '.jpg' } : "",
+                contractor_logo: activeContractor?.logo_url ? { data: activeContractor.logo_url, extension: '.jpg' } : "",
+                CONTRACTOR_LOGO_URL: activeContractor?.logo_url || "",
+                contractor_logo_url: activeContractor?.logo_url || "",
+                CLIENT_LOGO: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
+                client_logo: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
+                CLIENT_LOGO_URL: companySettings?.data?.logo_url || "",
+                client_logo_url: companySettings?.data?.logo_url || "",
+                COMPANY_LOGO: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
+                company_logo: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
+                COMPANY_LOGO_URL: companySettings?.data?.logo_url || "",
+                company_logo_url: companySettings?.data?.logo_url || "",
+                LOGO: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
+                logo: companySettings?.data?.logo_url ? { data: companySettings.data.logo_url, extension: '.jpg' } : "",
 
                 // ── Signatories ──────────────────────────────────────
                 PREPARED_BY: insightData?.data?.prepared_by?.name || "System",
@@ -1261,12 +2368,12 @@ export default function ExecutiveSummaryPage() {
                 TOTAL_RECORDS: insightData?.data?.records?.total || 0,
 
                 // ── Anomaly / Finding Stats ──────────────────────────
-                TOTAL_ANOMALIES: insightData?.data?.anomalies?.total || 0,
-                OPEN_ANOMALIES: insightData?.data?.anomalies?.open || 0,
-                RECTIFIED_ANOMALIES_COUNT: insightData?.data?.anomalies?.rectified || 0,
-                P1_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P1 || 0,
-                P2_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P2 || 0,
-                P3_ANOMALIES: insightData?.data?.anomalies?.byPriority?.P3 || 0,
+                OPEN_ANOMALIES: totalNotRectified,
+                RECTIFIED_ANOMALIES_COUNT: totalRectified,
+                P1_ANOMALIES: p1Anoms.length,
+                P2_ANOMALIES: p2Anoms.length,
+                P3_ANOMALIES: p3Anoms.length,
+                OBS_ANOMALIES: obsAnoms.length,
 
                 // ── Inspection Metrics ───────────────────────────────
                 CP_MIN: insightData?.data?.cp?.minVal || "N/A",
@@ -1292,9 +2399,51 @@ export default function ExecutiveSummaryPage() {
                 SCOUR_MAX_QID: insightData?.data?.scour?.maxDepthQid || "N/A",
 
                 // Sections (User-Written)
+                sections: enrichedSections,
                 SECTIONS: enrichedSections,
-                NEXT_PARAGRAPH_NO: `1.${sections.length + 1}`,
+                PARENT_SECTION_NO: activeParentPrefix,
+                PARENT_PARAGRAPH_NO: activeParentPrefix,
+                NEXT_PARAGRAPH_NO: `${activeParentPrefix}.${sections.length + 1}`,
                 NEXT_NO: sections.length + 1,
+
+                // Global Section & Sub-Paragraph Numbering
+                PARAGRAPH_NO_ANOMALY: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? sec.paragraph_no : `${activeParentPrefix}.29`;
+                })(),
+                PARAGRAPH_NO_ANOMALY_SUMMARY: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? `${sec.paragraph_no}.1` : `${activeParentPrefix}.29.1`;
+                })(),
+                PARAGRAPH_NO_SOW_STATUS: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.29.2`;
+                })(),
+                PARAGRAPH_NO_SOW_SUMMARY: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.29.2`;
+                })(),
+                PARAGRAPH_NO_ANOMALY_LIST: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? `${sec.paragraph_no}.3` : `${activeParentPrefix}.29.3`;
+                })(),
+                PARAGRAPH_NO_FINDINGS_SUMMARY: (() => {
+                    const sec = sections.find((s: any) => s.id === "anomaly_finding");
+                    return sec ? `${sec.paragraph_no}.4` : `${activeParentPrefix}.29.4`;
+                })(),
+                PARAGRAPH_NO_INCOMPLETE: (() => {
+                    const sec = sections.find((s: any) => s.id === "incomplete");
+                    return sec ? sec.paragraph_no : `${activeParentPrefix}.30`;
+                })(),
+                PARAGRAPH_NO_INCOMPLETE_SCOPE: (() => {
+                    const sec = sections.find((s: any) => s.id === "incomplete");
+                    return sec ? `${sec.paragraph_no}.1` : `${activeParentPrefix}.30.1`;
+                })(),
+                PARAGRAPH_NO_OUTSTANDING_TASKS: (() => {
+                    const sec = sections.find((s: any) => s.id === "incomplete");
+                    return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.30.2`;
+                })(),
+
                 HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
                 NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
                 OUTSTANDING_TASKS: outstandingRawList.map((t: any, idx: number) => ({
@@ -1335,6 +2484,11 @@ export default function ExecutiveSummaryPage() {
                 HAS_ANOMALIES_GVI_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isDiving(a)),
                 HAS_ANOMALIES_RGVI: rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isROV(a)),
                 HAS_ANOMALIES_DGVI: rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isDiving(a)),
+                NO_ANOMALIES_GVI: !rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi")),
+                NO_ANOMALIES_GVI_ROV: !rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isROV(a)),
+                NO_ANOMALIES_GVI_DIVE: !rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isDiving(a)),
+                NO_ANOMALIES_RGVI: !rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isROV(a)),
+                NO_ANOMALIES_DGVI: !rawAnomalies.some((a: any) => isItemMatchingSection(a, "gvi") && isDiving(a)),
 
                 FINDINGS_GVI: getSubFindings("gvi"),
                 FINDINGS_GVI_ROV: getSubFindings("gvi", isROV),
@@ -1344,6 +2498,13 @@ export default function ExecutiveSummaryPage() {
                 HAS_FINDINGS_GVI: rawFindings.some((f: any) => isItemMatchingSection(f, "gvi")),
                 HAS_FINDINGS_GVI_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isROV(f)),
                 HAS_FINDINGS_GVI_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isDiving(f)),
+                HAS_FINDINGS_RGVI: rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isROV(f)),
+                HAS_FINDINGS_DGVI: rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isDiving(f)),
+                NO_FINDINGS_GVI: !rawFindings.some((f: any) => isItemMatchingSection(f, "gvi")),
+                NO_FINDINGS_GVI_ROV: !rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isROV(f)),
+                NO_FINDINGS_GVI_DIVE: !rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isDiving(f)),
+                NO_FINDINGS_RGVI: !rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isROV(f)),
+                NO_FINDINGS_DGVI: !rawFindings.some((f: any) => isItemMatchingSection(f, "gvi") && isDiving(f)),
 
                 // ── Caisson & Caisson Guard Anomalies & Findings ──
                 ANOMALIES_CAISSON: getSubAnomalies("caisson"),
@@ -1369,22 +2530,84 @@ export default function ExecutiveSummaryPage() {
                 HAS_ANOMALIES_CAISSON_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caisson") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caisson") && isUnderwater(a)),
 
+                // ── Caisson Guard Anomalies & Findings ──
+                ANOMALIES_CAISSON_GUARD: getSubAnomalies("caissonguard"),
+                ANOMALIES_CAISSONGUARD: getSubAnomalies("caissonguard"),
                 ANOMALIES_CAISSON_GUARD_ABOVE: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSON_GUARD_UNDER: getSubAnomalies("caissonguard_sub", isUnderwater),
                 ANOMALIES_CAISSON_GUARD_ABOVE_WATER: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSON_GUARD_UNDERWATER: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSON_GUARD_TOP: getSubAnomalies("caissonguard_top", isAboveWater),
+                ANOMALIES_CAISSON_GUARD_SUB: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSON_GUARD_ROV: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_CAISSON_GUARD_DIVE: getSubAnomalies("caissonguard_sub", isDiving),
                 ANOMALIES_CAISSONGUARD_ABOVE: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSONGUARD_UNDER: getSubAnomalies("caissonguard_sub", isUnderwater),
                 ANOMALIES_CAISSONGUARD_ABOVE_WATER: getSubAnomalies("caissonguard_top", isAboveWater),
                 ANOMALIES_CAISSONGUARD_UNDERWATER: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSONGUARD_TOP: getSubAnomalies("caissonguard_top", isAboveWater),
+                ANOMALIES_CAISSONGUARD_SUB: getSubAnomalies("caissonguard_sub", isUnderwater),
+                ANOMALIES_CAISSONGUARD_ROV: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_CAISSONGUARD_DIVE: getSubAnomalies("caissonguard_sub", isDiving),
+                ANOMALIES_RCAISSONGUARD: getSubAnomalies("caissonguard_sub", isROV),
+                ANOMALIES_DCAISSONGUARD: getSubAnomalies("caissonguard_sub", isDiving),
+                HAS_ANOMALIES_CAISSON_GUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard")),
+                HAS_ANOMALIES_CAISSONGUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard")),
                 HAS_ANOMALIES_CAISSON_GUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSON_GUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CAISSON_GUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isDiving(a)),
                 HAS_ANOMALIES_CAISSONGUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CAISSONGUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CAISSONGUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CAISSONGUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "caissonguard_sub") && isDiving(a)),
+
+                FINDINGS_CAISSON_GUARD: getSubFindings("caissonguard"),
+                FINDINGS_CAISSONGUARD: getSubFindings("caissonguard"),
+                FINDINGS_CAISSON_GUARD_ABOVE: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_UNDER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_ABOVE_WATER: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_UNDERWATER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_TOP: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSON_GUARD_SUB: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSON_GUARD_ROV: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_CAISSON_GUARD_DIVE: getSubFindings("caissonguard_sub", isDiving),
+                FINDINGS_CAISSONGUARD_ABOVE: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_UNDER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_ABOVE_WATER: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_UNDERWATER: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_TOP: getSubFindings("caissonguard_top", isAboveWater),
+                FINDINGS_CAISSONGUARD_SUB: getSubFindings("caissonguard_sub", isUnderwater),
+                FINDINGS_CAISSONGUARD_ROV: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_CAISSONGUARD_DIVE: getSubFindings("caissonguard_sub", isDiving),
+                FINDINGS_RCAISSONGUARD: getSubFindings("caissonguard_sub", isROV),
+                FINDINGS_DCAISSONGUARD: getSubFindings("caissonguard_sub", isDiving),
+                HAS_FINDINGS_CAISSON_GUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard")),
+                HAS_FINDINGS_CAISSONGUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard")),
+                HAS_FINDINGS_CAISSON_GUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSON_GUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isROV(f)),
+                HAS_FINDINGS_CAISSON_GUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isDiving(f)),
+                HAS_FINDINGS_CAISSONGUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CAISSONGUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CAISSONGUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isROV(f)),
+                HAS_FINDINGS_CAISSONGUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "caissonguard_sub") && isDiving(f)),
 
                 FINDINGS_CAISSON: getSubFindings("caisson"),
                 FINDINGS_CAISSON_ROV: getSubFindings("caisson", isROV),
@@ -1427,22 +2650,84 @@ export default function ExecutiveSummaryPage() {
                 HAS_ANOMALIES_CONDUCTOR_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductor") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductor") && isUnderwater(a)),
 
+                // ── Conductor Guard Anomalies & Findings ──
+                ANOMALIES_CONDUCTOR_GUARD: getSubAnomalies("conductorguard"),
+                ANOMALIES_CONDUCTORGUARD: getSubAnomalies("conductorguard"),
                 ANOMALIES_CONDUCTOR_GUARD_ABOVE: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTOR_GUARD_UNDER: getSubAnomalies("conductorguard_sub", isUnderwater),
                 ANOMALIES_CONDUCTOR_GUARD_ABOVE_WATER: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTOR_GUARD_UNDERWATER: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTOR_GUARD_TOP: getSubAnomalies("conductorguard_top", isAboveWater),
+                ANOMALIES_CONDUCTOR_GUARD_SUB: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTOR_GUARD_ROV: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_CONDUCTOR_GUARD_DIVE: getSubAnomalies("conductorguard_sub", isDiving),
                 ANOMALIES_CONDUCTORGUARD_ABOVE: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTORGUARD_UNDER: getSubAnomalies("conductorguard_sub", isUnderwater),
                 ANOMALIES_CONDUCTORGUARD_ABOVE_WATER: getSubAnomalies("conductorguard_top", isAboveWater),
                 ANOMALIES_CONDUCTORGUARD_UNDERWATER: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTORGUARD_TOP: getSubAnomalies("conductorguard_top", isAboveWater),
+                ANOMALIES_CONDUCTORGUARD_SUB: getSubAnomalies("conductorguard_sub", isUnderwater),
+                ANOMALIES_CONDUCTORGUARD_ROV: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_CONDUCTORGUARD_DIVE: getSubAnomalies("conductorguard_sub", isDiving),
+                ANOMALIES_RCONDUCTORGUARD: getSubAnomalies("conductorguard_sub", isROV),
+                ANOMALIES_DCONDUCTORGUARD: getSubAnomalies("conductorguard_sub", isDiving),
+                HAS_ANOMALIES_CONDUCTOR_GUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard")),
+                HAS_ANOMALIES_CONDUCTORGUARD: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard")),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTOR_GUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CONDUCTOR_GUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isDiving(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
                 HAS_ANOMALIES_CONDUCTORGUARD_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_top") && isAboveWater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isROV(a)),
+                HAS_ANOMALIES_CONDUCTORGUARD_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "conductorguard_sub") && isDiving(a)),
+
+                FINDINGS_CONDUCTOR_GUARD: getSubFindings("conductorguard"),
+                FINDINGS_CONDUCTORGUARD: getSubFindings("conductorguard"),
+                FINDINGS_CONDUCTOR_GUARD_ABOVE: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_UNDER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_ABOVE_WATER: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_UNDERWATER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_TOP: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTOR_GUARD_SUB: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTOR_GUARD_ROV: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_CONDUCTOR_GUARD_DIVE: getSubFindings("conductorguard_sub", isDiving),
+                FINDINGS_CONDUCTORGUARD_ABOVE: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_UNDER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_ABOVE_WATER: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_UNDERWATER: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_TOP: getSubFindings("conductorguard_top", isAboveWater),
+                FINDINGS_CONDUCTORGUARD_SUB: getSubFindings("conductorguard_sub", isUnderwater),
+                FINDINGS_CONDUCTORGUARD_ROV: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_CONDUCTORGUARD_DIVE: getSubFindings("conductorguard_sub", isDiving),
+                FINDINGS_RCONDUCTORGUARD: getSubFindings("conductorguard_sub", isROV),
+                FINDINGS_DCONDUCTORGUARD: getSubFindings("conductorguard_sub", isDiving),
+                HAS_FINDINGS_CONDUCTOR_GUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard")),
+                HAS_FINDINGS_CONDUCTORGUARD: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard")),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isROV(f)),
+                HAS_FINDINGS_CONDUCTOR_GUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isDiving(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_top") && isAboveWater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isUnderwater(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isROV(f)),
+                HAS_FINDINGS_CONDUCTORGUARD_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "conductorguard_sub") && isDiving(f)),
 
                 FINDINGS_CONDUCTOR: getSubFindings("conductor"),
                 FINDINGS_CONDUCTOR_ROV: getSubFindings("conductor", isROV),
@@ -1585,45 +2870,162 @@ export default function ExecutiveSummaryPage() {
                 HAS_FINDINGS_RISERGUARD_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "riserguard") && isUnderwater(f)),
 
                 // ── Boat Bumper Anomalies & Findings ──
+                // ── Boat Bumper Anomalies & Findings ──
+                ANOMALIES_BOAT_BUMPER: getSubAnomalies("boatbumper"),
                 ANOMALIES_BOATBUMPER: getSubAnomalies("boatbumper"),
-                ANOMALIES_BOATBUMPER_ROV: getSubAnomalies("boatbumper", isROV),
-                ANOMALIES_BOATBUMPER_DIVE: getSubAnomalies("boatbumper", isDiving),
-                ANOMALIES_RBOATBUMPER: getSubAnomalies("boatbumper", isROV),
-                ANOMALIES_DBOATBUMPER: getSubAnomalies("boatbumper", isDiving),
-                ANOMALIES_BOATBUMPER_ABOVE: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_UNDER: getSubAnomalies("boatbumper", isUnderwater),
-                ANOMALIES_BOATBUMPER_ABOVE_WATER: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_UNDERWATER: getSubAnomalies("boatbumper", isUnderwater),
-                ANOMALIES_BOATBUMPER_TOP: getSubAnomalies("boatbumper", isAboveWater),
-                ANOMALIES_BOATBUMPER_SUB: getSubAnomalies("boatbumper", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMPER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMPER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOAT_BUMPER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_BOATBUMPER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMPER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMPER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOATBUMPER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_RBOATBUMPER: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_DBOATBUMPER: getSubAnomalies("boatbumper_sub", isDiving),
+                HAS_ANOMALIES_BOAT_BUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
                 HAS_ANOMALIES_BOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
-                HAS_ANOMALIES_BOATBUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isROV(a)),
-                HAS_ANOMALIES_BOATBUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isDiving(a)),
-                HAS_ANOMALIES_RBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isROV(a)),
-                HAS_ANOMALIES_DBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isDiving(a)),
-                HAS_ANOMALIES_BOATBUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
-                HAS_ANOMALIES_BOATBUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
-                HAS_ANOMALIES_BOATBUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isAboveWater(a)),
-                HAS_ANOMALIES_BOATBUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOAT_BUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_BOATBUMPER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMPER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMPER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOATBUMPER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_RBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_DBOATBUMPER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
 
+                // Boat Bumber typo aliases
+                ANOMALIES_BOAT_BUMBER: getSubAnomalies("boatbumper"),
+                ANOMALIES_BOATBUMBER: getSubAnomalies("boatbumper"),
+                ANOMALIES_BOAT_BUMBER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOAT_BUMBER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOAT_BUMBER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOAT_BUMBER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                ANOMALIES_BOATBUMBER_ABOVE: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_UNDER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_ABOVE_WATER: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_UNDERWATER: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_TOP: getSubAnomalies("boatbumper_top", isAboveWater),
+                ANOMALIES_BOATBUMBER_SUB: getSubAnomalies("boatbumper_sub", isUnderwater),
+                ANOMALIES_BOATBUMBER_ROV: getSubAnomalies("boatbumper_sub", isROV),
+                ANOMALIES_BOATBUMBER_DIVE: getSubAnomalies("boatbumper_sub", isDiving),
+                HAS_ANOMALIES_BOAT_BUMBER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
+                HAS_ANOMALIES_BOATBUMBER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper")),
+                HAS_ANOMALIES_BOAT_BUMBER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOAT_BUMBER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+                HAS_ANOMALIES_BOATBUMBER_ABOVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_UNDER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_ABOVE_WATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_UNDERWATER: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_TOP: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_top") && isAboveWater(a)),
+                HAS_ANOMALIES_BOATBUMBER_SUB: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isUnderwater(a)),
+                HAS_ANOMALIES_BOATBUMBER_ROV: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isROV(a)),
+                HAS_ANOMALIES_BOATBUMBER_DIVE: rawAnomalies.some((a: any) => isItemMatchingSection(a, "boatbumper_sub") && isDiving(a)),
+
+                FINDINGS_BOAT_BUMPER: getSubFindings("boatbumper"),
                 FINDINGS_BOATBUMPER: getSubFindings("boatbumper"),
-                FINDINGS_BOATBUMPER_ROV: getSubFindings("boatbumper", isROV),
-                FINDINGS_BOATBUMPER_DIVE: getSubFindings("boatbumper", isDiving),
-                FINDINGS_RBOATBUMPER: getSubFindings("boatbumper", isROV),
-                FINDINGS_DBOATBUMPER: getSubFindings("boatbumper", isDiving),
-                FINDINGS_BOATBUMPER_ABOVE: getSubFindings("boatbumper", isAboveWater),
-                FINDINGS_BOATBUMPER_UNDER: getSubFindings("boatbumper", isUnderwater),
-                FINDINGS_BOATBUMPER_ABOVE_WATER: getSubFindings("boatbumper", isAboveWater),
-                FINDINGS_BOATBUMPER_UNDERWATER: getSubFindings("boatbumper", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMPER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMPER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOAT_BUMPER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_BOATBUMPER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMPER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMPER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOATBUMPER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_RBOATBUMPER: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_DBOATBUMPER: getSubFindings("boatbumper_sub", isDiving),
+                HAS_FINDINGS_BOAT_BUMPER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
                 HAS_FINDINGS_BOATBUMPER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
-                HAS_FINDINGS_BOATBUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isROV(f)),
-                HAS_FINDINGS_BOATBUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isDiving(f)),
-                HAS_FINDINGS_BOATBUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isAboveWater(f)),
-                HAS_FINDINGS_BOATBUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isUnderwater(f)),
-                HAS_FINDINGS_BOATBUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isAboveWater(f)),
-                HAS_FINDINGS_BOATBUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOAT_BUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+                HAS_FINDINGS_BOATBUMPER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMPER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMPER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOATBUMPER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+
+                // Boat Bumber typo aliases
+                FINDINGS_BOAT_BUMBER: getSubFindings("boatbumper"),
+                FINDINGS_BOATBUMBER: getSubFindings("boatbumper"),
+                FINDINGS_BOAT_BUMBER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOAT_BUMBER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOAT_BUMBER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOAT_BUMBER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                FINDINGS_BOATBUMBER_ABOVE: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_UNDER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_ABOVE_WATER: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_UNDERWATER: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_TOP: getSubFindings("boatbumper_top", isAboveWater),
+                FINDINGS_BOATBUMBER_SUB: getSubFindings("boatbumper_sub", isUnderwater),
+                FINDINGS_BOATBUMBER_ROV: getSubFindings("boatbumper_sub", isROV),
+                FINDINGS_BOATBUMBER_DIVE: getSubFindings("boatbumper_sub", isDiving),
+                HAS_FINDINGS_BOAT_BUMBER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
+                HAS_FINDINGS_BOATBUMBER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper")),
+                HAS_FINDINGS_BOAT_BUMBER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOAT_BUMBER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOAT_BUMBER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
+                HAS_FINDINGS_BOATBUMBER_ABOVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_UNDER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_ABOVE_WATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_UNDERWATER: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_TOP: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_top") && isAboveWater(f)),
+                HAS_FINDINGS_BOATBUMBER_SUB: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isUnderwater(f)),
+                HAS_FINDINGS_BOATBUMBER_ROV: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isROV(f)),
+                HAS_FINDINGS_BOATBUMBER_DIVE: rawFindings.some((f: any) => isItemMatchingSection(f, "boatbumper_sub") && isDiving(f)),
 
                 ANOMALIES_CP: getSubAnomalies("cp"),
                 ANOMALIES_CP_ROV: getSubAnomalies("cp", isROV),
@@ -1739,14 +3141,42 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_CAISSON_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caisson") && isROV(r)),
                 HAS_RECORDS_CAISSON_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caisson") && isDiving(r)),
 
+                RECORDS_CAISSON_GUARD: getSubRecords("caissonguard"),
+                RECORDS_CAISSONGUARD: getSubRecords("caissonguard"),
+                RECORDS_CAISSON_GUARD_ABOVE: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSON_GUARD_UNDER: getSubRecords("caissonguard_sub", isUnderwater),
                 RECORDS_CAISSON_GUARD_ABOVE_WATER: getSubRecords("caissonguard_top", isAboveWater),
                 RECORDS_CAISSON_GUARD_UNDERWATER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSON_GUARD_TOP: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSON_GUARD_SUB: getSubRecords("caissonguard_sub", isUnderwater),
                 RECORDS_CAISSON_GUARD_ROV: getSubRecords("caissonguard_sub", isROV),
                 RECORDS_CAISSON_GUARD_DIVE: getSubRecords("caissonguard_sub", isDiving),
+                RECORDS_CAISSONGUARD_ABOVE: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_UNDER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_ABOVE_WATER: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_UNDERWATER: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_TOP: getSubRecords("caissonguard_top", isAboveWater),
+                RECORDS_CAISSONGUARD_SUB: getSubRecords("caissonguard_sub", isUnderwater),
+                RECORDS_CAISSONGUARD_ROV: getSubRecords("caissonguard_sub", isROV),
+                RECORDS_CAISSONGUARD_DIVE: getSubRecords("caissonguard_sub", isDiving),
+                HAS_RECORDS_CAISSON_GUARD: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard")),
+                HAS_RECORDS_CAISSONGUARD: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard")),
+                HAS_RECORDS_CAISSON_GUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSON_GUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CAISSON_GUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
                 HAS_RECORDS_CAISSON_GUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSON_GUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSON_GUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CAISSON_GUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isROV(r)),
                 HAS_RECORDS_CAISSON_GUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isDiving(r)),
+                HAS_RECORDS_CAISSONGUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CAISSONGUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CAISSONGUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isROV(r)),
+                HAS_RECORDS_CAISSONGUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "caissonguard_sub") && isDiving(r)),
 
                 RECORDS_BOATLANDING_ABOVE_WATER: getSubRecords("boatlanding_top", isAboveWater),
                 RECORDS_BOATLANDING_UNDERWATER: getSubRecords("boatlanding_sub", isUnderwater),
@@ -1757,14 +3187,80 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_BOATLANDING_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatlanding_sub") && isROV(r)),
                 HAS_RECORDS_BOATLANDING_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatlanding_sub") && isDiving(r)),
 
+                RECORDS_BOAT_BUMPER: getSubRecords("boatbumper"),
+                RECORDS_BOATBUMPER: getSubRecords("boatbumper"),
+                RECORDS_BOAT_BUMPER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMPER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMPER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOAT_BUMPER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                RECORDS_BOATBUMPER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMPER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
                 RECORDS_BOATBUMPER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
                 RECORDS_BOATBUMPER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMPER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMPER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
                 RECORDS_BOATBUMPER_ROV: getSubRecords("boatbumper_sub", isROV),
                 RECORDS_BOATBUMPER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                HAS_RECORDS_BOAT_BUMPER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOATBUMPER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOAT_BUMPER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMPER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMPER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOAT_BUMPER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+                HAS_RECORDS_BOATBUMPER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMPER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
                 HAS_RECORDS_BOATBUMPER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
                 HAS_RECORDS_BOATBUMPER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMPER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMPER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
                 HAS_RECORDS_BOATBUMPER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
                 HAS_RECORDS_BOATBUMPER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+
+                // Boat Bumber typo aliases
+                RECORDS_BOAT_BUMBER: getSubRecords("boatbumper"),
+                RECORDS_BOATBUMBER: getSubRecords("boatbumper"),
+                RECORDS_BOAT_BUMBER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOAT_BUMBER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOAT_BUMBER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOAT_BUMBER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                RECORDS_BOATBUMBER_ABOVE: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_UNDER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_ABOVE_WATER: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_UNDERWATER: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_TOP: getSubRecords("boatbumper_top", isAboveWater),
+                RECORDS_BOATBUMBER_SUB: getSubRecords("boatbumper_sub", isUnderwater),
+                RECORDS_BOATBUMBER_ROV: getSubRecords("boatbumper_sub", isROV),
+                RECORDS_BOATBUMBER_DIVE: getSubRecords("boatbumper_sub", isDiving),
+                HAS_RECORDS_BOAT_BUMBER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOATBUMBER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper")),
+                HAS_RECORDS_BOAT_BUMBER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOAT_BUMBER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOAT_BUMBER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOAT_BUMBER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
+                HAS_RECORDS_BOATBUMBER_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_top") && isAboveWater(r)),
+                HAS_RECORDS_BOATBUMBER_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isUnderwater(r)),
+                HAS_RECORDS_BOATBUMBER_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isROV(r)),
+                HAS_RECORDS_BOATBUMBER_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "boatbumper_sub") && isDiving(r)),
 
                 RECORDS_RISERGUARD_ABOVE_WATER: getSubRecords("riserguard_top", isAboveWater),
                 RECORDS_RISERGUARD_UNDERWATER: getSubRecords("riserguard_sub", isUnderwater),
@@ -1783,14 +3279,42 @@ export default function ExecutiveSummaryPage() {
                 HAS_RECORDS_CONDUCTOR_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductor_sub") && isUnderwater(r) && isROV(r)),
                 HAS_RECORDS_CONDUCTOR_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductor_sub") && isUnderwater(r) && isDiving(r)),
 
+                RECORDS_CONDUCTOR_GUARD: getSubRecords("conductorguard"),
+                RECORDS_CONDUCTORGUARD: getSubRecords("conductorguard"),
+                RECORDS_CONDUCTOR_GUARD_ABOVE: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTOR_GUARD_UNDER: getSubRecords("conductorguard_sub", isUnderwater),
                 RECORDS_CONDUCTOR_GUARD_ABOVE_WATER: getSubRecords("conductorguard_top", isAboveWater),
                 RECORDS_CONDUCTOR_GUARD_UNDERWATER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTOR_GUARD_TOP: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTOR_GUARD_SUB: getSubRecords("conductorguard_sub", isUnderwater),
                 RECORDS_CONDUCTOR_GUARD_ROV: getSubRecords("conductorguard_sub", isROV),
                 RECORDS_CONDUCTOR_GUARD_DIVE: getSubRecords("conductorguard_sub", isDiving),
+                RECORDS_CONDUCTORGUARD_ABOVE: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_UNDER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_ABOVE_WATER: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_UNDERWATER: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_TOP: getSubRecords("conductorguard_top", isAboveWater),
+                RECORDS_CONDUCTORGUARD_SUB: getSubRecords("conductorguard_sub", isUnderwater),
+                RECORDS_CONDUCTORGUARD_ROV: getSubRecords("conductorguard_sub", isROV),
+                RECORDS_CONDUCTORGUARD_DIVE: getSubRecords("conductorguard_sub", isDiving),
+                HAS_RECORDS_CONDUCTOR_GUARD: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard")),
+                HAS_RECORDS_CONDUCTORGUARD: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard")),
+                HAS_RECORDS_CONDUCTOR_GUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTOR_GUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isROV(r)),
                 HAS_RECORDS_CONDUCTOR_GUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isDiving(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ABOVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_UNDER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ABOVE_WATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_UNDERWATER: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_TOP: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_top") && isAboveWater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_SUB: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isUnderwater(r)),
+                HAS_RECORDS_CONDUCTORGUARD_ROV: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isROV(r)),
+                HAS_RECORDS_CONDUCTORGUARD_DIVE: allRecords.some((r: any) => isItemMatchingSection(r, "conductorguard_sub") && isDiving(r)),
 
                 RECORDS_RISER_ABOVE_WATER: getSubRecords("riser", isAboveWater),
                 RECORDS_RISER_UNDERWATER: getSubRecords("riser", isUnderwater),
@@ -1824,8 +3348,12 @@ export default function ExecutiveSummaryPage() {
                 FMD_RECORDS: insightData?.data?.fmd_items || [],
                 MGI_RECORDS: insightData?.data?.mgi_items || [],
                 STATS: insightData?.data?.records || {},
-                SOW_SUMMARY: insightData?.data?.sow_summary || [],
-                HAS_SOW_SUMMARY: (insightData?.data?.sow_summary || []).length > 0,
+                SOW_SUMMARY: sowSummaryRows,
+                sow_summary: sowSummaryRows,
+                SOW_STATUS: sowSummaryRows,
+                sow_status: sowSummaryRows,
+                HAS_SOW_SUMMARY: sowSummaryRows.length > 0,
+                has_sow_summary: sowSummaryRows.length > 0,
 
                 // ── Mapped Data from Inspection Records ──────────────
                 ...mappedData,
@@ -1854,17 +3382,35 @@ export default function ExecutiveSummaryPage() {
                 }
             });
 
+            setExportProgress(prev => ({
+                ...prev,
+                percent: 79,
+                status: "Compiling executive summary tables, metrics, and loop bindings...",
+                detail: "Finalizing data structures for Word template"
+            }));
+
             const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
             await generateTemplateReport({
                 templateUrl: template.storage_path,
+                preloadedTemplate: preloadedTemplateBuffer || undefined,
                 data: reportData,
                 fileName: `${str?.str_name || "Structure"}_Executive_Summary_${reportType}.docx`,
                 logoUrl: companySettings?.data?.logo_url,
+                contractorLogoUrl: activeContractor?.logo_url,
                 onProgress: (percent, statusText) => {
+                    let detail = "Preparing final Word document";
+                    if (percent >= 80 && percent < 93) {
+                        detail = "Embedding media, photos & sub-report pages";
+                    } else if (percent >= 93 && percent < 98) {
+                        detail = "Compiling document layout & tables";
+                    } else if (percent >= 98) {
+                        detail = "Compressing archive & initiating download";
+                    }
                     setExportProgress(prev => ({
                         ...prev,
                         percent,
                         status: statusText,
+                        detail
                     }));
                 },
             });
@@ -1886,6 +3432,21 @@ export default function ExecutiveSummaryPage() {
             toast.error(error.message || "Error generating report");
         } finally {
             setIsGenerating(false);
+            if (reportData && typeof reportData === "object") {
+                for (const k of Object.keys(reportData)) {
+                    delete reportData[k];
+                }
+            }
+            if (mappedData && typeof mappedData === "object") {
+                for (const k of Object.keys(mappedData)) {
+                    delete mappedData[k];
+                }
+            }
+            preloadedTemplateBuffer = null;
+            allRecords = [];
+            structureVisuals = [];
+            reportData = {};
+            mappedData = {};
         }
     };
 
@@ -2022,6 +3583,10 @@ export default function ExecutiveSummaryPage() {
 
         const clientName = companySettings?.data?.company_name || jp?.metadata?.contrac || "[CLIENT]";
         const clientShort = (() => {
+            const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+            if (customShort && String(customShort).trim()) {
+                return String(customShort).trim();
+            }
             const clientName = companySettings?.data?.company_name;
             if (!clientName) return "[CLIENT_SHORT]";
             const matched = contractors.find((c: any) => 
@@ -2143,7 +3708,7 @@ export default function ExecutiveSummaryPage() {
 
                     <div className="flex items-center gap-2">
                         <SearchableSelect 
-                            options={structures.map((s: any) => ({ value: s.id.toString(), label: s.str_name }))}
+                            options={structureOptions}
                             value={selections.structureId}
                             onValueChange={(v) => setSelections({ structureId: v, jobpackId: "", sowReportNo: "" })}
                             placeholder="Select Structure"
@@ -2152,9 +3717,13 @@ export default function ExecutiveSummaryPage() {
                         />
 
                         <SearchableSelect 
-                            options={filteredJobpacks.map((jp: any) => ({ value: jp.id.toString(), label: jp.name || jp.id }))}
+                            options={jobpackOptions}
                             value={selections.jobpackId}
-                            onValueChange={(v) => setSelections(s => ({...s, jobpackId: v, sowReportNo: "" }))}
+                            onValueChange={(v) => {
+                                const reports = getSowReportsForJobpack(v);
+                                const autoReport = reports.length === 1 ? reports[0] : (reports.includes(selections.sowReportNo) ? selections.sowReportNo : (reports[0] || ""));
+                                setSelections(s => ({ ...s, jobpackId: v, sowReportNo: autoReport }));
+                            }}
                             disabled={!selections.structureId}
                             placeholder="Select Job Pack"
                             searchPlaceholder="Search Job Pack..."
@@ -2162,7 +3731,7 @@ export default function ExecutiveSummaryPage() {
                         />
 
                         <SearchableSelect 
-                            options={availableSowReports.map((no: string) => ({ value: no, label: no }))}
+                            options={sowReportOptions}
                             value={selections.sowReportNo}
                             onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}
                             disabled={!selections.jobpackId}
@@ -2419,6 +3988,10 @@ export default function ExecutiveSummaryPage() {
                     reportNo: selections.sowReportNo,
                     client: companySettings?.data?.company_name,
                     clientShort: (() => {
+                        const customShort = companySettings?.data?.client_short || companySettings?.data?.storage_config?.client_short;
+                        if (customShort && String(customShort).trim()) {
+                            return String(customShort).trim();
+                        }
                         const clientName = companySettings?.data?.company_name;
                         if (!clientName) return "N/A";
                         const matched = contractors.find((c: any) => 
@@ -2478,7 +4051,7 @@ export default function ExecutiveSummaryPage() {
                     }
                 }}
             >
-                <DialogContent className="sm:max-w-md border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl p-6">
+                <DialogContent className="sm:max-w-lg border border-border/80 bg-background/95 backdrop-blur-md shadow-2xl p-6">
                     <DialogHeader className="space-y-2">
                         <div className="flex items-center gap-3">
                             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary animate-pulse">
@@ -2500,7 +4073,7 @@ export default function ExecutiveSummaryPage() {
                             <div className="flex items-center justify-between text-xs">
                                 <span className="font-medium text-foreground flex items-center gap-2">
                                     <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                                    <span className="truncate max-w-[280px]">{exportProgress.status || "Building file..."}</span>
+                                    <span className="truncate max-w-[340px]" title={exportProgress.status}>{exportProgress.status || "Building file..."}</span>
                                 </span>
                                 <Badge variant="secondary" className="font-mono text-xs font-semibold px-2 py-0.5">
                                     {Math.round(exportProgress.percent)}%
@@ -2510,6 +4083,12 @@ export default function ExecutiveSummaryPage() {
                                 value={exportProgress.percent} 
                                 className="h-2.5 w-full transition-all duration-300 bg-secondary/80" 
                             />
+                            {exportProgress.detail && (
+                                <div className="text-[11px] text-muted-foreground flex items-center gap-1.5 pl-0.5 pt-0.5">
+                                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-primary/70 animate-ping" />
+                                    <span className="truncate">{exportProgress.detail}</span>
+                                </div>
+                            )}
                         </div>
 
                         <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">

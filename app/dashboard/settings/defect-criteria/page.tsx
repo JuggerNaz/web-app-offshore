@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
-import { AlertTriangle, Plus, Edit, Trash2, Save, X, AlertCircle, CheckCircle, ArrowLeft, Settings2, ShieldAlert, Search } from 'lucide-react';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { AlertTriangle, Plus, Edit, Trash2, Save, X, AlertCircle, CheckCircle, ArrowLeft, Settings2, ShieldAlert, Search, ChevronDown, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import type { DefectCriteriaProcedure, DefectCriteriaRule, RuleFormData, LibraryItem, ProcedureStatus } from '@/types/defect-criteria';
 
@@ -37,6 +38,8 @@ export default function DefectCriteriaPage() {
     const [editingRule, setEditingRule] = useState<DefectCriteriaRule | null>(null);
     const [valueType, setValueType] = useState<'number' | 'text'>('number');
     const [searchTerm, setSearchTerm] = useState('');
+    const [structureGroupSearch, setStructureGroupSearch] = useState('');
+    const [structureGroupOpen, setStructureGroupOpen] = useState(false);
 
     // Form data
     const [ruleForm, setRuleForm] = useState<RuleFormData>({
@@ -365,6 +368,7 @@ export default function DefectCriteriaPage() {
 
     // Edit rule
     const handleEditRule = (rule: DefectCriteriaRule) => {
+        const isTextRule = Boolean(rule.thresholdText || rule.thresholdOperator === 'LIKE');
         setEditingRule(rule);
         setRuleForm({
             structureGroup: rule.structureGroup,
@@ -378,14 +382,14 @@ export default function DefectCriteriaPage() {
             nominalThickness: rule.nominalThickness,
             thresholdValue: rule.thresholdValue,
             thresholdText: rule.thresholdText,
-            thresholdOperator: rule.thresholdOperator,
+            thresholdOperator: rule.thresholdOperator || (isTextRule ? 'LIKE' : '>'),
             customParameters: rule.customParameters,
             autoFlag: rule.autoFlag,
             alertMessage: rule.alertMessage,
             evaluationPriority: rule.evaluationPriority,
             findings: rule.findings || '',
         });
-        setValueType(rule.thresholdText ? 'text' : 'number');
+        setValueType(isTextRule ? 'text' : 'number');
         loadDefectTypes(rule.defectCodeId);
         setShowRuleBuilder(true);
     };
@@ -399,6 +403,7 @@ export default function DefectCriteriaPage() {
             priorityId: '',
             defectCodeId: '',
             defectTypeId: '',
+            thresholdOperator: '>',
             autoFlag: true,
             alertMessage: '',
             evaluationPriority: 0,
@@ -406,6 +411,37 @@ export default function DefectCriteriaPage() {
         });
         setValueType('number');
         setDefectTypes([]);
+        setStructureGroupSearch('');
+        setStructureGroupOpen(false);
+    };
+
+    // Helper to get selected structure groups array
+    const getSelectedStructureGroups = () => {
+        if (!ruleForm.structureGroup) return [];
+        if (ruleForm.structureGroup === 'All Structure Groups') return ['All Structure Groups'];
+        return ruleForm.structureGroup.split(',').map(s => s.trim()).filter(Boolean);
+    };
+
+    // Helper to toggle a structure group in the multi-select
+    const handleToggleStructureGroup = (groupDesc: string) => {
+        const current = getSelectedStructureGroups();
+        if (groupDesc === 'All Structure Groups') {
+            if (current.includes('All Structure Groups')) {
+                setRuleForm({ ...ruleForm, structureGroup: '' });
+            } else {
+                setRuleForm({ ...ruleForm, structureGroup: 'All Structure Groups' });
+            }
+            return;
+        }
+
+        // Toggling an individual group
+        let updated = current.filter(g => g !== 'All Structure Groups');
+        if (updated.includes(groupDesc)) {
+            updated = updated.filter(g => g !== groupDesc);
+        } else {
+            updated = [...updated, groupDesc];
+        }
+        setRuleForm({ ...ruleForm, structureGroup: updated.join(', ') });
     };
 
     // Get library label by ID
@@ -660,9 +696,21 @@ export default function DefectCriteriaPage() {
                                                             )}
                                                         </div>
                                                         <div className="text-sm space-y-1">
-                                                            <div>
+                                                            <div className="flex items-center gap-1.5 flex-wrap">
                                                                 <span className="text-muted-foreground">Structure:</span>{' '}
-                                                                <span className="font-medium">{rule.structureGroup}</span>
+                                                                {rule.structureGroup === 'All Structure Groups' ? (
+                                                                    <Badge variant="outline" className="font-semibold text-xs bg-primary/10 text-primary border-primary/20">
+                                                                        All Structure Groups
+                                                                    </Badge>
+                                                                ) : (
+                                                                    <div className="inline-flex flex-wrap gap-1 items-center">
+                                                                        {(rule.structureGroup || '').split(',').map(s => s.trim()).filter(Boolean).map(grp => (
+                                                                            <Badge key={grp} variant="secondary" className="font-normal text-xs">
+                                                                                {grp}
+                                                                            </Badge>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
                                                             </div>
                                                             <div>
                                                                 <span className="text-muted-foreground">Defect:</span>{' '}
@@ -670,11 +718,11 @@ export default function DefectCriteriaPage() {
                                                                     {getLibraryLabel(defectCodes, rule.defectCodeId)} - {getLibraryLabel(allDefectTypes, rule.defectTypeId)}
                                                                 </span>
                                                             </div>
-                                                            {rule.thresholdOperator && rule.thresholdValue && (
+                                                            {((rule.thresholdOperator && (rule.thresholdValue !== undefined || rule.thresholdText)) || rule.thresholdText) && (
                                                                 <div>
                                                                     <span className="text-muted-foreground">Condition:</span>{' '}
                                                                     <span className="font-medium">
-                                                                        {rule.fieldName || 'Value'} {rule.thresholdOperator} {rule.thresholdValue || rule.thresholdText}
+                                                                        {rule.fieldName || 'Value'} {rule.thresholdOperator || 'LIKE'} {rule.thresholdValue !== undefined && rule.thresholdValue !== null ? rule.thresholdValue : `"${rule.thresholdText}"`}
                                                                     </span>
                                                                 </div>
                                                             )}
@@ -855,22 +903,134 @@ export default function DefectCriteriaPage() {
                                 <h3 className="font-semibold">Basic Information</h3>
                                 <div className="grid grid-cols-2 gap-4">
                                     <div className="space-y-2">
-                                        <Label htmlFor="structureGroup">Structure Group</Label>
-                                        <Select value={ruleForm.structureGroup} onValueChange={(value) => setRuleForm({ ...ruleForm, structureGroup: value })}>
-                                            <SelectTrigger>
-                                                <SelectValue placeholder="Select structure group" />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="All Structure Groups" className="font-semibold text-primary">
-                                                    All Structure Groups
-                                                </SelectItem>
-                                                {structureGroups.filter(group => group.lib_desc).map((group) => (
-                                                    <SelectItem key={group.lib_id || group.lib_desc} value={group.lib_desc}>
-                                                        {group.lib_desc}
-                                                    </SelectItem>
-                                                ))}
-                                            </SelectContent>
-                                        </Select>
+                                        <div className="flex items-center justify-between">
+                                            <Label htmlFor="structureGroup">Structure Group(s)</Label>
+                                            <span className="text-xs text-muted-foreground">Multiple selectable</span>
+                                        </div>
+                                        <Popover open={structureGroupOpen} onOpenChange={setStructureGroupOpen}>
+                                            <PopoverTrigger asChild>
+                                                <Button
+                                                    id="structureGroup"
+                                                    variant="outline"
+                                                    role="combobox"
+                                                    aria-expanded={structureGroupOpen}
+                                                    className="w-full justify-between h-auto min-h-10 px-3 py-2 text-left font-normal flex items-center hover:bg-background"
+                                                >
+                                                    {(() => {
+                                                        const current = getSelectedStructureGroups();
+                                                        if (current.length === 0) {
+                                                            return <span className="text-muted-foreground text-sm">Select structure group(s)...</span>;
+                                                        }
+                                                        if (current.includes('All Structure Groups')) {
+                                                            return <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20 font-semibold text-xs">All Structure Groups</Badge>;
+                                                        }
+                                                        return (
+                                                            <div className="flex flex-wrap gap-1 items-center max-w-[calc(100%-20px)]">
+                                                                {current.slice(0, 2).map((grp) => (
+                                                                    <Badge key={grp} variant="secondary" className="text-xs px-2 py-0.5">
+                                                                        {grp}
+                                                                    </Badge>
+                                                                ))}
+                                                                {current.length > 2 && (
+                                                                    <Badge variant="outline" className="text-xs font-semibold px-1.5 py-0.5">
+                                                                        +{current.length - 2} more
+                                                                    </Badge>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })()}
+                                                    <ChevronDown className="h-4 w-4 shrink-0 opacity-50 ml-2" />
+                                                </Button>
+                                            </PopoverTrigger>
+                                            <PopoverContent className="w-[320px] p-3" align="start">
+                                                <div className="space-y-3">
+                                                    <div className="flex items-center justify-between border-b pb-2">
+                                                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Structure Groups</span>
+                                                        <div className="flex gap-2">
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setRuleForm({ ...ruleForm, structureGroup: 'All Structure Groups' })}
+                                                                className="text-xs text-primary hover:underline font-medium"
+                                                            >
+                                                                All
+                                                            </button>
+                                                            <span className="text-xs text-muted-foreground">•</span>
+                                                            <button
+                                                                type="button"
+                                                                onClick={() => setRuleForm({ ...ruleForm, structureGroup: '' })}
+                                                                className="text-xs text-muted-foreground hover:text-foreground font-medium"
+                                                            >
+                                                                Clear
+                                                            </button>
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="relative">
+                                                        <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+                                                        <Input
+                                                            placeholder="Search groups..."
+                                                            value={structureGroupSearch}
+                                                            onChange={(e) => setStructureGroupSearch(e.target.value)}
+                                                            className="h-8 pl-8 text-xs"
+                                                        />
+                                                    </div>
+
+                                                    <div
+                                                        className="max-h-56 overflow-y-auto pr-1 space-y-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-track]:bg-slate-100 dark:[&::-webkit-scrollbar-track]:bg-slate-900 [&::-webkit-scrollbar-track]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-400 dark:[&::-webkit-scrollbar-thumb]:bg-slate-600 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-500"
+                                                        style={{
+                                                            scrollbarWidth: 'thin',
+                                                            scrollbarColor: '#94a3b8 #f1f5f9'
+                                                        }}
+                                                    >
+                                                        {/* All Structure Groups Wildcard Option */}
+                                                        {(!structureGroupSearch || 'all structure groups'.includes(structureGroupSearch.toLowerCase())) && (
+                                                            <div
+                                                                onClick={() => handleToggleStructureGroup('All Structure Groups')}
+                                                                className="flex items-center space-x-2 px-2 py-1.5 rounded-md hover:bg-accent cursor-pointer transition-colors"
+                                                            >
+                                                                <Checkbox
+                                                                    id="sg-all"
+                                                                    checked={getSelectedStructureGroups().includes('All Structure Groups')}
+                                                                    onCheckedChange={() => handleToggleStructureGroup('All Structure Groups')}
+                                                                />
+                                                                <label htmlFor="sg-all" className="text-sm font-semibold text-primary cursor-pointer flex-1">
+                                                                    All Structure Groups
+                                                                </label>
+                                                            </div>
+                                                        )}
+
+                                                        <div className="border-t my-1" />
+
+                                                        {structureGroups
+                                                            .filter(group => group.lib_desc)
+                                                            .filter(group => !structureGroupSearch || group.lib_desc.toLowerCase().includes(structureGroupSearch.toLowerCase()))
+                                                            .map((group) => {
+                                                                const isChecked = getSelectedStructureGroups().includes(group.lib_desc);
+                                                                return (
+                                                                    <div
+                                                                        key={group.lib_id || group.lib_desc}
+                                                                        onClick={() => handleToggleStructureGroup(group.lib_desc)}
+                                                                        className="flex items-center space-x-2 px-2 py-1.5 rounded-md hover:bg-accent cursor-pointer transition-colors"
+                                                                    >
+                                                                        <Checkbox
+                                                                            id={`sg-${group.lib_id || group.lib_desc}`}
+                                                                            checked={isChecked}
+                                                                            onCheckedChange={() => handleToggleStructureGroup(group.lib_desc)}
+                                                                        />
+                                                                        <label htmlFor={`sg-${group.lib_id || group.lib_desc}`} className="text-sm cursor-pointer flex-1">
+                                                                            {group.lib_desc}
+                                                                        </label>
+                                                                    </div>
+                                                                );
+                                                            })}
+
+                                                        {structureGroups.filter(g => g.lib_desc && (!structureGroupSearch || g.lib_desc.toLowerCase().includes(structureGroupSearch.toLowerCase()))).length === 0 && (
+                                                            <p className="text-xs text-muted-foreground text-center py-2">No matching structure groups</p>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </PopoverContent>
+                                        </Popover>
                                     </div>
                                     <div className="space-y-2">
                                         <Label htmlFor="priority">Priority Type</Label>
@@ -997,9 +1157,19 @@ export default function DefectCriteriaPage() {
                                                 setValueType(value);
                                                 // Clear the other value when switching
                                                 if (value === 'number') {
-                                                    setRuleForm({ ...ruleForm, thresholdText: undefined });
+                                                    setRuleForm({
+                                                        ...ruleForm,
+                                                        thresholdText: undefined,
+                                                        thresholdOperator: ruleForm.thresholdOperator === 'LIKE' ? '>' : ruleForm.thresholdOperator,
+                                                    });
                                                 } else {
-                                                    setRuleForm({ ...ruleForm, thresholdValue: undefined });
+                                                    setRuleForm({
+                                                        ...ruleForm,
+                                                        thresholdValue: undefined,
+                                                        thresholdOperator: ['==', '!=', 'LIKE'].includes(ruleForm.thresholdOperator || '')
+                                                            ? ruleForm.thresholdOperator
+                                                            : 'LIKE',
+                                                    });
                                                 }
                                             }}
                                         >
@@ -1022,12 +1192,22 @@ export default function DefectCriteriaPage() {
                                                 <SelectValue placeholder="Select operator" />
                                             </SelectTrigger>
                                             <SelectContent>
-                                                <SelectItem value=">">Greater than (&gt;)</SelectItem>
-                                                <SelectItem value="<">Less than (&lt;)</SelectItem>
-                                                <SelectItem value=">=">Greater or equal (&gt;=)</SelectItem>
-                                                <SelectItem value="<=">Less or equal (&lt;=)</SelectItem>
-                                                <SelectItem value="==">Equal (==)</SelectItem>
-                                                <SelectItem value="!=">Not equal (!=)</SelectItem>
+                                                {valueType === 'text' ? (
+                                                    <>
+                                                        <SelectItem value="LIKE">Like (LIKE)</SelectItem>
+                                                        <SelectItem value="==">Equal (==)</SelectItem>
+                                                        <SelectItem value="!=">Not equal (!=)</SelectItem>
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <SelectItem value=">">Greater than (&gt;)</SelectItem>
+                                                        <SelectItem value="<">Less than (&lt;)</SelectItem>
+                                                        <SelectItem value=">=">Greater or equal (&gt;=)</SelectItem>
+                                                        <SelectItem value="<=">Less or equal (&lt;=)</SelectItem>
+                                                        <SelectItem value="==">Equal (==)</SelectItem>
+                                                        <SelectItem value="!=">Not equal (!=)</SelectItem>
+                                                    </>
+                                                )}
                                             </SelectContent>
                                         </Select>
                                     </div>
