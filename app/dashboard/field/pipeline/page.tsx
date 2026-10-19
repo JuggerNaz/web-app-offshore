@@ -1,6 +1,9 @@
 "use client";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import Link from "next/link";
 import { Waves, ArrowRight, LayoutGrid, List, Search, ArrowUpDown, ArrowUp, ArrowDown, FileText, Activity, Plus, Filter, X, RotateCcw } from "lucide-react";
 import { useSearchParams } from "next/navigation";
@@ -91,6 +94,7 @@ export default function PipelinePage() {
     return 'list';
   });
   const [searchQuery, setSearchQuery] = useState("");
+  const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [sortField, setSortField] = useState<SortField>("title");
   const [sortOrder, setSortOrder] = useState<SortOrder>("asc");
 
@@ -103,12 +107,24 @@ export default function PipelinePage() {
     process: null,
   });
 
-  const { data, error, isLoading } = useSWR(
-    fieldId ? `/api/pipeline?field=${fieldId}` : `/api/pipeline`,
-    fetcher
-  );
-
-  const pipelines: Pipeline[] = useMemo(() => data?.data || [], [data]);
+  // Scroll-to-load pipeline list; the API pages rows and applies the title
+  // search server-side (?q=).
+  const {
+    items: pipelines,
+    totalItems,
+    isLoading,
+    error: listError,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    refetch,
+  } = useInfiniteList<Pipeline>({
+    queryKey: ["field", "pipelines", fieldId ?? "all", debouncedSearch],
+    getPageUrl: (page) =>
+      `/api/pipeline?page=${page}&pageSize=50${
+        fieldId ? `&field=${fieldId}` : ""
+      }${debouncedSearch ? `&q=${encodeURIComponent(debouncedSearch)}` : ""}`,
+  });
 
   // Fetch oil fields for the filter
   const { data: fieldsData } = useSWR("/api/library/fields-stats", fetcher);
@@ -173,18 +189,9 @@ export default function PipelinePage() {
     }
   }, [viewMode]);
 
-  // Filter and sort pipelines
+  // Filter and sort the loaded window (search moved server-side via ?q=)
   const filteredAndSortedPipelines = useMemo(() => {
     const filtered = pipelines.filter((pipeline) => {
-      // Search query filter
-      const matchesSearch = pipeline.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          pipeline.field_name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          pipeline.st_loc?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          pipeline.end_loc?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                          `PIPE-${pipeline.pipe_id}`.toLowerCase().includes(searchQuery.toLowerCase());
-
-      if (!matchesSearch) return false;
-
       // Oil Field filter
       if (filters.field && String(pipeline.pfield) !== filters.field && pipeline.field_name !== filters.field) {
         return false;
@@ -239,7 +246,7 @@ export default function PipelinePage() {
     });
 
     return filtered;
-  }, [pipelines, searchQuery, sortField, sortOrder, filters]);
+  }, [pipelines, sortField, sortOrder, filters]);
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -261,14 +268,14 @@ export default function PipelinePage() {
     );
   };
 
-  if (error) return (
+  if (listError) return (
     <div className="flex-1 flex flex-col items-center justify-center p-12 text-center">
       <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-2xl mb-4 text-red-500">
         <Activity className="h-8 w-8" />
       </div>
       <h2 className="text-xl font-black tracking-tight mb-2">Sync Error</h2>
       <p className="text-slate-500 max-w-xs mx-auto mb-6">Failed to retrieve pipeline data. Please check your connection.</p>
-      <Button onClick={() => window.location.reload()} variant="outline" className="rounded-xl px-8 font-black uppercase tracking-widest border-2 hover:bg-teal-50 dark:hover:bg-teal-950 transition-all">Retry</Button>
+      <Button onClick={refetch} variant="outline" className="rounded-xl px-8 font-black uppercase tracking-widest border-2 hover:bg-teal-50 dark:hover:bg-teal-950 transition-all">Retry</Button>
     </div>
   );
 
@@ -611,6 +618,16 @@ export default function PipelinePage() {
           </div>
         )}
 
+        {viewMode === "card" && (
+          <ScrollSentinel
+            hasNextPage={hasNextPage}
+            isFetchingNextPage={isFetchingNextPage}
+            onLoadMore={fetchNextPage}
+            loadedCount={filteredAndSortedPipelines.length}
+            totalItems={totalItems}
+          />
+        )}
+
         {/* Table View */}
         {viewMode === "list" && (
           <div className="rounded-[2rem] overflow-hidden border border-slate-100 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl shadow-slate-200/50 dark:shadow-black/20 animate-in fade-in slide-in-from-bottom-4 duration-700">
@@ -724,10 +741,17 @@ export default function PipelinePage() {
                 ))}
               </TableBody>
             </Table>
+            <ScrollSentinel
+              hasNextPage={hasNextPage}
+              isFetchingNextPage={isFetchingNextPage}
+              onLoadMore={fetchNextPage}
+              loadedCount={filteredAndSortedPipelines.length}
+              totalItems={totalItems}
+            />
           </div>
         )}
 
-        {filteredAndSortedPipelines.length === 0 && (
+        {filteredAndSortedPipelines.length === 0 && !isLoading && (
           <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-[2rem] border border-dashed border-slate-200 dark:border-slate-800 shadow-sm animate-in fade-in zoom-in duration-500">
             <Waves className="w-16 h-16 mx-auto text-muted-foreground/50 mb-4" />
             <p className="text-muted-foreground font-bold uppercase tracking-widest text-xs">

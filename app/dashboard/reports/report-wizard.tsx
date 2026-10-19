@@ -141,7 +141,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
         reportYear: new Date().getFullYear().toString(),
-        preparedBy: { name: "", date: new Date().toISOString().split('T')[0] },
+        preparedBy: { name: "", date: "" },
         reviewedBy: { name: "", date: "" },
         approvedBy: { name: "", date: "" },
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
@@ -2175,7 +2175,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
                     const mergedPdfBytes = await mergedPdf.save();
-                    const finalBlob = new Blob([mergedPdfBytes], { type: 'application/pdf' });
+                    const finalBlob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
 
                     if (returnBlob) {
                         return finalBlob;
@@ -2200,7 +2200,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, showSignatures: true, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
         }
 
         // Inspection Summary Report
@@ -2345,8 +2345,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
-            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : (await fetchJobPackData() || jobPacks.find((jp: any) => jp.id?.toString() === selections.jobPackId?.toString()));
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (await fetchStructureData() || structures.find((s: any) => s.id?.toString() === selections.structureId?.toString()));
+            let jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!jobPack && !selections.printBlankReport && selections.jobPackId) {
+                jobPack = jobPacks.find((jp: any) => String(jp.id) === String(selections.jobPackId)) || { id: selections.jobPackId, name: "JobPack " + selections.jobPackId, metadata: {} };
+            }
+
+            let structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if (!structure && !selections.printBlankReport && selections.structureId) {
+                const cleanStrId = String(selections.structureId).replace(/^(platform|pipeline)-/, "");
+                structure = structures.find((s: any) => String(s.id) === String(cleanStrId) || String(s.str_id) === String(cleanStrId)) || { id: cleanStrId, str_name: "Structure " + cleanStrId };
+            }
             if ((!jobPack || !structure) && !selections.printBlankReport) return null;
 
             return await generateDiverLogReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig);

@@ -3,6 +3,9 @@
 import { useState, useEffect, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import useSWR from "swr";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 import inspectionTypesData from "@/utils/types/inspection-types.json";
 
 import { createClient } from "@/utils/supabase/client";
@@ -61,14 +64,12 @@ const fetcher = (url: string) => fetch(url).then(res => res.json());
 
 export function AnomaliesFindingsView() {
   const supabase = createClient();
-  const [loading, setLoading] = useState(true);
-  
-  // Data State
+
+  // Slim lookups (structures, jobpacks, defect libraries) — small tables that
+  // stay as direct fetches.
+  const [loadingLookups, setLoadingLookups] = useState(true);
   const [structures, setStructures] = useState<any[]>([]);
   const [jobpacks, setJobpacks] = useState<any[]>([]);
-  const [anomalies, setAnomalies] = useState<any[]>([]);
-  const [findings, setFindings] = useState<any[]>([]);
-  const [components, setComponents] = useState<Record<number, ComponentSpec>>({});
   
   const { data: priorityColorsData } = useSWR('/api/library/combo/ANMLYCLR', fetcher);
 
@@ -131,6 +132,55 @@ export function AnomaliesFindingsView() {
   const [viewType, setViewType] = useState<"card" | "list">("card");
   const [structureSearchQuery, setStructureSearchQuery] = useState("");
   const [itemSearchQuery, setItemSearchQuery] = useState("");
+  const debouncedItemSearch = useDebouncedValue(itemSearchQuery, 300);
+
+  // Per-structure counts from the slim counts endpoint (sidebar badges + filter).
+  const { data: countsData } = useSWR("/api/anomalies-findings?mode=counts", fetcher);
+  const structureCounts = useMemo(() => {
+    const map: Record<string, { anomalies: number; findings: number }> = {};
+    (countsData?.data || []).forEach((row: any) => {
+      map[String(row.structure_id)] = {
+        anomalies: row.anomalies || 0,
+        findings: row.findings || 0,
+      };
+    });
+    return map;
+  }, [countsData]);
+
+  // Items for the selected structure — scroll-to-load pages of 50. Search is
+  // applied server-side via ?q= (ref no / description / observation / QID).
+  const {
+    items: structureItems,
+    totalItems,
+    isLoading: itemsLoading,
+    hasNextPage,
+    isFetchingNextPage,
+    fetchNextPage,
+    updateItem,
+  } = useInfiniteList<any>({
+    queryKey: ["anomalies-findings", viewMode, selectedStructureId, debouncedItemSearch],
+    getPageUrl: (page) =>
+      `/api/anomalies-findings?view=${viewMode}&structure_id=${selectedStructureId}&page=${page}&pageSize=50${
+        debouncedItemSearch ? `&q=${encodeURIComponent(debouncedItemSearch)}` : ""
+      }`,
+    enabled: !!selectedStructureId,
+  });
+
+  // Component metadata for the SELECTED structure only (slim lookup — no
+  // inspection/anomaly joins).
+  const { data: selectedComponentsData } = useSWR(
+    selectedStructureId
+      ? `/api/structure-components/lookup?structure_id=${selectedStructureId}&pageSize=1000`
+      : null,
+    fetcher
+  );
+  const components = useMemo(() => {
+    const map: Record<number, ComponentSpec> = {};
+    (selectedComponentsData?.data || []).forEach((c: any) => {
+      map[c.id] = c;
+    });
+    return map;
+  }, [selectedComponentsData]);
   
   // Sorting State
   const [sortColumn, setSortColumn] = useState<string>("reference");
@@ -187,7 +237,7 @@ export function AnomaliesFindingsView() {
           toast.error(`Failed to save changes: ${error.message}`);
         } else {
           toast.success(`Changes saved successfully.`);
-          setAnomalies((prev: any[]) => prev.map(a => a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a));
+          updateItem((a: any) => (a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a));
           setSelectedItem((prev: any) => ({ ...prev, ...payload }));
         }
       } else {
@@ -205,7 +255,7 @@ export function AnomaliesFindingsView() {
           toast.error(`Failed to save changes: ${error.message}`);
         } else {
           toast.success(`Changes saved successfully.`);
-          setFindings((prev: any[]) => prev.map(f => f.insp_id === selectedItem.insp_id ? { ...f, inspection_data: updatedData } : f));
+          updateItem((f: any) => (f.insp_id === selectedItem.insp_id ? { ...f, inspection_data: updatedData } : f));
           setSelectedItem((prev: any) => ({ ...prev, inspection_data: updatedData }));
         }
       }
@@ -222,46 +272,16 @@ export function AnomaliesFindingsView() {
   const [availableDefectTypes, setAvailableDefectTypes] = useState<any[]>([]);
 
   useEffect(() => {
-    async function fetchData() {
-      setLoading(true);
+    async function fetchLookups() {
+      setLoadingLookups(true);
       try {
         const [
-          platformsRes, pipelinesRes, jobpacksRes, componentsRes, anomaliesRes, findingsRes,
+          platformsRes, pipelinesRes, jobpacksRes,
           codesRes, priosRes, fndsRes
         ] = await Promise.all([
           supabase.from("platform").select("plat_id, title"),
           supabase.from("u_pipeline").select("pipe_id, title"),
           supabase.from("jobpack").select("id, name, metadata"),
-          supabase.from("structure_components").select("id, q_id, id_no, code, structure_id, metadata"),
-          supabase.from("insp_anomalies").select(`
-            *,
-            inspection:insp_records(
-              insp_id, 
-              structure_id, 
-              component_id, 
-              jobpack_id,
-              sow_report_no,
-              inspection_type_code,
-              inspection_date,
-              inspection_data,
-              has_anomaly,
-              tape_count_no,
-              tape_id,
-              dive_job_id,
-              rov_job_id,
-              structure_components:component_id!left(q_id, code),
-              insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
-              insp_dive_jobs:dive_job_id!left(job_no:dive_no),
-              insp_video_tapes:tape_id!left(tape_no)
-            )
-          `),
-          supabase.from("insp_records").select(`
-            *,
-            structure_components:component_id!left(q_id, code),
-            insp_rov_jobs:rov_job_id!left(job_no:deployment_no),
-            insp_dive_jobs:dive_job_id!left(job_no:dive_no),
-            insp_video_tapes:tape_id!left(tape_no)
-          `),
           supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_COD").order("lib_desc"),
           supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_TYP").order("lib_desc"),
           supabase.from("u_lib_list").select("lib_id, lib_desc").eq("lib_code", "AMLY_FND").order("lib_desc")
@@ -281,76 +301,79 @@ export function AnomaliesFindingsView() {
           setAllDefectTypes(fndsRes.data);
           setAvailableDefectTypes(fndsRes.data);
         }
-        
-        const anomaliesFiltered = (anomaliesRes.data || []).filter((a: any) => {
-          const metaStatus = (a.inspection?.inspection_data?._meta_status || "").toLowerCase();
-          return metaStatus !== "finding";
-        });
-        setAnomalies(anomaliesFiltered);
-
-        const findingsFiltered = (findingsRes.data || []).filter((f: any) => {
-          if (!f.has_anomaly) return false;
-          const metaStatus = (f.inspection_data?._meta_status || "").toLowerCase();
-          return metaStatus === "finding";
-        });
-        setFindings(findingsFiltered);
-        
-        const compMap: Record<number, ComponentSpec> = {};
-        (componentsRes.data || []).forEach((c: any) => {
-          compMap[c.id] = c;
-        });
-        setComponents(compMap);
-
-        const initialStr = combinedStructures.find(str => {
-          return anomaliesFiltered.some(a => String(a.inspection?.structure_id) === String(str.id)) ||
-                 findingsFiltered.some(f => String(f.structure_id) === String(str.id));
-        });
-        
-        if (initialStr) {
-          setSelectedStructureId(String(initialStr.id));
-        } else if (combinedStructures.length > 0) {
-          setSelectedStructureId(String(combinedStructures[0].id));
-        }
-
       } catch (error) {
-        console.error("Error fetching data:", error);
+        console.error("Error fetching lookups:", error);
         toast.error("Failed to load data");
       } finally {
-        setLoading(false);
+        setLoadingLookups(false);
       }
     }
 
-    fetchData();
+    fetchLookups();
   }, []);
 
-  const searchParams = useSearchParams();
+  // Pick the first structure that has items for the current view once the
+  // counts and structure list are in.
+  useEffect(() => {
+    if (selectedStructureId || loadingLookups || !countsData) return;
+    const firstWithItems = structures.find(
+      (str) => (structureCounts[String(str.id)]?.[viewMode] || 0) > 0
+    );
+    if (firstWithItems) {
+      setSelectedStructureId(String(firstWithItems.id));
+    } else if (structures.length > 0) {
+      setSelectedStructureId(String(structures[0].id));
+    }
+  }, [selectedStructureId, loadingLookups, countsData, structures, structureCounts, viewMode]);
 
-  // Handle direct link to anomaly via ID param
+  const searchParams = useSearchParams();
+  const [deepLinkFetched, setDeepLinkFetched] = useState(false);
+
+  // Handle direct link to an anomaly via ID param. Search the loaded window
+  // first; if the id is not loaded yet, fetch the single record by id from
+  // the API and open it (which also selects its structure).
   useEffect(() => {
     const anomalyId = searchParams.get("id");
-    if (anomalyId && anomalies.length > 0 && !selectedItem) {
-      const targetAnomaly = anomalies.find(a => String(a.anomaly_id) === anomalyId);
-      if (targetAnomaly) {
-        // Select the structure first
-        if (targetAnomaly.inspection?.structure_id) {
-          setSelectedStructureId(String(targetAnomaly.inspection.structure_id));
-        }
-        
-        // Open details
-        setSelectedItem(targetAnomaly);
-        setEditDefectCode(targetAnomaly.defect_type_code || "");
-        setEditDefectType(targetAnomaly.defect_category_code || "");
-        setEditPriority(targetAnomaly.priority_code || "");
-        setRectificationNotes(targetAnomaly.follow_up_notes || "");
-        setRectifiedDate(targetAnomaly.rectified_date 
-          ? new Date(targetAnomaly.rectified_date).toISOString().split('T')[0] 
-          : new Date().toISOString().split('T')[0]);
-        setApprovedBy(targetAnomaly.approved_by || "");
-        setEvaluatedBy(targetAnomaly.reviewed_by || "");
-        setIsDetailOpen(true);
+    if (!anomalyId || deepLinkFetched || selectedItem) return;
+
+    const applyRow = (row: any) => {
+      if (!row) return;
+      if (row.inspection?.structure_id) {
+        setSelectedStructureId(String(row.inspection.structure_id));
       }
+      setSelectedItem(row);
+      setEditDefectCode(row.defect_type_code || "");
+      setEditDefectType(row.defect_category_code || "");
+      setEditPriority(row.priority_code || "");
+      setRectificationNotes(row.follow_up_notes || "");
+      setRectifiedDate(row.rectified_date
+        ? new Date(row.rectified_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0]);
+      setApprovedBy(row.approved_by || "");
+      setEvaluatedBy(row.reviewed_by || "");
+      setIsDetailOpen(true);
+    };
+
+    const loaded = structureItems.find(a => String(a.anomaly_id) === anomalyId);
+    if (loaded) {
+      applyRow(loaded);
+      setDeepLinkFetched(true);
+      return;
     }
-  }, [searchParams, anomalies, selectedItem]);
+
+    if (!itemsLoading) {
+      setDeepLinkFetched(true);
+      (async () => {
+        try {
+          const res = await fetch(`/api/anomalies-findings?view=anomalies&id=${encodeURIComponent(anomalyId)}`);
+          const json = await res.json();
+          if (json?.success && json.data) applyRow(json.data);
+        } catch (e) {
+          console.error("Failed to fetch deep-linked anomaly:", e);
+        }
+      })();
+    }
+  }, [searchParams, structureItems, itemsLoading, selectedItem, deepLinkFetched]);
 
   // Filter Defect Types by selected Defect Code via u_lib_combo
   useEffect(() => {
@@ -384,38 +407,25 @@ export function AnomaliesFindingsView() {
     filterDefectTypes();
   }, [editDefectCode, defectCodes, allDefectTypes, viewMode, supabase]);
 
-  // Filtered Structures (Only those with items)
+  // Filtered Structures (Only those with items, per server-provided counts)
   const filteredStructures = useMemo(() => {
     return structures.filter(str => {
-      const hasItems = viewMode === "anomalies" 
-        ? anomalies.some(anom => String(anom.inspection?.structure_id) === String(str.id))
-        : findings.some(find => String(find.structure_id) === String(str.id));
-        
+      const count = structureCounts[String(str.id)]?.[viewMode] || 0;
+      if (count === 0) return false;
+
       const matchesSearch = str.title?.toLowerCase().includes(structureSearchQuery.toLowerCase());
-      
-      return hasItems && matchesSearch;
+
+      return matchesSearch;
     });
-  }, [structures, anomalies, findings, viewMode, structureSearchQuery]);
+  }, [structures, structureCounts, viewMode, structureSearchQuery]);
 
   // Grouped and Sorted Items by Jobpack
+  // Item search is applied server-side via ?q= on the paginated endpoint,
+  // so structureItems is already the filtered set.
   const groupedItems = useMemo(() => {
     if (!selectedStructureId) return {};
 
-    const items = viewMode === "anomalies" 
-      ? anomalies.filter(anom => String(anom.inspection?.structure_id) === selectedStructureId)
-      : findings.filter(find => String(find.structure_id) === selectedStructureId);
-
-    const filtered = items.filter(item => {
-      const compId = viewMode === "anomalies" ? item.inspection?.component_id : item.component_id;
-      const comp = components[compId];
-      const qid = comp?.q_id?.toLowerCase() || "";
-      const refNo = (viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`)?.toLowerCase() || "";
-      const desc = (viewMode === "anomalies" ? item.defect_description : (item.description || item.observation))?.toLowerCase() || "";
-      
-      return qid.includes(itemSearchQuery.toLowerCase()) || 
-             refNo.includes(itemSearchQuery.toLowerCase()) || 
-             desc.includes(itemSearchQuery.toLowerCase());
-    });
+    const filtered = structureItems;
 
     // Apply Sorting
     const sorted = [...filtered].sort((a, b) => {
@@ -486,7 +496,7 @@ export function AnomaliesFindingsView() {
     return Object.fromEntries(
       Object.entries(groups).filter(([key, group]) => group.items.length > 0)
     );
-  }, [selectedStructureId, viewMode, anomalies, findings, itemSearchQuery, jobpacks, components, sortColumn, sortDirection]);
+  }, [selectedStructureId, viewMode, structureItems, jobpacks, components, sortColumn, sortDirection]);
 
   const selectedItemComp = useMemo(() => {
     if (!selectedItem) return null;
@@ -527,9 +537,7 @@ export function AnomaliesFindingsView() {
         if (error) throw error;
         
         toast.success("Anomaly Rectified & Closed");
-        setAnomalies((prev: any[]) => prev.map(a => 
-          a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a
-        ));
+        updateItem((a: any) => (a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a));
         setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       } else {
         const payload: any = { 
@@ -548,9 +556,7 @@ export function AnomaliesFindingsView() {
         if (error) throw error;
         
         toast.success("Finding Rectified & Completed");
-        setFindings((prev: any[]) => prev.map(f => 
-          f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f
-        ));
+        updateItem((f: any) => (f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f));
         setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       }
     } catch (e: any) {
@@ -590,14 +596,7 @@ export function AnomaliesFindingsView() {
         if (error) throw error;
         
         toast.success("Anomaly Re-opened");
-        setAnomalies((prev: any[]) => prev.map(a => 
-          a.anomaly_id === selectedItem.anomaly_id 
-            ? { 
-                ...a, 
-                ...payload
-              } 
-            : a
-        ));
+        updateItem((a: any) => (a.anomaly_id === selectedItem.anomaly_id ? { ...a, ...payload } : a));
         setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       } else {
         const payload: any = { 
@@ -613,9 +612,7 @@ export function AnomaliesFindingsView() {
         if (error) throw error;
         
         toast.success("Finding Re-opened");
-        setFindings((prev: any[]) => prev.map(f => 
-          f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f
-        ));
+        updateItem((f: any) => (f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f));
         setSelectedItem((prev: any) => ({ ...prev, ...payload }));
       }
     } catch (e: any) {
@@ -661,7 +658,7 @@ export function AnomaliesFindingsView() {
     );
   };
 
-  if (loading) {
+  if (loadingLookups) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background text-foreground">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -699,9 +696,7 @@ export function AnomaliesFindingsView() {
           <ScrollArea className="flex-1">
             <div className="p-2 space-y-1">
               {filteredStructures.map(str => {
-                const count = viewMode === "anomalies"
-                  ? anomalies.filter(a => String(a.inspection?.structure_id) === String(str.id)).length
-                  : findings.filter(f => String(f.structure_id) === String(str.id)).length;
+                const count = structureCounts[String(str.id)]?.[viewMode] || 0;
 
                 return (
                   <button
@@ -784,7 +779,11 @@ export function AnomaliesFindingsView() {
 
           {/* Content */}
           <ScrollArea className="flex-1 p-6">
-            {Object.keys(groupedItems).length === 0 ? (
+            {itemsLoading && structureItems.length === 0 ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="h-6 w-6 animate-spin text-primary" />
+              </div>
+            ) : Object.keys(groupedItems).length === 0 ? (
               <div className="text-center py-12 text-muted-foreground">No items found for this selection.</div>
             ) : (
               <div className="space-y-8">
@@ -959,6 +958,14 @@ export function AnomaliesFindingsView() {
                     )}
                   </div>
                 ))}
+                <ScrollSentinel
+                  hasNextPage={hasNextPage}
+                  isFetchingNextPage={isFetchingNextPage}
+                  onLoadMore={fetchNextPage}
+                  loadedCount={structureItems.length}
+                  totalItems={totalItems}
+                  hideWhenDone={false}
+                />
               </div>
             )}
           </ScrollArea>

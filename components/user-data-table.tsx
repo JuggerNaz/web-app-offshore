@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { UserData } from "@/types/user";
 import {
@@ -31,6 +31,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "sonner";
 import { UserProfileCard } from "@/components/user-profile-card";
 import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
+import { useInfiniteList } from "@/hooks/use-infinite-list";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
+import { ScrollSentinel } from "@/components/data-table/scroll-sentinel";
 
 
 const AVAILABLE_MODULES = [
@@ -54,12 +57,29 @@ const AVAILABLE_MODULES = [
 ];
 
 export function UserDataTable() {
-    const [users, setUsers] = useState<UserData[]>([]);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState<string | null>(null);
     const [filter, setFilter] = useState("");
+    const debouncedFilter = useDebouncedValue(filter, 300);
     const { onlineUserIds } = usePresence();
     const supabase = createClient();
+
+    // Scroll-to-load user directory. The server pages the get_all_users RPC
+    // (50 rows at a time) and handles the search server-side via ?q=.
+    const {
+        items: users,
+        totalItems,
+        isLoading: loading,
+        error,
+        hasNextPage,
+        isFetchingNextPage,
+        fetchNextPage,
+        refetch,
+    } = useInfiniteList<UserData>({
+        queryKey: ["users", "directory", debouncedFilter],
+        getPageUrl: (page) =>
+            `/api/users?page=${page}&pageSize=50${
+                debouncedFilter ? `&q=${encodeURIComponent(debouncedFilter)}` : ""
+            }`,
+    });
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
     const [localMetadata, setLocalMetadata] = useState<{
         full_name?: string;
@@ -84,44 +104,29 @@ export function UserDataTable() {
         setSortConfig({ key, direction });
     };
 
-    // Fetch user data
-    const fetchUsers = async () => {
+    // Resolve the current user + local metadata (session first to avoid navigator locks).
+    const loadAuthUser = useCallback(async () => {
+        let authUser: any = null;
         try {
-            setLoading(true);
-            
-            // Get current user and their local metadata (try session first to avoid navigator locks)
-            let authUser: any = null;
+            const { data: { session } } = await supabase.auth.getSession();
+            authUser = session?.user || null;
+        } catch (sessionErr) {}
+
+        if (!authUser) {
             try {
-                const { data: { session } } = await supabase.auth.getSession();
-                authUser = session?.user || null;
-            } catch (sessionErr) {}
-
-            if (!authUser) {
-                try {
-                    const { data: { user } } = await supabase.auth.getUser();
-                    authUser = user;
-                } catch (userErr) {}
-            }
-
-            if (authUser) {
-                setCurrentUserId(authUser.id);
-                setLocalMetadata(authUser.user_metadata);
-            }
-
-            const { data, error } = await supabase.rpc("get_all_users");
-
-            if (error) throw error;
-            setUsers(data || []);
-        } catch (err: any) {
-            console.error("Error fetching users:", err);
-            setError(err.message || "Failed to load user data");
-        } finally {
-            setLoading(false);
+                const { data: { user } } = await supabase.auth.getUser();
+                authUser = user;
+            } catch (userErr) {}
         }
-    };
-    
+
+        if (authUser) {
+            setCurrentUserId(authUser.id);
+            setLocalMetadata(authUser.user_metadata);
+        }
+    }, [supabase]);
+
     useEffect(() => {
-        fetchUsers();
+        loadAuthUser();
 
         // Listen for profile updates to refresh the list instantly
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -130,20 +135,16 @@ export function UserDataTable() {
                     setCurrentUserId(session.user.id);
                     setLocalMetadata(session.user.user_metadata);
                 }
-                fetchUsers();
+                refetch();
             }
         });
 
         return () => {
             subscription.unsubscribe();
         };
-    }, []);
+    }, [loadAuthUser, refetch, supabase]);
 
-    const filteredUsers = users.filter((user) =>
-        user.email?.toLowerCase().includes(filter.toLowerCase())
-    );
-
-    const sortedUsers = [...filteredUsers].sort((a, b) => {
+    const sortedUsers = [...users].sort((a, b) => {
         if (!sortConfig) return 0;
         const { key, direction } = sortConfig;
 
@@ -179,21 +180,21 @@ export function UserDataTable() {
     const currentUserData = users.find(u => u.id === currentUserId);
     const isAdmin = currentUserData?.role === 'Admin';
 
+    const isHeartbeatOnline = (user: UserData) => {
+        if (!user.last_seen_at) return false;
+        const lastSeenDate = new Date(user.last_seen_at);
+        const now = new Date();
+        const diffInSeconds = Math.abs(now.getTime() - lastSeenDate.getTime()) / 1000;
+        // Increased threshold to 300s (5m) to account for clock drift or refresh delays
+        return diffInSeconds < 300;
+    };
+
     const isOnline = (user: UserData) => {
         // 1. Check Real-time Presence set (Instant)
         if (onlineUserIds.has(user.id)) return true;
 
         // 2. Check Database Heartbeat (Fallback / Persistent)
-        if (user.last_seen_at) {
-            const lastSeenDate = new Date(user.last_seen_at);
-            const now = new Date();
-            const diffInSeconds = Math.abs(now.getTime() - lastSeenDate.getTime()) / 1000;
-            
-            // Increased threshold to 300s (5m) to account for clock drift or refresh delays
-            if (diffInSeconds < 300) return true;
-        }
-
-        return false;
+        return isHeartbeatOnline(user);
     };
 
     const getDisplayName = (user: UserData) => {
@@ -243,7 +244,7 @@ export function UserDataTable() {
 
             toast.success("User access updated successfully!");
             setEditingUser(null);
-            fetchUsers(); // Refresh the list
+            refetch(); // Refresh the loaded window
         } catch (err: any) {
             console.error("Error saving role:", err);
             toast.error(err.message || "Failed to update role");
@@ -274,14 +275,18 @@ export function UserDataTable() {
                 <p className="text-xs mt-3 opacity-80 uppercase tracking-wider font-semibold">
                     Note: The 'get_all_users' RPC function in Supabase may be missing or inaccessible. Ensure `setup_user_roles.sql` and the RPC migrations were executed.
                 </p>
-                <Button onClick={() => fetchUsers()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">
+                <Button onClick={() => refetch()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">
                     Retry Loading
                 </Button>
             </div>
         );
     }
 
-    const onlineCount = users.filter(user => isOnline(user)).length;
+    // Presence covers every online user app-wide; the heartbeat check only
+    // reaches users inside the currently loaded window.
+    const onlineCount =
+        onlineUserIds.size +
+        users.filter((user) => !onlineUserIds.has(user.id) && isHeartbeatOnline(user)).length;
 
     return (
         <div className="space-y-6">
@@ -297,7 +302,7 @@ export function UserDataTable() {
                             Real-time Presence
                         </p>
                         <p className="text-[13px] font-medium text-blue-700 dark:text-blue-300">
-                            Monitoring {users.length} registered users
+                            Monitoring {totalItems ?? users.length} registered users
                         </p>
                     </div>
                 </div>
@@ -557,8 +562,17 @@ export function UserDataTable() {
                         </Table>
                     </div>
 
+                    <ScrollSentinel
+                        hasNextPage={hasNextPage}
+                        isFetchingNextPage={isFetchingNextPage}
+                        onLoadMore={fetchNextPage}
+                        loadedCount={users.length}
+                        totalItems={totalItems}
+                        hideWhenDone={false}
+                    />
+
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-500 uppercase tracking-wider mt-2 px-2">
-                        <span>{filteredUsers.length} Users Listed</span>
+                        <span>{totalItems ?? users.length} Users Listed</span>
                         <span>{onlineCount} Connected</span>
                     </div>
                 </div>

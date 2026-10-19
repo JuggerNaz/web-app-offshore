@@ -1,6 +1,6 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -784,7 +784,7 @@ async function generateCustomFallbackBlank(
     const doc = new jsPDF({ orientation: spec.orientation, unit: "mm", format: "a4" });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
-    const margin = 12;
+    const margin = 10;
     const contentWidth = pageWidth - margin * 2;
 
     const colors = {
@@ -794,37 +794,36 @@ async function generateCustomFallbackBlank(
         text: [30, 41, 59] as [number, number, number],
     };
 
-    const HEADER_H = 26;
+    const HEADER_H = 25;
 
     let companyLogo: any = null;
+    let contractorLogo: any = null;
     if (companySettings.logo_url) {
         try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) { }
     }
-
-    const isPF = config.printFriendly;
-    if (isPF) {
-        doc.setDrawColor(...[7, 78, 136]); doc.setLineWidth(0.5);
-        doc.rect(margin, margin, contentWidth, HEADER_H, "S");
-        doc.setTextColor(...[7, 78, 136]);
-    } else {
-        doc.setFillColor(...[7, 78, 136]);
-        doc.rect(margin, margin, contentWidth, HEADER_H, "F");
-        doc.setTextColor(255);
+    if (headerData?.contractorLogoUrl) {
+        try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) { }
     }
 
-    if (companyLogo) drawLogo(doc, companyLogo, 16, 16, pageWidth - margin - 20, margin + 3, "right", "center");
+    const isPF = config.printFriendly;
 
-    doc.setFontSize(11); doc.setFont("helvetica", "bold");
-            doc.text(companySettings.company_name || 'NasQuest Resources Sdn Bhd', margin + (contentWidth / 2), margin + 6, { align: "center" });
-    doc.setFontSize(8.5); doc.setFont("helvetica", "normal");
-            doc.text(companySettings.department_name || 'Technical Inspection Division', margin + (contentWidth / 2), margin + 10.5, { align: "center" });
-    doc.setFontSize(11); doc.setFont("helvetica", "bold");
-    doc.text(`${templateTitle}`, margin + (contentWidth / 2), margin + 16.5, { align: "center" });
-    doc.setFontSize(8); doc.setFont("helvetica", "normal");
-    doc.text(`Report No: ${config?.reportNoPrefix || "____________________"}`, margin + (contentWidth / 2), margin + 21, { align: "center" });
+    draw3SectionHeader(doc, {
+        reportTitle: templateTitle,
+        reportNo: config?.reportNoPrefix || "____________________",
+        structureName: headerData?.platformName,
+        jobpackName: headerData?.jobpackName,
+        companySettings,
+        config: config as any,
+        headerData,
+        contractorLogoData: contractorLogo,
+        clientLogoData: companyLogo,
+        margin,
+        headerH: HEADER_H,
+        headerY: 7,
+    });
 
     const ROW_H = 7;
-    const startY = margin + HEADER_H + 4;
+    const startY = margin + HEADER_H + 3;
     const half = contentWidth / 2;
 
     const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {
@@ -839,9 +838,9 @@ async function generateCustomFallbackBlank(
         doc.text(value, x + 36, ty + 4.8);
     };
 
-    drawBox("Structure:", headerData.platformName, margin, half, startY);
-    drawBox("Vessel:", headerData.vessel, margin + half, half, startY);
-    drawBox("Job Pack:", headerData.jobpackName, margin, half, startY + ROW_H);
+    drawBox("Structure:", headerData.platformName || "N/A", margin, half, startY);
+    drawBox("Vessel:", headerData.vessel || "N/A", margin + half, half, startY);
+    drawBox("Job Pack:", headerData.jobpackName || "N/A", margin, half, startY + ROW_H);
     drawBox("Insp. Date Range:", ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .", margin + half, half, startY + ROW_H);
 
     const tableStartY = startY + ROW_H * 2 + 5;

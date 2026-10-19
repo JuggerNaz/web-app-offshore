@@ -1,19 +1,19 @@
 import { jsPDF } from "jspdf";
 import autoTablePlugin from "jspdf-autotable";
 
-// Helper to load image for PDF (reused from pdf-generator.ts logic)
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 interface ReportConfig {
     sowReportNo?: string;
     reportNoPrefix?: string;
     reportYear?: string;
-    preparedBy?: { name: string; date: string };
-    reviewedBy?: { name: string; date: string };
-    approvedBy?: { name: string; date: string };
+    preparedBy?: { name: string; date: string; position?: string };
+    reviewedBy?: { name: string; date: string; position?: string };
+    approvedBy?: { name: string; date: string; position?: string };
     watermark?: { enabled: boolean; text: string; transparency?: number; color?: string };
     showContractorLogo?: boolean;
     showPageNumbers?: boolean;
+    showSignatures?: boolean;
     returnBlob?: boolean;
     printFriendly?: boolean;
     procedureId?: string;
@@ -129,64 +129,44 @@ export const generateDefectCriteriaReport = async (
             console.error("Error fetching MGI profiles", e);
         }
 
+        // Preload logos
+        let clientLogoData: any = null;
+        if (companySettings?.logo_url) {
+            try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+        }
+        let contractorLogoData: any = null;
+        if ((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo) {
+            try { contractorLogoData = await loadLogoWithTransparency((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo); } catch (_) {}
+        }
+
+        const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "N/A";
         // --- REPORT GENERATION helper ---
-        const addHeader = async (pageNum: number) => {
-            if (isPrintFriendly) {
-                // Print-Friendly: White background with light gray border
-                doc.setDrawColor(180, 180, 180);
-                doc.setLineWidth(0.3);
-                doc.rect(0, 0, pageWidth, 28);
-            } else {
-                doc.setFillColor(...headerBlue);
-                doc.rect(0, 0, pageWidth, 28, "F");
-            }
-
-            // Logo
-            if (companySettings?.logo_url) {
-                try {
-                    const logoData = await loadLogoWithTransparency(companySettings.logo_url);
-                    drawLogo(doc, logoData, 18, 18, pageWidth - 24, 4, 'right', 'center');
-                } catch (e) {
-                    // fallback text
-                    doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-                    doc.setFontSize(8);
-                    doc.text("LOGO", pageWidth - 16, 13);
-                }
-            }
-
-            // Company Name - SAME size as Report Title
-            doc.setTextColor(isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255, isPrintFriendly ? 0 : 255);
-            doc.setFontSize(11);
-            doc.setFont("helvetica", "bold");
-            doc.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", pageWidth / 2, 7.5, { align: "center" });
-
-            // Dept
-            doc.setFontSize(8.5);
-            doc.setFont("helvetica", "normal");
-            doc.text(companySettings?.department_name || "Engineering Department", pageWidth / 2, 12, { align: "center" });
-
-            // Title
-            doc.setFontSize(11);
-            doc.setFont("helvetica", "bold");
-            doc.text("Defect Criteria Specification Report", pageWidth / 2, 17.5, { align: "center" });
-
-            // Report No - Centered below Report Title
-            doc.setFontSize(8);
-            doc.setFont("helvetica", "normal");
-            const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "";
-            const repNoTrimmed = rawReportNo.toString().trim();
-            if (repNoTrimmed && repNoTrimmed !== "N/A") {
-                const formattedRepNo = repNoTrimmed.toLowerCase().startsWith("report no") ? repNoTrimmed : `Report No: ${repNoTrimmed}`;
-                doc.text(formattedRepNo, pageWidth / 2, 22.5, { align: "center" });
-            } else {
-                doc.text("Report No: N/A", pageWidth / 2, 22.5, { align: "center" });
-            }
+        const addHeader = (pageNum: number) => {
+            draw3SectionHeader(doc, {
+                reportTitle: "Defect Criteria Specification Report",
+                reportNo: rawReportNo,
+                companySettings,
+                config,
+                contractorLogoData,
+                clientLogoData,
+                isPrintFriendly,
+                margin: 10,
+                headerY: 7,
+                headerH: 25,
+                orientation: "portrait"
+            });
         };
 
+        const sigPages = new Set<number>();
+
         const addFooter = (pageNum: number, pageCount: number) => {
-            doc.setDrawColor(203, 213, 225);
-            doc.setLineWidth(0.2);
-            doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+            // Only draw horizontal divider line on pages that do NOT have the signatory boxes,
+            // so the 3 signatory cards remain completely detached with no connecting lines across the bottom gaps
+            if (!sigPages.has(pageNum)) {
+                doc.setDrawColor(203, 213, 225);
+                doc.setLineWidth(0.2);
+                doc.line(10, pageHeight - 9, pageWidth - 10, pageHeight - 9);
+            }
 
             doc.setFontSize(6.5);
             doc.setTextColor(30, 41, 59);
@@ -217,12 +197,81 @@ export const generateDefectCriteriaReport = async (
         let currentY = 35;
         let hasContent = false;
 
-        for (const proc of procedures) {
+        const signatoryH = 21; // Standard box height (21mm)
+        const signatoryBottomY = pageHeight - 10 - 0.5; // 286.5mm
+        const sigTopY = signatoryBottomY - signatoryH; // 265.5mm
+        const contentWidth = pageWidth - 20;
+        const gap = 2;
+        const colW = (contentWidth - gap * 2) / 3;
+        const headerBarH = 4.5;
+
+        const drawSignatories = () => {
+            const y = sigTopY;
+            const names = [
+                { title: "PREPARED BY", name: config?.preparedBy?.name, position: config?.preparedBy?.position, date: config?.preparedBy?.date },
+                { title: "REVIEWED BY", name: config?.reviewedBy?.name, position: config?.reviewedBy?.position, date: config?.reviewedBy?.date },
+                { title: "APPROVED BY", name: config?.approvedBy?.name, position: config?.approvedBy?.position, date: config?.approvedBy?.date }
+            ];
+
+            names.forEach((p, idx) => {
+                const x = 10 + idx * (colW + gap);
+
+                // 1. Box Outer Border - closed individual rectangle with no connecting lines across the gaps
+                doc.setDrawColor(7, 78, 136);
+                doc.setLineWidth(0.1);
+                doc.rect(x, y, colW, signatoryH);
+
+                // 2. Blue Column Header Bar (like in Pic 1)
+                if (!isPrintFriendly) {
+                    doc.setFillColor(7, 78, 136);
+                    doc.rect(x, y, colW, headerBarH, "F");
+                    doc.setTextColor(255, 255, 255);
+                } else {
+                    doc.setFillColor(240, 240, 240);
+                    doc.rect(x, y, colW, headerBarH, "F");
+                    doc.setTextColor(7, 78, 136);
+                }
+
+                doc.setFont("helvetica", "bold");
+                doc.setFontSize(7);
+                doc.text(p.title, x + 2.5, y + 3.2);
+
+                // 3. Space for signature:
+                // Dedicated blank signing space from (y + headerBarH) down to (nameY - 2)
+
+                // 4. Content fields: Name, Position, Date moved lower with closer spacing
+                doc.setTextColor(30, 41, 59);
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(6.5);
+
+                const labelX = x + 2.5;
+                const valueX = x + 15;
+
+                const lineSpacing = 2.6; // closer spacing with each other
+                const dateY = signatoryBottomY - 1.5; // moved lower, neatly placed near bottom border
+                const posY = dateY - lineSpacing; // signatoryBottomY - 4.1
+                const nameY = posY - lineSpacing; // signatoryBottomY - 6.7
+
+                // Name:
+                doc.text("Name:", labelX, nameY);
+                if (p.name) doc.text(p.name, valueX, nameY);
+
+                // Position:
+                doc.text("Position:", labelX, posY);
+                if (p.position) doc.text(p.position, valueX, posY);
+
+                // Date:
+                doc.text("Date:", labelX, dateY);
+                if (p.date) doc.text(formatPdfDate(p.date), valueX, dateY);
+            });
+        };
+
+        for (let procIdx = 0; procIdx < procedures.length; procIdx++) {
+            const proc = procedures[procIdx];
             const rules = allRules[proc.id] || [];
             hasContent = true;
 
-            // Check for page break space
-            if (currentY > pageHeight - 40) {
+            if (procIdx > 0) {
                 doc.addPage();
                 currentY = 35;
             }
@@ -400,10 +449,19 @@ export const generateDefectCriteriaReport = async (
                 margin: { top: 35, bottom: 20, left: 10, right: 10 },
             });
 
-            currentY = (doc as any).lastAutoTable.finalY + 10;
+            const procFinalY = (doc as any).lastAutoTable?.finalY ?? currentY;
+
+            // Defect Criteria Specification Report always renders the signatory tables for each procedure (both standalone and compiled in final inspection datasheet)
+            if (procFinalY > sigTopY - 5) {
+                doc.addPage();
+                addHeader(doc.getNumberOfPages());
+            }
+            sigPages.add(doc.getNumberOfPages());
+            drawSignatories();
         }
 
         // --- SECTION: Active Marine Growth Inspection (MGI) Profile Settings ---
+        currentY = (doc as any).lastAutoTable?.finalY ?? currentY;
         if (activeMgiProfiles.length > 0 || hasContent) {
             if (activeMgiProfiles.length === 0) {
                 // Check for page break space
@@ -550,39 +608,6 @@ export const generateDefectCriteriaReport = async (
                     currentY = (doc as any).lastAutoTable.finalY + 8;
                 }
             }
-        }
-
-        const finalY = (doc as any).lastAutoTable?.finalY ?? (currentY);
-        if (config?.reviewedBy || config?.approvedBy) {
-            let sigY = pageHeight - 38;
-            if (finalY > sigY - 10) {
-                doc.addPage();
-                await addHeader(doc.getNumberOfPages());
-                sigY = pageHeight - 38;
-            }
-            const contentWidth = pageWidth - 20;
-            const sigW = contentWidth / 3;
-            const drawSig = (label: string, name?: string, date?: string, lx: number = 10) => {
-                doc.setDrawColor(7, 78, 136); doc.setLineWidth(0.1);
-                doc.rect(lx, sigY, sigW - 2, 18);
-                if (!isPrintFriendly) {
-                    doc.setFillColor(7, 78, 136);
-                    doc.rect(lx, sigY, sigW - 2, 4.5, "F");
-                    doc.setTextColor(255);
-                } else {
-                    doc.setTextColor(7, 78, 136);
-                }
-                doc.setFontSize(7); doc.setFont("helvetica", "bold");
-                doc.text(label, lx + 2, sigY + 3.5);
-                doc.setTextColor(0); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
-                doc.text(`Name: ${name || ""}`, lx + 2, sigY + 10);
-                doc.text(`Date: ${date || ""}`, lx + 2, sigY + 13.5);
-                doc.text("Signature:", lx + 2, sigY + 17);
-            };
-
-            drawSig('PREPARED BY', config.preparedBy?.name, config.preparedBy?.date, 10);
-            drawSig('REVIEWED BY', config.reviewedBy?.name, config.reviewedBy?.date, 10 + sigW);
-            drawSig('APPROVED BY', config.approvedBy?.name, config.approvedBy?.date, 10 + (sigW * 2));
         }
 
         if (!hasContent) {

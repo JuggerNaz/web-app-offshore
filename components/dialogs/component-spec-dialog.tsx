@@ -203,11 +203,11 @@ export function ComponentSpecDialog({
       }).filter(Boolean) as [string, { value: string; label: string }][]).values())
     : [];
 
-  // All components for association
-  const { data: allComponents } = useSWR(
-    structureId ? `/api/structure-components/${structureId}` : null,
-    fetcher
-  );
+  // All components for association (slim projection via lookup endpoint)
+  const allComponentsKey = structureId
+    ? `/api/structure-components/lookup?structure_id=${structureId}&pageSize=1000`
+    : null;
+  const { data: allComponents } = useSWR(allComponentsKey, fetcher);
 
   // Global company settings for units
   const { data: companyData } = useSWR("/api/company-settings", fetcher);
@@ -1234,6 +1234,9 @@ export function ComponentSpecDialog({
       } else {
         mutate(`/api/structure-components/${structureId}`);
       }
+      if (allComponentsKey) {
+        mutate(allComponentsKey);
+      }
 
       if (structureId && pageType === "platform") {
         try {
@@ -1380,6 +1383,9 @@ export function ComponentSpecDialog({
         mutate(listKey);
       } else {
         mutate(`/api/structure-components/${structureId}`);
+      }
+      if (allComponentsKey) {
+        mutate(allComponentsKey);
       }
 
       if (structureId && pageType === "platform") {
@@ -3790,6 +3796,7 @@ export function ComponentSpecDialog({
                     });
                     setViewAssocId(newId);
                     if (listKey) mutate(listKey);
+                    if (allComponentsKey) mutate(allComponentsKey);
                     if (structureId && pageType === "platform") {
                       fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" })
                         .then(() => {

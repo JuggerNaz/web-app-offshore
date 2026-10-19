@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from "vitest";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
+import { formatReportHeaderTitle, formatHeaderInfoText } from "@/utils/report-generators/shared-logo";
 
 const sampleJobPack = {
     id: 101,
@@ -155,3 +156,46 @@ describe("Pipeline Defect Summary Report Generator", () => {
         expect((blob as Blob).size).toBeGreaterThan(0);
     }, 15000);
 });
+
+describe("Report Header Info Formatting", () => {
+    it("should convert all caps titles to Title Case with ROV always in ALL CAPS", () => {
+        expect(formatReportHeaderTitle("GENERAL VISUAL INSPECTION REPORT (ROV)")).toBe(
+            "General Visual Inspection Report (ROV)"
+        );
+        expect(formatReportHeaderTitle("UT THICKNESS REPORT (ROV)")).toBe(
+            "UT Thickness Report (ROV)"
+        );
+        expect(formatReportHeaderTitle("GENERAL VISUAL INSPECTION REPORT (DIVING)")).toBe(
+            "General Visual Inspection Report (Diving)"
+        );
+        expect(formatReportHeaderTitle("GENERAL VISUAL INSPECTION REPORT (ROV) - SOW 01")).toBe(
+            "General Visual Inspection Report (ROV) - SOW 01"
+        );
+        expect(formatReportHeaderTitle("ROV INSPECTION REPORT")).toBe(
+            "ROV Inspection Report"
+        );
+    });
+
+    it("should format company name and department correctly", () => {
+        expect(formatHeaderInfoText("PETRONAS CARIGALI SDN BHD (SKA)")).toBe(
+            "Petronas Carigali Sdn Bhd (SKA)"
+        );
+        expect(formatHeaderInfoText("Petronas Carigali Sdn Bhd (SKA)")).toBe(
+            "Petronas Carigali Sdn Bhd (SKA)"
+        );
+        expect(formatHeaderInfoText("TECHNICAL SERVICES DEPARTMENT")).toBe(
+            "Technical Services Department"
+        );
+    });
+
+    it("should normalize report number prefix while preserving code", () => {
+        expect(formatHeaderInfoText("REPORT NO: PCSB/SKO/2026/001")).toBe(
+            "Report No: PCSB/SKO/2026/001"
+        );
+        expect(formatHeaderInfoText("REPORT NO. : PCSB/SKO/2026/001")).toBe(
+            "Report No. : PCSB/SKO/2026/001"
+        );
+        expect(formatHeaderInfoText("Report No: N/A")).toBe("Report No: N/A");
+    });
+});
+
