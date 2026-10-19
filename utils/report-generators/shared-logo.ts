@@ -840,7 +840,7 @@ export const normalizeReportRecords = (records: any[]): any[] => {
 };
 
 export { getInspectionDateRange, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./date-range-utils";
-export { sortScourFaceRecords } from "./scour-sorting-utils";
+export { sortScourFaceRecords, buildScourFaceTopology } from "./scour-sorting-utils";
 export {
     getRecordStatusInfo,
     formatReportFindingText,

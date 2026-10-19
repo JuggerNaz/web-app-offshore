@@ -204,6 +204,7 @@ interface WorkspaceDialogsProps {
         divingItemReportPreviewOpen?: boolean;
         divingItmainReportPreviewOpen?: boolean;
         rovRwdiPreviewOpen: boolean;
+        incompleteFlaggedPreviewOpen?: boolean;
         divingDcasnUwPreviewOpen: boolean;
         divingDcasnTsPreviewOpen: boolean;
         divingDcondUwPreviewOpen: boolean;
@@ -314,6 +315,7 @@ interface WorkspaceDialogsProps {
         setDivingItemReportPreviewOpen?: (open: boolean) => void;
         setDivingItmainReportPreviewOpen?: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
+        setIncompleteFlaggedPreviewOpen?: (open: boolean) => void;
         setDivingDcasnUwPreviewOpen: (open: boolean) => void;
         setDivingDcasnTsPreviewOpen: (open: boolean) => void;
         setDivingDcondUwPreviewOpen: (open: boolean) => void;
@@ -427,6 +429,8 @@ interface WorkspaceDialogsProps {
         generateDivingITMAINReport?: () => void;
         generateDivingITMAINReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateIncompleteFlaggedReport?: () => void;
+        generateIncompleteFlaggedReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void | null>;
         generateDivingDCASNUWReport: () => void;
         generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNTSReport: () => void;
@@ -589,6 +593,7 @@ export function WorkspaceDialogs({
         divingItemReportPreviewOpen,
         divingItmainReportPreviewOpen,
         rovRwdiPreviewOpen,
+        incompleteFlaggedPreviewOpen,
         divingDcasnUwPreviewOpen,
         divingDcasnTsPreviewOpen,
         divingDcondUwPreviewOpen,
@@ -688,6 +693,7 @@ export function WorkspaceDialogs({
         setDivingItemReportPreviewOpen,
         setDivingItmainReportPreviewOpen,
         setRovRwdiPreviewOpen,
+        setIncompleteFlaggedPreviewOpen,
         setDivingDcasnUwPreviewOpen,
         setDivingDcasnTsPreviewOpen,
         setDivingDcondUwPreviewOpen,
@@ -774,6 +780,8 @@ export function WorkspaceDialogs({
         generateDivingACFMCReportBlob,
         generateDivingPLCOReportBlob,
         generateROVRWDIReportBlob,
+        generateIncompleteFlaggedReport,
+        generateIncompleteFlaggedReportBlob,
         generateDivingDCASNUWReport,
         generateDivingDCASNUWReportBlob,
         generateDivingDCASNTSReport,
@@ -2845,6 +2853,18 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={incompleteFlaggedPreviewOpen || false} 
+                onOpenChange={setIncompleteFlaggedPreviewOpen || (() => {})} 
+                title="Inspection Incomplete Flagged Detail List Report Preview" 
+                fileName={`Inspection_Incomplete_Flagged_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateIncompleteFlaggedReportBlob as any} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcasnUwPreviewOpen} 
                 onOpenChange={setDivingDcasnUwPreviewOpen} 
                 title="Caisson Inspection Underwater Diving Report Preview" 
@@ -3146,6 +3166,7 @@ export function WorkspaceDialogs({
                     generateDivingItemReport: () => setters.setDivingItemReportPreviewOpen ? setters.setDivingItemReportPreviewOpen(true) : handlers.generateDivingItemReport?.(),
                     generateDivingITMAINReport: () => setters.setDivingItmainReportPreviewOpen ? setters.setDivingItmainReportPreviewOpen(true) : handlers.generateDivingITMAINReport?.(),
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
+                    generateIncompleteFlaggedReport: () => setters.setIncompleteFlaggedPreviewOpen ? setters.setIncompleteFlaggedPreviewOpen(true) : handlers.generateIncompleteFlaggedReport?.(),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
                     generateVideoLogReport: () => setters.setVideoLogPreviewOpen ? setters.setVideoLogPreviewOpen(true) : handlers.generateVideoLogReport?.(),
@@ -3228,6 +3249,8 @@ export function WorkspaceDialogs({
                             case 'ITEM': setters.setDivingItemReportPreviewOpen?.(true); break;
                             case 'ITMAIN': setters.setDivingItmainReportPreviewOpen?.(true); break;
                             case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
+                            case 'INC':
+                            case 'INCOMPLETE': setters.setIncompleteFlaggedPreviewOpen ? setters.setIncompleteFlaggedPreviewOpen(true) : handlers.generateIncompleteFlaggedReport?.(); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
                             case 'DFMD':
@@ -3267,6 +3290,10 @@ export function WorkspaceDialogs({
                                 break;
                             case 'RSCOR-V2':
                             case 'RSCOR_V2':
+                            case 'RSCOR-V2-REPORT':
+                            case 'ROV-SCOUR-V2-REPORT':
+                            case 'ROV-RSCOR-V2-REPORT':
+                            case 'RSCOR_V2_ROV':
                                 setters.setRscorV2PreviewOpen(true);
                                 break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;

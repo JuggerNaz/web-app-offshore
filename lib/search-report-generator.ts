@@ -112,6 +112,9 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
   BL: [
     { templateId: "bl", label: "Boatlanding Inspection Report (ROV)", code: "BL", mode: "ROV" },
   ],
+  FD: [
+    { templateId: "bl", label: "Boatlanding / Fender Inspection Report (ROV)", code: "FD", mode: "ROV" },
+  ],
   RG: [
     { templateId: "rg", label: "Riser Guard Inspection Report (ROV)", code: "RG", mode: "ROV" },
   ],
@@ -129,6 +132,21 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
     { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
     { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
     { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
+  ],
+  SCOUR: [
+    { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
+    { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
+  ],
+  RSCOUR: [
+    { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
+    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
+    { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
+  ],
+  RSCOR_V2: [
+    { templateId: "rscor-v2", label: "Scour Survey Sketch v2", code: "RSCOR-V2", mode: "ROV" },
+    { templateId: "rscor", label: "Scour Survey Sketch Report", code: "RSCOR-SKETCH", mode: "ROV" },
+    { templateId: "rscor-survey", label: "Scour Survey Report", code: "RSCOR", mode: "ROV" },
   ],
   // Multi-template: ROV Riser
   RRISI: [
@@ -704,7 +722,9 @@ async function routeToGenerator(
       return await generateROVCondSketchReport(recs, headerData, companyInfo, opts) as Blob;
     }
     case "bl": {
-      const recs = filterByCode(["BL", "BOATLANDING"]);
+      const { isBLRecord } = await import("@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog");
+      let recs = records.filter((r: any) => isBLRecord(r) || ["BL", "BOATLANDING", "FD", "FENDER", "RBLTG"].includes((r.inspection_type_code || "").toUpperCase()));
+      if (!recs.length) recs = filterByCode(["BL", "BOATLANDING", "FD", "FENDER", "RBLTG"]);
       if (!recs.length) return;
       const { generateROVBoatlandingReport } = await import("@/utils/report-generators/rov-boatlanding-report");
       return await generateROVBoatlandingReport(recs.map((r: any) => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })), { ...headerData, vessel: headerData.vessel }, companyInfo, { ...opts, jobPackId: opts.jobPackId, structureId: opts.structureId, sowReportNo: headerData.sowReportNo }) as Blob;

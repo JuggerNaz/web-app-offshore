@@ -5,6 +5,7 @@ import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isROVRecord, hasCPReading } from "./rov-cp-report";
 import { isDivingCPSURVRecord } from "./diving-cpsurv-report";
 import { isExcludedFromRGVI } from "./rov-rgvi-report";
+import { isStatusIncomplete } from "./inspection-incomplete-flagged-report";
 
 const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
@@ -141,6 +142,7 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-rseab-gas-detail-report': ['RSEAB_GAS', 'RSEAB_GAS_REPORT', 'RSEAB_GAS_PAGES'],
     'rov-rseab-crater-detail-report': ['RSEAB_CRATER', 'RSEAB_CRATER_REPORT', 'RSEAB_CRATER_PAGES'],
     'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOR_REPORT', 'RSCOR_PAGES', 'SCOUR_PAGES'],
+    'rov-scour-v2-report': ['RSCOR_V2', 'RSCOR_V2_REPORT', 'RSCOR_V2_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rov-rscor-v2-report': ['RSCOR_V2', 'RSCOR_V2_REPORT', 'RSCOR_V2_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rov-rscor-survey-report': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rscor-survey': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
@@ -152,7 +154,7 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-sketch-report': ['RCOND_SKETCH', 'CONDUCTOR_SKETCH', 'RCOND_SKETCH_REPORT', 'RCOND_SKETCH_PAGES'],
-    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOAT_LANDING', 'BOATLANDING_SUB', 'BOAT_LANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES', 'BOATLANDING_PAGES', 'BOAT_LANDING_PAGES'],
+    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOAT_LANDING', 'BOATLANDING_SUB', 'BOAT_LANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES', 'BOATLANDING_PAGES', 'BOAT_LANDING_PAGES', 'FD', 'FD_PAGES', 'FENDER', 'FENDER_PAGES', 'BF', 'BF_PAGES'],
     'rov-bb-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
     'boat-bumper-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
     'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISER_GUARD', 'RISERGUARD_SUB', 'RISER_GUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES', 'RISERGUARD_PAGES', 'RISER_GUARD_PAGES'],
@@ -176,6 +178,8 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'work-scope-report': ['WORK_SCOPE', 'WORK_SCOPE_REPORT', 'WORK_SCOPE_PAGES', 'SOW_REPORT_PAGES'],
     'work-scope-status-report': ['WORK_SCOPE_STATUS', 'WORK_SCOPE_STATUS_REPORT', 'WORK_SCOPE_STATUS_PAGES'],
     'work-scope-incomplete-report': ['WORK_SCOPE_INCOMPLETE', 'WORK_SCOPE_INCOMPLETE_REPORT', 'WORK_SCOPE_INCOMPLETE_PAGES'],
+    'inspection-incomplete-flagged-report': ['INC', 'INCOMPLETE', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
+    'incomplete-flagged-report': ['INC', 'INCOMPLETE', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
     'defect-criteria-report': ['DEFECT_CRITERIA', 'DEFECT_CRITERIA_REPORT', 'DEFECT_CRITERIA_PAGES'],
     'structure-summary': ['STRUCTURE_SUMMARY', 'STRUCTURE_SUMMARY_REPORT', 'STRUCTURE_SUMMARY_PAGES'],
     'inspection-summary-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
@@ -439,11 +443,12 @@ export const mapInspectionDataForDocx = async (
         'diving-itisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
-        'rov-scour-report': ['RSCOR', 'SCOUR'],
-        'rov-rscor-v2-report': ['RSCOR', 'SCOUR'],
-        'rscor-v2': ['RSCOR', 'SCOUR'],
-        'rov-rscor-survey-report': ['RSCOR', 'SCOUR'],
-        'rscor-survey': ['RSCOR', 'SCOUR'],
+        'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
+        'rov-scour-v2-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rov-rscor-v2-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rscor-v2': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rov-rscor-survey-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
+        'rscor-survey': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
         'rov-caisson-report': ['RCASN', 'CASN'],
         'rov-rcasn-report': ['RCASN', 'CASN'],
         'rov-rcasn-sketch-report': ['RCASN', 'CASN'],
@@ -461,7 +466,9 @@ export const mapInspectionDataForDocx = async (
         'rgani-report': ['RGVI', 'RGANI', 'GANI', 'ANODE', 'ANOD', 'RAN'],
         'rov-anode-rsani-report': ['RSANI', 'SANI'],
         'anode-rsani-report': ['RSANI', 'SANI'],
-        'rsani-report': ['RSANI', 'SANI']
+        'rsani-report': ['RSANI', 'SANI'],
+        'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'FD'],
+        'bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'FD']
     };
 
     let contractorLogoUrl = "";
@@ -646,6 +653,9 @@ export const mapInspectionDataForDocx = async (
             if (templateId === 'work-scope-incomplete') {
                 return r.status && !['COMPLETED', 'APPROVED', 'CLOSE', 'CLOSED'].includes(r.status.toUpperCase());
             }
+            if (['inspection-incomplete-flagged-report', 'incomplete-flagged-report'].includes(templateId)) {
+                return isStatusIncomplete(r);
+            }
             if (templateId === 'inspection-schedule' || templateId === 'planning-overview') {
                 return true;
             }
@@ -721,6 +731,11 @@ export const mapInspectionDataForDocx = async (
             // ROV GVI (RGVI) explicit routing: exclude dedicated templates and FD & its associated components
             if (['rov-rgvi-report', 'rov-gvi-report', 'rgvi-report', 'gvi-report'].includes(templateId)) {
                 return (code === "RGVI" || code === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
+            }
+
+            // ROV Boatlanding / Fender explicit routing
+            if (['rov-bl-report', 'bl-report', 'boatlanding-report'].includes(templateId)) {
+                return isBLRecord(r, structureCompMap) || ['RBLTG', 'BL', 'BOATLANDING', 'FD'].includes(code);
             }
 
             // Activity-specific reports routing
@@ -827,6 +842,15 @@ export const mapInspectionDataForDocx = async (
                     companySettings || {},
                     sharedConfig as any
                 ) as any;
+            } else if (templateId === 'inspection-incomplete-flagged-report' || templateId === 'incomplete-flagged-report') {
+                const { generateInspectionIncompleteFlaggedReport } = await import("./inspection-incomplete-flagged-report");
+                const incompleteRecs = records.filter(isStatusIncomplete);
+                pdfBlob = await generateInspectionIncompleteFlaggedReport(
+                    incompleteRecs,
+                    sharedHeaderData,
+                    companySettings || {},
+                    sharedConfig as any
+                );
             } else if (templateId === 'work-scope-report') {
                 const { generateWorkScopeReport } = await import("./work-scope-report");
                 pdfBlob = await generateWorkScopeReport(
@@ -900,9 +924,12 @@ export const mapInspectionDataForDocx = async (
                     return ['RCASN', 'CASN'].includes(typeCode) || ['CS', 'CASN'].includes(compCode);
                 });
                 pdfBlob = await generateROVCasnReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-bl-report') {
+            } else if (templateId === 'rov-bl-report' || templateId === 'bl-report' || templateId === 'boatlanding-report') {
                 const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
-                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r) || (r.inspection_type?.code || "").toUpperCase() === "RBLTG"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['RBLTG', 'BL', 'BOATLANDING', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-bb-report' || templateId === 'boat-bumper-report') {
+                const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
+                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['BB', 'BOATBUMPER', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rg-report') {
                 const { generateROVRiserGuardReport } = await import("./rov-riser-guard-report");
                 pdfBlob = await generateROVRiserGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGUARD"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -1016,9 +1043,10 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
                 pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2') {
+            } else if (templateId === 'rov-scour-v2-report' || templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2' || templateId === 'rscor_v2_rov') {
                 const { generateROVRSCORV2Report } = await import("./rov-rscor-v2-report");
-                pdfBlob = await generateROVRSCORV2Report(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const scourCodes = ["RSCOR", "SCOUR", "RSCOUR", "DSCOU", "DSCOUR", "DSCOR", "RSCOR_V2"];
+                pdfBlob = await generateROVRSCORV2Report(records.filter(r => scourCodes.includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
                 const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
                 pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);

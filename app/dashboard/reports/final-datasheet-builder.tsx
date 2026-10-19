@@ -98,6 +98,7 @@ const TOC_SECTIONS = [
   { id: 10, name: "Base Level Survey", templates: [
       { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
       { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-scour-v2-report", name: "Scour Survey Sketch Report v2 (ROV)", mode: "ROV" },
       { id: "rov-rwdi-report", name: "Water Depth Measurement Survey Report (ROV)", mode: "ROV" },
       { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},

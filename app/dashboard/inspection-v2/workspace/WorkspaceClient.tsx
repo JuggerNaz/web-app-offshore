@@ -2961,6 +2961,10 @@ function V10PreviewLayout() {
     rovRwdiPreviewOpen,
     setRovRwdiPreviewOpen,
     generateROVRWDIReportBlob,
+    incompleteFlaggedPreviewOpen,
+    setIncompleteFlaggedPreviewOpen,
+    generateIncompleteFlaggedReport,
+    generateIncompleteFlaggedReportBlob,
 
     divingDcasnUwPreviewOpen,
     setDivingDcasnUwPreviewOpen,
@@ -9971,6 +9975,7 @@ function V10PreviewLayout() {
         generateDivingACFMCReport={() => setDivingAcfmcPreviewOpen(true)}
         generateDivingPLCOReport={() => setDivingPlcoPreviewOpen(true)}
         generateROVRWDIReport={() => setRovRwdiPreviewOpen(true)}
+        generateIncompleteFlaggedReport={() => setIncompleteFlaggedPreviewOpen(true)}
         generateRCASNReport={() => setRcasnPreviewOpen(true)}
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -10625,6 +10630,7 @@ function V10PreviewLayout() {
           divingAcfmcPreviewOpen,
           divingPlcoPreviewOpen,
           rovRwdiPreviewOpen,
+          incompleteFlaggedPreviewOpen,
           divingDcasnUwPreviewOpen,
           divingDcasnTsPreviewOpen,
           divingDcondUwPreviewOpen,
@@ -10736,6 +10742,7 @@ function V10PreviewLayout() {
           setDivingAcfmcPreviewOpen,
           setDivingPlcoPreviewOpen,
           setRovRwdiPreviewOpen,
+          setIncompleteFlaggedPreviewOpen,
           setDivingDcasnUwPreviewOpen,
           setDivingDcasnTsPreviewOpen,
           setDivingDcondUwPreviewOpen,
@@ -10849,6 +10856,8 @@ function V10PreviewLayout() {
           generateDivingACFMCReportBlob,
           generateDivingPLCOReportBlob,
           generateROVRWDIReportBlob,
+          generateIncompleteFlaggedReport,
+          generateIncompleteFlaggedReportBlob,
           generateDivingDCASNUWReport,
           generateDivingDCASNUWReportBlob,
           generateDivingDCASNTSReport,

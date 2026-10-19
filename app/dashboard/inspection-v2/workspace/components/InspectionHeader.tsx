@@ -78,6 +78,7 @@ interface InspectionHeaderProps {
     generateDivingACFMCReport: () => void;
     generateDivingPLCOReport: () => void;
     generateROVRWDIReport: () => void;
+    generateIncompleteFlaggedReport?: () => void;
     generateCPReport: () => void;
     generateRSWNIReport: () => void;
     generateRGVIReport: () => void;

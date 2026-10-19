@@ -63,6 +63,7 @@ import { generatePipelineEventSketchReport } from "@/utils/report-generators/pip
 import { generateROVNavigReport } from "@/utils/report-generators/rov-navig-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
 import { generateVideoLogReport as generateVideoLogReportTemplate } from "@/utils/report-generators/video-log-report";
+import { generateInspectionIncompleteFlaggedReport as generateInspectionIncompleteFlaggedReportTemplate, isStatusIncomplete } from "@/utils/report-generators/inspection-incomplete-flagged-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -173,6 +174,7 @@ export function useWorkspaceReports(
     const [divingJtisiDetailPreviewOpen, setDivingJtisiDetailPreviewOpen] = useState(false);
     const [divingItisiPreviewOpen, setDivingItisiPreviewOpen] = useState(false);
     const [divingItisiDetailPreviewOpen, setDivingItisiDetailPreviewOpen] = useState(false);
+    const [incompleteFlaggedPreviewOpen, setIncompleteFlaggedPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -721,7 +723,29 @@ export function useWorkspaceReports(
     };
 
     const generateBLReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const blRecords = currentRecords.filter(r => isBLRecord(r));
+        // Preload structure components to resolve parent-child hierarchy for BL and FD components
+        const compMap = new Map<string | number, any>();
+        try {
+            const structId = Number(structureId);
+            if (structId) {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', structId);
+                allComps?.forEach((c: any) => {
+                    compMap.set(c.id, c);
+                    compMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        compMap.set(String(c.q_id).toUpperCase(), c);
+                        compMap.set(String(c.q_id), c);
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn("[useWorkspaceReports] Could not preload structure_components for BL/FD:", e);
+        }
+
+        const blRecords = currentRecords.filter(r => isBLRecord(r, compMap));
 
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
@@ -1413,6 +1437,27 @@ export function useWorkspaceReports(
             contractorLogoUrl = contrData?.logo_url || '';
         }
         return await generateROVRWDIReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures });
+    };
+
+    const generateIncompleteFlaggedReport = async () => {
+        setIncompleteFlaggedPreviewOpen(true);
+    };
+
+    const generateIncompleteFlaggedReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
+        const records = currentRecords.filter(isStatusIncomplete);
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateInspectionIncompleteFlaggedReportTemplate(
+            records,
+            { ...headerData, contractorLogoUrl },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }
+        );
     };
 
     const generateBSINSReport = async () => {
@@ -2216,6 +2261,7 @@ export function useWorkspaceReports(
         divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen,
         divingPlcoPreviewOpen, setDivingPlcoPreviewOpen,
         rovRwdiPreviewOpen, setRovRwdiPreviewOpen,
+        incompleteFlaggedPreviewOpen, setIncompleteFlaggedPreviewOpen,
         bsinsPreviewOpen, setBsinsPreviewOpen,
         cvinsPreviewOpen, setCvinsPreviewOpen,
         cleanPreviewOpen, setCleanPreviewOpen,
@@ -2518,6 +2564,8 @@ export function useWorkspaceReports(
         generateDivingPLCOReportBlob,
         generateROVRWDIReport,
         generateROVRWDIReportBlob,
+        generateIncompleteFlaggedReport,
+        generateIncompleteFlaggedReportBlob,
         generateBSINSReport,
         generateBSINSReportBlob,
         generateCVINSReport,

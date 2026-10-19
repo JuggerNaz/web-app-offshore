@@ -41,6 +41,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { isROVRecord, hasCPReading } from "@/utils/report-generators/rov-cp-report";
 import { isDivingCPSURVRecord } from "@/utils/report-generators/diving-cpsurv-report";
+import { isStatusIncomplete } from "@/utils/report-generators/inspection-incomplete-flagged-report";
 
 interface ReportTemplate {
     id: string;
@@ -77,31 +78,146 @@ export const isRGRecord = (r: any) => {
     return typeCode === "RGVI" || qid.startsWith("RG") || qid.startsWith("RISG") || qid.startsWith("RISER_GUARD") || qid.startsWith("RISER-GUARD") || typeCode === "RG" || typeCode === "RISG" || typeCode === "RISERGUARD" || compCode === "RG" || compCode === "RISG" || compName.includes("RISER GUARD");
 };
 
-export const isBLRecord = (r: any) => {
+export const isBLRecord = (r: any, compMap?: Map<string | number, any> | Record<string | number, any>) => {
     if (!r) return false;
     const comp = r.structure_components || r.component || {};
-    const qid = String(comp.q_id || comp.qid || "").toUpperCase();
-    const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-    const compCode = String(comp.code || comp.metadata?.comp_type || "").toUpperCase();
-    const compName = String(comp.comp_name || comp.name || "").toUpperCase();
+    const qid = String(comp.q_id || comp.qid || r.component_qid || "").toUpperCase().trim();
+    const typeCode = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase().trim();
+    const compCode = String(comp.code || comp.metadata?.comp_type || comp.metadata?.type || "").toUpperCase().trim();
+    const compName = String(comp.comp_name || comp.name || "").toUpperCase().trim();
 
-    // 1. Explicit Exclusions for non-Boatlanding components (Conductor Shield, Riser Guard, etc.)
-    const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "MB_", "MB-", "R_"];
-    const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "MB", "RS", "JT"];
+    // 1. Check Boatlanding or Boat Fender / FD code
+    const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(compCode) || ["BL", "BLTG", "BOATLANDING", "RBLTG", "DBLTG"].includes(typeCode);
+    const isBFCode = ["BF", "BOATFENDER", "FENDER", "FD", "FND", "FEND", "BB", "BOATBUMPER", "BOAT_BUMPER"].includes(compCode) || ["FD", "BF", "FENDER"].includes(typeCode);
+    if (isBLCode || isBFCode) return true;
+
+    // 2. Explicit Exclusions for non-Boatlanding/Fender components (Conductor Shield, Riser Guard, etc.)
+    const excludedPrefixes = ["CS_", "CS-", "RG_", "RG-", "CU_", "CU-", "SG_", "SG-", "CD_", "CD-", "LEG_", "LEG-", "R_"];
+    const excludedCodes = ["CS", "RG", "CU", "SG", "CD", "CON", "LEG", "RS", "JT"];
     if (excludedCodes.includes(compCode)) return false;
     if (excludedPrefixes.some(p => qid.startsWith(p))) return false;
 
-    // 2. Check Boatlanding or Boat Fender code / QID / name
-    const isBLCode = ["BL", "BLTG", "BOATLANDING"].includes(compCode) || ["BL", "BLTG", "BOATLANDING", "RBLTG", "DBLTG"].includes(typeCode);
-    const isBFCode = ["BF", "BOATFENDER", "FENDER"].includes(compCode);
-    if (isBLCode || isBFCode) return true;
-
+    // 3. Direct QID check
     const isBLQid = qid.startsWith("BL") || qid.startsWith("BOATLANDING") || qid.startsWith("BOAT_LANDING");
-    const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER");
+    const isBFQid = qid.startsWith("BF") || qid.startsWith("BOATFENDER") || qid.startsWith("BOAT_FENDER") || qid.startsWith("FENDER") ||
+                    qid.startsWith("FD") || qid.startsWith("FND") || qid.startsWith("FEND") ||
+                    qid.includes("BUMPER") || qid.includes("FENDER");
     if (isBLQid || isBFQid) return true;
 
-    if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || compName.includes("FENDER")) {
+    // 4. Component Name & Description check
+    if (compName.includes("BOATLANDING") || compName.includes("BOAT LANDING") || 
+        compName.includes("BOAT FENDER") || compName.includes("BOATFENDER") || 
+        compName.includes("FENDER") || compName.includes("BUMPER") || 
+        compName.startsWith("FD")) {
         return true;
+    }
+
+    const metadata = comp.metadata || r.metadata || {};
+    const desc = String(comp.description || metadata.description || r.description || "").trim().toUpperCase();
+    if (desc.includes("FENDER") || desc.includes("BOAT BUMPER") || desc.includes("BOATBUMPER") || desc.startsWith("FEND") || desc.includes("BOATLANDING") || desc.includes("BOAT LANDING")) {
+        return true;
+    }
+
+    // 5. Associated / Parent Component Check (for FD and BL associated components)
+    const assocId = metadata.associated_comp_id || 
+                    metadata.parent_id || 
+                    metadata.comp_id_parent || 
+                    metadata.parent_comp_id || 
+                    metadata.associated_id || null;
+    const assocQid = String(
+        metadata.associated_comp_qid || 
+        metadata.parent_qid || 
+        metadata.parent_q_id || 
+        ""
+    ).trim().toUpperCase();
+
+    if (assocQid) {
+        if (assocQid.startsWith("FD") || assocQid.startsWith("FEND") || assocQid.startsWith("FND") || 
+            assocQid.includes("FENDER") || assocQid.includes("BUMPER") ||
+            assocQid.startsWith("BL") || assocQid.startsWith("BF") || 
+            assocQid.startsWith("BOATLANDING") || assocQid.startsWith("BOAT_LANDING")) {
+            return true;
+        }
+    }
+
+    const getCompFromMap = (map: any, key: any) => {
+        if (!map || key === undefined || key === null) return null;
+        if (map instanceof Map) {
+            return map.get(key) || map.get(String(key)) || (typeof key === "string" && !isNaN(Number(key)) ? map.get(Number(key)) : null);
+        }
+        return map[key] || map[String(key)] || (typeof key === "string" && !isNaN(Number(key)) ? map[Number(key)] : null);
+    };
+
+    // Check parent in compMap
+    if (assocId && compMap) {
+        let currId: any = assocId;
+        let depth = 0;
+        while (currId && depth < 5) {
+            depth++;
+            const parentComp = getCompFromMap(compMap, currId);
+            if (!parentComp) break;
+
+            const pCode = String(parentComp.code || parentComp.comp_type || parentComp.metadata?.comp_type || "").trim().toUpperCase();
+            if (["FD", "FND", "FEND", "BF", "BOATFENDER", "FENDER", "BB", "BOATBUMPER", "BL", "BLTG", "BOATLANDING"].includes(pCode)) {
+                return true;
+            }
+
+            const pQid = String(parentComp.q_id || "").trim().toUpperCase();
+            if (pQid.startsWith("FD") || pQid.startsWith("FEND") || pQid.startsWith("FND") || 
+                pQid.includes("FENDER") || pQid.includes("BUMPER") ||
+                pQid.startsWith("BL") || pQid.startsWith("BF") || pQid.startsWith("BOATLANDING")) {
+                return true;
+            }
+
+            const pDesc = String(parentComp.metadata?.description || parentComp.description || "").trim().toUpperCase();
+            if (pDesc.includes("FENDER") || pDesc.includes("BOAT BUMPER") || pDesc.includes("BOATBUMPER") || pDesc.startsWith("FEND") || pDesc.includes("BOATLANDING")) {
+                return true;
+            }
+
+            const pMeta = parentComp.metadata || {};
+            currId = pMeta.associated_comp_id || pMeta.parent_id || pMeta.comp_id_parent || pMeta.parent_comp_id || pMeta.associated_id || null;
+        }
+    }
+
+    // Check direct comp in compMap
+    const directCompId = r.component_id || comp.id;
+    if (directCompId && compMap) {
+        const fullComp = getCompFromMap(compMap, directCompId);
+        if (fullComp) {
+            const fCode = String(fullComp.code || fullComp.comp_type || fullComp.metadata?.comp_type || "").trim().toUpperCase();
+            if (["FD", "FND", "FEND", "BF", "BOATFENDER", "FENDER", "BB", "BOATBUMPER", "BL", "BLTG", "BOATLANDING"].includes(fCode)) {
+                return true;
+            }
+            const fQid = String(fullComp.q_id || "").trim().toUpperCase();
+            if (fQid.startsWith("FD") || fQid.startsWith("FEND") || fQid.startsWith("FND") || 
+                fQid.includes("FENDER") || fQid.includes("BUMPER") ||
+                fQid.startsWith("BL") || fQid.startsWith("BF") || fQid.startsWith("BOATLANDING")) {
+                return true;
+            }
+            const fMeta = fullComp.metadata || {};
+            const fAssocQid = String(fMeta.associated_comp_qid || fMeta.parent_qid || "").trim().toUpperCase();
+            if (fAssocQid && (fAssocQid.startsWith("FD") || fAssocQid.startsWith("FEND") || fAssocQid.startsWith("FND") || 
+                              fAssocQid.includes("FENDER") || fAssocQid.includes("BUMPER") ||
+                              fAssocQid.startsWith("BL") || fAssocQid.startsWith("BF") || fAssocQid.startsWith("BOATLANDING"))) {
+                return true;
+            }
+            const fAssocId = fMeta.associated_comp_id || fMeta.parent_id || fMeta.comp_id_parent || fMeta.parent_comp_id || fMeta.associated_id;
+            if (fAssocId) {
+                const parentOfFull = getCompFromMap(compMap, fAssocId);
+                if (parentOfFull) {
+                    const pfCode = String(parentOfFull.code || parentOfFull.comp_type || parentOfFull.metadata?.comp_type || "").trim().toUpperCase();
+                    if (["FD", "FND", "FEND", "BF", "BOATFENDER", "FENDER", "BB", "BOATBUMPER", "BL", "BLTG", "BOATLANDING"].includes(pfCode)) {
+                        return true;
+                    }
+                    const pfQid = String(parentOfFull.q_id || "").trim().toUpperCase();
+                    if (pfQid.startsWith("FD") || pfQid.startsWith("FEND") || pfQid.startsWith("FND") || 
+                        pfQid.includes("FENDER") || pfQid.includes("BUMPER") ||
+                        pfQid.startsWith("BL") || pfQid.startsWith("BF") || pfQid.startsWith("BOATLANDING")) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
 
     return false;
@@ -288,6 +404,9 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
             return records.filter(r => hasCode(r, ['RCOND', 'RCON', 'DCOND', 'DCON']));
         case 'BL':
         case 'BOATLANDING':
+        case 'FD':
+        case 'FENDER':
+        case 'BF':
             return records.filter(r => isBLRecord(r));
         case 'RG':
         case 'RISERGUARD':
@@ -422,6 +541,7 @@ interface ReportWizardDialogProps {
         generateAnomalyReport?: () => void;
         generateInspectionSummaryReport?: () => void;
         generateInspectionSummaryGraphReport?: () => void;
+        generateIncompleteFlaggedReport?: () => void;
         generateFullInspectionReport: () => void;
         generateInspectionReportByType: (id: any) => void;
     };
@@ -544,6 +664,12 @@ export function ReportWizardDialog({
         const hasRecords = (codes: string[]) => 
             currentRecords.some(r => codes.includes((r.inspection_type_code || r.inspection_type?.code || "").toUpperCase()));
 
+        const hasScourRecords = hasRecords(['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2', 'RSCOR-V2', 'ROV-SCOUR', 'ROV-SCOUR-V2']) ||
+            currentRecords.some(r => {
+                const name = (r.inspection_type?.name || r.inspection_type_name || "").toUpperCase();
+                return name.includes("SCOUR") || !!r.inspection_data?.scour_depth || !!r.inspection_data?.scour_location || !!r.inspection_data?.scour_length;
+            });
+
         const baseTemplates: ReportTemplate[] = [
             // ── INSPECTION REPORTS (ROV) ───────────────────────────────────────────
             { id: 'rgvi', code: 'RGVI', name: 'General Visual Inspection (ROV)', description: 'Full visual assessment of structural integrity and coatings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRGVIReport, available: hasRecords(['RGVI']) },
@@ -575,9 +701,9 @@ export function ReportWizardDialog({
             { id: 'mgi_rov', code: 'RMGI-GRAPH', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI']) },
-            { id: 'rscor_survey_rov', code: 'RSCOR', name: 'Scour Survey Report (ROV)', description: 'Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with Item No., QID, Elevation, Dive No., Tape No., and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORSurveyReport || handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rscor_rov', code: 'RSCOR-SKETCH', name: 'Scour Survey Sketch Report (ROV)', description: 'Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasRecords(['RSCOR', 'SCOUR']) },
-            { id: 'rscor_v2_rov', code: 'RSCOR-V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasRecords(['RSCOR', 'SCOUR']) },
+            { id: 'rscor_survey_rov', code: 'RSCOR', name: 'Scour Survey Report (ROV)', description: 'Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with Item No., QID, Elevation, Dive No., Tape No., and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORSurveyReport || handlers.generateRSCORReport, available: hasScourRecords },
+            { id: 'rscor_rov', code: 'RSCOR-SKETCH', name: 'Scour Survey Sketch Report (ROV)', description: 'Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasScourRecords },
+            { id: 'rscor_v2_rov', code: 'RSCOR-V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasScourRecords },
             { id: 'rrisi_rov', code: 'RRISI', name: 'Riser Survey Inspection Sketch Report (ROV)', description: 'ROV Riser inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIReport, available: hasRecords(['RRISI', 'DRISI']) },
             { id: 'rrisi_detail_rov', code: 'RRISI-DETAIL', name: 'Riser Inspection Report (ROV)', description: 'Detailed portrait Riser inspection tabular report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRRISIDetailReport, available: hasRecords(['RRISI', 'DRISI']) },
             { id: 'jtisi_rov', code: 'JTISI', name: 'J-Tube Survey Inspection Sketch Report (ROV)', description: 'ROV J-Tube Inspection report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateJTISIReport, available: hasRecords(['JTISI']) },
@@ -683,12 +809,14 @@ export function ReportWizardDialog({
             { id: 'defect_summary', code: 'DEFECT', name: 'Defect Summary Report', description: 'Priority-ordered summary of all anomalies with status.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
             { id: 'findings', code: 'FINDINGS', name: 'Findings Summary Report', description: 'Consolidated summary of all findings across the SOW.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
             { id: 'anomaly', code: 'ANOM', name: 'Defect / Anomaly Report', description: 'Detailed defect and anomaly report including images.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateAnomalyReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => r.has_anomaly || r.is_anomaly || r.component_condition === 'Anomalous' || (r.insp_anomalies && r.insp_anomalies.length > 0)) },
+            { id: 'inspection_incomplete_flagged', code: 'INC', name: 'Inspection Incomplete Flagged Detail List Report', description: 'Portrait Inspection Incomplete Flagged Detail List report for all inspection types grouped by type with total counts and ordered by elevation.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateIncompleteFlaggedReport || handlers.generateFullInspectionReport, available: currentRecords.some(isStatusIncomplete) },
             { id: 'photo', code: 'PHOTO', name: 'Photography Report', description: 'Visual documentation of all inspection points.', mode: 'BOTH', category: 'Inspection', handler: handlers.generatePhotographyReport, available: currentRecords.some(r => (r.photos && r.photos.length > 0) || (r.attachments && r.attachments.length > 0) || r.has_photo || r.photo_count > 0 || currentRecords.length > 0) },
             { id: 'compliance', code: 'COMP', name: 'Compliance Report', description: 'Regulatory compliance and standards documentation.', mode: 'BOTH', category: 'Inspection', handler: handlers.generateFullInspectionReport, available: currentRecords.length > 0 },
 
             // ── JOB PACK & STRUCTURE REPORTS ──────────────────────────────────────
             { id: 'jp_summary', code: 'JP_SUM', name: 'Job Pack Summary', description: 'Aggregated progress and status of the entire job pack.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: !!headerData?.jobpackName || currentRecords.length > 0 },
             { id: 'sow_report', code: 'SOW_REP', name: 'Scope of Work Report', description: 'Detailed tracking of SOW items and completion status.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateFullInspectionReport, available: !!headerData?.sowReport || currentRecords.length > 0 },
+            { id: 'jp_incomplete_flagged', code: 'INC', name: 'Inspection Incomplete Flagged Detail List Report', description: 'Aggregated list of all incomplete flagged inspection records across the job pack grouped by inspection type.', mode: 'BOTH', category: 'Job Pack', handler: handlers.generateIncompleteFlaggedReport || handlers.generateFullInspectionReport, available: currentRecords.some(isStatusIncomplete) || !!headerData?.jobpackName },
             { id: 'struct_over', code: 'STR_OVR', name: 'Structure Overview', description: 'Summary of all inspection work performed on this structure.', mode: 'BOTH', category: 'Structure', handler: handlers.generateFullInspectionReport, available: !!headerData?.platformName || currentRecords.length > 0 },
             
             // ── FINAL REPORTS ──────────────────────────────────────────────────────
@@ -697,7 +825,7 @@ export function ReportWizardDialog({
 
         // Base codes already handled by primary baseTemplates
         const baseCodesSet = new Set(baseTemplates.map(b => b.code.toUpperCase()));
-        const extraExcludedCodes = ['PL_IC', 'ITEM', 'ITMAIN', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC', 'INSP_SUM_GRAPH'];
+        const extraExcludedCodes = ['PL_IC', 'ITEM', 'ITMAIN', 'RCASN', 'DCASN', 'RCOND', 'DCOND', 'RCON', 'DCON', 'RRISI', 'DRISI', 'SZONE', 'SZCI', 'RSZCI', 'DSZCI', 'SEABED', 'RSEAB', 'MGROW', 'RMGI', 'DMGI', 'FMD', 'RFMD', 'DFMD', 'UTWT', 'RUTWT', 'DUTWT', 'UTWTK', 'SCOUR', 'RSCOR', 'DSCOR', 'BOATLANDING', 'BL', 'RISERGUARD', 'RG', 'CAISSONGUARD', 'SG', 'CONDUCTORGUARD', 'CU', 'RSANI', 'ANODE', 'ANOD', 'PL_AN', 'ANMAIN', 'CP', 'CPCLB', 'UTCLB', 'ACFMC', 'PL_CO', 'RWDI', 'RICMI', 'RSWNI', 'SWNI', 'JTISI', 'ITISI', 'GVINS', 'DGVI', 'RGVI', 'BSINS', 'CVINS', 'CLEAN', 'MPINS', 'INSP', 'DEFECT', 'FINDINGS', 'ANOM', 'PHOTO', 'COMP', 'JP_SUM', 'SOW_REP', 'STR_OVR', 'EXEC', 'INSP_SUM_GRAPH', 'INC', 'INCOMPLETE'];
         extraExcludedCodes.forEach(c => baseCodesSet.add(c));
 
         // Add dynamic reports (excluding any codes covered by base templates)
@@ -792,7 +920,7 @@ export function ReportWizardDialog({
                 t.name.toLowerCase().includes(search.toLowerCase()) || 
                 t.code.toLowerCase().includes(search.toLowerCase()) ||
                 (t.description && t.description.toLowerCase().includes(search.toLowerCase()));
-            const matchesAvailability = showAllTemplates ? true : t.available;
+            const matchesAvailability = (showAllTemplates || search.trim().length > 0) ? true : t.available;
             return matchesSearch && matchesAvailability;
         });
     }, [categoryTemplates, search, showAllTemplates]);

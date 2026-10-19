@@ -1999,6 +1999,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
             const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
+            const { generateROVRSCORV2Report } = await import("@/utils/report-generators/rov-rscor-v2-report");
             const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
             const { generateROVCPReport, isROVRecord, hasCPReading } = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
@@ -2029,6 +2030,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
             const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
             const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
+            const { generateInspectionIncompleteFlaggedReport, isStatusIncomplete } = await import("@/utils/report-generators/inspection-incomplete-flagged-report");
 
 
             // Fetch real company settings from API
@@ -3688,8 +3690,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV Scour Survey Sketch Report
-        if (currentTemplateId === "rov-scour-report") {
+        // ROV Scour Survey Sketch Report (v1 & v2)
+        if (
+            currentTemplateId === "rov-scour-report" || 
+            currentTemplateId === "rov-scour-v2-report" || 
+            currentTemplateId === "rov-rscor-v2-report" || 
+            currentTemplateId === "rscor-v2"
+        ) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -3722,15 +3729,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // FILTER MANUALLY
+            const scourCodes = ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2', 'RSCOR-V2', 'ROV-SCOUR'];
             const scourRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
                     String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRSCOR = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSCOR';
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isRSCOR = scourCodes.includes(code);
                 return sowMatches && jobPackMatches && isRSCOR;
-            });
+            }) || [];
 
-            if (!scourRecords || scourRecords.length === 0) {
+            if (!selections.printBlankReport && scourRecords.length === 0) {
                 alert(`No ROV Scour records (RSCOR) found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
@@ -3755,6 +3764,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
+                if (currentTemplateId !== "rov-scour-report") {
+                    return await generateROVRSCORV2Report(
+                        scourRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, isBlankReport: selections.printBlankReport, returnBlob } as any
+                    );
+                }
                 return await generateROVRSCORReport(
                     scourRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
@@ -6067,11 +6084,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
+            // Preload structure components to resolve parent-child hierarchy for BL and FD components
+            const compMap = new Map<string | number, any>();
+            try {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', structId);
+                allComps?.forEach(c => {
+                    compMap.set(c.id, c);
+                    compMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        compMap.set(String(c.q_id).toUpperCase(), c);
+                        compMap.set(String(c.q_id), c);
+                    }
+                });
+            } catch (e) {
+                console.warn("[report-wizard] Could not preload structure_components for BL/FD:", e);
+            }
+
             const blRecords = (records || []).filter((r: any) => {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isBL = isBLRecord(r);
+                const isBL = isBLRecord(r, compMap);
                 return sowMatches && jobPackMatches && isBL;
             });
 
@@ -6844,6 +6880,86 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
             if (!sowData) sowData = { items: [], report_numbers: [] };
             return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, { ...reportConfig, showSignatures: reportConfig.showSignatures } as any);
+        }
+
+        // Inspection Incomplete Flagged Detail List Report (All Inspection Types)
+        if (currentTemplateId === "inspection-incomplete-flagged-report" || currentTemplateId === "incomplete-flagged-report") {
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
+
+            let incompleteRecords: any[] = [];
+            if (!selections.printBlankReport) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    let query = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .order('insp_id', { ascending: true });
+
+                    if (cleanStructureId) {
+                        query = query.eq('structure_id', structId);
+                    }
+                    if (cleanJobPackId) {
+                        query = query.eq('jobpack_id', jobPackIdNum);
+                    }
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        query = query.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    const { data, error } = await query;
+                    if (error) {
+                        console.error("Error fetching records for inspection incomplete flagged report:", error);
+                    }
+                    const allRecords = data || [];
+                    incompleteRecords = allRecords.filter(isStatusIncomplete);
+
+                    if (incompleteRecords.length === 0) {
+                        alert(`No Incomplete Flagged inspection records found for "${structure?.str_name || 'structure'}" in this SOW.`);
+                        return null;
+                    }
+                } catch (err) {
+                    console.error("Error fetching incomplete flagged records:", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {
+                    try {
+                        const supabase = (await import("@/utils/supabase/client")).createClient();
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                        if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                    } catch (_) {}
+                }
+            }
+
+            const headerData = {
+                jobpackName: jobPack?.name || jobPack?.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack)
+            };
+
+            return await generateInspectionIncompleteFlaggedReport(
+                incompleteRecords,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob } as any
+            );
         }
 
         // Work Scope Report (Job Pack + Structure)
