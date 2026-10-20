@@ -178,8 +178,8 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'work-scope-report': ['WORK_SCOPE', 'WORK_SCOPE_REPORT', 'WORK_SCOPE_PAGES', 'SOW_REPORT_PAGES'],
     'work-scope-status-report': ['WORK_SCOPE_STATUS', 'WORK_SCOPE_STATUS_REPORT', 'WORK_SCOPE_STATUS_PAGES'],
     'work-scope-incomplete-report': ['WORK_SCOPE_INCOMPLETE', 'WORK_SCOPE_INCOMPLETE_REPORT', 'WORK_SCOPE_INCOMPLETE_PAGES'],
-    'inspection-incomplete-flagged-report': ['INC', 'INCOMPLETE', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
-    'incomplete-flagged-report': ['INC', 'INCOMPLETE', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
+    'inspection-incomplete-flagged-report': ['INC', 'INCOMPLETE_PAGES', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
+    'incomplete-flagged-report': ['INC', 'INCOMPLETE_PAGES', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
     'defect-criteria-report': ['DEFECT_CRITERIA', 'DEFECT_CRITERIA_REPORT', 'DEFECT_CRITERIA_PAGES'],
     'structure-summary': ['STRUCTURE_SUMMARY', 'STRUCTURE_SUMMARY_REPORT', 'STRUCTURE_SUMMARY_PAGES'],
     'inspection-summary': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
@@ -1348,12 +1348,15 @@ export const mapInspectionDataForDocx = async (
                     if (!cleanT) return;
                     reportData[`T_${cleanT}`] = true;
                     reportData[`${cleanT}_PAGES`] = pages;
-                    reportData[`${cleanT}_RECORDS`] = pages;
-                    reportData[cleanT] = pages;
+                    if (cleanT !== 'INCOMPLETE') {
+                        reportData[cleanT] = pages;
+                    }
                     if (cleanT.endsWith('_PAGES')) {
                         const base = cleanT.replace(/_PAGES$/, '');
                         reportData[`${base}_PAGES`] = pages;
-                        reportData[base] = pages;
+                        if (base !== 'INCOMPLETE') {
+                            reportData[base] = pages;
+                        }
                     }
                     reportData[`HAS_${cleanT}_PAGES`] = true;
                     reportData[`NO_${cleanT}_PAGES`] = false;

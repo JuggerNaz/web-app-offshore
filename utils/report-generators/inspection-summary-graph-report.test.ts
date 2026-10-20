@@ -189,4 +189,79 @@ describe("generateInspectionSummaryGraphReport", () => {
         expect(result).toBeInstanceOf(Blob);
         expect((result as Blob).size).toBeGreaterThan(1000);
     });
+
+    it("renders with defect criteria limits, both CP counts, descending defect ranking, and completion/incomplete card (Pic 1-5)", async () => {
+        const enrichedData = {
+            ...sampleSummaryData,
+            sow: {
+                total: 934,
+                completed: 837,
+                incomplete: 97,
+                pending: 0,
+                completionPct: 90,
+                completedPct: 90,
+                incompletePct: 10,
+            },
+            defectCriteria: {
+                scour: { maxAllowableMm: 900, operator: ">" },
+                cp: { minAllowableMv: -1150, maxAllowableMv: -800, nominalMaxMv: -800, criticalMaxMv: -650 },
+            },
+            scour: {
+                total: 8,
+                registeredFaces: 4,
+                facesSurveyed: 4,
+                pilesSurveyed: 8,
+                exposedCount: 0,
+                scourFindingsCount: 4,
+                maxDepthMm: 300,
+                minDepthMm: 100,
+                maxDepthLocation: "Leg : B1",
+                maxAllowableMm: 900,
+            },
+            cp: {
+                primaryCount: 120,
+                additionalCount: 53,
+                totalCount: 173,
+                maxVal: -854,
+                minVal: -1030,
+                minAllowableMv: -1150,
+                maxAllowableMv: -800,
+                nominalMaxMv: -800,
+                criticalMaxMv: -650,
+            },
+            anomalies: {
+                total: 71,
+                byPriority: { "Priority 1": 10, "Priority 2": 25, "Priority 3": 15, Observation: 21 },
+                byDefectType: {
+                    DB: 29,
+                    AW: 26,
+                    VS: 16,
+                    CP: 0,
+                    LI: 0,
+                    PD: 0,
+                    SC: 0,
+                }
+            },
+            anodeGvi: {
+                total: 239,
+                anodeTypeStr: "TYPE A, TYPE B, TYPE F",
+                depletionBuckets: {
+                    "0-25%": 19,
+                    "26-50%": 107,
+                    "50-75%": 80,
+                    "76-100%": 26,
+                }
+            }
+        };
+
+        const result = await generateInspectionSummaryGraphReport(
+            enrichedData,
+            sampleHeader,
+            sampleCompany,
+            { returnBlob: true, sowReportNo: "AM26-016-01" }
+        );
+
+        expect(result).toBeInstanceOf(Blob);
+        expect((result as Blob).size).toBeGreaterThan(1000);
+    });
 });

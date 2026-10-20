@@ -50,6 +50,25 @@ export const isStatusIncomplete = (r: any): boolean => {
     const dataStatus = String(d.status || "").trim().toUpperCase();
     const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
     const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+
+    // 1. Explicit COMPLETED/CLOSED/APPROVED check:
+    if (status === "COMPLETED" || dataStatus === "COMPLETED" || status === "CLOSED" || dataStatus === "CLOSED" || status === "APPROVED" || dataStatus === "APPROVED") {
+        if (status !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
+            return false;
+        }
+    }
+
+    // 2. Explicit INCOMPLETE status / finding type
+    if (status === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
+        return true;
+    }
+
+    // 3. Boolean flag
+    if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
+        return true;
+    }
+
+    // 4. Incomplete reason provided
     const incompleteReason = String(
         r.incomplete_reason || 
         r.incompleteReason || 
@@ -57,17 +76,16 @@ export const isStatusIncomplete = (r: any): boolean => {
         d.incompleteReason || 
         ""
     ).trim();
+    if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") {
+        return true;
+    }
 
-    if (status === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
-        return true;
-    }
-    if (incompleteReason && incompleteReason.length > 0) {
-        return true;
-    }
+    // 5. Explicit prefix in description
     const desc = String(r.description || "").trim().toUpperCase();
-    if (desc.startsWith("INCOMPLETE:") || desc.includes("STATUS: INCOMPLETE") || desc.includes("UNABLE TO PERFORM") || desc.includes("UNABLE TO INSPECT")) {
+    if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) {
         return true;
     }
+
     return false;
 };
 

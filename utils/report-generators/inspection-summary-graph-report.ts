@@ -141,6 +141,7 @@ export const generateInspectionSummaryGraphReport = async (
         const scour = summaryData?.scour;
         const fmd = summaryData?.fmd;
         const cp = summaryData?.cp;
+        const defectCriteria = summaryData?.defectCriteria;
 
         // Structure & Header Info
         const structureInfo = summaryData?.structureInfo || headerDataOrStructure || {};
@@ -345,6 +346,7 @@ export const generateInspectionSummaryGraphReport = async (
         const totalQidsCount = sow.total || rec.total || 0;
         const completedCount = sow.completed || rec.completed || 0;
         const incompleteCount = sow.incomplete || rec.incomplete || 0;
+        const pendingCount = Math.max(0, totalQidsCount - completedCount - incompleteCount);
         const anomalyCount = anomalies.total || rec.anomaly || 0;
         
         // Accurate Completion Rate: MUST NOT treat incomplete tasks as completed!
@@ -354,6 +356,9 @@ export const generateInspectionSummaryGraphReport = async (
         const incRateVal = totalQidsCount > 0
             ? Math.round((incompleteCount / totalQidsCount) * 100)
             : (sow.incompletePct !== undefined ? Math.round(sow.incompletePct) : 0);
+        const pendRateVal = totalQidsCount > 0
+            ? Math.round((pendingCount / totalQidsCount) * 100)
+            : (sow.pendingPct !== undefined ? Math.round(sow.pendingPct) : 0);
 
         const compRateSubtext = incompleteCount > 0
             ? `${completedCount}/${totalQidsCount} QIDs (${incRateVal}% Inc)`
@@ -378,20 +383,132 @@ export const generateInspectionSummaryGraphReport = async (
             }
             doc.rect(cx, currentY, CARD_W, CARD_H, "S");
 
-            doc.setFontSize(7);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.title, cx + 3, currentY + 4.2);
+            if (idx === 4) {
+                // Card 5: Pic 5 Completion Rate with Completion %, Incomplete %, Pending %, segmented bar, and legend
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("COMPLETION RATE", cx + 3, currentY + 4.2);
 
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.value, cx + 3, currentY + 11.5);
+                if (totalQidsCount === 0) {
+                    doc.setFontSize(14);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("-- %", cx + 3, currentY + 11.5);
+                    doc.setFontSize(5.5);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("No scope QIDs defined", cx + 3, currentY + 16.5);
+                } else {
+                    // Show percentages on top row
+                    const hasPending = pendingCount > 0 && pendRateVal > 0;
+                    doc.setFontSize(hasPending ? 8.5 : 10.5);
+                    doc.setFont("helvetica", "bold");
 
-            doc.setFontSize(5.5);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textMuted);
-            doc.text(card.subtext, cx + 3, currentY + 16.5);
+                    let px = cx + 3;
+                    // Completed % (Green)
+                    doc.setTextColor(22, 163, 74);
+                    const compStr = `${compRateVal}% Comp`;
+                    doc.text(compStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(compStr) + 2;
+
+                    // Divider
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("•", px, currentY + 10.2);
+                    px += doc.getTextWidth("•") + 2;
+
+                    // Incomplete % (Amber)
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(217, 119, 6);
+                    const incStr = `${incRateVal}% Inc`;
+                    doc.text(incStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(incStr) + 2;
+
+                    // Pending % (if any)
+                    if (hasPending) {
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text("•", px, currentY + 10.2);
+                        px += doc.getTextWidth("•") + 2;
+
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(`${pendRateVal}% Pend`, px, currentY + 10.2);
+                    }
+
+                    // Segmented visual progress bar
+                    const barX = cx + 3;
+                    const barY = currentY + 11.8;
+                    const barW = CARD_W - 6;
+                    const barH = 2.2;
+
+                    doc.setFillColor(...colors.barTrack);
+                    doc.roundedRect(barX, barY, barW, barH, 0.6, 0.6, "F");
+
+                    const compBarW = Math.max(0, (barW * compRateVal) / 100);
+                    const incBarW = Math.max(0, (barW * incRateVal) / 100);
+                    const pendBarW = hasPending ? Math.max(0, barW - compBarW - incBarW) : 0;
+
+                    if (compBarW > 0) {
+                        doc.setFillColor(22, 163, 74); // Green
+                        doc.roundedRect(barX, barY, Math.min(barW, compBarW), barH, 0.6, 0.6, "F");
+                    }
+                    if (incBarW > 0) {
+                        doc.setFillColor(217, 119, 6); // Amber
+                        doc.rect(barX + compBarW, barY, Math.min(incBarW, barW - compBarW), barH, "F");
+                    }
+                    if (pendBarW > 0) {
+                        doc.setFillColor(148, 163, 184); // Slate
+                        doc.roundedRect(barX + compBarW + incBarW, barY, pendBarW, barH, 0.6, 0.6, "F");
+                    }
+
+                    // Legend under the progress bar
+                    const legY = currentY + 17.0;
+                    doc.setFontSize(4.7);
+                    doc.setFont("helvetica", "normal");
+
+                    // Done item
+                    let lx = cx + 3;
+                    doc.setFillColor(22, 163, 74);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    doc.setTextColor(...colors.textDark);
+                    const legComp = `${completedCount} Done (${compRateVal}%)`;
+                    doc.text(legComp, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legComp) + 3;
+
+                    // Incomplete item
+                    doc.setFillColor(217, 119, 6);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    const legInc = `${incompleteCount} Inc (${incRateVal}%)`;
+                    doc.text(legInc, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legInc) + 3;
+
+                    // Pending item
+                    if (hasPending && lx + 12 < cx + CARD_W) {
+                        doc.setFillColor(148, 163, 184);
+                        doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                        lx += 2.4;
+                        doc.text(`${pendingCount} Pend`, lx, legY - 0.3);
+                    }
+                }
+            } else {
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.title, cx + 3, currentY + 4.2);
+
+                doc.setFontSize(14);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.value, cx + 3, currentY + 11.5);
+
+                doc.setFontSize(5.5);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text(card.subtext, cx + 3, currentY + 16.5);
+            }
         });
 
         currentY += CARD_H + 3.5;
@@ -413,7 +530,8 @@ export const generateInspectionSummaryGraphReport = async (
             centerY: number,
             outerRadius: number,
             innerRadius: number,
-            slices: Array<{ value: number; color: [number, number, number] }>
+            slices: Array<{ value: number; color: [number, number, number] }>,
+            showSlicePercentages: boolean = false
         ) => {
             const total = slices.reduce((sum, s) => sum + s.value, 0);
             if (total === 0) {
@@ -429,9 +547,12 @@ export const generateInspectionSummaryGraphReport = async (
             }
 
             let currentAngle = -Math.PI / 2; // start at top 12 o'clock
+            const sliceArcs: Array<{ angle: number; sliceAngle: number; pct: number; color: [number, number, number] }> = [];
+
             slices.forEach(slice => {
                 if (slice.value <= 0) return;
                 const sliceAngle = (slice.value / total) * 2 * Math.PI;
+                const pct = Math.round((slice.value / total) * 100);
                 const steps = Math.max(12, Math.floor(sliceAngle * 28));
 
                 doc.setFillColor(...slice.color);
@@ -445,6 +566,7 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.triangle(centerX, centerY, x1, y1, x2, y2, "F");
                 }
 
+                sliceArcs.push({ angle: currentAngle, sliceAngle, pct, color: slice.color });
                 currentAngle += sliceAngle;
             });
 
@@ -455,6 +577,24 @@ export const generateInspectionSummaryGraphReport = async (
             doc.setLineWidth(0.15);
             doc.circle(centerX, centerY, innerRadius, "S");
             doc.circle(centerX, centerY, outerRadius, "S");
+
+            // Optional percentage labels on slices that are large enough (>=10%)
+            if (showSlicePercentages && total > 0) {
+                const midR = (outerRadius + innerRadius) / 2;
+                sliceArcs.forEach(sa => {
+                    if (sa.pct >= 10 && sa.sliceAngle >= 0.45) {
+                        const midAngle = sa.angle + (sa.sliceAngle / 2);
+                        const tx = centerX + (midR * Math.cos(midAngle));
+                        const ty = centerY + (midR * Math.sin(midAngle)) + 0.8;
+
+                        const lum = (0.299 * sa.color[0]) + (0.587 * sa.color[1]) + (0.114 * sa.color[2]);
+                        doc.setFontSize(4.5);
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(lum > 170 ? 20 : 255, lum > 170 ? 20 : 255, lum > 170 ? 20 : 255);
+                        doc.text(`${sa.pct}%`, tx, ty, { align: "center" });
+                    }
+                });
+            }
         };
 
         // ── 6. Middle Two-Column Section: Visual Coverage & Anomaly Graphs ────────
@@ -760,7 +900,7 @@ export const generateInspectionSummaryGraphReport = async (
 
         // Sub-block 1 (Left 50mm): PRIORITY SEVERITY DONUT CHART
         const donutCenterX = rightX + 24;
-        const donutCenterY = anomBoxY + 16;
+        const donutCenterY = anomBoxY + 15.5;
         const outerR = 12;
         const innerR = 7;
 
@@ -769,7 +909,7 @@ export const generateInspectionSummaryGraphReport = async (
             { value: p2, color: colP2 },
             { value: p3, color: colP3 },
             { value: obs, color: colObs },
-        ]);
+        ], true);
 
         // Donut Center Text: Total Anomalies
         const totalAnom = p1 + p2 + p3 + obs;
@@ -782,38 +922,63 @@ export const generateInspectionSummaryGraphReport = async (
         doc.setTextColor(...colors.textMuted);
         doc.text("TOTAL", donutCenterX, donutCenterY + 4, { align: "center" });
 
-        // Donut Legend below using library colors
-        const legStartY = anomBoxY + 31.5;
+        // Donut Legend: 2x2 grid with count and percentage
+        const p1Pct = totalAnom > 0 ? Math.round((p1 / totalAnom) * 100) : 0;
+        const p2Pct = totalAnom > 0 ? Math.round((p2 / totalAnom) * 100) : 0;
+        const p3Pct = totalAnom > 0 ? Math.round((p3 / totalAnom) * 100) : 0;
+        const obsPct = totalAnom > 0 ? Math.round((obs / totalAnom) * 100) : 0;
+
         const pItems = [
-            { label: "P1", count: p1, color: colP1 },
-            { label: "P2", count: p2, color: colP2 },
-            { label: "P3", count: p3, color: colP3 },
-            { label: "Obs", count: obs, color: colObs },
+            { label: "P1", count: p1, pct: p1Pct, color: colP1 },
+            { label: "P2", count: p2, pct: p2Pct, color: colP2 },
+            { label: "P3", count: p3, pct: p3Pct, color: colP3 },
+            { label: "Obs", count: obs, pct: obsPct, color: colObs },
         ];
 
-        pItems.forEach((pi, idx) => {
-            const px = rightX + 4 + (idx * 11.5);
-            doc.setFillColor(...pi.color);
-            doc.rect(px, legStartY - 2, 2.2, 2.2, "F");
-            doc.setDrawColor(...colors.border);
-            doc.setLineWidth(0.1);
-            doc.rect(px, legStartY - 2, 2.2, 2.2, "S");
-            doc.setFontSize(5);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.textDark);
-            doc.text(`${pi.label}:${pi.count}`, px + 3, legStartY - 0.3);
-        });
+        // Row 1: P1 & P2
+        const legRow1Y = anomBoxY + 31.0;
+        const legRow2Y = anomBoxY + 35.0;
+
+        // P1
+        doc.setFillColor(...pItems[0].color);
+        doc.rect(rightX + 4, legRow1Y - 2, 2.2, 2.2, "F");
+        doc.setDrawColor(...colors.border);
+        doc.setLineWidth(0.1);
+        doc.rect(rightX + 4, legRow1Y - 2, 2.2, 2.2, "S");
+        doc.setFontSize(4.6);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...colors.textDark);
+        doc.text(`P1: ${p1} (${p1Pct}%)`, rightX + 7, legRow1Y - 0.3);
+
+        // P2
+        doc.setFillColor(...pItems[1].color);
+        doc.rect(rightX + 26, legRow1Y - 2, 2.2, 2.2, "F");
+        doc.rect(rightX + 26, legRow1Y - 2, 2.2, 2.2, "S");
+        doc.text(`P2: ${p2} (${p2Pct}%)`, rightX + 29, legRow1Y - 0.3);
+
+        // Row 2: P3 & Obs
+        // P3
+        doc.setFillColor(...pItems[2].color);
+        doc.rect(rightX + 4, legRow2Y - 2, 2.2, 2.2, "F");
+        doc.rect(rightX + 4, legRow2Y - 2, 2.2, 2.2, "S");
+        doc.text(`P3: ${p3} (${p3Pct}%)`, rightX + 7, legRow2Y - 0.3);
+
+        // Obs
+        doc.setFillColor(...pItems[3].color);
+        doc.rect(rightX + 26, legRow2Y - 2, 2.2, 2.2, "F");
+        doc.rect(rightX + 26, legRow2Y - 2, 2.2, 2.2, "S");
+        doc.text(`Obs: ${obs} (${obsPct}%)`, rightX + 29, legRow2Y - 0.3);
 
         // Rectified Status Badge
         doc.setFillColor(240, 253, 244);
-        doc.roundedRect(rightX + 4, legStartY + 3, 44, 4.2, 1, 1, "F");
+        doc.roundedRect(rightX + 4, anomBoxY + 39.5, 43, 4.2, 1, 1, "F");
         doc.setDrawColor(187, 247, 208);
         doc.setLineWidth(0.1);
-        doc.roundedRect(rightX + 4, legStartY + 3, 44, 4.2, 1, 1, "S");
-        doc.setFontSize(5);
+        doc.roundedRect(rightX + 4, anomBoxY + 39.5, 43, 4.2, 1, 1, "S");
+        doc.setFontSize(4.8);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...colors.emerald);
-        doc.text(`Rectified Anomalies: ${rectifiedCount}`, rightX + 26, legStartY + 6, { align: "center" });
+        doc.text(`Rectified Anomalies: ${rectifiedCount}`, rightX + 25.5, anomBoxY + 42.4, { align: "center" });
 
         // Vertical divider between Donut and Defect bars
         doc.setDrawColor(...colors.border);
@@ -830,7 +995,7 @@ export const generateInspectionSummaryGraphReport = async (
         doc.setFontSize(4.5);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...colors.textMuted);
-        doc.text("COUNT", rightX + RIGHT_COL_W - 3, anomBoxY + 4.2, { align: "right" });
+        doc.text("COUNT (%)", rightX + RIGHT_COL_W - 3, anomBoxY + 4.2, { align: "right" });
 
         const defectMap = anomalies.byDefectType || {};
         const defectList = [
@@ -851,12 +1016,18 @@ export const generateInspectionSummaryGraphReport = async (
             return 0;
         };
 
-        const maxDefectCount = Math.max(1, ...defectList.map(d => getDefectCount(d.code)));
-        const dRowH = (anomBoxH - 7.5) / defectList.length;
+        // Sort descending by count to immediately reveal highest ranking defect types
+        const sortedDefectList = defectList
+            .map(d => ({ ...d, count: getDefectCount(d.code) }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
 
-        defectList.forEach((d, dIdx) => {
+        const maxDefectCount = Math.max(1, ...sortedDefectList.map(d => d.count));
+        const dRowH = (anomBoxH - 7.5) / sortedDefectList.length;
+
+        sortedDefectList.forEach((d, dIdx) => {
             const dy = anomBoxY + 6.5 + (dIdx * dRowH);
-            const val = getDefectCount(d.code);
+            const val = d.count;
+            const dPctOfTot = totalAnom > 0 ? Math.round((val / totalAnom) * 100) : 0;
 
             // Label
             doc.setFontSize(4.8);
@@ -866,7 +1037,7 @@ export const generateInspectionSummaryGraphReport = async (
 
             // Progress bar
             const dBarX = defectX + 29;
-            const dBarW = 26;
+            const dBarW = 21;
             const dBarH = 2.8;
             const dPct = (val / maxDefectCount) * 100;
 
@@ -878,11 +1049,11 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.roundedRect(dBarX, dy + 0.3, fillW, dBarH, 0.8, 0.8, "F");
             }
 
-            // Count number clearly visible beside bar, right-aligned to card edge
-            doc.setFontSize(5.2);
+            // Count and percentage clearly visible beside bar, right-aligned to card edge
+            doc.setFontSize(4.8);
             doc.setFont("helvetica", val > 0 ? "bold" : "normal");
             doc.setTextColor(...(val > 0 ? colors.navy : colors.textMuted));
-            doc.text(String(val), rightX + RIGHT_COL_W - 3, dy + 2.4, { align: "right" });
+            doc.text(`${val} (${dPctOfTot}%)`, rightX + RIGHT_COL_W - 3, dy + 2.4, { align: "right" });
         });
 
         currentY += MID_H + 3.5;
@@ -1071,6 +1242,7 @@ export const generateInspectionSummaryGraphReport = async (
                 const d50 = Number(depletions["50-75%"] ?? depletions["50–75%"] ?? 15);
                 const d75 = Number(depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 6);
 
+                const totAnodeCount = (d0 + d25 + d50 + d75) || totalAnodes || 1;
                 const maxAnodeDep = Math.max(1, d0, d25, d50, d75);
                 const aRanges = [
                     { label: "0-25%", count: d0, color: colors.emerald },
@@ -1090,9 +1262,10 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.text(ar.label, bx + 3, ay + 2.8);
 
                     const barX = bx + 16;
-                    const barW = bw - 26;
+                    const barW = bw - 32;
                     const barH = 3;
                     const pct = (ar.count / maxAnodeDep) * 100;
+                    const pctOfTot = totAnodeCount > 0 ? Math.round((ar.count / totAnodeCount) * 100) : 0;
 
                     doc.setFillColor(...colors.barTrack);
                     doc.roundedRect(barX, dySafe(ay + 0.5), barW, barH, 0.8, 0.8, "F");
@@ -1105,23 +1278,27 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.setFontSize(4.8);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(...colors.textDark);
-                    doc.text(String(ar.count), bx + bw - 3, ay + 2.8, { align: "right" });
+                    doc.text(`${ar.count} (${pctOfTot}%)`, bx + bw - 3, ay + 2.8, { align: "right" });
                 });
 
-                // Bottom health spectrum pill
-                const healthPct = totalAnodes > 0 ? Math.round(((d0 + d25) / totalAnodes) * 100) : 100;
-                doc.setFillColor(248, 250, 252);
+                // Actionable offshore integrity advice: concise wording with >75% count only
+                const isRetrofitNeeded = d75 > 0;
+                doc.setFillColor(isRetrofitNeeded ? 254 : 240, isRetrofitNeeded ? 243 : 253, isRetrofitNeeded ? 199 : 244);
                 doc.roundedRect(bx + 3, graphY + graphH - 5.5, bw - 6, 4.2, 1, 1, "F");
-                let aHealthStr = `Anode Health: ${healthPct}% (<50% dep.)`;
-                let aFontSize = 4.2;
+
+                const aAdviceStr = isRetrofitNeeded
+                    ? `Retrofit Planning: ${d75} Anodes (>75% Dep.)`
+                    : `All Anodes ≤75% Depleted (Serviceable)`;
+
+                let aFontSize = 4.4;
                 doc.setFontSize(aFontSize);
                 doc.setFont("helvetica", "bold");
-                while (aFontSize > 3.0 && doc.getTextWidth(aHealthStr) > (bw - 8)) {
+                while (aFontSize > 3.0 && doc.getTextWidth(aAdviceStr) > (bw - 8)) {
                     aFontSize -= 0.2;
                     doc.setFontSize(aFontSize);
                 }
-                doc.setTextColor(...(healthPct >= 60 ? colors.emerald : colors.amber));
-                doc.text(aHealthStr, bx + (bw / 2), graphY + graphH - 2.6, { align: "center" });
+                doc.setTextColor(...(isRetrofitNeeded ? colors.amber : colors.emerald));
+                doc.text(aAdviceStr, bx + (bw / 2), graphY + graphH - 2.6, { align: "center" });
             }
         });
 
@@ -1213,6 +1390,14 @@ export const generateInspectionSummaryGraphReport = async (
                 const minLoc = scour?.minDepthLocation || "";
                 const minLocClean = minLoc && minLoc !== "N/A" ? minLoc : "";
 
+                // Allowable limit dynamically retrieved from Defect Criteria (default fallback 800)
+                const scourLimit = Number(
+                    scour?.maxAllowableMm || 
+                    scour?.maxAllowableLimit || 
+                    defectCriteria?.scour?.maxAllowableMm || 
+                    800
+                );
+
                 // Scour Depth Visual Spectrum Meter
                 const meterY = graphY + 14.2;
                 doc.setFontSize(4.8);
@@ -1220,44 +1405,67 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setTextColor(...colors.textDark);
                 doc.text(maxLocClean ? `MAX SCOUR DEPTH (${maxLocClean})` : "MAXIMUM SCOUR DEPTH", bx + 3, meterY);
 
-                // Depth callout on top right
-                doc.setFontSize(5.2);
+                // Depth callout on top right: Show Max and Min in DIFFERENT colors as requested
+                const maxColor: [number, number, number] = maxDepthMm > scourLimit ? colors.red : colors.navy;
+                const minColor: [number, number, number] = [13, 148, 136]; // Teal for Min
+
+                doc.setFontSize(5.0);
                 doc.setFont("helvetica", "bold");
-                doc.setTextColor(...(maxDepthMm > 800 ? colors.red : (maxDepthMm > 400 ? colors.amber : colors.navy)));
-                const depthCallout = minDepthMm > 0
-                    ? `Max: ${Math.round(maxDepthMm)} mm | Min: ${Math.round(minDepthMm)} mm`
-                    : `${Math.round(maxDepthMm)} mm`;
-                doc.text(depthCallout, bx + bw - 3, meterY, { align: "right" });
+                const minText = minDepthMm > 0 ? `Min: ${Math.round(minDepthMm)} mm` : "";
+                const maxText = `Max: ${Math.round(maxDepthMm)} mm`;
+                const sepText = minText ? " | " : "";
+
+                const minW = minText ? doc.getTextWidth(minText) : 0;
+                const sepW = minText ? doc.getTextWidth(sepText) : 0;
+                const maxW = doc.getTextWidth(maxText);
+                const totalCalloutW = maxW + sepW + minW;
+                const calloutStartX = bx + bw - 3 - totalCalloutW;
+
+                doc.setTextColor(...maxColor);
+                doc.text(maxText, calloutStartX, meterY);
+                if (minText) {
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text(sepText, calloutStartX + maxW, meterY);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...minColor);
+                    doc.text(minText, calloutStartX + maxW + sepW, meterY);
+                }
 
                 const meterBarX = bx + 3;
                 const meterBarW = bw - 6;
                 const meterBarH = 3.6;
-                const meterScaleMax = 1200; // 0 - 1200mm scale
+                const meterScaleMax = Math.max(1200, Math.ceil((scourLimit + 300) / 100) * 100, Math.ceil((maxDepthMm + 150) / 100) * 100);
 
-                // Depth spectrum zones: Green (0-400), Yellow (400-800), Red (800-1200)
-                const z1W = meterBarW * (400 / meterScaleMax);
-                const z2W = meterBarW * (400 / meterScaleMax);
-                const z3W = meterBarW - z1W - z2W;
+                // Depth spectrum zones: Normal / Safe (0 to scourLimit = Green), Anomaly (> scourLimit = Red)
+                const safeW = meterBarW * (scourLimit / meterScaleMax);
+                const anomW = Math.max(0, meterBarW - safeW);
 
-                doc.setFillColor(187, 247, 208); // light green (0-400)
-                doc.rect(meterBarX, meterY + 1.2, z1W, meterBarH, "F");
-                doc.setFillColor(254, 240, 138); // light amber (400-800)
-                doc.rect(meterBarX + z1W, meterY + 1.2, z2W, meterBarH, "F");
-                doc.setFillColor(254, 202, 202); // light red (800-1200)
-                doc.rect(meterBarX + z1W + z2W, meterY + 1.2, z3W, meterBarH, "F");
+                doc.setFillColor(187, 247, 208); // Safe / Normal green
+                doc.rect(meterBarX, meterY + 1.2, safeW, meterBarH, "F");
 
-                // Needle/Marker for min depth if distinct
-                if (minDepthMm > 0 && Math.abs(maxDepthMm - minDepthMm) > 25) {
-                    const minNeedlePct = Math.min(1, minDepthMm / meterScaleMax);
-                    const minNeedleX = meterBarX + (meterBarW * minNeedlePct);
-                    doc.setFillColor(71, 85, 105); // slate for min
-                    doc.rect(minNeedleX - 0.5, meterY + 0.4, 1.0, meterBarH + 1.6, "F");
+                if (anomW > 0) {
+                    doc.setFillColor(254, 202, 202); // Anomaly red
+                    doc.rect(meterBarX + safeW, meterY + 1.2, anomW, meterBarH, "F");
                 }
 
-                // Needle/Marker for actual maximum depth
+                // Red limit threshold dividing line
+                doc.setDrawColor(220, 38, 38);
+                doc.setLineWidth(0.35);
+                doc.line(meterBarX + safeW, meterY + 0.6, meterBarX + safeW, meterY + meterBarH + 1.8);
+
+                // Needle/Marker for min depth (Teal marker)
+                if (minDepthMm > 0) {
+                    const minNeedlePct = Math.min(1, minDepthMm / meterScaleMax);
+                    const minNeedleX = meterBarX + (meterBarW * minNeedlePct);
+                    doc.setFillColor(...minColor); // Teal for min
+                    doc.rect(minNeedleX - 0.6, meterY + 0.4, 1.2, meterBarH + 1.6, "F");
+                }
+
+                // Needle/Marker for actual maximum depth (Navy or Red)
                 const needlePct = Math.min(1, maxDepthMm / meterScaleMax);
                 const needleX = meterBarX + (meterBarW * needlePct);
-                doc.setFillColor(...(maxDepthMm > 800 ? colors.red : colors.navy));
+                doc.setFillColor(...maxColor);
                 doc.rect(needleX - 0.8, meterY + 0.2, 1.6, meterBarH + 2.0, "F");
 
                 // Scale ticks & limit markings under bar
@@ -1266,30 +1474,25 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
                 doc.text("0", meterBarX, labelY);
-                doc.text("400", meterBarX + z1W, labelY, { align: "center" });
 
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(220, 38, 38);
-                doc.text("800 (Limit)", meterBarX + z1W + z2W, labelY, { align: "center" });
+                doc.text(`${scourLimit} (Limit)`, meterBarX + safeW, labelY, { align: "center" });
 
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
-                doc.text("1200 mm", meterBarX + meterBarW, labelY, { align: "right" });
+                doc.text(`${meterScaleMax} mm`, meterBarX + meterBarW, labelY, { align: "right" });
 
                 // Bottom findings & safety status summary
-                const isAnomaly = maxDepthMm > 800 || Number(exposedPileCount) > 0;
-                const isCaution = maxDepthMm > 400 && !isAnomaly;
+                const isAnomaly = maxDepthMm > scourLimit || Number(exposedPileCount) > 0;
                 let scourSummaryText = "";
 
                 if (isAnomaly) {
                     const locPart = maxLocClean ? ` at ${maxLocClean}` : "";
-                    scourSummaryText = `ANOMALY: Exceeds 800mm limit${locPart} (${Math.round(maxDepthMm)} mm)!`;
-                } else if (isCaution) {
-                    const locPart = maxLocClean ? ` at ${maxLocClean}` : "";
-                    scourSummaryText = `CAUTION: Moderate Scour${locPart} (${Math.round(maxDepthMm)} mm) | Limit: 800mm`;
+                    scourSummaryText = `ANOMALY: Exceeds ${scourLimit}mm limit${locPart} (Max: ${Math.round(maxDepthMm)} mm)!`;
                 } else {
                     const locPart = maxLocClean ? ` • Max at ${maxLocClean}` : "";
-                    scourSummaryText = `Findings on ${scourFindings} piles | Safety: Normal (<400mm)${locPart}`;
+                    scourSummaryText = `Findings on ${scourFindings} piles | Safety: Normal (<${scourLimit}mm)${locPart}`;
                 }
 
                 let sFontSize = 4.2;
@@ -1299,7 +1502,7 @@ export const generateInspectionSummaryGraphReport = async (
                     sFontSize -= 0.2;
                     doc.setFontSize(sFontSize);
                 }
-                doc.setTextColor(...(isAnomaly ? colors.red : (isCaution ? colors.amber : colors.textMuted)));
+                doc.setTextColor(...(isAnomaly ? colors.red : colors.textMuted));
                 doc.text(scourSummaryText, bx + (bw / 2), graphY + graphH - 1.8, { align: "center" });
             }
         });
@@ -1327,68 +1530,172 @@ export const generateInspectionSummaryGraphReport = async (
                     }
                     doc.rect(bx, graphY, bw, graphH, "S");
 
-                    const maxV = cp?.maxVal != null ? Number(cp.maxVal) : -853;
-                    const minV = cp?.minVal != null ? Number(cp.minVal) : -1005;
-                    const totCp = cp?.totalCount || cp?.primaryCount || 54;
-                    const rovCp = cp?.primaryRov || 29;
+                    const maxV = cp?.maxVal != null ? Number(cp.maxVal) : -854;
+                    const minV = cp?.minVal != null ? Number(cp.minVal) : -1030;
+                    const primaryCount = cp?.primaryCount ?? 0;
+                    const additionalCount = cp?.additionalCount ?? 0;
+                    const totCp = cp?.totalCount || (primaryCount + additionalCount) || (cp?.primaryCount ? cp.primaryCount : 54);
 
-                    // Spectrum bar from -1150 mV to -750 mV
-                    const vMinScale = -1150;
-                    const vMaxScale = -750;
-                    const vRange = vMaxScale - vMinScale; // 400 mV range
+                    // Dynamic allowable criteria limits from Defect Criteria module:
+                    // 1. Min Allowable (P1 Over-protection): -1150 mV
+                    const cpMinAllowable = Number(cp?.minAllowableMv || defectCriteria?.cp?.minAllowableMv || -1150);
+                    // 2. Nominal Max Allowable (P2 Under-protection): -800 mV
+                    const cpNominalMax = Number(cp?.nominalMaxMv || cp?.maxAllowableMv || defectCriteria?.cp?.nominalMaxMv || defectCriteria?.cp?.maxAllowableMv || -800);
+                    // 3. Critical Max Limit (P1 Critical Under-protection): -650 mV
+                    const cpCriticalMax = Number(cp?.criticalMaxMv || defectCriteria?.cp?.criticalMaxMv || -650);
+
+                    // Top Callouts: Min, Counts (Primary + Addl), and Max
+                    doc.setFontSize(4.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(13, 148, 136); // Teal for Min
+                    doc.text(`Min: ${minV} mV`, bx + 3, graphY + 4.2);
+
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text(`Readings: ${totCp} (${primaryCount} Pri, ${additionalCount} Addl)`, bx + (bw / 2), graphY + 4.2, { align: "center" });
+
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...(maxV > cpNominalMax ? colors.red : colors.navy));
+                    doc.text(`Max: ${maxV} mV`, bx + bw - 3, graphY + 4.2, { align: "right" });
+
+                    // Wide spectrum bar scale to provide clean margins preventing label overlap
+                    const vMinScale = Math.min(-1250, Math.floor((minV - 50) / 50) * 50);
+                    const vMaxScale = Math.max(-550, Math.ceil((maxV + 50) / 50) * 50);
+                    const vRange = vMaxScale - vMinScale;
 
                     const meterX = bx + 4;
                     const meterW = bw - 8;
-                    const meterY = graphY + 11;
-                    const meterH = 4.5;
+                    const meterY = graphY + 11.8;
+                    const meterH = 5.0;
 
-                    // Critical Protection Threshold: -850 mV
-                    const critX = meterX + (meterW * ((-850 - vMinScale) / vRange));
+                    // Allowable limit coordinates on scale
+                    const minCritX = meterX + (meterW * ((cpMinAllowable - vMinScale) / vRange));
+                    const nomCritX = meterX + (meterW * ((cpNominalMax - vMinScale) / vRange));
+                    const critCritX = meterX + (meterW * ((cpCriticalMax - vMinScale) / vRange));
 
-                    // Protected Zone: -1150 to -850 (Green)
+                    // Zone 1: Over-protected Zone (vMinScale to cpMinAllowable): Light Red
+                    if (minCritX > meterX) {
+                        doc.setFillColor(254, 202, 202);
+                        doc.rect(meterX, meterY, minCritX - meterX, meterH, "F");
+                    }
+
+                    // Zone 2: Protected Safe Allowable Zone (cpMinAllowable to cpNominalMax): Light Green
                     doc.setFillColor(187, 247, 208);
-                    doc.rect(meterX, meterY, critX - meterX, meterH, "F");
+                    doc.rect(minCritX, meterY, Math.max(0, nomCritX - minCritX), meterH, "F");
 
-                    // Under-protected Zone: -850 to -750 (Red)
-                    doc.setFillColor(254, 202, 202);
-                    doc.rect(critX, meterY, meterX + meterW - critX, meterH, "F");
+                    // Zone 3: Under-protected Caution Zone (cpNominalMax to cpCriticalMax): Light Amber
+                    doc.setFillColor(254, 240, 138);
+                    doc.rect(nomCritX, meterY, Math.max(0, critCritX - nomCritX), meterH, "F");
 
-                    // Actual Reading Range Bracket: minV to maxV
+                    // Zone 4: Critical Anomaly Zone (cpCriticalMax to vMaxScale): Light Red
+                    if (meterX + meterW > critCritX) {
+                        doc.setFillColor(254, 202, 202);
+                        doc.rect(critCritX, meterY, meterX + meterW - critCritX, meterH, "F");
+                    }
+
+                    // Gauge border
+                    doc.setDrawColor(...colors.border);
+                    doc.setLineWidth(0.15);
+                    doc.rect(meterX, meterY, meterW, meterH, "S");
+
+                    // Actual Reading Range Solid Blue Block: minV to maxV
                     const val1X = meterX + (meterW * ((minV - vMinScale) / vRange));
                     const val2X = meterX + (meterW * ((maxV - vMinScale) / vRange));
+                    const blueLeft = Math.min(val1X, val2X);
+                    const blueRight = Math.max(val1X, val2X);
+                    const blueW = Math.max(4, blueRight - blueLeft);
 
                     doc.setFillColor(...colors.navy);
-                    doc.rect(Math.min(val1X, val2X), meterY - 0.8, Math.max(2, Math.abs(val2X - val1X)), meterH + 1.6, "F");
+                    doc.rect(blueLeft, meterY - 1.0, blueW, meterH + 2.0, "F");
 
-                    // -850mV Threshold Line
+                    // Print captured min and max values directly on/inside the blue block as requested
+                    doc.setFontSize(3.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(255, 255, 255);
+                    if (blueW >= 15) {
+                        doc.text(`${minV} ~ ${maxV} mV`, blueLeft + (blueW / 2), meterY + (meterH / 2) + 0.6, { align: "center" });
+                    } else if (blueW >= 9) {
+                        doc.text(`${minV}..${maxV}`, blueLeft + (blueW / 2), meterY + (meterH / 2) + 0.6, { align: "center" });
+                    } else {
+                        doc.text(`${minV}`, blueLeft + (blueW / 2), meterY + (meterH / 2) + 0.6, { align: "center" });
+                    }
+
+                    // Threshold limit lines and labels (above bar)
+                    doc.setLineWidth(0.35);
+
+                    // 1. Min Allowable Limit Line & Label (-1150 mV)
                     doc.setDrawColor(...colors.red);
-                    doc.setLineWidth(0.3);
-                    doc.line(critX, meterY - 2.5, critX, meterY + meterH + 2.5);
-
-                    doc.setFontSize(4.3);
+                    doc.line(minCritX, meterY - 2.5, minCritX, meterY + meterH + 2.2);
+                    doc.setFontSize(3.8);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(...colors.red);
-                    doc.text("-850mV", critX, meterY - 3.2, { align: "center" });
+                    doc.text(`${cpMinAllowable}mV (Min)`, minCritX, meterY - 3.2, { align: "center" });
 
-                    // Top Callouts
-                    doc.setFontSize(4.8);
-                    doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...colors.navy);
-                    doc.text(`Min: ${minV} mV`, bx + 3, graphY + 4.2);
-                    doc.text(`Max: ${maxV} mV`, bx + bw - 3, graphY + 4.2, { align: "right" });
+                    // 2. Nominal Max Allowable Limit Line & Label (-800 mV)
+                    doc.setDrawColor(217, 119, 6);
+                    doc.line(nomCritX, meterY - 2.5, nomCritX, meterY + meterH + 2.2);
+                    doc.setTextColor(217, 119, 6);
+                    doc.text(`${cpNominalMax}mV (Max)`, nomCritX, meterY - 3.2, { align: "center" });
 
-                    // Scale markers below meter
-                    doc.setFontSize(4.0);
+                    // 3. Critical Max Limit Line & Label (-650 mV)
+                    doc.setDrawColor(...colors.red);
+                    doc.line(critCritX, meterY - 2.5, critCritX, meterY + meterH + 2.2);
+                    doc.setTextColor(...colors.red);
+                    doc.text(`${cpCriticalMax}mV (Crit)`, critCritX, meterY - 3.2, { align: "center" });
+
+                    // Scale markers below meter (neatly aligned without overwriting)
+                    const labelY = meterY + meterH + 3.2;
+                    doc.setFontSize(3.6);
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textMuted);
-                    doc.text("-1150 mV", meterX, meterY + meterH + 3.2);
-                    doc.text("-750 mV", meterX + meterW, meterY + meterH + 3.2, { align: "right" });
+                    doc.text(`${vMinScale} mV`, meterX, labelY);
+                    doc.text(`${vMaxScale} mV`, meterX + meterW, labelY, { align: "right" });
 
-                    // Bottom Protection Status Badge (Cleanly sized to fit inside block)
-                    const isProtected = maxV <= -850;
-                    doc.setFillColor(isProtected ? 240 : 254, isProtected ? 253 : 242, isProtected ? 244 : 242);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(220, 38, 38);
+                    doc.text(`${cpMinAllowable}`, minCritX, labelY, { align: "center" });
+
+                    doc.setTextColor(217, 119, 6);
+                    doc.text(`${cpNominalMax}`, nomCritX, labelY, { align: "center" });
+
+                    doc.setTextColor(220, 38, 38);
+                    doc.text(`${cpCriticalMax}`, critCritX, labelY, { align: "center" });
+
+                    // Bottom Protection Status Badge
+                    const isSafe = minV >= cpMinAllowable && maxV <= cpNominalMax;
+                    const isCriticalDefect = maxV > cpCriticalMax;
+                    const isP2Caution = !isSafe && maxV > cpNominalMax && maxV <= cpCriticalMax && minV >= cpMinAllowable;
+                    const isOverProtected = minV < cpMinAllowable;
+
+                    let statusStr = "";
+                    let statusBg: [number, number, number] = [240, 253, 244];
+                    let statusTextColor: [number, number, number] = colors.emerald;
+
+                    if (isSafe) {
+                        statusStr = `CRITERIA MET: Safe protection [${cpMinAllowable} to ${cpNominalMax} mV] (${totCp} Readings Logged)`;
+                        statusBg = [240, 253, 244];
+                        statusTextColor = colors.emerald;
+                    } else if (isCriticalDefect) {
+                        statusStr = `CRITICAL DEFECT: Max reading (${maxV} mV) exceeds ${cpCriticalMax} mV limit (P1 Unprotected)`;
+                        statusBg = [254, 242, 242];
+                        statusTextColor = colors.red;
+                    } else if (isP2Caution) {
+                        statusStr = `ATTENTION: Max reading (${maxV} mV) exceeds ${cpNominalMax} mV limit (P2 Caution)`;
+                        statusBg = [254, 243, 199];
+                        statusTextColor = colors.amber;
+                    } else if (isOverProtected) {
+                        statusStr = `ANOMALY: Min reading (${minV} mV) below ${cpMinAllowable} mV limit (P1 Over-protected)`;
+                        statusBg = [254, 242, 242];
+                        statusTextColor = colors.red;
+                    } else {
+                        statusStr = `Readings: ${totCp} Logged (${primaryCount} Pri, ${additionalCount} Addl) | Range: ${minV} to ${maxV} mV`;
+                        statusBg = [241, 245, 249];
+                        statusTextColor = colors.textDark;
+                    }
+
+                    doc.setFillColor(...statusBg);
                     doc.roundedRect(bx + 3, graphY + graphH - 6.5, bw - 6, 4.8, 1, 1, "F");
-                    const statusStr = isProtected ? `CRITERIA MET: All < -850 mV (${totCp} Logged)` : `ATTN: Readings > -850 mV`;
+
                     let cpFontSize = 4.2;
                     doc.setFontSize(cpFontSize);
                     doc.setFont("helvetica", "bold");
@@ -1396,7 +1703,7 @@ export const generateInspectionSummaryGraphReport = async (
                         cpFontSize -= 0.2;
                         doc.setFontSize(cpFontSize);
                     }
-                    doc.setTextColor(...(isProtected ? colors.emerald : colors.red));
+                    doc.setTextColor(...statusTextColor);
                     doc.text(statusStr, bx + (bw / 2), graphY + graphH - 3.4, { align: "center" });
                 }
             });

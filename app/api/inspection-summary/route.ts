@@ -2182,11 +2182,30 @@ export const GET = withTenant(async (request, { companyId }) => {
             const dataStatus = String(d.status || "").trim().toUpperCase();
             const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
             const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
-            const incompleteReason = String(r.incomplete_reason || r.incompleteReason || d.incomplete_reason || d.incompleteReason || "").trim();
+
+            // 1. Explicit COMPLETED/CLOSED/APPROVED check:
+            if (st === "COMPLETED" || dataStatus === "COMPLETED" || st === "CLOSED" || dataStatus === "CLOSED" || st === "APPROVED" || dataStatus === "APPROVED") {
+                if (st !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
+                    return false;
+                }
+            }
+
+            // 2. Explicit INCOMPLETE status / finding type
             if (st === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") return true;
-            if (incompleteReason && incompleteReason.length > 0) return true;
+
+            // 3. Boolean flag
+            if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
+                return true;
+            }
+
+            // 4. Incomplete reason provided
+            const incompleteReason = String(r.incomplete_reason || r.incompleteReason || d.incomplete_reason || d.incompleteReason || "").trim();
+            if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") return true;
+
+            // 5. Explicit prefix in description
             const desc = String(r.description || "").trim().toUpperCase();
-            if (desc.startsWith("INCOMPLETE:") || desc.includes("STATUS: INCOMPLETE") || desc.includes("UNABLE TO PERFORM") || desc.includes("UNABLE TO INSPECT")) return true;
+            if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) return true;
+
             return false;
         };
 
@@ -2206,6 +2225,93 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anomalyDive = anomalyRecords.filter(isDiveRecord).length;
         const findingRov = findingRecords.filter(isRovRecord).length;
         const findingDive = findingRecords.filter(isDiveRecord).length;
+
+        // ─── DEFECT CRITERIA MODULE RULES RESOLUTION ──────────────────────────
+        let scourMaxAllowableMm = 800; // default safe fallback
+        let cpMinAllowableMv = -1150;  // default over-protection bound (more negative = over-protected)
+        let cpMaxAllowableMv = -800;   // default under-protection bound (less negative = under-protected)
+        let cpNominalMaxMv = -800;     // nominal under-protection threshold (P2)
+        let cpCriticalMaxMv = -650;    // critical under-protection threshold (P1)
+
+        try {
+            let procQuery = (supabase as any)
+                .from("defect_criteria_procedures")
+                .select("id, status, procedure_name");
+            if (companyId) {
+                procQuery = procQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: procs } = await procQuery;
+            const activeProcs = (procs || []).filter((p: any) => p.status === "active");
+            const targetProcIds = activeProcs.length > 0 
+                ? activeProcs.map((p: any) => p.id) 
+                : (procs || []).map((p: any) => p.id);
+
+            let rulesQuery = (supabase as any)
+                .from("defect_criteria_rules")
+                .select("*");
+            if (targetProcIds.length > 0) {
+                rulesQuery = rulesQuery.in("procedure_id", targetProcIds);
+            } else if (companyId) {
+                rulesQuery = rulesQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: rulesData } = await rulesQuery;
+            const rules = rulesData || [];
+
+            // 1. Scour rule
+            const scourRule = rules.find((r: any) => 
+                (String(r.defect_code_id || "").toUpperCase() === "SC" || 
+                 String(r.field_name || "").toLowerCase().includes("scour")) &&
+                r.threshold_value != null && 
+                Number(r.threshold_value) > 0
+            );
+            if (scourRule && !isNaN(Number(scourRule.threshold_value))) {
+                scourMaxAllowableMm = Number(scourRule.threshold_value);
+            }
+
+            // 2. CP rules
+            const cpRules = rules.filter((r: any) => 
+                String(r.defect_code_id || "").toUpperCase() === "CP" || 
+                String(r.field_name || "").toLowerCase().includes("cp")
+            );
+
+            // Over-protection limit (more negative than -900 mV, e.g. -1150 mV)
+            const overRule = cpRules.find((r: any) => 
+                (r.threshold_operator === "<" || String(r.defect_type_id || "").toUpperCase().includes("CPOP")) && 
+                r.threshold_value != null && Number(r.threshold_value) <= -900
+            ) || cpRules.find((r: any) => r.threshold_value != null && Number(r.threshold_value) <= -1000);
+            if (overRule && !isNaN(Number(overRule.threshold_value))) {
+                cpMinAllowableMv = Number(overRule.threshold_value);
+            }
+
+            // Nominal Max allowable limit (P2 / warning, around -800 mV or -799 mV)
+            cpNominalMaxMv = -800;
+            const nominalRule = cpRules.find((r: any) => 
+                (r.threshold_operator === ">" || String(r.defect_type_id || "").toUpperCase().includes("CPUP")) && 
+                r.threshold_value != null && 
+                Number(r.threshold_value) >= -900 && 
+                Number(r.threshold_value) <= -750
+            );
+            if (nominalRule && !isNaN(Number(nominalRule.threshold_value))) {
+                const tv = Number(nominalRule.threshold_value);
+                cpNominalMaxMv = tv === -799 ? -800 : tv;
+            }
+
+            // Critical Max limit (P1 / severe defect, around -650 mV or -649 mV)
+            cpCriticalMaxMv = -650;
+            const critRule = cpRules.find((r: any) => 
+                (r.threshold_operator === ">" || String(r.defect_type_id || "").toUpperCase().includes("CPOP")) && 
+                r.threshold_value != null && 
+                Number(r.threshold_value) > -750 && 
+                Number(r.threshold_value) <= -600
+            );
+            if (critRule && !isNaN(Number(critRule.threshold_value))) {
+                const tv = Number(critRule.threshold_value);
+                cpCriticalMaxMv = tv === -649 ? -650 : tv;
+            }
+            cpMaxAllowableMv = cpNominalMaxMv;
+        } catch (err) {
+            console.warn("[Summary API] Failed to fetch defect criteria rules:", err);
+        }
 
         return NextResponse.json({
             data: {
@@ -2305,6 +2411,10 @@ export const GET = withTenant(async (request, { companyId }) => {
                     totalCount: cpPrimaryCount + cpAdditionalCount,
                     minVal: cpMinVal,
                     maxVal: cpMaxVal,
+                    minAllowableMv: cpMinAllowableMv,
+                    maxAllowableMv: cpNominalMaxMv,
+                    nominalMaxMv: cpNominalMaxMv,
+                    criticalMaxMv: cpCriticalMaxMv,
                     cpDetails: cpDetails,
                 },
                 anomalies: {
@@ -2554,7 +2664,21 @@ export const GET = withTenant(async (request, { companyId }) => {
                     minDepthMm: minScourDepthMm !== Infinity ? minScourDepthMm : 0,
                     minDepthLocation: minScourLocation,
                     minDepthFace: minScourFace,
-                    minDepthQid: minScourQid
+                    minDepthQid: minScourQid,
+                    maxAllowableMm: scourMaxAllowableMm,
+                    maxAllowableLimit: scourMaxAllowableMm,
+                },
+                defectCriteria: {
+                    scour: {
+                        maxAllowableMm: scourMaxAllowableMm,
+                        operator: ">"
+                    },
+                    cp: {
+                        minAllowableMv: cpMinAllowableMv,
+                        maxAllowableMv: cpNominalMaxMv,
+                        nominalMaxMv: cpNominalMaxMv,
+                        criticalMaxMv: cpCriticalMaxMv,
+                    }
                 },
                 attachmentGroups: attachmentGroupBreakdown,
 

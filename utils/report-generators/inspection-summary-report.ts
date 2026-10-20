@@ -134,6 +134,7 @@ export const generateInspectionSummaryReport = async (
         const scour = summaryData?.scour;
         const fmd = summaryData?.fmd;
         const cp = summaryData?.cp;
+        const defectCriteria = summaryData?.defectCriteria;
 
         // Structure & Header Info
         const structureInfo = summaryData?.structureInfo || headerDataOrStructure || {};
@@ -354,6 +355,11 @@ export const generateInspectionSummaryReport = async (
             ? Math.round((incompleteCount / totalQidsCount) * 100)
             : (sow.incompletePct !== undefined ? Math.round(sow.incompletePct) : 0);
 
+        const pendingCount = Math.max(0, totalQidsCount - completedCount - incompleteCount);
+        const pendRateVal = totalQidsCount > 0
+            ? Math.round((pendingCount / totalQidsCount) * 100)
+            : (sow.pendingPct !== undefined ? Math.round(sow.pendingPct) : 0);
+
         const compRateSubtext = incompleteCount > 0
             ? `${completedCount}/${totalQidsCount} QIDs (${incRateVal}% Inc)`
             : "Completed / applicable QIDs";
@@ -407,23 +413,135 @@ export const generateInspectionSummaryReport = async (
             }
             doc.rect(cx, currentY, CARD_W, CARD_H, "S");
 
-            // Card Title
-            doc.setFontSize(7);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.title, cx + 3, currentY + 4.2);
+            if (idx === 4) {
+                // Card 5: Pic 5 Completion Rate with Completion %, Incomplete %, Pending %, segmented bar, and legend
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("COMPLETION RATE", cx + 3, currentY + 4.2);
 
-            // Card Value
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.value, cx + 3, currentY + 11.5);
+                if (totalQidsCount === 0) {
+                    doc.setFontSize(14);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("-- %", cx + 3, currentY + 11.5);
+                    doc.setFontSize(5.5);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("No scope QIDs defined", cx + 3, currentY + 16.5);
+                } else {
+                    // Show percentages on top row
+                    const hasPending = pendingCount > 0 && pendRateVal > 0;
+                    doc.setFontSize(hasPending ? 8.5 : 10.5);
+                    doc.setFont("helvetica", "bold");
 
-            // Card Subtext
-            doc.setFontSize(5.5);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textMuted);
-            doc.text(card.subtext, cx + 3, currentY + 16.5);
+                    let px = cx + 3;
+                    // Completed % (Green)
+                    doc.setTextColor(22, 163, 74);
+                    const compStr = `${compRateVal}% Comp`;
+                    doc.text(compStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(compStr) + 2;
+
+                    // Divider
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("•", px, currentY + 10.2);
+                    px += doc.getTextWidth("•") + 2;
+
+                    // Incomplete % (Amber)
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(217, 119, 6);
+                    const incStr = `${incRateVal}% Inc`;
+                    doc.text(incStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(incStr) + 2;
+
+                    // Pending % (if any)
+                    if (hasPending) {
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text("•", px, currentY + 10.2);
+                        px += doc.getTextWidth("•") + 2;
+
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(`${pendRateVal}% Pend`, px, currentY + 10.2);
+                    }
+
+                    // Segmented visual progress bar
+                    const barX = cx + 3;
+                    const barY = currentY + 11.8;
+                    const barW = CARD_W - 6;
+                    const barH = 2.2;
+
+                    doc.setFillColor(...colors.barTrack);
+                    doc.roundedRect(barX, barY, barW, barH, 0.6, 0.6, "F");
+
+                    const compBarW = Math.max(0, (barW * compRateVal) / 100);
+                    const incBarW = Math.max(0, (barW * incRateVal) / 100);
+                    const pendBarW = hasPending ? Math.max(0, barW - compBarW - incBarW) : 0;
+
+                    if (compBarW > 0) {
+                        doc.setFillColor(22, 163, 74); // Green
+                        doc.roundedRect(barX, barY, Math.min(barW, compBarW), barH, 0.6, 0.6, "F");
+                    }
+                    if (incBarW > 0) {
+                        doc.setFillColor(217, 119, 6); // Amber
+                        doc.rect(barX + compBarW, barY, Math.min(incBarW, barW - compBarW), barH, "F");
+                    }
+                    if (pendBarW > 0) {
+                        doc.setFillColor(148, 163, 184); // Slate
+                        doc.roundedRect(barX + compBarW + incBarW, barY, pendBarW, barH, 0.6, 0.6, "F");
+                    }
+
+                    // Legend under the progress bar
+                    const legY = currentY + 17.0;
+                    doc.setFontSize(4.7);
+                    doc.setFont("helvetica", "normal");
+
+                    // Done item
+                    let lx = cx + 3;
+                    doc.setFillColor(22, 163, 74);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    doc.setTextColor(...colors.textDark);
+                    const legComp = `${completedCount} Done (${compRateVal}%)`;
+                    doc.text(legComp, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legComp) + 3;
+
+                    // Incomplete item
+                    doc.setFillColor(217, 119, 6);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    const legInc = `${incompleteCount} Inc (${incRateVal}%)`;
+                    doc.text(legInc, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legInc) + 3;
+
+                    // Pending item
+                    if (hasPending && lx + 12 < cx + CARD_W) {
+                        doc.setFillColor(148, 163, 184);
+                        doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                        lx += 2.4;
+                        doc.text(`${pendingCount} Pend`, lx, legY - 0.3);
+                    }
+                }
+            } else {
+                // Card Title
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.title, cx + 3, currentY + 4.2);
+
+                // Card Value
+                doc.setFontSize(14);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.value, cx + 3, currentY + 11.5);
+
+                // Card Subtext
+                doc.setFontSize(5.5);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text(card.subtext, cx + 3, currentY + 16.5);
+            }
         });
 
         currentY += CARD_H + 3.5;
@@ -826,8 +944,13 @@ export const generateInspectionSummaryReport = async (
             { code: "VS", label: "Variation to spec (VS)" },
         ];
 
-        const defectRows: Array<{ cols: Array<{ val: string; bold?: boolean; align?: "left" | "center" | "right" }> }> = defectCriteriaList.map(d => {
-            const val = getDefectCriteriaCount(defectMap, d.code);
+        // Sort descending by count as requested
+        const sortedDefectCriteriaList = defectCriteriaList
+            .map(d => ({ ...d, count: getDefectCriteriaCount(defectMap, d.code) }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+        const defectRows: Array<{ cols: Array<{ val: string; bold?: boolean; align?: "left" | "center" | "right" }> }> = sortedDefectCriteriaList.map(d => {
+            const val = d.count;
             return {
                 cols: [
                     { val: d.label, align: "left" as const },
@@ -994,13 +1117,25 @@ export const generateInspectionSummaryReport = async (
                 const col1W = Math.round(bw * 0.63);
                 const col2W = bw - col1W;
 
+                const totAnodeCount = (Number(d0) + Number(d25) + Number(d50) + Number(d75)) || anodeGvi?.total || 1;
+                const pct0 = totAnodeCount > 0 ? Math.round((Number(d0) / totAnodeCount) * 100) : 0;
+                const pct25 = totAnodeCount > 0 ? Math.round((Number(d25) / totAnodeCount) * 100) : 0;
+                const pct50 = totAnodeCount > 0 ? Math.round((Number(d50) / totAnodeCount) * 100) : 0;
+                const pct75 = totAnodeCount > 0 ? Math.round((Number(d75) / totAnodeCount) * 100) : 0;
+
+                const isRetrofitNeeded = Number(d75) > 0;
+                const adviceText = isRetrofitNeeded
+                    ? `Retrofit Planning: ${d75} Anodes (>75% Dep.)`
+                    : "All Anodes ≤75% Depleted (Serviceable)";
+
                 const rows = [
                     { cols: [{ val: "Platform Anode Type", align: "left" as const }, { val: anodeTypeDisplay, bold: true, align: "right" as const }] },
-                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: String(d0), bold: Number(d0) > 0, align: "right" as const }] },
-                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: String(d25), bold: Number(d25) > 0, align: "right" as const }] },
-                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: String(d50), bold: Number(d50) > 0, align: "right" as const }] },
-                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: String(d75), bold: Number(d75) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || 0), bold: true, align: "right" as const }] },
+                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: `${d0} (${pct0}%)`, bold: Number(d0) > 0, align: "right" as const }] },
+                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: Number(d25) > 0, align: "right" as const }] },
+                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: Number(d50) > 0, align: "right" as const }] },
+                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: Number(d75) > 0, align: "right" as const }] },
+                    { cols: [{ val: "Condition / Advice", align: "left" as const }, { val: adviceText, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || totAnodeCount), bold: true, align: "right" as const }] },
                 ];
 
                 drawTableGrid(
@@ -1057,13 +1192,17 @@ export const generateInspectionSummaryReport = async (
                 const minLocClean = minLoc && minLoc !== "N/A" ? ` (${minLoc})` : "";
                 const minDepthStr = minDepthMm > 0 ? `${Math.round(minDepthMm)} mm${minLocClean}` : "0 mm";
 
-                const isAnomaly = maxDepthMm > 800 || Number(exposedPileCount) > 0;
-                const isCaution = maxDepthMm > 400 && !isAnomaly;
-                let statusStr = "Normal (<400mm)";
+                const scourLimit = Number(
+                    scour?.maxAllowableMm || 
+                    scour?.maxAllowableLimit || 
+                    defectCriteria?.scour?.maxAllowableMm || 
+                    800
+                );
+
+                const isAnomaly = maxDepthMm > scourLimit || Number(exposedPileCount) > 0;
+                let statusStr = `Normal / Safe (≤${scourLimit}mm)`;
                 if (isAnomaly) {
-                    statusStr = `ANOMALY: >800mm${maxLoc ? ` at ${maxLoc}` : ""}`;
-                } else if (isCaution) {
-                    statusStr = `CAUTION: 400-800mm${maxLoc ? ` at ${maxLoc}` : ""}`;
+                    statusStr = `ANOMALY: >${scourLimit}mm${maxLoc ? ` at ${maxLoc}` : ""}`;
                 }
 
                 const col1W = Math.round(bw * 0.58);
@@ -1076,7 +1215,8 @@ export const generateInspectionSummaryReport = async (
                     { cols: [{ val: "Piles with scour findings", align: "left" as const }, { val: String(scourFindings || 0), bold: Number(scourFindings) > 0, align: "right" as const }] },
                     { cols: [{ val: "Minimum scour depth", align: "left" as const }, { val: minDepthStr, align: "right" as const }] },
                     { cols: [{ val: "Maximum scour depth", align: "left" as const }, { val: `${maxDepthStr}${maxLocClean}`, bold: true, align: "right" as const }] },
-                    { cols: [{ val: "Safety threshold status", align: "left" as const }, { val: statusStr, bold: isAnomaly || isCaution, align: "right" as const }] },
+                    { cols: [{ val: "Allowable depth limit", align: "left" as const }, { val: `${scourLimit} mm`, align: "right" as const }] },
+                    { cols: [{ val: "Safety threshold status", align: "left" as const }, { val: statusStr, bold: isAnomaly, align: "right" as const }] },
                 ];
 
                 drawTableGrid(
@@ -1107,13 +1247,33 @@ export const generateInspectionSummaryReport = async (
                     const col1W = Math.round(bw * 0.63);
                     const col2W = bw - col1W;
 
+                    const maxV = cp?.maxVal != null ? Number(cp.maxVal) : -854;
+                    const minV = cp?.minVal != null ? Number(cp.minVal) : -1030;
+                    const primaryCount = cp?.primaryCount ?? 0;
+                    const additionalCount = cp?.additionalCount ?? 0;
+                    const totCp = cp?.totalCount || (primaryCount + additionalCount) || (cp?.primaryCount ? cp.primaryCount : 0);
+
+                    const cpMinAllowable = Number(cp?.minAllowableMv || defectCriteria?.cp?.minAllowableMv || -1150);
+                    const cpNominalMax = Number(cp?.nominalMaxMv || cp?.maxAllowableMv || defectCriteria?.cp?.nominalMaxMv || defectCriteria?.cp?.maxAllowableMv || -800);
+                    const cpCriticalMax = Number(cp?.criticalMaxMv || defectCriteria?.cp?.criticalMaxMv || -650);
+
+                    const isCriteriaMet = minV >= cpMinAllowable && maxV <= cpNominalMax;
+                    const isCriticalDefect = maxV > cpCriticalMax || minV < cpMinAllowable;
+                    const isP2Caution = !isCriteriaMet && !isCriticalDefect;
+
+                    let statusLabel = "CRITERIA MET";
+                    if (isCriticalDefect) statusLabel = "CRITICAL DEFECT (P1)";
+                    else if (isP2Caution) statusLabel = "P2 CAUTION (> -800mV)";
+
                     const rows = [
-                        { cols: [{ val: "Total Readings Logged", align: "left" as const }, { val: String(cp?.totalCount || cp?.primaryCount || 0), bold: true, align: "right" as const }] },
-                        { cols: [{ val: "Most Negative (Max)", align: "left" as const }, { val: cp?.maxVal != null ? `${cp.maxVal} mV` : "--", align: "right" as const }] },
-                        { cols: [{ val: "Least Negative (Min)", align: "left" as const }, { val: cp?.minVal != null ? `${cp.minVal} mV` : "--", align: "right" as const }] },
-                        { cols: [{ val: "ROV Logged Readings", align: "left" as const }, { val: String(cp?.primaryRov || 0), align: "right" as const }] },
-                        { cols: [{ val: "Diver Logged Readings", align: "left" as const }, { val: String(cp?.primaryDive || 0), align: "right" as const }] },
-                        { cols: [{ val: "Protection Criteria", align: "left" as const }, { val: "Normal (-850mV)", bold: true, align: "right" as const }] },
+                        { cols: [{ val: "Total Readings Logged", align: "left" as const }, { val: `${totCp} readings`, bold: true, align: "right" as const }] },
+                        { cols: [{ val: "Primary / Addl Readings", align: "left" as const }, { val: `${primaryCount} Pri, ${additionalCount} Addl`, align: "right" as const }] },
+                        { cols: [{ val: "Recorded Min Potential", align: "left" as const }, { val: `${minV} mV`, bold: minV < cpMinAllowable, align: "right" as const }] },
+                        { cols: [{ val: "Recorded Max Potential", align: "left" as const }, { val: `${maxV} mV`, bold: maxV > cpNominalMax, align: "right" as const }] },
+                        { cols: [{ val: "Min Allowable Limit (P1)", align: "left" as const }, { val: `${cpMinAllowable} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Nominal Max Allowable (P2)", align: "left" as const }, { val: `${cpNominalMax} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Critical Defect Max (P1)", align: "left" as const }, { val: `${cpCriticalMax} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Protection Criteria Status", align: "left" as const }, { val: statusLabel, bold: true, align: "right" as const }] },
                     ];
 
                     drawTableGrid(

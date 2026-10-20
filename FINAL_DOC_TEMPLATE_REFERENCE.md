@@ -260,11 +260,14 @@ Loop through `{#SOW_SUMMARY}` to print the campaign work scope completion regist
 ### 6.1 Incomplete Scope Collections
 | Loop Collection | Condition Flag | Inverted Flag | Description |
 |---|---|---|---|
-| `{#INCOMPLETE_RECORDS}` | `{#HAS_INCOMPLETE_RECORDS}` | `{#NO_INCOMPLETE_RECORDS}` | All incomplete inspection records |
-| `{#INCOMPLETE_ROV}` | `{#HAS_INCOMPLETE_ROV}` | `{#NO_INCOMPLETE_ROV}` | ROV incomplete scope items |
-| `{#INCOMPLETE_DIVE}` | `{#HAS_INCOMPLETE_DIVE}` | `{#NO_INCOMPLETE_DIVE}` | Diver incomplete scope items |
-| `{#OUTSTANDING_TASKS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Scope of work outstanding task items |
+| `{#INCOMPLETE_RECORDS}` | `{#HAS_INCOMPLETE_RECORDS}` | `{#NO_INCOMPLETE_RECORDS}` | All incomplete inspection records (sorted by elevation descending) |
+| `{#INCOMPLETE_ROV}` | `{#HAS_INCOMPLETE_ROV}` | `{#NO_INCOMPLETE_ROV}` | ROV incomplete scope items (sorted by elevation descending) |
+| `{#INCOMPLETE_DIVE}` | `{#HAS_INCOMPLETE_DIVE}` | `{#NO_INCOMPLETE_DIVE}` | Diver incomplete scope items (sorted by elevation descending) |
+| `{#OUTSTANDING_TASKS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Scope of work outstanding task items (sorted by elevation descending) |
 | `{#OUTSTANDING_GROUPS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Outstanding tasks grouped by inspection type |
+
+> [!NOTE]
+> All incomplete task collections are automatically sorted in **offshore elevation order** (topside / highest elevation down to seabed / deepest level, e.g. `(+)15.0m` &rarr; `0.0m` &rarr; `(-)12.0m` &rarr; `(-)70.0m`), with items having missing elevations placed at the end and secondary sort ordered alphanumerically by `qid`. Row indices `{no}` are sequential starting from 1 matching the sorted elevation order.
 
 ### 6.2 Incomplete Scope Fields Inside Loops
 - `{no}` : Sequential row number
