@@ -1954,7 +1954,12 @@ export function useWorkspaceReports(
                 path: a.path || a.previewUrl // Generator uses path, but pending might only have previewUrl/blob
             }));
 
-        const allPhotos = [...photosFromDb, ...photosFromPending];
+        const allPhotos = [...photosFromDb, ...photosFromPending].sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+        });
 
         // Ensure we always return a Blob (even if empty) to avoid "Preview unavailable"
         return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
@@ -1981,7 +1986,12 @@ export function useWorkspaceReports(
             dbAttachments = data || [];
         }
 
-        const allPhotos = [...dbAttachments, ...pendingAttachments];
+        const allPhotos = [...dbAttachments, ...pendingAttachments].sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+        });
 
         return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };

@@ -126,9 +126,10 @@ export const REPORT_TEMPLATES = {
 };
 
 export const TOC_SECTIONS = [
-  { id: 1, name: "Structure Configuration", templates: [
+  { id: 1, name: "Structure Details", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
-      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
+      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" },
+      { id: "inspection-summary-graph", name: "Inspection Summary by Graph", mode: "General" }
   ]},
   { id: 2, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
@@ -187,7 +188,6 @@ export const TOC_SECTIONS = [
   { id: 10, name: "Base Level Survey", templates: [
       { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
       { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", mode: "ROV" },
-      { id: "rov-scour-v2-report", name: "Scour Survey Sketch Report v2 (ROV)", mode: "ROV" },
       { id: "rov-rwdi-report", name: "Water Depth Measurement Survey Report (ROV)", mode: "ROV" },
       { id: "rov-ricmi-report", name: "Inclinometer Reading Inspection Report (ROV)", mode: "ROV" }
   ]},

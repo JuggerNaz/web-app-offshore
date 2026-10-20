@@ -165,6 +165,8 @@ To paste any sub-report into your Final Document template, insert a page loop:
 | **Diver Log Report** | `diver-log-report` | `{#DIVER_LOG_PAGES}` | `{#HAS_DIVER_LOG_PAGES}` | `{#NO_DIVER_LOG_PAGES}` |
 | **Video Log Report** | `video-log-report` | `{#VIDEO_LOG_PAGES}` | `{#HAS_VIDEO_LOG_PAGES}` | `{#NO_VIDEO_LOG_PAGES}` |
 | **Structure Summary** | `structure-summary` | `{#STRUCTURE_SUMMARY_PAGES}`| `{#HAS_STRUCTURE_SUMMARY_PAGES}`| `{#NO_STRUCTURE_SUMMARY_PAGES}`|
+| **Inspection Summary Report** | `inspection-summary` | `{#INSPECTION_SUMMARY_PAGES}` | `{#HAS_INSPECTION_SUMMARY_PAGES}` | `{#NO_INSPECTION_SUMMARY_PAGES}` |
+| **Inspection Summary by Graph** | `inspection-summary-graph` | `{#INSPECTION_SUMMARY_GRAPH_PAGES}` | `{#HAS_INSPECTION_SUMMARY_GRAPH_PAGES}` | `{#NO_INSPECTION_SUMMARY_GRAPH_PAGES}` |
 | **ROV CP Survey Report** | `rov-cp-report` | `{#RCP_PAGES}` *(or `{#CP_REPORT_PAGES}`)* | `{#HAS_RCP_PAGES}` | `{#NO_RCP_PAGES}` |
 | **Diving CP Survey Report** | `diving-cpsurv-report` | `{#DCPSURV_PAGES}` *(or `{#DIVING_CP_PAGES}`)* | `{#HAS_DCPSURV_PAGES}` | `{#NO_DCPSURV_PAGES}` |
 | **Diving CP Calibration** | `diving-cpclb-report` | `{#CPCLB_PAGES}` | `{#HAS_CPCLB_PAGES}` | `{#NO_CPCLB_PAGES}` |

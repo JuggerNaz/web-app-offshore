@@ -784,6 +784,12 @@ export function EventsTablePanel({
                                     }
                                   }
                                 }
+                                list.sort((a: any, b: any) => {
+                                  const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                  const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                  if (orderA !== orderB) return orderA - orderB;
+                                  return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+                                });
                                 setViewingRecordAttachments(list);
                               }}><Paperclip className="w-2.5 h-2.5" /></Button>
                             )}

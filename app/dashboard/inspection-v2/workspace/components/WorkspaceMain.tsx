@@ -1031,13 +1031,27 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                           if (res.ok) {
                                             const atts = await res.json();
                                             if (Array.isArray(atts) && atts.length > 0) {
+                                              atts.sort((a: any, b: any) => {
+                                                const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                                const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                                if (orderA !== orderB) return orderA - orderB;
+                                                return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+                                              });
                                               setViewingRecordAttachments(atts);
                                               return;
                                             }
                                           }
                                         } catch {}
                                         const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'insp_record', 'INSP_RECORD']);
-                                        if (data) setViewingRecordAttachments(data);
+                                        if (data) {
+                                          const sorted = [...data].sort((a: any, b: any) => {
+                                            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                            if (orderA !== orderB) return orderA - orderB;
+                                            return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+                                          });
+                                          setViewingRecordAttachments(sorted);
+                                        }
                                       }}
                                     >
                                       <Paperclip className="w-3 h-3" />
@@ -1430,13 +1444,27 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                               if (res.ok) {
                                                 const atts = await res.json();
                                                 if (Array.isArray(atts) && atts.length > 0) {
+                                                  atts.sort((a: any, b: any) => {
+                                                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                                    if (orderA !== orderB) return orderA - orderB;
+                                                    return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+                                                  });
                                                   setViewingRecordAttachments(atts);
                                                   return;
                                                 }
                                               }
                                             } catch {}
                                             const { data } = await supabase.from('attachment').select('*').eq('source_id', r.insp_id).in('source_type', ['inspection', 'INSPECTION', 'anomaly', 'ANOMALY', 'defect', 'DEFECT', 'insp_record', 'INSP_RECORD']);
-                                            if (data) setViewingRecordAttachments(data);
+                                            if (data) {
+                                              const sorted = [...data].sort((a: any, b: any) => {
+                                                const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                                const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                                if (orderA !== orderB) return orderA - orderB;
+                                                return new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime();
+                                              });
+                                              setViewingRecordAttachments(sorted);
+                                            }
                                           }}
                                         >
                                           <Paperclip className="w-3 h-3" />

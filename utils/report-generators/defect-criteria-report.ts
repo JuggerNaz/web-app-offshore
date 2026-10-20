@@ -7,6 +7,10 @@ interface ReportConfig {
     sowReportNo?: string;
     reportNoPrefix?: string;
     reportYear?: string;
+    jobPackId?: string | number;
+    contractorLogoUrl?: string;
+    contractorLogo?: string;
+    jobPack?: any;
     preparedBy?: { name: string; date: string; position?: string };
     reviewedBy?: { name: string; date: string; position?: string };
     approvedBy?: { name: string; date: string; position?: string };
@@ -134,9 +138,107 @@ export const generateDefectCriteriaReport = async (
         if (companySettings?.logo_url) {
             try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
+
+        // Resolve Contractor Logo URL
+        let contractorLogoUrl = (config as any)?.contractorLogoUrl || 
+                                (config as any)?.contractorLogo || 
+                                (config as any)?.headerData?.contractorLogoUrl || 
+                                (config as any)?.headerData?.contrLogoUrl || 
+                                (companySettings as any)?.contractorLogoUrl || 
+                                (companySettings as any)?.contractor_logo_url;
+
+        // 1. If not yet found, check jobPack passed in config or headerData
+        const jobPackObj = (config as any)?.jobPack || (config as any)?.headerData?.jobPack || (config as any)?.headerData?.jobpack;
+        const contractorId = (config as any)?.contractorId || (config as any)?.headerData?.contractorId || jobPackObj?.metadata?.contrac || (jobPackObj as any)?.contractor_id;
+
+        if (!contractorLogoUrl && contractorId) {
+            try {
+                const contrRes = await fetch(`/api/libraries/contractors?id=${contractorId}`);
+                if (contrRes.ok) {
+                    const contrData = await contrRes.json();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                }
+            } catch (_) {}
+            if (!contractorLogoUrl) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    if (cRes.ok) {
+                        const cJson = await cRes.json();
+                        const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                        const cLow = String(contractorId).toLowerCase();
+                        const found = cList.find((c: any) =>
+                            String(c.lib_id).toLowerCase() === cLow ||
+                            String(c.id).toLowerCase() === cLow ||
+                            String(c.code || "").toLowerCase() === cLow ||
+                            String(c.lib_desc || "").toLowerCase() === cLow
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // 2. If still not found and jobPackId is available, fetch jobpack to get contractor ID
+        const jobPackId = config?.jobPackId || (config as any)?.headerData?.jobPackId;
+        if (!contractorLogoUrl && jobPackId) {
+            try {
+                const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+                if (jpRes.ok) {
+                    const jpData = await jpRes.json();
+                    const jp = jpData?.data || jpData;
+                    const cId = jp?.metadata?.contrac || jp?.contractor_id;
+                    if (cId) {
+                        const contrRes = await fetch(`/api/libraries/contractors?id=${cId}`);
+                        if (contrRes.ok) {
+                            const contrData = await contrRes.json();
+                            if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                        }
+                        if (!contractorLogoUrl) {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(cId).toLowerCase();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id).toLowerCase() === cLow ||
+                                    String(c.id).toLowerCase() === cLow ||
+                                    String(c.code || "").toLowerCase() === cLow
+                                );
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // 3. Fallback: fetch any active contractor with a valid logo from library
+        if (!contractorLogoUrl) {
+            try {
+                const contrRes = await fetch('/api/libraries/contractors');
+                if (contrRes.ok) {
+                    const contrJson = await contrRes.json();
+                    const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                    const found = contrList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+        if (!contractorLogoUrl) {
+            try {
+                const cRes = await fetch('/api/library/CONTR_NAM');
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                    const found = cList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+
         let contractorLogoData: any = null;
-        if ((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo) {
-            try { contractorLogoData = await loadLogoWithTransparency((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo); } catch (_) {}
+        if (contractorLogoUrl) {
+            try { contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl); } catch (_) {}
         }
 
         const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "N/A";

@@ -4,6 +4,7 @@ import { format } from "date-fns";
 import { 
     loadLogoWithTransparency, 
     drawLogo, 
+    draw3SectionHeader,
     applyWatermarkAndSignaturesGlobal, 
     formatPdfDate, 
     REPORT_FOOTER_APP_TEXT 
@@ -71,8 +72,8 @@ export const generateInspectionSummaryReport = async (
         const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
         const pageWidth = doc.internal.pageSize.getWidth();   // 297mm
         const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
-        const margin = 12;                                    // 12mm
-        const contentWidth = pageWidth - (margin * 2);        // 273mm
+        const margin = 10;                                    // 10mm Standard Margin
+        const contentWidth = pageWidth - (margin * 2);        // 277mm
 
         const isPF = !!config?.printFriendly;
 
@@ -167,60 +168,144 @@ export const generateInspectionSummaryReport = async (
         const waterDepth = rawWaterDepth ? Math.abs(Number(rawWaterDepth)) : 0;
 
         // ── 2. Pre-load Logos ────────────────────────────────────────────────────
-        let companyLogo: any = null;
-        let contractorLogo: any = null;
-        if (companySettings?.logo_url) {
+        let companyLogo: any = (config as any)?.clientLogoData || (companySettings as any)?.clientLogoData || null;
+        if (!companyLogo && companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        const contractorLogoUrl = headerDataOrStructure?.contractorLogoUrl || headerDataOrStructure?.contrLogoUrl || "";
-        if (contractorLogoUrl) {
+
+        // Comprehensive Contractor Logo Resolution (Config -> HeaderData -> Structure -> JobPack -> Library Fallback)
+        let contractorLogoUrl = (config as any)?.contractorLogoUrl || 
+                                (config as any)?.contractorLogo || 
+                                (config as any)?.headerData?.contractorLogoUrl || 
+                                (config as any)?.headerData?.contrLogoUrl || 
+                                headerDataOrStructure?.contractorLogoUrl || 
+                                headerDataOrStructure?.contrLogoUrl || 
+                                headerDataOrStructure?.metadata?.contractorLogoUrl ||
+                                (companySettings as any)?.contractorLogoUrl || 
+                                (companySettings as any)?.contractor_logo_url || "";
+
+        const jobPackObj = (config as any)?.jobPack || (config as any)?.headerData?.jobPack || (config as any)?.headerData?.jobpack || (dataOrJobPack?.jobpack_id ? dataOrJobPack : null);
+        const contractorId = (config as any)?.contractorId || (config as any)?.headerData?.contractorId || headerDataOrStructure?.contractorId || jobPackObj?.metadata?.contrac || (jobPackObj as any)?.contractor_id;
+
+        if (!contractorLogoUrl && contractorId && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const contrRes = await fetch(`/api/libraries/contractors?id=${contractorId}`);
+                if (contrRes.ok) {
+                    const contrData = await contrRes.json();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                }
+            } catch (_) {}
+            if (!contractorLogoUrl) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    if (cRes.ok) {
+                        const cJson = await cRes.json();
+                        const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                        const cLow = String(contractorId).toLowerCase();
+                        const found = cList.find((c: any) =>
+                            String(c.lib_id).toLowerCase() === cLow ||
+                            String(c.id).toLowerCase() === cLow ||
+                            String(c.code || "").toLowerCase() === cLow ||
+                            String(c.lib_desc || "").toLowerCase() === cLow
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        if (!contractorLogoUrl && jobPackId && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+                if (jpRes.ok) {
+                    const jpData = await jpRes.json();
+                    const jp = jpData?.data || jpData;
+                    const cId = jp?.metadata?.contrac || jp?.contractor_id;
+                    if (cId) {
+                        const contrRes = await fetch(`/api/libraries/contractors?id=${cId}`);
+                        if (contrRes.ok) {
+                            const contrData = await contrRes.json();
+                            if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                        }
+                        if (!contractorLogoUrl) {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(cId).toLowerCase();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id).toLowerCase() === cLow ||
+                                    String(c.id).toLowerCase() === cLow ||
+                                    String(c.code || "").toLowerCase() === cLow
+                                );
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (!contractorLogoUrl && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const contrRes = await fetch('/api/libraries/contractors');
+                if (contrRes.ok) {
+                    const contrJson = await contrRes.json();
+                    const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                    const found = contrList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+        if (!contractorLogoUrl && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const cRes = await fetch('/api/library/CONTR_NAM');
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                    const found = cList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+
+        let contractorLogo: any = (config as any)?.contractorLogoData || (headerDataOrStructure as any)?.contractorLogoData || null;
+        if (!contractorLogo && contractorLogoUrl) {
             try { contractorLogo = await loadLogoWithTransparency(contractorLogoUrl); } catch (_) {}
         }
 
-        // ── 3. Header Drawing Function ───────────────────────────────────────────
-        const HEADER_H = 24;
-        const drawPageHeader = (d: jsPDF) => {
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.4);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            // Logos: Contractor Logo (Left), Company/Client Logo (Right)
-            if (contractorLogo) {
-                drawLogo(d, contractorLogo, 17, 17, margin + 4, margin + 3.5, "left", "center");
-            }
-            if (companyLogo) {
-                drawLogo(d, companyLogo, 17, 17, pageWidth - margin - 21, margin + 3.5, "right", "center");
-            }
-
-            // Center Branding Header
-            d.setFontSize(10.5);
-            d.setFont("helvetica", "bold");
-            d.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", margin + (contentWidth / 2), margin + 5.5, { align: "center" });
-
-            d.setFontSize(7.5);
-            d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || "Technical Inspection Division", margin + (contentWidth / 2), margin + 10, { align: "center" });
-
-            d.setFontSize(11);
-            d.setFont("helvetica", "bold");
-            d.text("INSPECTION SUMMARY", margin + (contentWidth / 2), margin + 15.5, { align: "center" });
-
-            d.setFontSize(7.5);
-            d.setFont("helvetica", "normal");
-            d.text(`Report No: ${sowReportNo}`, margin + (contentWidth / 2), margin + 20, { align: "center" });
+        // ── 3. Header Drawing Function (Universal Standard 3-Section Header) ─────
+        const HEADER_H = 25;
+        const HEADER_Y = 7;
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `INSPECTION SUMMARY - ${extraTitleInfo}` : "INSPECTION SUMMARY",
+                reportNo: sowReportNo || (config?.reportNoPrefix || headerDataOrStructure?.sowReportNo) || "N/A",
+                structureName: platformName,
+                companySettings,
+                config,
+                headerData: {
+                    ...headerDataOrStructure,
+                    contractorLogoUrl,
+                    sowReportNo,
+                    platformName,
+                },
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: isPF,
+                pageWidth,
+                pageHeight,
+                orientation: "landscape",
+                margin: 10,
+                headerY: HEADER_Y,
+                headerH: HEADER_H,
+            });
         };
 
         // Render Page 1 Header
         drawPageHeader(doc);
 
-        let currentY = margin + HEADER_H + 2.5;
+        let currentY = HEADER_Y + HEADER_H + 2.5;
 
         // ── 4. Sub-Header Platform & Depth Banner ────────────────────────────────
         const SUB_H = 6.5;
@@ -1071,7 +1156,7 @@ export const generateInspectionSummaryReport = async (
         if (availableSpaceOnPage1 < BLOCK_H) {
             doc.addPage();
             drawPageHeader(doc);
-            currentY = margin + HEADER_H + 4;
+            currentY = HEADER_Y + HEADER_H + 3.5;
         }
 
         activeBlocks.forEach((block, idx) => {
@@ -1081,7 +1166,7 @@ export const generateInspectionSummaryReport = async (
                 if (currentY + BLOCK_H > pageHeight - 16) {
                     doc.addPage();
                     drawPageHeader(doc);
-                    currentY = margin + HEADER_H + 4;
+                    currentY = HEADER_Y + HEADER_H + 3.5;
                 }
             }
             const bx = margin + (colIdx * (blockW + BLOCK_GAP));
@@ -1099,7 +1184,7 @@ export const generateInspectionSummaryReport = async (
             if (currentY + sigH > pageHeight - 16) {
                 doc.addPage();
                 drawPageHeader(doc);
-                currentY = margin + HEADER_H + 4;
+                currentY = HEADER_Y + HEADER_H + 3.5;
             }
 
             const sigY = Math.max(currentY, pageHeight - 31);

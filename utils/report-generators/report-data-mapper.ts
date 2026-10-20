@@ -182,8 +182,10 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'incomplete-flagged-report': ['INC', 'INCOMPLETE', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
     'defect-criteria-report': ['DEFECT_CRITERIA', 'DEFECT_CRITERIA_REPORT', 'DEFECT_CRITERIA_PAGES'],
     'structure-summary': ['STRUCTURE_SUMMARY', 'STRUCTURE_SUMMARY_REPORT', 'STRUCTURE_SUMMARY_PAGES'],
+    'inspection-summary': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
     'inspection-summary-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
-    'inspection-summary-graph-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_PAGES']
+    'inspection-summary-graph': ['INSPECTION_SUMMARY_GRAPH', 'INSPECTION_SUMMARY_GRAPH_REPORT', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_GRAPH_PAGES'],
+    'inspection-summary-graph-report': ['INSPECTION_SUMMARY_GRAPH', 'INSPECTION_SUMMARY_GRAPH_REPORT', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_GRAPH_PAGES']
 };
 
 export interface DocxMappingProgress {
@@ -329,9 +331,12 @@ export const mapInspectionDataForDocx = async (
         if (!attMap.has(sid)) attMap.set(sid, []);
         attMap.get(sid)!.push(att);
     });
-    // Sort attachments newest-first for each record
+    // Sort attachments by user-defined sort_order first, then newest-first
     attMap.forEach(list => {
         list.sort((a, b) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
             const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
             const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
             return dateB - dateA;
@@ -760,6 +765,10 @@ export const mapInspectionDataForDocx = async (
             'diver-log-report',
             'video-log-report',
             'structure-summary',
+            'inspection-summary',
+            'inspection-summary-report',
+            'inspection-summary-graph',
+            'inspection-summary-graph-report',
             'component-catalog',
             'technical-specs',
             'component-spec',
@@ -1190,6 +1199,58 @@ export const mapInspectionDataForDocx = async (
                     console.error("Error fetching full structure in docx mapper:", e);
                 }
                 pdfBlob = (await generateStructureReport(fullStructure, companySettings, { ...sharedConfig, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any)) || null;
+            } else if (templateId === 'inspection-summary-graph' || templateId === 'inspection-summary-graph-report') {
+                const { generateInspectionSummaryGraphReport } = await import("./inspection-summary-graph-report");
+                let summaryData: any = null;
+                try {
+                    const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;
+                    const jpId = jobPack?.id || jobPack?.jobpack_id;
+                    const params = new URLSearchParams();
+                    if (structId) params.set("structure_id", String(structId));
+                    if (jpId) params.set("jobpack_id", String(jpId));
+                    if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "all") {
+                        params.set("sow_report_no", String(sowReportNo));
+                    }
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data || {};
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary data in mapper:", e);
+                }
+                pdfBlob = (await generateInspectionSummaryGraphReport(
+                    summaryData || jobPack,
+                    { ...sharedHeaderData, ...structure },
+                    companySettings || {},
+                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                )) || null;
+            } else if (templateId === 'inspection-summary' || templateId === 'inspection-summary-report') {
+                const { generateInspectionSummaryReport } = await import("./inspection-summary-report");
+                let summaryData: any = null;
+                try {
+                    const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;
+                    const jpId = jobPack?.id || jobPack?.jobpack_id;
+                    const params = new URLSearchParams();
+                    if (structId) params.set("structure_id", String(structId));
+                    if (jpId) params.set("jobpack_id", String(jpId));
+                    if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "all") {
+                        params.set("sow_report_no", String(sowReportNo));
+                    }
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data || {};
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary data in mapper:", e);
+                }
+                pdfBlob = (await generateInspectionSummaryReport(
+                    summaryData || jobPack,
+                    { ...sharedHeaderData, ...structure },
+                    companySettings || {},
+                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                )) || null;
             }
         } catch (genErr) {
             console.error(`Failed to generate PDF for template ${templateId}:`, genErr);
@@ -1248,10 +1309,17 @@ export const mapInspectionDataForDocx = async (
             
             const mappedRecords = recordsForTemplate.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
-                const recordAttachments = attachments.filter(att => 
+                const recordAttachments = (r.attachments || attachments.filter(att => 
                     Number(att.source_id) === Number(r.insp_id) && 
                     (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
-                );
+                )).slice().sort((a: any, b: any) => {
+                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                    if (orderA !== orderB) return orderA - orderB;
+                    const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+                    const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+                    return dateB - dateA;
+                });
                 const firstPhoto = recordAttachments[0];
                 
                 const formatAttachmentImg = (att: any) => {
@@ -1302,10 +1370,17 @@ export const mapInspectionDataForDocx = async (
             const pages: any[] = [];
             if (isPhotoOrAnomalyTemplate) {
                 recordsForTemplate.forEach(r => {
-                    const recordAttachments = attachments.filter(att => 
+                    const recordAttachments = (r.attachments || attachments.filter(att => 
                         Number(att.source_id) === Number(r.insp_id) && 
                         (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
-                    );
+                    )).slice().sort((a: any, b: any) => {
+                        const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                        const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                        if (orderA !== orderB) return orderA - orderB;
+                        const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+                        const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+                        return dateB - dateA;
+                    });
                     recordAttachments.forEach(att => {
                         const p = att.path || att.file_path || att.url || att.file_url || "";
                         const src = att.id

@@ -2202,15 +2202,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, showSignatures: true, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
-        }
-
-        // Inspection Summary Report
-        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
-            let contractorLogoUrl = "";
-            if (jobPack?.metadata?.contrac) {
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+            if (!contractorLogoUrl && jobPack?.metadata?.contrac) {
                 try {
                     const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
                     if (contrRes.ok) {
@@ -2218,6 +2212,75 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         contractorLogoUrl = contrData?.logo_url || "";
                     }
                 } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(jobPack.metadata.contrac).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
+            }
+            if (!contractorLogoUrl) {
+                try {
+                    const contrRes = await fetch('/api/libraries/contractors');
+                    if (contrRes.ok) {
+                        const contrJson = await contrRes.json();
+                        const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                        const found = contrList.find((c: any) => Boolean(c.logo_url));
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+            return await generateDefectCriteriaReport(companySettings, { 
+                ...reportConfig, 
+                showSignatures: true, 
+                jobPack,
+                contractorLogoUrl,
+                procedureId: selections.procedureId, 
+                sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, 
+                reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo 
+            } as any);
+        }
+
+        // Inspection Summary Report
+        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || (selections as any)?.contractorLogoUrl || "";
+            const contracId = jobPack?.metadata?.contrac || (jobPack as any)?.contractor_id;
+            if (!contractorLogoUrl && contracId) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${contracId}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(contracId).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
             }
 
             let summaryData: any = null;
@@ -2251,7 +2314,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sowReportNo: selections.sowReportNo
                 },
                 companySettings,
-                reportConfig
+                { ...reportConfig, contractorLogoUrl }
             );
         }
 
@@ -2259,15 +2322,32 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         if (currentTemplateId === "inspection-summary-graph" || currentTemplateId === "inspection-summary-graph-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
             const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
-            let contractorLogoUrl = "";
-            if (jobPack?.metadata?.contrac) {
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || (selections as any)?.contractorLogoUrl || "";
+            const contracId = jobPack?.metadata?.contrac || (jobPack as any)?.contractor_id;
+            if (!contractorLogoUrl && contracId) {
                 try {
-                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${contracId}`);
                     if (contrRes.ok) {
                         const contrData = await contrRes.json();
                         contractorLogoUrl = contrData?.logo_url || "";
                     }
                 } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(contracId).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
             }
 
             let summaryData: any = null;
@@ -2301,7 +2381,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sowReportNo: selections.sowReportNo
                 },
                 companySettings,
-                reportConfig
+                { ...reportConfig, contractorLogoUrl }
             );
         }
 
@@ -7034,8 +7114,41 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // const reportConfig = { ...config, returnBlob }; // Already declared above
 
         switch (currentTemplateId) {
-            case "structure-summary":
-                return await generateStructureReport(data, companySettings, { ...reportConfig, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+            case "structure-summary": {
+                const isFromFinalDatasheet = isFinalDatasheet || (reportConfig as any)?.isFinalDatasheet === true;
+                const jobPack = (isFromFinalDatasheet && selections.jobPackId) ? await fetchJobPackData() : null;
+                let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+                if (isFromFinalDatasheet && !contractorLogoUrl && jobPack) {
+                    const contrId = jobPack.metadata?.contrac || (jobPack as any).contractor_id;
+                    if (contrId) {
+                        try {
+                            const contrRes = await fetch(`/api/libraries/contractors?id=${contrId}`);
+                            if (contrRes.ok) {
+                                const contrData = await contrRes.json();
+                                if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                            }
+                        } catch (_) {}
+                        if (!contractorLogoUrl) {
+                            try {
+                                const cRes = await fetch(`/api/library/CONTR_NAM`);
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const found = cList.find((c: any) => String(c.lib_id) === String(contrId) || String(c.code) === String(contrId));
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            } catch (_) {}
+                        }
+                    }
+                }
+                return await generateStructureReport(data, companySettings, {
+                    ...reportConfig,
+                    jobPack,
+                    contractorLogoUrl: isFromFinalDatasheet ? contractorLogoUrl : "",
+                    showContractorLogo: isFromFinalDatasheet,
+                    isFinalDatasheet: isFromFinalDatasheet,
+                    sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix,
+                    reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo
+                } as any);
+            }
 
             case "component-catalog":
                 // Note: generateComponentSummaryReport currently doesn't support full config object in signature based on previous view

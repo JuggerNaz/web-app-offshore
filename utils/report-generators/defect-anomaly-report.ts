@@ -669,7 +669,7 @@ export const generateDefectAnomalyReport = async (
 
         // Removed redundant text as requested
 
-        const images = Array.isArray(record.attachments) && record.attachments.length > 0
+        const rawImages = Array.isArray(record.attachments) && record.attachments.length > 0
             ? record.attachments
             : Array.isArray(record.photos) && record.photos.length > 0
             ? record.photos
@@ -678,6 +678,14 @@ export const generateDefectAnomalyReport = async (
             : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
             ? record.insp_photos
             : [];
+        const images = [...rawImages].sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+            const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+            return dateA - dateB;
+        });
         // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
         const loadedImages = await Promise.all(
             images.map(async (rawAtt: any) => {

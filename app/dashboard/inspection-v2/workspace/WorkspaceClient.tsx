@@ -8325,7 +8325,9 @@ function V10PreviewLayout() {
           // 2. Process Pending Attachments
           if (attachmentsToProcess.length > 0) {
             console.log("[BG] Processing attachments for insp_id:", finalInspId);
-            for (const att of attachmentsToProcess) {
+            for (let i = 0; i < attachmentsToProcess.length; i++) {
+              const att = attachmentsToProcess[i];
+              const sortOrder = (att as any).sort_order !== undefined ? Number((att as any).sort_order) : (att.meta?.sort_order !== undefined ? Number(att.meta.sort_order) : i);
               try {
                 if (att.isExisting) {
                   await fetch("/api/attachment", {
@@ -8336,6 +8338,7 @@ function V10PreviewLayout() {
                       title: att.title || att.name,
                       name: att.title || att.name,
                       description: att.description,
+                      sort_order: sortOrder,
                     }),
                   });
                   continue;
@@ -8362,7 +8365,8 @@ function V10PreviewLayout() {
                 formData.append("source_type", "INSPECTION");
                 formData.append("source_id", finalInspId.toString());
                 formData.append("title", finalTitle);
-                formData.append("description", att.description);
+                formData.append("description", att.description || "");
+                formData.append("sort_order", String(sortOrder));
 
                 const response = await fetch("/api/attachment", {
                   method: "POST",
@@ -8812,11 +8816,20 @@ function V10PreviewLayout() {
         }
 
         if (combinedList.length > 0) {
-          const mapped = combinedList.map((a: any) => {
+          // Sort attachments by sort_order if present, fallback to creation/capture time
+          combinedList.sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+          });
+
+          const mapped = combinedList.map((a: any, idx: number) => {
             const publicUrl = getAttachmentUrl(a, supabase);
             const fileType = a.meta?.file_type || "";
             const isVideo = fileType.startsWith("video/") || a.meta?.type === "VIDEO" || a.type === "video";
             const isDoc = fileType.includes("pdf") || fileType.includes("document") || a.meta?.type === "DOCUMENT";
+            const assignedOrder = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : idx);
             return {
               id: String(a.id),
               name: a.name,
@@ -8826,7 +8839,11 @@ function V10PreviewLayout() {
               source: a.source_type,
               previewUrl: publicUrl,
               path: a.path,
-              meta: a.meta || {},
+              sort_order: assignedOrder,
+              meta: {
+                ...(a.meta || {}),
+                sort_order: assignedOrder,
+              },
               isExisting: true,
             };
           });

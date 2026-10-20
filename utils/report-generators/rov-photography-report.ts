@@ -165,7 +165,13 @@ export const generateROVPhotographyReport = async (
             if (!item) return;
             const atts = item.attachments || item.attachment || item.insp_attachments || item.insp_photos || item.photos;
             if (Array.isArray(atts) && atts.length > 0) {
-                atts.forEach((a: any) => {
+                const sortedAtts = [...atts].sort((a: any, b: any) => {
+                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                    if (orderA !== orderB) return orderA - orderB;
+                    return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+                });
+                sortedAtts.forEach((a: any) => {
                     flatPhotos.push({
                         ...a,
                         anomaly_ref: a.anomaly_ref || item.insp_anomalies?.[0]?.anomaly_ref_no || item.anomaly_ref || null
@@ -175,7 +181,12 @@ export const generateROVPhotographyReport = async (
                 flatPhotos.push(item);
             }
         });
-        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : (photos || []);
+        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : [...(photos || [])].sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+        });
 
         // If no photos, return a document with an empty state message
         if (!resolvedPhotos || resolvedPhotos.length === 0) {

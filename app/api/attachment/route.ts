@@ -310,6 +310,7 @@ export const POST = withTenant(async (request, { companyId }) => {
     const source_id_str = formData.get("source_id") as string;
     const title = (formData.get("title") as string) || "";
     const description = (formData.get("description") as string) || "";
+    const sort_order = formData.get("sort_order") as string;
 
     const file = formData.get("file") as File;
 
@@ -404,6 +405,7 @@ export const POST = withTenant(async (request, { companyId }) => {
           meta: {
             title: title || name,
             description: description,
+            sort_order: sort_order !== null && sort_order !== undefined && sort_order !== "" ? Number(sort_order) : 0,
             file_label: name,
             original_file_name: file.name,
             file_url: publicUrl,
@@ -564,26 +566,35 @@ export const PATCH = withTenant(async (request, { companyId }) => {
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   const body = await request.json();
-  const { id, title, description, name } = body;
+  const { id, title, description, name, sort_order } = body;
 
   if (!id) {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
-  // insp_media (workspace captured) items: only the file name is stored, so title/name -> file_name
+  // insp_media (workspace captured) items
   const patchMediaId = parseMediaId(id);
   if (patchMediaId !== null) {
     const { admin, media } = await loadAuthorizedMedia(patchMediaId, companyId);
     if (!media) return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
 
     const newName = String(name ?? title ?? "").trim();
-    if (newName) {
-      const { error: mediaErr } = await admin
-        .from("insp_media")
-        .update({ file_name: newName })
-        .eq("media_id", patchMediaId);
-      if (mediaErr) return handleSupabaseError(mediaErr, "Failed to update media");
-    }
+    const currentMeta = media.meta && typeof media.meta === "object" ? media.meta : {};
+    const updatedMeta = {
+      ...currentMeta,
+      ...(title !== undefined ? { title } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(sort_order !== undefined ? { sort_order: Number(sort_order) } : {}),
+    };
+
+    const updatePayload: any = { meta: updatedMeta };
+    if (newName) updatePayload.name = newName;
+
+    const { error: mediaErr } = await admin
+      .from("insp_media")
+      .update(updatePayload)
+      .eq("media_id", patchMediaId);
+    if (mediaErr) return handleSupabaseError(mediaErr, "Failed to update media");
     return NextResponse.json({ success: true });
   }
 
@@ -618,6 +629,7 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     ...currentMeta,
     title: title !== undefined ? title : currentMeta.title,
     description: description !== undefined ? description : currentMeta.description,
+    sort_order: sort_order !== undefined ? Number(sort_order) : currentMeta.sort_order,
   };
 
   const { data, error } = await (supabase as any)
