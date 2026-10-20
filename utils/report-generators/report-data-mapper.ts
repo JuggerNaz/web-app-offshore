@@ -41,7 +41,7 @@ const convertPdfBlobToImages = async (
         for (let i = 1; i <= pdf.numPages; i++) {
             onPageProgress?.(i, pdf.numPages);
             const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 2.0 });
+            const viewport = page.getViewport({ scale: 1.5 });
 
             // Check if page is landscape
             const isLandscape = viewport.width > viewport.height;
@@ -61,7 +61,7 @@ const convertPdfBlobToImages = async (
                 viewport: viewport
             }).promise;
 
-            const base64Data = canvas.toDataURL("image/png");
+            const base64Data = canvas.toDataURL("image/jpeg", 0.82);
 
             // Release canvas GPU and backing memory immediately
             canvas.width = 0;
@@ -73,11 +73,11 @@ const convertPdfBlobToImages = async (
             pages.push({
                 page_image: {
                     data: base64Data,
-                    extension: ".png"
+                    extension: ".jpg"
                 },
                 photo: {
                     data: base64Data,
-                    extension: ".png"
+                    extension: ".jpg"
                 },
                 is_landscape: isLandscape,
                 section_break: "",
@@ -261,26 +261,29 @@ export const mapInspectionDataForDocx = async (
 
     // Fetch all attachments for these inspection records if any
     const recordIds = records.map(r => r.insp_id).filter(Boolean);
+    const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+    const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
     let attachments: any[] = [];
-    if (recordIds.length > 0) {
+    if (allSourceIds.length > 0) {
         try {
             const { createClient } = await import("@/utils/supabase/client");
             const supabase = createClient();
 
             // Query attachments in parallel batches of 100 to maximize throughput and avoid URL length limitations
             const chunks: number[][] = [];
-            for (let i = 0; i < recordIds.length; i += 100) {
-                chunks.push(recordIds.slice(i, i + 100));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                chunks.push(allSourceIds.slice(i, i + 100));
             }
 
             // Always query BOTH 'attachment' table AND 'insp_media' table in parallel so freshly uploaded photos are never missed
-            const [attachmentBatches, mediaBatches] = await Promise.all([
+            const [attachmentBatches, mediaBatches, anomMediaBatches] = await Promise.all([
                 Promise.all(
                     chunks.map(chunk =>
                         supabase
                             .from('attachment')
                             .select('*')
                             .in('source_id', chunk)
+                            .range(0, 9999)
                     )
                 ),
                 Promise.all(
@@ -289,8 +292,20 @@ export const mapInspectionDataForDocx = async (
                             .from('insp_media' as any)
                             .select('*')
                             .in('inspection_id', chunk)
+                            .range(0, 9999)
                     )
-                )
+                ),
+                anomalyIds.length > 0
+                    ? Promise.all(
+                        chunks.map(chunk =>
+                            supabase
+                                .from('insp_media' as any)
+                                .select('*')
+                                .in('anomaly_id', chunk)
+                                .range(0, 9999)
+                        )
+                    )
+                    : Promise.resolve([])
             ]);
 
             for (const { data, error } of attachmentBatches) {
@@ -314,6 +329,23 @@ export const mapInspectionDataForDocx = async (
                     })));
                 }
             }
+
+            for (const { data: media, error } of (anomMediaBatches as any[])) {
+                if (!error && media && media.length > 0) {
+                    attachments.push(...media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        anomaly_id: m.anomaly_id,
+                        source_type: 'anomaly',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media',
+                        created_at: m.created_at || m.captured_at
+                    })));
+                }
+            }
         } catch (e) {
             console.error("Failed to fetch attachments for docx:", e);
         }
@@ -325,9 +357,26 @@ export const mapInspectionDataForDocx = async (
         detail: `Sorting and associating media items`
     });
 
+    const recordMap = new Map<number, any>();
+    records.forEach(r => {
+        if (r.insp_id) recordMap.set(Number(r.insp_id), r);
+    });
+
     const attMap = new Map<number, any[]>();
     attachments.forEach(att => {
-        const sid = Number(att.source_id);
+        const sid = Number(att.source_id || att.inspection_id);
+        const rec = recordMap.get(sid);
+        if (rec) {
+            const recDate = rec.inspection_date || rec.insp_date || rec.date || rec.inspection_data?.inspection_date || rec.inspection_data?.insp_date || rec.inspection_data?.date || null;
+            const recTime = rec.inspection_time || rec.inspection_data?.inspection_time || rec.inspection_data?.time || null;
+            att.insp_date = recDate;
+            att.inspection_date = recDate;
+            att.inspection_time = recTime;
+            att.insp_id = rec.insp_id;
+            if (!att.anomaly_ref && rec.insp_anomalies?.[0]?.anomaly_ref_no) {
+                att.anomaly_ref = rec.insp_anomalies[0].anomaly_ref_no;
+            }
+        }
         if (!attMap.has(sid)) attMap.set(sid, []);
         attMap.get(sid)!.push(att);
     });
@@ -343,8 +392,19 @@ export const mapInspectionDataForDocx = async (
         });
     });
     records.forEach(r => {
+        const recDate = r.inspection_date || r.insp_date || r.date || r.inspection_data?.inspection_date || r.inspection_data?.insp_date || r.inspection_data?.date || null;
+        const recTime = r.inspection_time || r.inspection_data?.inspection_time || r.inspection_data?.time || null;
         if (r.insp_id && attMap.has(Number(r.insp_id))) {
             const list = attMap.get(Number(r.insp_id)) || [];
+            list.forEach(att => {
+                att.insp_date = recDate;
+                att.inspection_date = recDate;
+                att.inspection_time = recTime;
+                att.insp_id = r.insp_id;
+                if (!att.anomaly_ref && r.insp_anomalies?.[0]?.anomaly_ref_no) {
+                    att.anomaly_ref = r.insp_anomalies[0].anomaly_ref_no;
+                }
+            });
             r.attachments = list;
             r.insp_photos = list;
             r.photos = list;
@@ -824,7 +884,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
-                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                    { ...sharedConfig, returnBlob: true, showSignatures: false, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
                 const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");
@@ -1069,14 +1129,14 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'utwt-report') {
                 const { generateROVUTWTReport } = await import("./rov-utwt-report");
                 pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-photo-report') {
+            } else if (templateId === 'rov-photo-report' || templateId === 'diving-photo-report' || templateId === 'photo-report') {
                 const { generateROVPhotographyReport } = await import("./rov-photography-report");
-                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || (r.inspection_type?.code || "").toUpperCase() === "RPHOTO");
+                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-photo-log-report') {
+            } else if (templateId === 'rov-photo-log-report' || templateId === 'diving-photo-log-report' || templateId === 'photo-log-report') {
                 const { generateROVPhotographyLogReport } = await import("./rov-photography-log-report");
-                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || (r.inspection_type?.code || "").toUpperCase() === "RPHOTO");
+                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyLogReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-seabed-report' || templateId === 'seabed-survey-debris' || templateId === 'seabed-survey-gas' || templateId === 'seabed-survey-crater') {
@@ -1198,7 +1258,14 @@ export const mapInspectionDataForDocx = async (
                 } catch (e) {
                     console.error("Error fetching full structure in docx mapper:", e);
                 }
-                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { ...sharedConfig, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any)) || null;
+                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { 
+                    ...sharedConfig, 
+                    showContractorLogo: true, 
+                    isFinalDatasheet: true, 
+                    contractorLogoUrl: sharedConfig.contractorLogoUrl || (companySettings as any)?.contractorLogoUrl,
+                    sowReportNo: sowReportNo || "", 
+                    reportNoPrefix: sowReportNo || "" 
+                } as any)) || null;
             } else if (templateId === 'inspection-summary-graph' || templateId === 'inspection-summary-graph-report') {
                 const { generateInspectionSummaryGraphReport } = await import("./inspection-summary-graph-report");
                 let summaryData: any = null;

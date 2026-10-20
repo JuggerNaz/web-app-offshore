@@ -2242,7 +2242,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
             return await generateDefectCriteriaReport(companySettings, { 
                 ...reportConfig, 
-                showSignatures: true, 
+                showSignatures: reportConfig?.showSignatures !== false, 
                 jobPack,
                 contractorLogoUrl,
                 procedureId: selections.procedureId, 
@@ -6533,56 +6533,191 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
             };
 
-            const { data: records } = await supabase
-                .from("insp_records")
-                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", structId)
-                .eq("jobpack_id", jobPackIdNum)
-                .eq("sow_report_no", targetSowNo);
+            // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
+            let records: any[] = [];
+            let recFrom = 0;
+            const recPageSize = 1000;
+            let recHasMore = true;
+            while (recHasMore) {
+                const { data, error } = await supabase
+                    .from("insp_records")
+                    .select(`insp_id, inspection_date, inspection_time, inspection_data, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_id, anomaly_ref_no)`)
+                    .eq("structure_id", structId)
+                    .eq("jobpack_id", jobPackIdNum)
+                    .eq("sow_report_no", targetSowNo)
+                    .range(recFrom, recFrom + recPageSize - 1);
+                if (error || !data || data.length === 0) {
+                    recHasMore = false;
+                } else {
+                    records.push(...data);
+                    if (data.length < recPageSize) recHasMore = false;
+                    else recFrom += recPageSize;
+                }
+            }
 
             if (!records || records.length === 0) {
                 alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            const recordIds = records.map(r => r.insp_id);
+            const recordIds = records.map(r => r.insp_id).filter(Boolean);
+            const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+            const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
 
-            const { data: attachments } = await supabase
-                .from("attachment")
-                .select("*")
-                .in("source_id", recordIds)
-                .order("created_at", { ascending: true });
+            // 2. Fetch ALL attachments with chunking & pagination (bypassing default 1000 limit)
+            const allAttachments: any[] = [];
+            const pageSize = 1000;
 
-            let allAttachments = attachments || [];
-            if (allAttachments.length === 0) {
-                const { data: media } = await supabase
-                    .from("insp_media" as any)
-                    .select("*")
-                    .in("inspection_id", recordIds);
-                if (media && media.length > 0) {
-                    allAttachments = media.map((m: any) => ({
-                        id: m.media_id,
-                        path: m.file_path,
-                        file_path: m.file_path,
-                        name: m.file_name || `Media ${m.media_id}`,
-                        source_id: m.inspection_id,
-                        source_type: "inspection",
-                        meta: m.meta,
-                        bucket: (m.meta as any)?.bucket || "inspection-media"
-                    }));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                const chunk = allSourceIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from("attachment")
+                        .select("*")
+                        .in("source_id", chunk)
+                        .order("created_at", { ascending: true })
+                        .range(from, from + pageSize - 1);
+                    if (error || !data || data.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...data);
+                        if (data.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
                 }
             }
 
+            // Also fetch from insp_media for both inspection_ids and anomaly_ids
+            for (let i = 0; i < recordIds.length; i += 100) {
+                const chunk = recordIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data: media, error } = await supabase
+                        .from("insp_media" as any)
+                        .select("*")
+                        .in("inspection_id", chunk)
+                        .range(from, from + pageSize - 1);
+                    if (error || !media || media.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...media.map((m: any) => ({
+                            id: m.media_id,
+                            path: m.file_path,
+                            file_path: m.file_path,
+                            name: m.file_name || `Media ${m.media_id}`,
+                            source_id: m.inspection_id,
+                            source_type: "inspection",
+                            meta: m.meta,
+                            bucket: (m.meta as any)?.bucket || "inspection-media"
+                        })));
+                        if (media.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
+                }
+            }
+
+            if (anomalyIds.length > 0) {
+                for (let i = 0; i < anomalyIds.length; i += 100) {
+                    const chunk = anomalyIds.slice(i, i + 100);
+                    let from = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data: media, error } = await supabase
+                            .from("insp_media" as any)
+                            .select("*")
+                            .in("anomaly_id", chunk)
+                            .range(from, from + pageSize - 1);
+                        if (error || !media || media.length === 0) {
+                            hasMore = false;
+                        } else {
+                            allAttachments.push(...media.map((m: any) => ({
+                                id: m.media_id,
+                                path: m.file_path,
+                                file_path: m.file_path,
+                                name: m.file_name || `Media ${m.media_id}`,
+                                source_id: m.inspection_id,
+                                anomaly_id: m.anomaly_id,
+                                source_type: "anomaly",
+                                meta: m.meta,
+                                bucket: (m.meta as any)?.bucket || "inspection-media"
+                            })));
+                            if (media.length < pageSize) hasMore = false;
+                            else from += pageSize;
+                        }
+                    }
+                }
+            }
+
+            // Robust image attachment identifier (checks metadata, MIME, extensions, edited/ paths)
             const isImageAttachment = (a: any) => {
-                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
-                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+                if (!a) return false;
+                let meta = a.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+                const attType = String(a.type || meta.type || "").toUpperCase();
+                if (attType === "PHOTO" || attType === "IMAGE") return true;
+
+                const mime = String(a.file_type || a.mime || meta.file_type || meta.mime || meta.fileType || "").toLowerCase();
+                if (mime.startsWith("image/")) return true;
+
+                const pathsToCheck = [
+                    a.path,
+                    a.file_path,
+                    a.url,
+                    a.file_url,
+                    a.storage_path,
+                    meta.file_url,
+                    meta.file_path,
+                    meta.original_file_name,
+                    meta.fileName,
+                    a.name,
+                    a.file_name
+                ];
+
+                for (const p of pathsToCheck) {
+                    if (typeof p === 'string' && p.trim()) {
+                        if (p.startsWith("data:image/") || p.match(/\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i)) {
+                            return true;
+                        }
+                    }
+                }
+
+                const rawPath = String(a.path || a.file_path || meta.file_path || "");
+                if (rawPath.startsWith("edited/") || rawPath.startsWith("uploads/")) {
+                    if (!rawPath.match(/\.(pdf|mp4|mov|avi|mkv|wav|mp3|zip|docx|xlsx|doc|xls|csv)$/i)) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
             const photoData = allAttachments.filter(isImageAttachment).map(a => {
-                const record = records?.find(r => r.insp_id === a.source_id);
+                const record = records?.find(r => 
+                    r.insp_id === a.source_id || 
+                    r.insp_id === (a as any).inspection_id ||
+                    r.insp_anomalies?.some((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id)
+                );
+                const recDate = record?.inspection_date || record?.insp_date || record?.date || record?.inspection_data?.inspection_date || record?.inspection_data?.insp_date || record?.inspection_data?.date || null;
+                const recTime = record?.inspection_time || record?.inspection_data?.inspection_time || record?.inspection_data?.time || null;
+
+                let anomRef = a.anomaly_ref || null;
+                if (!anomRef && record?.insp_anomalies && record.insp_anomalies.length > 0) {
+                    const matching = record.insp_anomalies.find((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id);
+                    anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
+                }
+
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: record?.insp_id || a.source_id || 0,
+                    anomaly_ref: anomRef
                 };
             });
 
@@ -6663,56 +6798,191 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
             };
 
-            const { data: records } = await supabase
-                .from("insp_records")
-                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", structId)
-                .eq("jobpack_id", jobPackIdNum)
-                .eq("sow_report_no", targetSowNo);
+            // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
+            let records: any[] = [];
+            let recFrom = 0;
+            const recPageSize = 1000;
+            let recHasMore = true;
+            while (recHasMore) {
+                const { data, error } = await supabase
+                    .from("insp_records")
+                    .select(`insp_id, inspection_date, inspection_time, inspection_data, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_id, anomaly_ref_no)`)
+                    .eq("structure_id", structId)
+                    .eq("jobpack_id", jobPackIdNum)
+                    .eq("sow_report_no", targetSowNo)
+                    .range(recFrom, recFrom + recPageSize - 1);
+                if (error || !data || data.length === 0) {
+                    recHasMore = false;
+                } else {
+                    records.push(...data);
+                    if (data.length < recPageSize) recHasMore = false;
+                    else recFrom += recPageSize;
+                }
+            }
 
             if (!records || records.length === 0) {
                 alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            const recordIds = records.map(r => r.insp_id);
+            const recordIds = records.map(r => r.insp_id).filter(Boolean);
+            const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+            const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
 
-            const { data: attachments } = await supabase
-                .from("attachment")
-                .select("*")
-                .in("source_id", recordIds)
-                .order("created_at", { ascending: true });
+            // 2. Fetch ALL attachments with chunking & pagination (bypassing default 1000 limit)
+            const allAttachments: any[] = [];
+            const pageSize = 1000;
 
-            let allAttachments = attachments || [];
-            if (allAttachments.length === 0) {
-                const { data: media } = await supabase
-                    .from("insp_media" as any)
-                    .select("*")
-                    .in("inspection_id", recordIds);
-                if (media && media.length > 0) {
-                    allAttachments = media.map((m: any) => ({
-                        id: m.media_id,
-                        path: m.file_path,
-                        file_path: m.file_path,
-                        name: m.file_name || `Media ${m.media_id}`,
-                        source_id: m.inspection_id,
-                        source_type: "inspection",
-                        meta: m.meta,
-                        bucket: (m.meta as any)?.bucket || "inspection-media"
-                    }));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                const chunk = allSourceIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from("attachment")
+                        .select("*")
+                        .in("source_id", chunk)
+                        .order("created_at", { ascending: true })
+                        .range(from, from + pageSize - 1);
+                    if (error || !data || data.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...data);
+                        if (data.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
                 }
             }
 
+            // Also fetch from insp_media for both inspection_ids and anomaly_ids
+            for (let i = 0; i < recordIds.length; i += 100) {
+                const chunk = recordIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data: media, error } = await supabase
+                        .from("insp_media" as any)
+                        .select("*")
+                        .in("inspection_id", chunk)
+                        .range(from, from + pageSize - 1);
+                    if (error || !media || media.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...media.map((m: any) => ({
+                            id: m.media_id,
+                            path: m.file_path,
+                            file_path: m.file_path,
+                            name: m.file_name || `Media ${m.media_id}`,
+                            source_id: m.inspection_id,
+                            source_type: "inspection",
+                            meta: m.meta,
+                            bucket: (m.meta as any)?.bucket || "inspection-media"
+                        })));
+                        if (media.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
+                }
+            }
+
+            if (anomalyIds.length > 0) {
+                for (let i = 0; i < anomalyIds.length; i += 100) {
+                    const chunk = anomalyIds.slice(i, i + 100);
+                    let from = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data: media, error } = await supabase
+                            .from("insp_media" as any)
+                            .select("*")
+                            .in("anomaly_id", chunk)
+                            .range(from, from + pageSize - 1);
+                        if (error || !media || media.length === 0) {
+                            hasMore = false;
+                        } else {
+                            allAttachments.push(...media.map((m: any) => ({
+                                id: m.media_id,
+                                path: m.file_path,
+                                file_path: m.file_path,
+                                name: m.file_name || `Media ${m.media_id}`,
+                                source_id: m.inspection_id,
+                                anomaly_id: m.anomaly_id,
+                                source_type: "anomaly",
+                                meta: m.meta,
+                                bucket: (m.meta as any)?.bucket || "inspection-media"
+                            })));
+                            if (media.length < pageSize) hasMore = false;
+                            else from += pageSize;
+                        }
+                    }
+                }
+            }
+
+            // Robust image attachment identifier (checks metadata, MIME, extensions, edited/ paths)
             const isImageAttachment = (a: any) => {
-                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
-                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+                if (!a) return false;
+                let meta = a.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+                const attType = String(a.type || meta.type || "").toUpperCase();
+                if (attType === "PHOTO" || attType === "IMAGE") return true;
+
+                const mime = String(a.file_type || a.mime || meta.file_type || meta.mime || meta.fileType || "").toLowerCase();
+                if (mime.startsWith("image/")) return true;
+
+                const pathsToCheck = [
+                    a.path,
+                    a.file_path,
+                    a.url,
+                    a.file_url,
+                    a.storage_path,
+                    meta.file_url,
+                    meta.file_path,
+                    meta.original_file_name,
+                    meta.fileName,
+                    a.name,
+                    a.file_name
+                ];
+
+                for (const p of pathsToCheck) {
+                    if (typeof p === 'string' && p.trim()) {
+                        if (p.startsWith("data:image/") || p.match(/\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i)) {
+                            return true;
+                        }
+                    }
+                }
+
+                const rawPath = String(a.path || a.file_path || meta.file_path || "");
+                if (rawPath.startsWith("edited/") || rawPath.startsWith("uploads/")) {
+                    if (!rawPath.match(/\.(pdf|mp4|mov|avi|mkv|wav|mp3|zip|docx|xlsx|doc|xls|csv)$/i)) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
             const photoData = allAttachments.filter(isImageAttachment).map(a => {
-                const record = records?.find(r => r.insp_id === a.source_id);
+                const record = records?.find(r => 
+                    r.insp_id === a.source_id || 
+                    r.insp_id === (a as any).inspection_id ||
+                    r.insp_anomalies?.some((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id)
+                );
+                const recDate = record?.inspection_date || record?.insp_date || record?.date || record?.inspection_data?.inspection_date || record?.inspection_data?.insp_date || record?.inspection_data?.date || null;
+                const recTime = record?.inspection_time || record?.inspection_data?.inspection_time || record?.inspection_data?.time || null;
+
+                let anomRef = a.anomaly_ref || null;
+                if (!anomRef && record?.insp_anomalies && record.insp_anomalies.length > 0) {
+                    const matching = record.insp_anomalies.find((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id);
+                    anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
+                }
+
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: record?.insp_id || a.source_id || 0,
+                    anomaly_ref: anomRef
                 };
             });
 

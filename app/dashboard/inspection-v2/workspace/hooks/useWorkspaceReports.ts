@@ -1943,23 +1943,40 @@ export function useWorkspaceReports(
         }
 
         // 2. Map DB attachments to match report format
-        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO');
+        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO').map(a => {
+            const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+            const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+            const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            return {
+                ...a,
+                insp_date: recDate,
+                inspection_date: recDate,
+                inspection_time: recTime,
+                insp_id: rec?.insp_id || a.source_id || 0,
+                anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+            };
+        });
 
         // 3. Include Pending Attachments (local state)
         // Only include those that are marked as 'PHOTO'
         const photosFromPending = pendingAttachments
             .filter(a => a.type === 'PHOTO' || !a.type)
-            .map(a => ({
-                ...a,
-                path: a.path || a.previewUrl // Generator uses path, but pending might only have previewUrl/blob
-            }));
+            .map(a => {
+                const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+                const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+                const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                return {
+                    ...a,
+                    path: a.path || a.previewUrl,
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: rec?.insp_id || a.source_id || 0,
+                    anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                };
+            });
 
-        const allPhotos = [...photosFromDb, ...photosFromPending].sort((a: any, b: any) => {
-            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
-            if (orderA !== orderB) return orderA - orderB;
-            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
-        });
+        const allPhotos = [...photosFromDb, ...photosFromPending];
 
         // Ensure we always return a Blob (even if empty) to avoid "Preview unavailable"
         return await generateROVPhotographyReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
@@ -1986,12 +2003,38 @@ export function useWorkspaceReports(
             dbAttachments = data || [];
         }
 
-        const allPhotos = [...dbAttachments, ...pendingAttachments].sort((a: any, b: any) => {
-            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
-            if (orderA !== orderB) return orderA - orderB;
-            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+        const photosFromDbLog = dbAttachments.filter(a => !a.type || a.type === 'PHOTO').map(a => {
+            const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+            const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+            const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            return {
+                ...a,
+                insp_date: recDate,
+                inspection_date: recDate,
+                inspection_time: recTime,
+                insp_id: rec?.insp_id || a.source_id || 0,
+                anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+            };
         });
+
+        const photosFromPendingLog = pendingAttachments
+            .filter(a => a.type === 'PHOTO' || !a.type)
+            .map(a => {
+                const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+                const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+                const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                return {
+                    ...a,
+                    path: a.path || a.previewUrl,
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: rec?.insp_id || a.source_id || 0,
+                    anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                };
+            });
+
+        const allPhotos = [...photosFromDbLog, ...photosFromPendingLog];
 
         return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };

@@ -63,19 +63,36 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
             img.onload = () => {
                 clearTimeout(timeout);
                 try {
+                    const origW = img.naturalWidth || img.width || 800;
+                    const origH = img.naturalHeight || img.height || 600;
+                    const aspect = origH > 0 ? origW / origH : 1.333;
+
+                    // Bound dimensions to max 1000x750 for PDF rendering to avoid bloating memory
+                    const MAX_WIDTH = 1000;
+                    const MAX_HEIGHT = 750;
+                    let targetW = origW;
+                    let targetH = origH;
+                    if (targetW > MAX_WIDTH || targetH > MAX_HEIGHT) {
+                        const scale = Math.min(MAX_WIDTH / targetW, MAX_HEIGHT / targetH);
+                        targetW = Math.max(1, Math.round(targetW * scale));
+                        targetH = Math.max(1, Math.round(targetH * scale));
+                    }
+
                     const canvas = document.createElement("canvas");
-                    const w = img.naturalWidth || img.width || 800;
-                    const h = img.naturalHeight || img.height || 600;
-                    canvas.width = w;
-                    canvas.height = h;
+                    canvas.width = targetW;
+                    canvas.height = targetH;
                     const ctx = canvas.getContext("2d");
                     if (ctx) {
-                        ctx.drawImage(img, 0, 0);
-                        const aspect = h > 0 ? w / h : 1.333;
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = "medium";
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                        const optimizedData = canvas.toDataURL("image/jpeg", 0.78);
+                        canvas.width = 0;
+                        canvas.height = 0;
                         resolve({
-                            data: canvas.toDataURL("image/jpeg", 0.95),
-                            width: w,
-                            height: h,
+                            data: optimizedData,
+                            width: targetW,
+                            height: targetH,
                             aspect
                         });
                     } else {
@@ -147,7 +164,7 @@ export const generateDefectAnomalyReport = async (
     config: ReportConfig
 ) => {
     const supabase = createClient();
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 10;
@@ -838,7 +855,7 @@ export const generateDefectAnomalyReport = async (
                 // 3. Draw Image (Centered horizontally within container box)
                 const imgX = margin + (contentWidth - photoW) / 2;
                 const imgY = lastY + headerH_box + 2;
-                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH);
+                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH, undefined, "FAST");
 
                 // 4. Draw Footer for Description (Centered)
                 const footerY_pos = lastY + headerH_box + photoH + 2;
@@ -1009,7 +1026,13 @@ export const generateDefectAnomalyReport = async (
 
     if (config.returnBlob) {
         applyWatermarkAndSignaturesGlobal(doc, config);
-        return doc.output("blob");
+        try {
+            return doc.output("blob");
+        } catch (blobErr) {
+            console.warn("defect report doc.output('blob') failed, using arraybuffer fallback:", blobErr);
+            const buffer = doc.output("arraybuffer");
+            return new Blob([buffer], { type: "application/pdf" });
+        }
     } else {
         const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
         applyWatermarkAndSignaturesGlobal(doc, config);

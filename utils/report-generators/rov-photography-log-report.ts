@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
     company_name?: string;
@@ -22,6 +23,73 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     showSignatures?: boolean;
 }
+
+/**
+ * Safely parses an inspection date value (string, Date, etc.) into timestamp ms without timezone shift.
+ */
+const parseSafeDate = (d: any): number => {
+    if (!d) return 0;
+    if (d instanceof Date) return isNaN(d.getTime()) ? 0 : d.getTime();
+    if (typeof d === 'number') return isNaN(d) ? 0 : d;
+    if (typeof d === 'string') {
+        const s = d.trim();
+        if (!s || s.toUpperCase() === 'N/A' || s === '-' || s === '--') return 0;
+
+        // Match YYYY-MM-DD or YYYY/MM/DD with optional time
+        const ymd = s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+        if (ymd) {
+            const dt = new Date(
+                parseInt(ymd[1], 10),
+                parseInt(ymd[2], 10) - 1,
+                parseInt(ymd[3], 10),
+                ymd[4] ? parseInt(ymd[4], 10) : 0,
+                ymd[5] ? parseInt(ymd[5], 10) : 0,
+                ymd[6] ? parseInt(ymd[6], 10) : 0
+            );
+            return isNaN(dt.getTime()) ? 0 : dt.getTime();
+        }
+
+        // Match DD/MM/YYYY or DD-MM-YYYY with optional time
+        const dmy = s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:[ T](\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?/);
+        if (dmy) {
+            const dt = new Date(
+                parseInt(dmy[3], 10),
+                parseInt(dmy[2], 10) - 1,
+                parseInt(dmy[1], 10),
+                dmy[4] ? parseInt(dmy[4], 10) : 0,
+                dmy[5] ? parseInt(dmy[5], 10) : 0,
+                dmy[6] ? parseInt(dmy[6], 10) : 0
+            );
+            return isNaN(dt.getTime()) ? 0 : dt.getTime();
+        }
+
+        const dt = new Date(s);
+        return isNaN(dt.getTime()) ? 0 : dt.getTime();
+    }
+    return 0;
+};
+
+/**
+ * Returns exact timestamp ms incorporating inspection date and optional inspection time.
+ * Explicitly ignores file upload / attachment creation timestamps.
+ */
+const getInspDateTimeMs = (item: any): number => {
+    const rawDate = item._inspDate || item.inspection_date || item.insp_date || item.date;
+    const baseMs = parseSafeDate(rawDate);
+    if (baseMs === 0) return 0;
+
+    const rawTime = item._inspTime || item.inspection_time || item.time || item.inspection_data?.inspection_time;
+    if (rawTime && typeof rawTime === 'string') {
+        const tm = rawTime.match(/(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?/);
+        if (tm) {
+            const timeHours = parseInt(tm[1], 10);
+            const timeMins = parseInt(tm[2], 10);
+            const timeSecs = tm[3] ? parseInt(tm[3], 10) : 0;
+            return baseMs + (timeHours * 3600 + timeMins * 60 + timeSecs) * 1000;
+        }
+    }
+    return baseMs;
+};
 
 /**
  * ROV Photography Log Report (Portrait)
@@ -47,33 +115,131 @@ export const generateROVPhotographyLogReport = async (
             lightGray: [248, 250, 252] as [number, number, number],
         };
 
+        const supabase = createClient();
+
         // Extract and flatten attachments if inspection records were passed
         const flatPhotos: any[] = [];
         (photos || []).forEach((item: any) => {
             if (!item) return;
             const atts = item.attachments || item.attachment || item.insp_attachments || item.insp_photos || item.photos;
+            // STRICT: Use only inspection date and inspection time from record, NEVER file creation created_at / captured_at
+            const itemDate = item.inspection_date || item.insp_date || item.date || item.inspection_data?.inspection_date || item.inspection_data?.insp_date || item.inspection_data?.date || null;
+            const itemTime = item.inspection_time || item.inspection_data?.inspection_time || item.inspection_data?.time || item._inspTime || null;
+            const itemInspId = item.insp_id !== undefined ? item.insp_id : (item.id !== undefined ? item.id : 0);
+
             if (Array.isArray(atts) && atts.length > 0) {
-                const sortedAtts = [...atts].sort((a: any, b: any) => {
-                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
-                    if (orderA !== orderB) return orderA - orderB;
-                    return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
-                });
-                sortedAtts.forEach((a: any) => {
+                atts.forEach((a: any, aIdx: number) => {
+                    if (!a) return;
+                    const sortOrder = a.meta?.sort_order !== undefined 
+                        ? Number(a.meta.sort_order) 
+                        : (a.sort_order !== undefined 
+                            ? Number(a.sort_order) 
+                            : (a.attachment_order !== undefined ? Number(a.attachment_order) : aIdx));
+                    // STRICT: Use only inspection date from record or attachment metadata, NEVER image file upload created_at / captured_at
+                    const photoDate = a.inspection_date || a.insp_date || a.date || itemDate || (a.meta as any)?.inspection_date || (a.meta as any)?.insp_date || null;
+                    const photoTime = a.inspection_time || a.time || itemTime || (a.meta as any)?.inspection_time || null;
+                    const photoInspId = a.insp_id || a.inspection_id || itemInspId || a.source_id || 0;
                     flatPhotos.push({
                         ...a,
+                        _inspDate: photoDate,
+                        _inspTime: photoTime,
+                        _inspId: photoInspId,
+                        _sortOrder: sortOrder,
                         anomaly_ref: a.anomaly_ref || item.insp_anomalies?.[0]?.anomaly_ref_no || item.anomaly_ref || null
                     });
                 });
             } else if (item.path || item.file_path || item.url || item.file_url || item.storage_path || item.id || item.name) {
-                flatPhotos.push(item);
+                const sortOrder = item.meta?.sort_order !== undefined 
+                    ? Number(item.meta.sort_order) 
+                    : (item.sort_order !== undefined 
+                        ? Number(item.sort_order) 
+                        : (item.attachment_order !== undefined ? Number(item.attachment_order) : 0));
+                // STRICT: Use only inspection date from record or metadata, NEVER image file upload created_at / captured_at
+                const photoDate = item.inspection_date || item.insp_date || item.date || itemDate || (item.meta as any)?.inspection_date || (item.meta as any)?.insp_date || null;
+                const photoTime = item.inspection_time || item.time || itemTime || (item.meta as any)?.inspection_time || null;
+                const photoInspId = item.insp_id || item.inspection_id || itemInspId || item.source_id || 0;
+                flatPhotos.push({
+                    ...item,
+                    _inspDate: photoDate,
+                    _inspTime: photoTime,
+                    _inspId: photoInspId,
+                    _sortOrder: sortOrder,
+                });
             }
         });
-        const resolvedPhotos = flatPhotos.length > 0 ? flatPhotos : [...(photos || [])].sort((a: any, b: any) => {
-            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+
+        // Fallback: If any photos lack inspection dates but have an inspection ID, look up inspection_date from insp_records
+        const missingInspIds = Array.from(new Set(
+            flatPhotos
+                .filter(p => !p._inspDate && p._inspId && Number(p._inspId) > 0)
+                .map(p => Number(p._inspId))
+        ));
+
+        if (missingInspIds.length > 0) {
+            try {
+                const { data: recDates } = await supabase
+                    .from("insp_records")
+                    .select("insp_id, inspection_date, inspection_time, inspection_data")
+                    .in("insp_id", missingInspIds);
+
+                if (recDates && recDates.length > 0) {
+                    const dateMap = new Map<number, { date: string | null; time: string | null }>();
+                    recDates.forEach((r: any) => {
+                        const d = r.inspection_date || r.inspection_data?.inspection_date || r.inspection_data?.insp_date || r.inspection_data?.date || null;
+                        const t = r.inspection_time || r.inspection_data?.inspection_time || r.inspection_data?.time || null;
+                        dateMap.set(Number(r.insp_id), { date: d, time: t });
+                    });
+                    flatPhotos.forEach(p => {
+                        if (!p._inspDate && p._inspId && dateMap.has(Number(p._inspId))) {
+                            const info = dateMap.get(Number(p._inspId))!;
+                            p._inspDate = info.date;
+                            if (info.time && !p._inspTime) p._inspTime = info.time;
+                        }
+                    });
+                }
+            } catch (lookupErr) {
+                console.warn("[ROV Photography Log] Failed to fetch inspection date for records:", lookupErr);
+            }
+        }
+
+        // Deduplicate photos by ID or storage path to avoid redundant rows
+        const seenPhotoKeys = new Set<string>();
+        const uniquePhotos: any[] = [];
+        flatPhotos.forEach((p: any) => {
+            if (!p) return;
+            const key = p.id ? `id_${p.id}` : (p.path || p.file_path || p.url || p.file_url || p.storage_path || p.name || JSON.stringify(p));
+            if (!seenPhotoKeys.has(key)) {
+                seenPhotoKeys.add(key);
+                uniquePhotos.push(p);
+            }
+        });
+
+        // Sort photos: 1) Inspection date order -> 2) Group by inspection id -> 3) Attachment order
+        const resolvedPhotos = uniquePhotos.sort((a: any, b: any) => {
+            // 1. Inspection Date Order (Chronological by inspection date only, NEVER file created_at / captured_at)
+            const timeA = getInspDateTimeMs(a);
+            const timeB = getInspDateTimeMs(b);
+            if (timeA !== timeB) {
+                if (timeA === 0) return 1;
+                if (timeB === 0) return -1;
+                return timeA - timeB;
+            }
+
+            // 2. Group by Inspection ID
+            const idA = String(a._inspId ?? '');
+            const idB = String(b._inspId ?? '');
+            if (idA !== idB) {
+                return idA.localeCompare(idB, undefined, { numeric: true });
+            }
+
+            // 3. Attachment Order
+            const orderA = a._sortOrder !== undefined ? Number(a._sortOrder) : 999999;
+            const orderB = b._sortOrder !== undefined ? Number(b._sortOrder) : 999999;
             if (orderA !== orderB) return orderA - orderB;
-            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+
+            const photoIdA = Number(a.id || 0);
+            const photoIdB = Number(b.id || 0);
+            return photoIdA - photoIdB;
         });
 
         // If no photos, return a document with an empty state message
@@ -189,7 +355,7 @@ export const generateROVPhotographyLogReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 12 },
             head: [
-                ['Item No.', 'Real Time', 'Photo Title', 'Details']
+                ['Item No.', 'Inspection Date', 'Photo Title', 'Details']
             ],
             body: resolvedPhotos.map((p, idx) => {
                 let meta = p.meta || {};
@@ -198,7 +364,23 @@ export const generateROVPhotographyLogReport = async (
                 }
 
                 const itemNo = (idx + 1).toString();
-                const realTime = p.created_at ? format(new Date(p.created_at), 'dd MMM yyyy HH:mm') : 'N/A';
+                
+                // Format the inspection date (strictly inspection date/time, NOT file upload timestamp)
+                let formattedDate = 'N/A';
+                const dateVal = p._inspDate || p.inspection_date || p.insp_date || p.date;
+                if (dateVal) {
+                    const parsedMs = parseSafeDate(dateVal);
+                    if (parsedMs > 0) {
+                        formattedDate = format(new Date(parsedMs), 'dd MMM yyyy');
+                        const timeVal = p._inspTime || p.inspection_time || p.time;
+                        if (timeVal && typeof timeVal === 'string' && timeVal.trim()) {
+                            formattedDate += ` ${timeVal.trim().substring(0, 5)}`;
+                        }
+                    } else if (typeof dateVal === 'string' && dateVal.trim()) {
+                        formattedDate = dateVal.trim();
+                    }
+                }
+
                 const photoTitle = (meta.title || p.name || `Photo ${idx + 1}`).toUpperCase();
                 
                 let details = meta.description || "";
@@ -206,7 +388,7 @@ export const generateROVPhotographyLogReport = async (
                     details = details ? `${details} (Anomaly Ref: ${p.anomaly_ref})` : `Anomaly Ref: ${p.anomaly_ref}`;
                 }
 
-                return [itemNo, realTime, photoTitle, details];
+                return [itemNo, formattedDate, photoTitle, details];
             }),
             theme: 'grid',
             headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, 

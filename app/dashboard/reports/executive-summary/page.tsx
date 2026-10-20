@@ -1493,19 +1493,49 @@ export default function ExecutiveSummaryPage() {
 
             const incompleteRecords = allRecords
                 .filter((r: any) => {
-                    const st = String(r.status || r.inspection_data?.status || "").toUpperCase();
-                    const ft = String(r.finding_type || r.inspection_data?.finding_type || "").toUpperCase();
-                    return st === "INCOMPLETE" || ft === "INCOMPLETE" || Boolean(r.incomplete_reason || r.inspection_data?.incomplete_reason);
+                    const d = r.inspection_data || r.inspection_dat || {};
+                    const st = String(r.status || "").trim().toUpperCase();
+                    const dataStatus = String(d.status || "").trim().toUpperCase();
+                    const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
+                    const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+                    const incompleteReason = String(
+                        r.incomplete_reason || 
+                        r.incompleteReason || 
+                        d.incomplete_reason || 
+                        d.incompleteReason || 
+                        ""
+                    ).trim();
+
+                    if (st === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
+                        return true;
+                    }
+                    if (incompleteReason && incompleteReason.length > 0) {
+                        return true;
+                    }
+                    const desc = String(r.description || "").trim().toUpperCase();
+                    if (desc.startsWith("INCOMPLETE:") || desc.includes("STATUS: INCOMPLETE") || desc.includes("UNABLE TO PERFORM") || desc.includes("UNABLE TO INSPECT")) {
+                        return true;
+                    }
+                    return false;
                 })
                 .map((r: any, idx: number) => {
                     const reason = r.incomplete_reason || r.incompleteReason || r.inspection_data?.incomplete_reason || r.reason || "Weather / Operational Constraints";
                     const remarks = r.remarks || r.inspection_data?.remarks || r.comments || r.inspection_data?.comments || "-";
                     const qid = r.structure_components?.q_id || r.inspection_data?.q_id || r.qid || "N/A";
-                    const elv = r.elevation || r.inspection_data?.elevation || "-";
+                    const rawElv = r.elevation ?? r.inspection_data?.elevation ?? r.inspection_data?.verification_depth ?? "-";
+                    const formatElevation = (val: any) => {
+                        if (val === undefined || val === null || String(val).trim() === "" || String(val).trim() === "-") return "-";
+                        const num = parseFloat(String(val));
+                        if (isNaN(num)) return String(val);
+                        if (num < 0) return `(-)${Math.abs(num)}`;
+                        return String(val);
+                    };
+                    const elv = formatElevation(rawElv);
                     const inspType = r.inspection_type?.name || r.inspection_type_code || r.inspection_type?.code || "N/A";
                     const compType = r.structure_components?.component_type || r.component_type || "N/A";
                     const taskName = r.task_name || `${inspType} - ${qid}`;
                     const actionPlan = r.action_plan || r.remedial_action || "To be deferred to next campaign";
+                    const commentsText = (reason && reason !== "-" && reason !== "—" ? reason : remarks) || "Unable to inspect due to access/visibility constraint";
                     return {
                         ...r,
                         no: idx + 1,
@@ -1519,6 +1549,9 @@ export default function ExecutiveSummaryPage() {
                         reason,
                         incomplete_reason: reason,
                         remarks,
+                        comments: commentsText,
+                        findings: commentsText,
+                        description: commentsText,
                         action_plan: actionPlan,
                         dive_no: r.dive_no || r.inspection_data?.dive_no || "-"
                     };

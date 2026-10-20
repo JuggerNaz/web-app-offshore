@@ -89,6 +89,8 @@ export const generateInspectionSummaryReport = async (
             textDark: [15, 23, 42] as [number, number, number],     // Slate 900
             textMuted: [100, 116, 139] as [number, number, number], // Slate 500
             emerald: [16, 185, 129] as [number, number, number],
+            teal: [20, 184, 166] as [number, number, number],
+            blue: [59, 130, 246] as [number, number, number],
             amber: [245, 158, 11] as [number, number, number],
             red: [220, 38, 38] as [number, number, number],
             cyan: [6, 182, 212] as [number, number, number],
@@ -343,11 +345,25 @@ export const generateInspectionSummaryReport = async (
         const completedCount = sow.completed || rec.completed || 0;
         const incompleteCount = sow.incomplete || rec.incomplete || 0;
         const anomalyCount = anomalies.total || rec.anomaly || 0;
-        const compRateVal = sow.completionPct !== undefined 
-            ? Math.round(sow.completionPct)
-            : (totalQidsCount > 0 ? Math.round((completedCount / totalQidsCount) * 100) : 0);
+        
+        // Accurate Completion Rate: MUST NOT treat incomplete tasks as completed!
+        const compRateVal = totalQidsCount > 0 
+            ? Math.round((completedCount / totalQidsCount) * 100) 
+            : (sow.completedPct !== undefined ? Math.round(sow.completedPct) : (sow.completionPct !== undefined ? Math.round(sow.completionPct) : 0));
+        const incRateVal = totalQidsCount > 0
+            ? Math.round((incompleteCount / totalQidsCount) * 100)
+            : (sow.incompletePct !== undefined ? Math.round(sow.incompletePct) : 0);
 
-        const kpiCards = [
+        const compRateSubtext = incompleteCount > 0
+            ? `${completedCount}/${totalQidsCount} QIDs (${incRateVal}% Inc)`
+            : "Completed / applicable QIDs";
+
+        const kpiCards: Array<{
+            title: string;
+            value: string;
+            subtext: string;
+            color: [number, number, number];
+        }> = [
             {
                 title: "TOTAL QIDs",
                 value: totalQidsCount > 0 ? String(totalQidsCount) : "--",
@@ -364,19 +380,19 @@ export const generateInspectionSummaryReport = async (
                 title: "INCOMPLETE",
                 value: incompleteCount > 0 ? String(incompleteCount) : "--",
                 subtext: "Outstanding / restricted",
-                color: colors.navy,
+                color: incompleteCount > 0 ? colors.amber : colors.navy,
             },
             {
                 title: "TOTAL ANOMALIES",
                 value: anomalyCount > 0 ? String(anomalyCount) : "--",
                 subtext: "Unique anomaly IDs",
-                color: colors.navy,
+                color: anomalyCount > 0 ? colors.red : colors.navy,
             },
             {
                 title: "COMPLETION RATE",
-                value: compRateVal > 0 ? `${compRateVal} %` : "-- %",
-                subtext: "Completed / applicable QIDs",
-                color: colors.navy,
+                value: totalQidsCount > 0 ? `${compRateVal} %` : "-- %",
+                subtext: compRateSubtext,
+                color: compRateVal >= 100 ? colors.teal : colors.navy,
             },
         ];
 
@@ -432,14 +448,25 @@ export const generateInspectionSummaryReport = async (
             doc.rect(leftX, currentY, LEFT_COL_W, 5.5, "F");
             doc.setTextColor(255);
         }
+        // Parse Task Level Aggregate Statistics
+        const taskStats = summaryData?.tasks || {};
+        const totalRecordTasks = taskStats.total || rec.total || 0;
+        const incompleteRecordTasks = taskStats.incomplete !== undefined ? taskStats.incomplete : (rec.incomplete || 0);
+        const completedRecordTasks = taskStats.completed !== undefined ? taskStats.completed : Math.max(0, totalRecordTasks - incompleteRecordTasks);
+        const overallTaskCompPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+        const overallTaskIncPct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "bold");
         doc.text("INSPECTION TASK COVERAGE", leftX + 3, currentY + 3.8);
 
-        doc.setFontSize(6);
+        doc.setFontSize(5.5);
         doc.setFont("helvetica", "normal");
         if (!isPF) doc.setTextColor(220, 230, 242);
-        doc.text("By task / applicable QIDs", leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
+        const headerSubtext = totalRecordTasks > 0 
+            ? `Tasks: ${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks}) | Inc: ${overallTaskIncPct}% (${incompleteRecordTasks})` 
+            : "By task / applicable QIDs";
+        doc.text(headerSubtext, leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
 
         // Build Coverage Rows from SOW or live breakdown
         let coverageRows: any[] = [];
@@ -480,8 +507,19 @@ export const generateInspectionSummaryReport = async (
             }
         }
 
-        // Limit coverage table rows to 6 so it stays within middle height
-        const visibleCoverageRows = coverageRows.slice(0, 6);
+        // Limit coverage table rows to 5 so we have space for the Overall Task Summary row
+        const maxDataRows = 5;
+        const visibleCoverageRows = coverageRows.slice(0, maxDataRows);
+        const hasTotalSummaryRow = totalRecordTasks > 0;
+        if (hasTotalSummaryRow) {
+            visibleCoverageRows.push([
+                "OVERALL TASK SUMMARY",
+                String(totalRecordTasks),
+                String(completedRecordTasks),
+                String(incompleteRecordTasks),
+                `${overallTaskCompPct}%`,
+            ]);
+        }
 
         (autoTable as any)(doc, {
             startY: currentY + 5.5,
@@ -516,13 +554,29 @@ export const generateInspectionSummaryReport = async (
                 lineWidth: 0.1,
                 drawColor: colors.border,
             },
+            didParseCell: (data: any) => {
+                if (hasTotalSummaryRow && data.row.index === visibleCoverageRows.length - 1 && data.section === "body") {
+                    data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fillColor = [241, 245, 249];
+                    if (data.column.index === 4) {
+                        data.cell.styles.textColor = overallTaskCompPct >= 100 ? colors.teal : (overallTaskCompPct >= 80 ? colors.navy : colors.amber);
+                    } else if (data.column.index === 3 && incompleteRecordTasks > 0) {
+                        data.cell.styles.textColor = colors.amber;
+                    } else {
+                        data.cell.styles.textColor = colors.navy;
+                    }
+                }
+            },
         });
 
         const coverageTableEnd = (doc as any).lastAutoTable?.finalY ?? (currentY + 38);
         doc.setFontSize(5.5);
         doc.setFont("helvetica", "italic");
         doc.setTextColor(...colors.textMuted);
-        doc.text("Task counts can overlap when one QID has multiple inspection tasks.", leftX + 1, coverageTableEnd + 3);
+        const footnote = totalRecordTasks > 0
+            ? `Task counts include all individual task records across QIDs. Overall Incomplete rate: ${overallTaskIncPct}%.`
+            : "Task counts can overlap when one QID has multiple inspection tasks.";
+        doc.text(footnote, leftX + 1, coverageTableEnd + 3);
 
         // Table Grid Helper for Section 6 & 7 Blocks
         const drawTableGrid = (
@@ -980,26 +1034,49 @@ export const generateInspectionSummaryReport = async (
                 const scourFindings = scour?.scourFindingsCount !== undefined && scour?.scourFindingsCount !== null ? scour.scourFindingsCount : (scour?.exposed ? scour.exposed : "0");
 
                 let maxDepthStr = "-- mm";
+                let maxDepthMm = 0;
                 if (scour?.maxDepthMm !== undefined && scour?.maxDepthMm !== null && scour.maxDepthMm > 0) {
+                    maxDepthMm = Number(scour.maxDepthMm);
                     maxDepthStr = `${Math.round(scour.maxDepthMm)} mm`;
                 } else if (scour?.maxDepth !== undefined && scour?.maxDepth !== null && Number(scour.maxDepth) > 0) {
                     const depthNum = Number(scour.maxDepth);
-                    const mmVal = depthNum <= 10 ? Math.round(depthNum * 1000) : Math.round(depthNum);
-                    maxDepthStr = `${mmVal} mm`;
+                    maxDepthMm = depthNum <= 10 ? Math.round(depthNum * 1000) : Math.round(depthNum);
+                    maxDepthStr = `${maxDepthMm} mm`;
                 } else if (scour?.maxDepthMeters !== undefined && scour?.maxDepthMeters !== null && scour.maxDepthMeters > 0) {
-                    maxDepthStr = `${Math.round(scour.maxDepthMeters * 1000)} mm`;
+                    maxDepthMm = Math.round(scour.maxDepthMeters * 1000);
+                    maxDepthStr = `${maxDepthMm} mm`;
                 }
 
-                const col1W = Math.round(bw * 0.63);
+                const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
+                const maxLocClean = maxLoc && maxLoc !== "N/A" ? ` (${maxLoc})` : "";
+
+                const minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
+                    ? Number(scour.minDepthMm) 
+                    : (scour?.minDepth ? Number(scour.minDepth) : 0);
+                const minLoc = scour?.minDepthLocation || "";
+                const minLocClean = minLoc && minLoc !== "N/A" ? ` (${minLoc})` : "";
+                const minDepthStr = minDepthMm > 0 ? `${Math.round(minDepthMm)} mm${minLocClean}` : "0 mm";
+
+                const isAnomaly = maxDepthMm > 800 || Number(exposedPileCount) > 0;
+                const isCaution = maxDepthMm > 400 && !isAnomaly;
+                let statusStr = "Normal (<400mm)";
+                if (isAnomaly) {
+                    statusStr = `ANOMALY: >800mm${maxLoc ? ` at ${maxLoc}` : ""}`;
+                } else if (isCaution) {
+                    statusStr = `CAUTION: 400-800mm${maxLoc ? ` at ${maxLoc}` : ""}`;
+                }
+
+                const col1W = Math.round(bw * 0.58);
                 const col2W = bw - col1W;
 
                 const rows = [
                     { cols: [{ val: "Platform faces", align: "left" as const }, { val: `${registeredFaces} registered`, align: "right" as const }] },
-                    { cols: [{ val: "Faces surveyed", align: "left" as const }, { val: String(facesSurveyed), align: "right" as const }] },
-                    { cols: [{ val: "Piles surveyed", align: "left" as const }, { val: String(pilesSurveyed), align: "right" as const }] },
+                    { cols: [{ val: "Faces / Piles surveyed", align: "left" as const }, { val: `${facesSurveyed} faces / ${pilesSurveyed} piles`, align: "right" as const }] },
                     { cols: [{ val: "Exposed pile count", align: "left" as const }, { val: String(exposedPileCount || 0), bold: Number(exposedPileCount) > 0, align: "right" as const }] },
                     { cols: [{ val: "Piles with scour findings", align: "left" as const }, { val: String(scourFindings || 0), bold: Number(scourFindings) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Maximum scour depth", align: "left" as const }, { val: maxDepthStr, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Minimum scour depth", align: "left" as const }, { val: minDepthStr, align: "right" as const }] },
+                    { cols: [{ val: "Maximum scour depth", align: "left" as const }, { val: `${maxDepthStr}${maxLocClean}`, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Safety threshold status", align: "left" as const }, { val: statusStr, bold: isAnomaly || isCaution, align: "right" as const }] },
                 ];
 
                 drawTableGrid(

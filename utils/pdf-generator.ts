@@ -572,8 +572,8 @@ const generatePipelineReport = async (
     }
   }
 
-  // Contractor logo is only printed when printing from the Final Datasheet option
-  const isFinalDatasheet = (config as any)?.isFinalDatasheet === true || (config as any)?.fromFinalDatasheet === true;
+  // Contractor logo is printed by default (including when printing/attaching to Final DOC) unless explicitly disabled
+  const showContractorLogo = (config as any)?.showContractorLogo !== false;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
   await draw3SectionHeader(doc, {
@@ -581,7 +581,7 @@ const generatePipelineReport = async (
     companySettings,
     config: {
       ...config,
-      showContractorLogo: isFinalDatasheet,
+      showContractorLogo,
     } as any,
     reportTitle: "Pipeline Specifications Report",
     isPrintFriendly,
@@ -742,12 +742,14 @@ const generatePipelineReport = async (
       return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
+    const hasUser = sortedPipeDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
+
     autoTable(doc, {
       startY: yPos,
       head: [
         [{
-          content: `COMMENTS (${sortedPipeDiscussions.length})`,
-          colSpan: 3,
+          content: 'COMMENTS',
+          colSpan: hasUser ? 3 : 2,
           styles: {
             halign: 'left',
             fontStyle: 'bold',
@@ -757,13 +759,13 @@ const generatePipelineReport = async (
             cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
           }
         }],
-        ['Date', 'User', 'Comment Details']
+        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
       ],
       body: sortedPipeDiscussions.map((disc: any) => {
         const dateStr = formatCommentDate(disc.created_at);
         const userName = disc.user_name || disc.user_id || "N/A";
         const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
-        return [dateStr, userName, commentDetails];
+        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
       }),
       theme: 'grid',
       styles: {
@@ -782,59 +784,11 @@ const generatePipelineReport = async (
         lineWidth: 0.2,
         lineColor: [200, 200, 200],
       },
-      columnStyles: {
+      columnStyles: hasUser ? {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 32, fontStyle: 'bold' },
         2: { cellWidth: 'auto', halign: 'left' }
-      },
-      margin: { left: 10, right: 10 },
-      tableWidth: pageWidth - 20,
-    });
-
-    yPos = (doc as any).lastAutoTable.finalY + 4;
-  } else if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
-    // Fallback: legacy single comment field
-    autoTable(doc, {
-      startY: yPos,
-      head: [
-        [{
-          content: 'COMMENTS',
-          colSpan: 2,
-          styles: {
-            halign: 'left',
-            fontStyle: 'bold',
-            fontSize: 8,
-            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
-          }
-        }],
-        ['Date', 'Comment Details']
-      ],
-      body: [
-        [
-          structure.inst_date ? formatDisplayDate(structure.inst_date) : "N/A",
-          structure.comments || structure.description || ""
-        ]
-      ],
-      theme: 'grid',
-      styles: {
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-        cellPadding: 1.8,
-        valign: 'top',
-        fontSize: 7,
-      },
-      headStyles: {
-        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-        fontSize: 7,
-        halign: 'left',
-        fontStyle: 'bold',
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      columnStyles: {
+      } : {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 'auto', halign: 'left' }
       },
@@ -948,8 +902,8 @@ const generatePlatformReport = async (
     }
   }
 
-  // Contractor logo is only printed when printing from the Final Datasheet option
-  const isFinalDatasheet = (config as any)?.isFinalDatasheet === true || (config as any)?.fromFinalDatasheet === true;
+  // Contractor logo is printed by default (including when printing/attaching to Final DOC) unless explicitly disabled
+  const showContractorLogo = (config as any)?.showContractorLogo !== false;
 
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
   const sowReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || (structure as any)?.sow_report_no || (structure as any)?.sowReportNo;
@@ -958,7 +912,7 @@ const generatePlatformReport = async (
     companySettings,
     config: {
       ...config,
-      showContractorLogo: isFinalDatasheet,
+      showContractorLogo,
     } as any,
     reportTitle: "Platform Specifications Report",
     reportNo: sowReportNo,
@@ -1692,12 +1646,14 @@ const generatePlatformReport = async (
       return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
+    const hasUser = sortedDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
+
     autoTable(doc, {
       startY: yPos,
       head: [
         [{
-          content: `COMMENTS (${sortedDiscussions.length})`,
-          colSpan: 3,
+          content: 'COMMENTS',
+          colSpan: hasUser ? 3 : 2,
           styles: {
             halign: 'left',
             fontStyle: 'bold',
@@ -1707,13 +1663,13 @@ const generatePlatformReport = async (
             cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
           }
         }],
-        ['Date', 'User', 'Comment Details']
+        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
       ],
       body: sortedDiscussions.map((disc: any) => {
         const dateStr = formatCommentDate(disc.created_at);
         const userName = disc.user_name || disc.user_id || "N/A";
         const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
-        return [dateStr, userName, commentDetails];
+        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
       }),
       theme: 'grid',
       styles: {
@@ -1732,59 +1688,11 @@ const generatePlatformReport = async (
         lineWidth: 0.2,
         lineColor: [200, 200, 200],
       },
-      columnStyles: {
+      columnStyles: hasUser ? {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 32, fontStyle: 'bold' },
         2: { cellWidth: 'auto', halign: 'left' }
-      },
-      margin: { left: 10, right: 10 },
-      tableWidth: pageWidth - 20,
-    });
-
-    yPos = (doc as any).lastAutoTable.finalY + 4;
-  } else if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
-    // Fallback: legacy single comment field
-    autoTable(doc, {
-      startY: yPos,
-      head: [
-        [{
-          content: 'COMMENTS',
-          colSpan: 2,
-          styles: {
-            halign: 'left',
-            fontStyle: 'bold',
-            fontSize: 8,
-            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
-          }
-        }],
-        ['Date', 'Comment Details']
-      ],
-      body: [
-        [
-          structure.inst_date ? formatDisplayDate(structure.inst_date) : "N/A",
-          structure.comments || structure.description || ""
-        ]
-      ],
-      theme: 'grid',
-      styles: {
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-        cellPadding: 1.8,
-        valign: 'top',
-        fontSize: 7,
-      },
-      headStyles: {
-        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
-        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
-        fontSize: 7,
-        halign: 'left',
-        fontStyle: 'bold',
-        lineWidth: 0.2,
-        lineColor: [200, 200, 200],
-      },
-      columnStyles: {
+      } : {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 'auto', halign: 'left' }
       },
@@ -2110,14 +2018,19 @@ const generatePipelineHTML = (
         </div>
 
         <!-- Comments -->
-        <div>
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Additional Comments
-          </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
-            ${structure.comments || structure.description || "No additional comments provided."}
-          </div>
-        </div>
+        ${(() => {
+          const discList = (structure.discussions || []).filter((d: any) => !d.is_deleted);
+          if (!discList.length) return "";
+          return `
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Comments
+            </div>
+            <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
+              ${discList.map((d: any) => `<div><strong>${formatCommentDate(d.created_at)}</strong>: ${d.text || d.comment_details || ""}</div>`).join("")}
+            </div>
+          </div>`;
+        })()}
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
@@ -2474,14 +2387,19 @@ const generatePlatformHTML = (
         </div>
 
         <!-- Comments -->
-        <div>
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Additional Comments
-          </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
-            ${structure.comments || structure.description || "No additional comments provided."}
-          </div>
-        </div>
+        ${(() => {
+          const discList = (structure.discussions || []).filter((d: any) => !d.is_deleted);
+          if (!discList.length) return "";
+          return `
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Comments
+            </div>
+            <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
+              ${discList.map((d: any) => `<div><strong>${formatCommentDate(d.created_at)}</strong>: ${d.text || d.comment_details || ""}</div>`).join("")}
+            </div>
+          </div>`;
+        })()}
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">

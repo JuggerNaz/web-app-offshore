@@ -125,48 +125,64 @@ export const generateDivingDCASNReport = async (
             qidRegistry.set(c.q_id.toUpperCase(), c);
         });
 
+        const isSubPartQid = (q: string): boolean => {
+            const uq = (q || "").toUpperCase();
+            return uq.includes("-TERM") || uq.includes("-SUPP") || uq.includes("-GUIDE") || 
+                   uq.includes("-FLG") || uq.includes("-INTAKE") || uq.includes("-DISCH") || 
+                   uq.includes("-CAN") || uq.includes("-SCB") || uq.includes("-STUB") ||
+                   uq.includes("-TOP") || uq.includes("-BTM") || uq.includes("-BELL") ||
+                   uq.includes("TERMINAT") || uq.includes("SUPPORT");
+        };
+
         const getGroupKey = (r: any): string | null => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
-            const qid = (comp.q_id || "Unknown").toUpperCase();
+            const qid = (comp.q_id || r.qid || r.q_id || "Unknown").toUpperCase().trim();
 
-            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            const parentQid = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
-
-            const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
-                if (!cid || depth > 5) return null;
-                const c = compRegistry.get(cid);
-                if (!c) return null;
-
-                const meta = c.metadata || {};
-                const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
-                const typeCode = (c.code || "").toUpperCase();
-
-                if (typeCode === "CS" && !pId) return c.q_id;
-                return findUltimateCSParent(pId, depth + 1) || (typeCode === "CS" ? c.q_id : null);
-            };
-
-            const ultimateParent = findUltimateCSParent(parentId || comp.id);
-            if (ultimateParent) return ultimateParent;
-            if (parentQid) return parentQid;
-
-            if (qid.startsWith("CS")) {
-                let bestMatch = "";
-                allComps?.forEach(c => {
-                    const cCode = (c.code || "").toUpperCase();
-                    const cQid = (c.q_id || "").toUpperCase();
-                    const cMeta = c.metadata || {};
-                    const cpId = cMeta.associated_comp_id || cMeta.parent_id || cMeta.comp_id_parent || cMeta.parent_comp_id || cMeta.associated_id;
-
-                    if (cCode === "CS" && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
-                        bestMatch = c.q_id;
-                    }
-                });
-                if (bestMatch) return bestMatch;
+            const parentQid = (metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id || "").toUpperCase().trim();
+            if (parentQid && parentQid !== "N/A" && parentQid !== qid) {
+                const pm = parentQid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+                if (pm) return pm[1].toUpperCase();
+                return parentQid;
             }
 
-            const match = qid.match(/^(CS-[^-_ ]+)/i);
-            if (match) return match[1];
+            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
+            if (parentId) {
+                const parentComp = compRegistry.get(parentId);
+                if (parentComp && parentComp.q_id) {
+                    const pQid = parentComp.q_id.toUpperCase().trim();
+                    const pm = pQid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+                    if (pm) return pm[1].toUpperCase();
+                    return pQid;
+                }
+            }
+
+            let matchedRootQid: string | null = null;
+            let longestRootLen = 0;
+            if (allComps) {
+                allComps.forEach((c: any) => {
+                    const cQid = (c.q_id || "").toUpperCase().trim();
+                    const cCode = (c.code || "").toUpperCase().trim();
+                    if ((cCode === "CS" || cCode === "CASN" || cQid.startsWith("CS-") || cQid.startsWith("CAS-")) && !isSubPartQid(cQid)) {
+                        if (qid === cQid || qid.startsWith(cQid + "-") || qid.startsWith(cQid + "_")) {
+                            if (cQid.length > longestRootLen) {
+                                matchedRootQid = c.q_id.toUpperCase().trim();
+                                longestRootLen = cQid.length;
+                            }
+                        }
+                    }
+                });
+            }
+            if (matchedRootQid) return matchedRootQid;
+
+            const match = qid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+            if (match) {
+                const extractedBase = match[1].toUpperCase();
+                if (qidRegistry.has(extractedBase)) {
+                    return qidRegistry.get(extractedBase).q_id.toUpperCase().trim();
+                }
+                return extractedBase;
+            }
 
             const cCode = (comp.code || comp.metadata?.type || "").toUpperCase();
             const cName = (comp.comp_name || comp.name || "").toUpperCase();

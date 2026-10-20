@@ -491,8 +491,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         const incompleteSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const pendingSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
 
-        const completionPct = totalSow > 0 ? Math.round(((completedSow + incompleteSow) / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
         const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
+        const completionPct = completedPct;
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
 
@@ -502,7 +502,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const rovSowCompleted = rovSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
         const rovSowIncomplete = rovSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const rovSowPending = rovSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
-        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round(((rovSowCompleted + rovSowIncomplete) / rovSowTotal) * 100) : 0;
+        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round((rovSowCompleted / rovSowTotal) * 100) : 0;
 
         // Diving SOW Breakdown
         const diveSowItems = resolvedSowItems.filter(isDivingSowItem);
@@ -510,7 +510,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const diveSowCompleted = diveSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
         const diveSowIncomplete = diveSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const diveSowPending = diveSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
-        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round(((diveSowCompleted + diveSowIncomplete) / diveSowTotal) * 100) : 0;
+        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round((diveSowCompleted / diveSowTotal) * 100) : 0;
 
         const outstandingTasks: any[] = [];
         resolvedSowItems.forEach((item: any) => {
@@ -1196,6 +1196,12 @@ export const GET = withTenant(async (request, { companyId }) => {
         let maxScourFace = "N/A";
         let maxScourQid = "N/A";
 
+        let minScourDepth = Infinity;
+        let minScourDepthMm = Infinity;
+        let minScourLocation = "N/A";
+        let minScourFace = "N/A";
+        let minScourQid = "N/A";
+
         scourRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const face = d.platform_face || d.face || r.structure_components?.metadata?.face || "";
@@ -1217,35 +1223,37 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             const rawDepth = parseFloat(String(d.scour_depth || '0'));
             if (!isNaN(rawDepth) && rawDepth > 0) {
+                const meta = r.structure_components?.metadata || {};
+                const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
+                const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
+                const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
+                const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
+
+                let nodesOrLegs = "";
+                if (sLeg && eLeg) {
+                    nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
+                } else if (sNode && eNode) {
+                    nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
+                } else if (sNode) {
+                    nodesOrLegs = `Node: ${sNode}`;
+                } else if (sLeg) {
+                    nodesOrLegs = `Leg: ${sLeg}`;
+                }
+
+                let effectiveFace = face;
+                if (face && nodesOrLegs) {
+                    effectiveFace = `${face} (${nodesOrLegs})`;
+                } else if (nodesOrLegs) {
+                    effectiveFace = nodesOrLegs;
+                } else {
+                    effectiveFace = face || "N/A";
+                }
+
                 if (rawDepth > maxScourDepth) {
                     maxScourDepth = rawDepth;
                     maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
                     maxScourLocation = loc || "N/A";
-
-                    const meta = r.structure_components?.metadata || {};
-                    const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
-                    const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
-                    const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
-                    const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
-
-                    let nodesOrLegs = "";
-                    if (sLeg && eLeg) {
-                        nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
-                    } else if (sNode && eNode) {
-                        nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
-                    } else if (sNode) {
-                        nodesOrLegs = `Node: ${sNode}`;
-                    } else if (sLeg) {
-                        nodesOrLegs = `Leg: ${sLeg}`;
-                    }
-
-                    if (face && nodesOrLegs) {
-                        maxScourFace = `${face} (${nodesOrLegs})`;
-                    } else if (nodesOrLegs) {
-                        maxScourFace = nodesOrLegs;
-                    } else {
-                        maxScourFace = face || "N/A";
-                    }
+                    maxScourFace = effectiveFace;
                 }
 
                 const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
@@ -1253,6 +1261,14 @@ export const GET = withTenant(async (request, { companyId }) => {
                 const inM = (unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth;
                 if (inMm > maxScourDepthMm) maxScourDepthMm = inMm;
                 if (inM > maxScourDepthMeters) maxScourDepthMeters = inM;
+
+                if (inMm < minScourDepthMm) {
+                    minScourDepthMm = inMm;
+                    minScourDepth = rawDepth;
+                    minScourLocation = loc || "N/A";
+                    minScourQid = r.structure_components?.q_id || d.q_id || "N/A";
+                    minScourFace = effectiveFace;
+                }
             }
 
             const isExposed = d.Exposed_pile === "Yes" || d.Exposed_pile === true;
@@ -2158,11 +2174,33 @@ export const GET = withTenant(async (request, { companyId }) => {
                 };
             });
 
+        // Task-level statistics (covering all tasks/records, even when multiple tasks or records exist on same QID)
+        const isRecIncomplete = (r: any): boolean => {
+            if (!r) return false;
+            const d = r.inspection_data || r.inspection_dat || {};
+            const st = String(r.status || "").trim().toUpperCase();
+            const dataStatus = String(d.status || "").trim().toUpperCase();
+            const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
+            const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+            const incompleteReason = String(r.incomplete_reason || r.incompleteReason || d.incomplete_reason || d.incompleteReason || "").trim();
+            if (st === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") return true;
+            if (incompleteReason && incompleteReason.length > 0) return true;
+            const desc = String(r.description || "").trim().toUpperCase();
+            if (desc.startsWith("INCOMPLETE:") || desc.includes("STATUS: INCOMPLETE") || desc.includes("UNABLE TO PERFORM") || desc.includes("UNABLE TO INSPECT")) return true;
+            return false;
+        };
+
+        const totalRecordTasks = rawRecords.length;
+        const incompleteRecordTasks = rawRecords.filter(isRecIncomplete).length;
+        const completedRecordTasks = Math.max(0, totalRecordTasks - incompleteRecordTasks);
+        const taskCompletedPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+        const taskIncompletePct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
         // Mode breakdown for record statuses
-        const completedRov = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isRovRecord(r)).length;
-        const completedDive = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isDiveRecord(r)).length;
-        const incompleteRov = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isRovRecord(r)).length;
-        const incompleteDive = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isDiveRecord(r)).length;
+        const completedRov = rawRecords.filter((r: any) => !isRecIncomplete(r) && isRovRecord(r)).length;
+        const completedDive = rawRecords.filter((r: any) => !isRecIncomplete(r) && isDiveRecord(r)).length;
+        const incompleteRov = rawRecords.filter((r: any) => isRecIncomplete(r) && isRovRecord(r)).length;
+        const incompleteDive = rawRecords.filter((r: any) => isRecIncomplete(r) && isDiveRecord(r)).length;
 
         const anomalyRov = anomalyRecords.filter(isRovRecord).length;
         const anomalyDive = anomalyRecords.filter(isDiveRecord).length;
@@ -2175,6 +2213,14 @@ export const GET = withTenant(async (request, { companyId }) => {
                 componentSummary,
                 inspectionTypeSummary,
                 sow_summary: sowSummary,
+                tasks: {
+                    total: totalRecordTasks,
+                    completed: completedRecordTasks,
+                    incomplete: incompleteRecordTasks,
+                    completedPct: taskCompletedPct,
+                    incompletePct: taskIncompletePct,
+                    completionPct: taskCompletedPct,
+                },
                 sow: {
                     total: totalSow,
                     completed: completedSow,
@@ -2200,13 +2246,15 @@ export const GET = withTenant(async (request, { companyId }) => {
                     },
                 },
                 records: { 
-                    total: rawRecords.length, 
-                    completed: rawRecords.filter((r: any) => r.status === 'COMPLETED').length,
+                    total: totalRecordTasks, 
+                    completed: completedRecordTasks,
                     completedRov,
                     completedDive,
-                    incomplete: rawRecords.filter((r: any) => r.status === 'INCOMPLETE').length,
+                    incomplete: incompleteRecordTasks,
                     incompleteRov,
                     incompleteDive,
+                    completionPct: taskCompletedPct,
+                    incompletePct: taskIncompletePct,
                     anomaly: anomalyValidTotal, 
                     anomalyRov,
                     anomalyDive,
@@ -2501,7 +2549,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                     maxDepthQid: maxScourQid,
                     maxDepthLeg: maxScourLocation, // alias
                     maxDepthLocation: maxScourLocation,
-                    maxDepthFace: maxScourFace
+                    maxDepthFace: maxScourFace,
+                    minDepth: minScourDepth !== Infinity ? minScourDepth : 0,
+                    minDepthMm: minScourDepthMm !== Infinity ? minScourDepthMm : 0,
+                    minDepthLocation: minScourLocation,
+                    minDepthFace: minScourFace,
+                    minDepthQid: minScourQid
                 },
                 attachmentGroups: attachmentGroupBreakdown,
 

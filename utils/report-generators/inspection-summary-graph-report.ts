@@ -346,16 +346,25 @@ export const generateInspectionSummaryGraphReport = async (
         const completedCount = sow.completed || rec.completed || 0;
         const incompleteCount = sow.incomplete || rec.incomplete || 0;
         const anomalyCount = anomalies.total || rec.anomaly || 0;
-        const compRateVal = sow.completionPct !== undefined 
-            ? Math.round(sow.completionPct)
-            : (totalQidsCount > 0 ? Math.round((completedCount / totalQidsCount) * 100) : 0);
+        
+        // Accurate Completion Rate: MUST NOT treat incomplete tasks as completed!
+        const compRateVal = totalQidsCount > 0 
+            ? Math.round((completedCount / totalQidsCount) * 100)
+            : (sow.completedPct !== undefined ? Math.round(sow.completedPct) : (sow.completionPct !== undefined ? Math.round(sow.completionPct) : 0));
+        const incRateVal = totalQidsCount > 0
+            ? Math.round((incompleteCount / totalQidsCount) * 100)
+            : (sow.incompletePct !== undefined ? Math.round(sow.incompletePct) : 0);
+
+        const compRateSubtext = incompleteCount > 0
+            ? `${completedCount}/${totalQidsCount} QIDs (${incRateVal}% Inc)`
+            : "Completed / applicable QIDs";
 
         const kpiCards = [
             { title: "TOTAL QIDs", value: totalQidsCount > 0 ? String(totalQidsCount) : "--", subtext: "Unique in approved jobpack", color: colors.navy },
             { title: "COMPLETED", value: completedCount > 0 ? String(completedCount) : "--", subtext: "Verified completed QIDs", color: colors.navy },
-            { title: "INCOMPLETE", value: incompleteCount > 0 ? String(incompleteCount) : "--", subtext: "Outstanding / restricted", color: colors.navy },
-            { title: "TOTAL ANOMALIES", value: anomalyCount > 0 ? String(anomalyCount) : "--", subtext: "Unique anomaly IDs", color: colors.navy },
-            { title: "COMPLETION RATE", value: compRateVal > 0 ? `${compRateVal} %` : "-- %", subtext: "Completed / applicable QIDs", color: colors.navy },
+            { title: "INCOMPLETE", value: incompleteCount > 0 ? String(incompleteCount) : "--", subtext: "Outstanding / restricted", color: incompleteCount > 0 ? colors.amber : colors.navy },
+            { title: "TOTAL ANOMALIES", value: anomalyCount > 0 ? String(anomalyCount) : "--", subtext: "Unique anomaly IDs", color: anomalyCount > 0 ? colors.red : colors.navy },
+            { title: "COMPLETION RATE", value: totalQidsCount > 0 ? `${compRateVal} %` : "-- %", subtext: compRateSubtext, color: compRateVal >= 100 ? colors.teal : colors.navy },
         ];
 
         kpiCards.forEach((card, idx) => {
@@ -466,13 +475,24 @@ export const generateInspectionSummaryGraphReport = async (
             doc.rect(leftX, currentY, LEFT_COL_W, 5.5, "F");
             doc.setTextColor(255);
         }
+        // Parse Task Level Aggregate Statistics
+        const taskStats = summaryData?.tasks || {};
+        const totalRecordTasks = taskStats.total || rec.total || 0;
+        const incompleteRecordTasks = taskStats.incomplete !== undefined ? taskStats.incomplete : (rec.incomplete || 0);
+        const completedRecordTasks = taskStats.completed !== undefined ? taskStats.completed : Math.max(0, totalRecordTasks - incompleteRecordTasks);
+        const overallTaskCompPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+        const overallTaskIncPct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "bold");
         doc.text("INSPECTION TASK COVERAGE", leftX + 3, currentY + 3.8);
-        doc.setFontSize(6);
+        doc.setFontSize(5.5);
         doc.setFont("helvetica", "normal");
         if (!isPF) doc.setTextColor(220, 230, 242);
-        doc.text("Completion progress by task", leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
+        const headerSubtext = totalRecordTasks > 0 
+            ? `Tasks: ${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks})` 
+            : "Completion progress by task";
+        doc.text(headerSubtext, leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
 
         // Outer box for Left Column
         const covBoxY = currentY + 5.5;
@@ -484,6 +504,30 @@ export const generateInspectionSummaryGraphReport = async (
             doc.rect(leftX, covBoxY, LEFT_COL_W, covBoxH, "F");
         }
         doc.rect(leftX, covBoxY, LEFT_COL_W, covBoxH, "S");
+
+        // ── Task Completion Overview Ribbon inside box ──
+        const ribY = covBoxY + 1.2;
+        const ribH = 5.2;
+        doc.setFillColor(248, 250, 252);
+        doc.rect(leftX + 1.5, ribY, LEFT_COL_W - 3, ribH, "F");
+        doc.setDrawColor(...colors.border);
+        doc.setLineWidth(0.12);
+        doc.rect(leftX + 1.5, ribY, LEFT_COL_W - 3, ribH, "S");
+
+        doc.setFontSize(5.5);
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(...colors.navy);
+        doc.text("TASK LEVEL PROGRESS:", leftX + 3.5, ribY + 3.5);
+
+        doc.setFont("helvetica", "normal");
+        doc.setFontSize(5.2);
+        doc.setTextColor(...colors.textDark);
+        doc.text(`${completedRecordTasks} Completed (${overallTaskCompPct}%)  •  ${incompleteRecordTasks} Incomplete (${overallTaskIncPct}%)  •  ${totalRecordTasks} Total Tasks`, leftX + 44, ribY + 3.5);
+
+        const miniBarW = 20;
+        const miniBarH = 2.6;
+        const miniBarX = leftX + LEFT_COL_W - miniBarW - 4;
+        drawProgressBar(miniBarX, ribY + 1.3, miniBarW, miniBarH, overallTaskCompPct, overallTaskCompPct >= 100 ? colors.teal : colors.navy);
 
         // Parse Coverage Items
         let rawTasks: any[] = [];
@@ -514,73 +558,78 @@ export const generateInspectionSummaryGraphReport = async (
             ];
         }
 
-        // Limit to 6 visible tasks
-        const visibleTasks = rawTasks.slice(0, 6);
-        const taskRowH = (covBoxH - 8) / (visibleTasks.length || 1);
+        // Limit to 5 visible tasks to account for the top ribbon
+        const visibleTasks = rawTasks.slice(0, 5);
+        const taskAreaTop = covBoxY + 7.5;
+        const taskAreaH = covBoxH - 11;
+        const taskRowH = taskAreaH / (visibleTasks.length || 1);
 
         visibleTasks.forEach((t, tIdx) => {
-            const rowY = covBoxY + 3 + (tIdx * taskRowH);
+            const rowY = taskAreaTop + (tIdx * taskRowH);
             
             // Task Name
-            doc.setFontSize(6);
+            doc.setFontSize(5.8);
             doc.setFont("helvetica", "bold");
             doc.setTextColor(...colors.textDark);
             let nameStr = t.name;
-            if (doc.getTextWidth(nameStr) > 48) {
-                while (nameStr.length > 3 && doc.getTextWidth(nameStr + "...") > 48) {
+            if (doc.getTextWidth(nameStr) > 46) {
+                while (nameStr.length > 3 && doc.getTextWidth(nameStr + "...") > 46) {
                     nameStr = nameStr.slice(0, -1);
                 }
                 nameStr += "...";
             }
-            doc.text(nameStr, leftX + 3, rowY + 3.2);
+            doc.text(nameStr, leftX + 3, rowY + 3.0);
 
             // Graphical Progress Bar
-            const barX = leftX + 52;
-            const barW = 60;
-            const barH = 3.6;
+            const barX = leftX + 50;
+            const barW = 58;
+            const barH = 3.4;
             const pctVal = t.total > 0 ? Math.min(100, Math.round((t.completed / t.total) * 100)) : (t.pct || 0);
             drawProgressBar(barX, rowY + 0.8, barW, barH, pctVal, pctVal >= 100 ? colors.teal : colors.navy);
 
             // Counts text
-            doc.setFontSize(5.5);
+            doc.setFontSize(5.2);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(...colors.textMuted);
-            doc.text(`${t.completed}/${t.total} QIDs`, barX + barW + 3, rowY + 3.2);
+            const countStr = t.incomplete > 0 
+                ? `${t.completed}/${t.total} (${t.incomplete} inc)` 
+                : `${t.completed}/${t.total} QIDs`;
+            doc.text(countStr, barX + barW + 2.5, rowY + 3.0);
 
             // Percentage pill badge
             const badgeX = leftX + LEFT_COL_W - 14;
             const badgeW = 11;
-            const badgeH = 4;
+            const badgeH = 3.8;
             doc.setFillColor(pctVal >= 100 ? 240 : 241, pctVal >= 100 ? 253 : 245, pctVal >= 100 ? 244 : 249);
             doc.roundedRect(badgeX, rowY + 0.5, badgeW, badgeH, 1, 1, "F");
             doc.setDrawColor(pctVal >= 100 ? 187 : 203, pctVal >= 100 ? 247 : 213, pctVal >= 100 ? 208 : 225);
             doc.setLineWidth(0.1);
             doc.roundedRect(badgeX, rowY + 0.5, badgeW, badgeH, 1, 1, "S");
 
-            doc.setFontSize(5.3);
+            doc.setFontSize(5.2);
             doc.setFont("helvetica", "bold");
-            doc.setTextColor(...(pctVal >= 100 ? colors.emerald : colors.navy));
-            doc.text(`${pctVal}%`, badgeX + (badgeW / 2), rowY + 3.2, { align: "center" });
+            doc.setTextColor(...(pctVal >= 100 ? colors.emerald : (pctVal > 0 ? colors.navy : colors.amber)));
+            doc.text(`${pctVal}%`, badgeX + (badgeW / 2), rowY + 3.0, { align: "center" });
 
             // Dividing line between tasks
             if (tIdx < visibleTasks.length - 1) {
                 doc.setDrawColor(...colors.border);
-                doc.setLineWidth(0.1);
+                doc.setLineWidth(0.08);
                 doc.line(leftX + 2, rowY + taskRowH, leftX + LEFT_COL_W - 2, rowY + taskRowH);
             }
         });
 
         // Bottom legend
-        const legY = covBoxY + covBoxH - 3;
-        doc.setFontSize(5);
+        const legY = covBoxY + covBoxH - 2.5;
+        doc.setFontSize(4.8);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(...colors.textMuted);
         doc.setFillColor(...colors.teal);
-        doc.rect(leftX + 3, legY - 2, 2.5, 2.5, "F");
-        doc.text("Completed QIDs", leftX + 7, legY);
+        doc.rect(leftX + 3, legY - 2, 2.2, 2.2, "F");
+        doc.text("Completed Tasks / QIDs", leftX + 6.5, legY);
         doc.setFillColor(...colors.barTrack);
-        doc.rect(leftX + 35, legY - 2, 2.5, 2.5, "F");
-        doc.text("Remaining / Incomplete", leftX + 39, legY);
+        doc.rect(leftX + 42, legY - 2, 2.2, 2.2, "F");
+        doc.text("Remaining / Incomplete Tasks", leftX + 45.5, legY);
 
         // --- 6B. RIGHT COLUMN: Anomaly Severity Donut & Defect Ranking Bars ---
         const rightX = leftX + LEFT_COL_W + COL_GAP;
@@ -1155,16 +1204,34 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFont("helvetica", "bold");
                 doc.text(String(exposedPileCount), bx + 2 + (gW * 2.5) - 0.5, gaugeY + 7.5, { align: "center" });
 
+                // Extract Location and Depth Values
+                const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
+                const maxLocClean = maxLoc && maxLoc !== "N/A" ? maxLoc : "";
+                const minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
+                    ? Number(scour.minDepthMm) 
+                    : (scour?.minDepth ? Number(scour.minDepth) : 0);
+                const minLoc = scour?.minDepthLocation || "";
+                const minLocClean = minLoc && minLoc !== "N/A" ? minLoc : "";
+
                 // Scour Depth Visual Spectrum Meter
-                const meterY = graphY + 15;
-                doc.setFontSize(5);
+                const meterY = graphY + 14.2;
+                doc.setFontSize(4.8);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.textDark);
-                doc.text("MAXIMUM SCOUR DEPTH", bx + 3, meterY);
+                doc.text(maxLocClean ? `MAX SCOUR DEPTH (${maxLocClean})` : "MAXIMUM SCOUR DEPTH", bx + 3, meterY);
+
+                // Depth callout on top right
+                doc.setFontSize(5.2);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...(maxDepthMm > 800 ? colors.red : (maxDepthMm > 400 ? colors.amber : colors.navy)));
+                const depthCallout = minDepthMm > 0
+                    ? `Max: ${Math.round(maxDepthMm)} mm | Min: ${Math.round(minDepthMm)} mm`
+                    : `${Math.round(maxDepthMm)} mm`;
+                doc.text(depthCallout, bx + bw - 3, meterY, { align: "right" });
 
                 const meterBarX = bx + 3;
                 const meterBarW = bw - 6;
-                const meterBarH = 4;
+                const meterBarH = 3.6;
                 const meterScaleMax = 1200; // 0 - 1200mm scale
 
                 // Depth spectrum zones: Green (0-400), Yellow (400-800), Red (800-1200)
@@ -1172,37 +1239,68 @@ export const generateInspectionSummaryGraphReport = async (
                 const z2W = meterBarW * (400 / meterScaleMax);
                 const z3W = meterBarW - z1W - z2W;
 
-                doc.setFillColor(187, 247, 208); // light green
-                doc.rect(meterBarX, meterY + 1.5, z1W, meterBarH, "F");
-                doc.setFillColor(254, 240, 138); // light amber
-                doc.rect(meterBarX + z1W, meterY + 1.5, z2W, meterBarH, "F");
-                doc.setFillColor(254, 202, 202); // light red
-                doc.rect(meterBarX + z1W + z2W, meterY + 1.5, z3W, meterBarH, "F");
+                doc.setFillColor(187, 247, 208); // light green (0-400)
+                doc.rect(meterBarX, meterY + 1.2, z1W, meterBarH, "F");
+                doc.setFillColor(254, 240, 138); // light amber (400-800)
+                doc.rect(meterBarX + z1W, meterY + 1.2, z2W, meterBarH, "F");
+                doc.setFillColor(254, 202, 202); // light red (800-1200)
+                doc.rect(meterBarX + z1W + z2W, meterY + 1.2, z3W, meterBarH, "F");
 
-                // Needle/Marker for actual depth
+                // Needle/Marker for min depth if distinct
+                if (minDepthMm > 0 && Math.abs(maxDepthMm - minDepthMm) > 25) {
+                    const minNeedlePct = Math.min(1, minDepthMm / meterScaleMax);
+                    const minNeedleX = meterBarX + (meterBarW * minNeedlePct);
+                    doc.setFillColor(71, 85, 105); // slate for min
+                    doc.rect(minNeedleX - 0.5, meterY + 0.4, 1.0, meterBarH + 1.6, "F");
+                }
+
+                // Needle/Marker for actual maximum depth
                 const needlePct = Math.min(1, maxDepthMm / meterScaleMax);
                 const needleX = meterBarX + (meterBarW * needlePct);
+                doc.setFillColor(...(maxDepthMm > 800 ? colors.red : colors.navy));
+                doc.rect(needleX - 0.8, meterY + 0.2, 1.6, meterBarH + 2.0, "F");
 
-                doc.setFillColor(...colors.navy);
-                doc.rect(needleX - 0.8, meterY + 0.5, 1.6, meterBarH + 2, "F");
-
-                // Depth callout
-                doc.setFontSize(5.5);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(...colors.navy);
-                doc.text(`${Math.round(maxDepthMm)} mm`, bx + bw - 3, meterY, { align: "right" });
-
-                // Bottom findings summary
-                const scourSummaryText = `Findings on ${scourFindings} piles | Safety: Normal`;
-                let sFontSize = 4.3;
-                doc.setFontSize(sFontSize);
+                // Scale ticks & limit markings under bar
+                const labelY = meterY + meterBarH + 3.4;
+                doc.setFontSize(3.6);
                 doc.setFont("helvetica", "normal");
-                while (sFontSize > 3.0 && doc.getTextWidth(scourSummaryText) > (bw - 8)) {
+                doc.setTextColor(...colors.textMuted);
+                doc.text("0", meterBarX, labelY);
+                doc.text("400", meterBarX + z1W, labelY, { align: "center" });
+
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(220, 38, 38);
+                doc.text("800 (Limit)", meterBarX + z1W + z2W, labelY, { align: "center" });
+
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("1200 mm", meterBarX + meterBarW, labelY, { align: "right" });
+
+                // Bottom findings & safety status summary
+                const isAnomaly = maxDepthMm > 800 || Number(exposedPileCount) > 0;
+                const isCaution = maxDepthMm > 400 && !isAnomaly;
+                let scourSummaryText = "";
+
+                if (isAnomaly) {
+                    const locPart = maxLocClean ? ` at ${maxLocClean}` : "";
+                    scourSummaryText = `ANOMALY: Exceeds 800mm limit${locPart} (${Math.round(maxDepthMm)} mm)!`;
+                } else if (isCaution) {
+                    const locPart = maxLocClean ? ` at ${maxLocClean}` : "";
+                    scourSummaryText = `CAUTION: Moderate Scour${locPart} (${Math.round(maxDepthMm)} mm) | Limit: 800mm`;
+                } else {
+                    const locPart = maxLocClean ? ` • Max at ${maxLocClean}` : "";
+                    scourSummaryText = `Findings on ${scourFindings} piles | Safety: Normal (<400mm)${locPart}`;
+                }
+
+                let sFontSize = 4.2;
+                doc.setFontSize(sFontSize);
+                doc.setFont("helvetica", isAnomaly ? "bold" : "normal");
+                while (sFontSize > 2.8 && doc.getTextWidth(scourSummaryText) > (bw - 6)) {
                     sFontSize -= 0.2;
                     doc.setFontSize(sFontSize);
                 }
-                doc.setTextColor(...colors.textMuted);
-                doc.text(scourSummaryText, bx + (bw / 2), graphY + graphH - 2.2, { align: "center" });
+                doc.setTextColor(...(isAnomaly ? colors.red : (isCaution ? colors.amber : colors.textMuted)));
+                doc.text(scourSummaryText, bx + (bw / 2), graphY + graphH - 1.8, { align: "center" });
             }
         });
 

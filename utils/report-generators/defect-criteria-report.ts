@@ -551,15 +551,7 @@ export const generateDefectCriteriaReport = async (
                 margin: { top: 35, bottom: 20, left: 10, right: 10 },
             });
 
-            const procFinalY = (doc as any).lastAutoTable?.finalY ?? currentY;
-
-            // Defect Criteria Specification Report always renders the signatory tables for each procedure (both standalone and compiled in final inspection datasheet)
-            if (procFinalY > sigTopY - 5) {
-                doc.addPage();
-                addHeader(doc.getNumberOfPages());
-            }
-            sigPages.add(doc.getNumberOfPages());
-            drawSignatories();
+            currentY = (doc as any).lastAutoTable?.finalY ?? currentY;
         }
 
         // --- SECTION: Active Marine Growth Inspection (MGI) Profile Settings ---
@@ -710,6 +702,17 @@ export const generateDefectCriteriaReport = async (
                     currentY = (doc as any).lastAutoTable.finalY + 8;
                 }
             }
+        }
+
+        // Draw Signatures block at the end of the report if enabled (standalone report mode; omitted in final datasheet)
+        if (config?.showSignatures !== false && hasContent) {
+            const finalReportY = (doc as any).lastAutoTable?.finalY ?? currentY;
+            if (finalReportY > sigTopY - 5) {
+                doc.addPage();
+                addHeader(doc.getNumberOfPages());
+            }
+            sigPages.add(doc.getNumberOfPages());
+            drawSignatories();
         }
 
         if (!hasContent) {
