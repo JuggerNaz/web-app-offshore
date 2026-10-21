@@ -671,10 +671,14 @@ export const getEffectiveFindings = (r: any, explicitFindings?: string | null): 
     ).toString().trim();
 
     if (isStatusIncomplete) {
-        if (incReason) {
-            return incReason;
+        const hasSubstantiveDesc = Boolean(cleanDesc && cleanDesc !== "No significant findings" && cleanDesc !== "N/A" && cleanDesc !== "—" && cleanDesc !== "-" && cleanDesc !== "None");
+        if (hasSubstantiveDesc && incReason) {
+            return `${cleanDesc}\nIncomplete Reason: ${incReason}`;
         }
-        if (cleanDesc && cleanDesc !== "No significant findings" && cleanDesc !== "N/A" && cleanDesc !== "—" && cleanDesc !== "-") {
+        if (incReason) {
+            return `Incomplete Reason: ${incReason}`;
+        }
+        if (hasSubstantiveDesc) {
             return cleanDesc;
         }
         return "Incomplete";
@@ -812,15 +816,19 @@ export const normalizeRecordFindings = (r: any): any => {
 
     if (isStatusIncomplete) {
         const desc = (r.description ?? r.findings ?? r.remarks ?? inspData.findings ?? inspData.description ?? "").toString().trim();
-        const effectiveText = incReason || (!desc || desc === "No significant findings" || desc === "N/A" || desc === "—" || desc === "-" ? "Incomplete" : desc);
-        inspData.description = effectiveText;
-        inspData.findings = effectiveText;
-        inspData.remarks = effectiveText;
-        inspData.finding = effectiveText;
-        recordCopy.description = effectiveText;
-        recordCopy.findings = effectiveText;
-        recordCopy.remarks = effectiveText;
-        modified = true;
+        const hasSubstantiveDesc = Boolean(desc && desc !== "No significant findings" && desc !== "N/A" && desc !== "—" && desc !== "-" && desc !== "None");
+
+        if (!hasSubstantiveDesc) {
+            const effectiveText = incReason || "Incomplete";
+            inspData.description = effectiveText;
+            inspData.findings = effectiveText;
+            inspData.remarks = effectiveText;
+            inspData.finding = effectiveText;
+            recordCopy.description = effectiveText;
+            recordCopy.findings = effectiveText;
+            recordCopy.remarks = effectiveText;
+            modified = true;
+        }
     }
 
     if (modified) {

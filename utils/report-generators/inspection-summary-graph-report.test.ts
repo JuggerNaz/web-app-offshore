@@ -566,4 +566,351 @@ describe("generateInspectionSummaryGraphReport", () => {
             }
         }
     });
+
+    it("does NOT render MGI THICKNESS PROFILE chart if no MGI inspection data was carried out", async () => {
+        const recordedTexts: string[] = [];
+        const initHook = [
+            "initialized",
+            function (this: any) {
+                const origText = this.text;
+                this.text = function (...args: any[]) {
+                    recordedTexts.push(String(args[0]));
+                    return origText.apply(this, args);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        const testDataWithoutMgi = {
+            ...sampleSummaryData,
+            mgi: {
+                total: 0,
+                totalHardReadings: 0,
+                totalSoftReadings: 0,
+                profileName: "2026 profile",
+                waterDepth: 51,
+                profilePoints: [
+                    { elevation: 0, maxThickness: 127, label: "MSL" },
+                    { elevation: -17, maxThickness: 100, label: "1/4 WD" },
+                    { elevation: -34, maxThickness: 75, label: "1/2 WD" },
+                    { elevation: -51, maxThickness: 25, label: "Mudline" },
+                ],
+                byQid: {},
+                hasProfileGraphData: false
+            }
+        };
+
+        try {
+            await generateInspectionSummaryGraphReport(
+                testDataWithoutMgi,
+                sampleHeader,
+                sampleCompany,
+                { returnBlob: true, sowReportNo: "AM26-016-02" }
+            );
+
+            expect(recordedTexts).not.toContain("MGI THICKNESS PROFILE");
+            expect(recordedTexts).not.toContain("LEG A1");
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
+
+    it("satisfies user instructions: Scour footer safety-only, CP header boxes & footer without logged text, and full task coverage tally", async () => {
+        const recordedTexts: string[] = [];
+        const initHook = [
+            "addPage",
+            function (this: any) {
+                const originalText = this.text;
+                this.text = function (text: any, ...args: any[]) {
+                    if (typeof text === "string") {
+                        recordedTexts.push(text);
+                    } else if (Array.isArray(text)) {
+                        recordedTexts.push(...text);
+                    }
+                    return originalText.apply(this, [text, ...args]);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        const comprehensiveData = {
+            ...sampleSummaryData,
+            sow_summary: [
+                { inspectionName: "General Visual Inspection", totalQid: 941, completedQid: 806, incompleteQid: 135, completionPct: "86%" },
+                { inspectionName: "Conductor Inspection", totalQid: 93, completedQid: 78, incompleteQid: 15, completionPct: "84%" },
+                { inspectionName: "Splash Zone Inspection", totalQid: 20, completedQid: 20, incompleteQid: 0, completionPct: "100%" },
+                { inspectionName: "Scour Inspection", totalQid: 16, completedQid: 16, incompleteQid: 0, completionPct: "100%" },
+                { inspectionName: "Water Depth Inspection", totalQid: 8, completedQid: 8, incompleteQid: 0, completionPct: "100%" },
+                { inspectionName: "Caisson Inspection", totalQid: 4, completedQid: 4, incompleteQid: 0, completionPct: "100%" },
+            ],
+            scour: {
+                total: 8,
+                registeredFaces: 4,
+                facesSurveyed: 4,
+                pilesSurveyed: 8,
+                exposedCount: 0,
+                scourFindingsCount: 4,
+                maxDepthMm: 300,
+                minDepthMm: 100,
+                maxDepthLocation: "Leg : B1",
+                maxAllowableMm: 900,
+            },
+            cp: {
+                primaryCount: 89,
+                additionalCount: 82,
+                totalCount: 171,
+                maxVal: -854,
+                minVal: -1030,
+                minAllowableMv: -1150,
+                maxAllowableMv: -800,
+                nominalMaxMv: -800,
+                criticalMaxMv: -650,
+            },
+        };
+
+        try {
+            await generateInspectionSummaryGraphReport(
+                comprehensiveData,
+                sampleHeader,
+                sampleCompany,
+                { returnBlob: true, sowReportNo: "AM26-016-02" }
+            );
+
+            // 1. Scour Survey block: Footer has Safety details only
+            expect(recordedTexts).toContain("Safety: Normal (<900mm)");
+            expect(recordedTexts.some(t => t.includes("Findings on 4 piles"))).toBe(false);
+
+            // 2. CP block: Header boxes (Total Readings, Min CP, Max CP) and footer without "Readings Logged"
+            expect(recordedTexts).toContain("Total Readings");
+            expect(recordedTexts).toContain("89 Pri, 82 Addl");
+            expect(recordedTexts).toContain("Min CP");
+            expect(recordedTexts).toContain("-1030 mV");
+            expect(recordedTexts).toContain("Max CP");
+            expect(recordedTexts).toContain("-854 mV");
+            expect(recordedTexts).toContain("CRITERIA MET: Safe protection [-1150 to -800 mV]");
+            expect(recordedTexts.some(t => t.includes("Readings Logged"))).toBe(false);
+
+            // 3. Task coverage: All 6 tasks are displayed including Caisson Inspection
+            expect(recordedTexts).toContain("General Visual Inspection");
+            expect(recordedTexts).toContain("Conductor Inspection");
+            expect(recordedTexts).toContain("Splash Zone Inspection");
+            expect(recordedTexts).toContain("Scour Inspection");
+            expect(recordedTexts).toContain("Water Depth Inspection");
+            expect(recordedTexts).toContain("Caisson Inspection");
+
+            // Counts tally: 941 + 93 + 20 + 16 + 8 + 4 = 1082; completed = 806 + 78 + 20 + 16 + 8 + 4 = 932; incomplete = 150
+            expect(recordedTexts).toContain("Tasks: 86% Done (932/1082)");
+            expect(recordedTexts.some(t => t.includes("932 Completed (86%)  •  150 Incomplete (14%)  •  1082 Total Tasks"))).toBe(true);
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
+
+    it("displays Jobpack Name in the top header banner and auto-resizes single mode ROV coverage", async () => {
+        const recordedTexts: string[] = [];
+        const recordedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+        const initHook = [
+            "addPage",
+            function (this: any) {
+                const originalText = this.text;
+                this.text = function (text: any, ...args: any[]) {
+                    if (typeof text === "string") recordedTexts.push(text);
+                    else if (Array.isArray(text)) recordedTexts.push(...text);
+                    return originalText.apply(this, [text, ...args]);
+                };
+                const originalRect = this.rect;
+                this.rect = function (x: any, y: any, w: any, h: any, ...args: any[]) {
+                    recordedRects.push({ x: Number(x), y: Number(y), w: Number(w), h: Number(h) });
+                    return originalRect.apply(this, [x, y, w, h, ...args]);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        try {
+            const rovOnlySummary = {
+                ...sampleSummaryData,
+                jobpackName: "UIMC2026/SKA/PLAT01",
+                sow_summary: [
+                    { inspectionName: "General Visual Inspection", taskType: "ROV", totalQid: 941, completedQid: 806, incompleteQid: 135, completionPct: "86%" },
+                    { inspectionName: "Conductor Inspection", taskType: "ROV", totalQid: 93, completedQid: 78, incompleteQid: 15, completionPct: "84%" },
+                    { inspectionName: "Splash Zone Inspection", taskType: "ROV", totalQid: 20, completedQid: 20, incompleteQid: 0, completionPct: "100%" },
+                    { inspectionName: "Scour Inspection", taskType: "ROV", totalQid: 16, completedQid: 16, incompleteQid: 0, completionPct: "100%" },
+                    { inspectionName: "Water Depth Inspection", taskType: "ROV", totalQid: 8, completedQid: 8, incompleteQid: 0, completionPct: "100%" },
+                    { inspectionName: "Caisson Inspection", taskType: "ROV", totalQid: 4, completedQid: 4, incompleteQid: 0, completionPct: "100%" },
+                ]
+            };
+
+            await generateInspectionSummaryGraphReport(
+                rovOnlySummary,
+                {
+                    platformName: "BODP-A",
+                    fieldName: "BOKOR.",
+                    sowReportNo: "AM26-016-02",
+                    jobpackName: "UIMC2026/SKA/PLAT01"
+                },
+                { company_name: "PETRONAS CARIGALI" },
+                { returnBlob: true, sowReportNo: "AM26-016-02" }
+            );
+
+            // Jobpack Name must be rendered in header banner instead of '--'
+            expect(recordedTexts.some(t => t.includes("UIMC2026/SKA/PLAT01"))).toBe(true);
+            expect(recordedTexts).toContain("Jobpack Name: ");
+
+            // ROV block is rendered
+            expect(recordedTexts).toContain("ROV INSPECTION TASK COVERAGE");
+
+            // Diving was NOT done: Diving task block must NOT be shown!
+            expect(recordedTexts.some(t => t.includes("DIVING TASK COVERAGE") || t.includes("DIVING INSPECTION TASK COVERAGE"))).toBe(false);
+
+            // Single mode block width: Left block is 150mm, Right anomaly block is 123mm
+            const has150w = recordedRects.some(r => Math.abs(r.w - 150) < 0.5);
+            const has123w = recordedRects.some(r => Math.abs(r.w - 123) < 0.5);
+            expect(has150w).toBe(true);
+            expect(has123w).toBe(true);
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
+
+    it("separates ROV and Diving task coverage when both modes are done and auto-resizes columns to 95mm and 75mm", async () => {
+        const recordedTexts: string[] = [];
+        const recordedRects: Array<{ x: number; y: number; w: number; h: number }> = [];
+
+        const initHook = [
+            "addPage",
+            function (this: any) {
+                const originalText = this.text;
+                this.text = function (text: any, ...args: any[]) {
+                    if (typeof text === "string") recordedTexts.push(text);
+                    else if (Array.isArray(text)) recordedTexts.push(...text);
+                    return originalText.apply(this, [text, ...args]);
+                };
+                const originalRect = this.rect;
+                this.rect = function (x: any, y: any, w: any, h: any, ...args: any[]) {
+                    recordedRects.push({ x: Number(x), y: Number(y), w: Number(w), h: Number(h) });
+                    return originalRect.apply(this, [x, y, w, h, ...args]);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        try {
+            const dualModeSummary = {
+                ...sampleSummaryData,
+                jobpackName: "DUAL-MODE-JP-2026",
+                sow_summary: [
+                    // ROV tasks
+                    { inspectionName: "General Visual Inspection (ROV)", taskType: "ROV", totalQid: 500, completedQid: 400, incompleteQid: 100, completionPct: "80%" },
+                    { inspectionName: "Scour Survey (ROV)", taskType: "ROV", totalQid: 20, completedQid: 20, incompleteQid: 0, completionPct: "100%" },
+                    // Diving tasks
+                    { inspectionName: "Splash Zone Inspection (Diving)", taskType: "Diving", totalQid: 50, completedQid: 45, incompleteQid: 5, completionPct: "90%" },
+                    { inspectionName: "Close Visual Inspection (Diving)", taskType: "Diving", totalQid: 30, completedQid: 30, incompleteQid: 0, completionPct: "100%" },
+                ]
+            };
+
+            await generateInspectionSummaryGraphReport(
+                dualModeSummary,
+                {
+                    platformName: "BODP-B",
+                    fieldName: "BOKOR.",
+                    sowReportNo: "DUAL-001",
+                    jobpackName: "DUAL-MODE-JP-2026"
+                },
+                { company_name: "PETRONAS CARIGALI" },
+                { returnBlob: true, sowReportNo: "DUAL-001" }
+            );
+
+            // Both ROV and Diving blocks are rendered separately
+            expect(recordedTexts).toContain("ROV TASK COVERAGE");
+            expect(recordedTexts).toContain("DIVING TASK COVERAGE");
+
+            // Separate completion and incomplete status:
+            // ROV: 420 completed, 100 incomplete, total 520 -> 420/520 = 81%
+            // Diving: 75 completed, 5 incomplete, total 80 -> 75/80 = 94%
+            expect(recordedTexts.some(t => t.includes("420 Comp (81%) • 100 Inc (19%)"))).toBe(true);
+            expect(recordedTexts.some(t => t.includes("75 Comp (94%) • 5 Inc (6%)"))).toBe(true);
+
+            // Row blocks auto-resize: ROV block width = 97mm, Diving block width = 97mm, Anomaly block width = 75mm
+            const has97w = recordedRects.some(r => Math.abs(r.w - 97) < 0.5);
+            const has75w = recordedRects.some(r => Math.abs(r.w - 75) < 0.5);
+            expect(has97w).toBe(true);
+            expect(has75w).toBe(true);
+
+            // Header banner shows jobpack name
+            expect(recordedTexts.some(t => t.includes("DUAL-MODE-JP-2026"))).toBe(true);
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
+
+    it("renders only Diving task coverage when only Diving mode is carried out and hides ROV", async () => {
+        const recordedTexts: string[] = [];
+
+        const initHook = [
+            "addPage",
+            function (this: any) {
+                const originalText = this.text;
+                this.text = function (text: any, ...args: any[]) {
+                    if (typeof text === "string") recordedTexts.push(text);
+                    else if (Array.isArray(text)) recordedTexts.push(...text);
+                    return originalText.apply(this, [text, ...args]);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        try {
+            const diveOnlySummary = {
+                ...sampleSummaryData,
+                jobpackName: "DIVE-ONLY-JP",
+                sow_summary: [
+                    { inspectionName: "Splash Zone Inspection", taskType: "Diving", totalQid: 20, completedQid: 20, incompleteQid: 0, completionPct: "100%" },
+                    { inspectionName: "Close Visual Inspection", taskType: "Diving", totalQid: 10, completedQid: 8, incompleteQid: 2, completionPct: "80%" },
+                ]
+            };
+
+            await generateInspectionSummaryGraphReport(
+                diveOnlySummary,
+                {
+                    platformName: "BODP-C",
+                    fieldName: "BOKOR.",
+                    sowReportNo: "DIVE-002",
+                    jobpackName: "DIVE-ONLY-JP"
+                },
+                { company_name: "PETRONAS CARIGALI" },
+                { returnBlob: true, sowReportNo: "DIVE-002" }
+            );
+
+            // Only Diving block is rendered
+            expect(recordedTexts).toContain("DIVING INSPECTION TASK COVERAGE");
+
+            // ROV was NOT done: ROV block must NOT be rendered
+            expect(recordedTexts.some(t => t.includes("ROV TASK COVERAGE") || t.includes("ROV INSPECTION TASK COVERAGE"))).toBe(false);
+
+            // Diving tasks are rendered
+            expect(recordedTexts).toContain("Splash Zone Inspection");
+            expect(recordedTexts).toContain("Close Visual Inspection");
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
 });
+
+

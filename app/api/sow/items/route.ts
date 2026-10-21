@@ -30,22 +30,37 @@ export const GET = withTenant(async (request, { companyId }) => {
         }
 
         if (sowId) {
-            let query = (supabase as any)
-                .from("u_sow_items")
-                .select("*")
-                .eq("sow_id", sowId);
+            const allItems: any[] = [];
+            let from = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                let query = (supabase as any)
+                    .from("u_sow_items")
+                    .select("*")
+                    .eq("sow_id", sowId);
 
-            if (companyId) {
-                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+                if (companyId) {
+                    query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+                }
+
+                const { data: pageItems, error } = await query
+                    .order("id", { ascending: true })
+                    .range(from, from + PAGE_SIZE - 1);
+
+                if (error) {
+                    return NextResponse.json({ error: error.message }, { status: 400 });
+                }
+
+                if (pageItems && pageItems.length > 0) {
+                    allItems.push(...pageItems);
+                    if (pageItems.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
 
-            const { data, error } = await query.order("component_qid", { ascending: true });
-
-            if (error) {
-                return NextResponse.json({ error: error.message }, { status: 400 });
-            }
-
-            return NextResponse.json({ data });
+            return NextResponse.json({ data: allItems });
         }
 
         return NextResponse.json(

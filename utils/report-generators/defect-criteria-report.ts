@@ -120,17 +120,63 @@ export const generateDefectCriteriaReport = async (
             console.error("Error fetching rules", e);
         }
 
-        // 4. Fetch Active MGI Profiles (Active only)
+        // 4. Fetch MGI Profiles (with multi-tier fallback so MGI details are always printed)
         let activeMgiProfiles: any[] = [];
         try {
-            const mgiRes = await fetch('/api/mgi-profiles');
+            const jpId = config?.jobPackId || (config as any)?.jobPack?.id || (config as any)?.headerData?.jobPackId;
+            const mgiUrl = jpId ? `/api/mgi-profiles?jobpack_id=${jpId}` : '/api/mgi-profiles';
+            const mgiRes = await fetch(mgiUrl);
             if (mgiRes.ok) {
                 const mgiData = await mgiRes.json();
-                const allMgi = Array.isArray(mgiData) ? mgiData : (mgiData.data || []);
-                activeMgiProfiles = allMgi.filter((p: any) => p.is_active && !p.is_archived);
+                const allMgi: any[] = Array.isArray(mgiData) ? mgiData : (mgiData.data || []);
+                
+                // Priority 1: If jobPack specifies an mgi_profile_id, prioritize that profile
+                const jobPackMgiId = (config as any)?.jobPack?.mgi_profile_id || (config as any)?.jobPack?.metadata?.mgi_profile_id;
+                if (jobPackMgiId) {
+                    const matchedJobProf = allMgi.filter((p: any) => Number(p.id) === Number(jobPackMgiId) && !p.is_archived);
+                    if (matchedJobProf.length > 0) {
+                        activeMgiProfiles = matchedJobProf;
+                    }
+                }
+
+                // Priority 2: Any profiles explicitly marked active
+                if (activeMgiProfiles.length === 0) {
+                    activeMgiProfiles = allMgi.filter((p: any) => 
+                        (p.is_active === true || String(p.is_active) === 'true' || p.is_active === 1) && 
+                        !p.is_archived
+                    );
+                }
+
+                // Priority 3: Fallback to the latest/default unarchived configured profile in system settings
+                if (activeMgiProfiles.length === 0 && allMgi.length > 0) {
+                    const unarchived = allMgi.filter((p: any) => !p.is_archived && Array.isArray(p.thresholds) && p.thresholds.length > 0);
+                    if (unarchived.length > 0) {
+                        unarchived.sort((a: any, b: any) => (Number(b.id) || 0) - (Number(a.id) || 0));
+                        activeMgiProfiles = [unarchived[0]];
+                    } else {
+                        activeMgiProfiles = [allMgi[0]];
+                    }
+                }
             }
         } catch (e) {
             console.error("Error fetching MGI profiles", e);
+        }
+
+        // Priority 4: Standard PTS-2023 Specification fallback if no profile was resolved
+        if (activeMgiProfiles.length === 0) {
+            activeMgiProfiles = [
+                {
+                    id: 'pts-standard',
+                    name: "PTS-2023 Standard Profile",
+                    description: "Standard Marine Growth Specification Thresholds",
+                    is_active: true,
+                    thresholds: [
+                        { from_elevation: "MSL", max_thickness: 80 },
+                        { from_elevation: "1/3 WD", max_thickness: 80 },
+                        { from_elevation: "Mudline", max_thickness: 25 }
+                    ]
+                }
+            ];
         }
 
         // Preload logos
@@ -642,8 +688,9 @@ export const generateDefectCriteriaReport = async (
                     } else {
                         rawThresholds.forEach((t: any, idx: number) => {
                             let elevLabel = String(t.from_elevation ?? "-").trim();
-                            if (elevLabel.toUpperCase() === "MSL") elevLabel = "MSL (0.00m)";
+                            if (elevLabel.toUpperCase() === "MSL" || elevLabel === "0" || elevLabel === "0m") elevLabel = "MSL (0.00m)";
                             else if (elevLabel.toUpperCase() === "MUDLINE") elevLabel = "Mudline (Seabed Level)";
+                            else if (elevLabel.toUpperCase().includes("WD")) elevLabel = `${elevLabel.toUpperCase()} (Water Depth)`;
                             else if (!isNaN(Number(elevLabel))) elevLabel = `${Number(elevLabel).toFixed(2)} m`;
 
                             const maxThick = t.max_thickness != null ? `${t.max_thickness} mm` : "N/A";

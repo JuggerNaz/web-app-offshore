@@ -27,6 +27,97 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
     SNAPSHOT: "Snapshot",
 };
 
+export const TASK_NAME_FALLBACKS: Record<string, string> = {
+    NAVIG: "Pipeline Navigation Inspection",
+    RGVI: "ROV General Visual Inspection",
+    RFMD: "Flooded Member Detection",
+    RSEAB: "Seabed Survey",
+    RRISI: "Riser Inspection",
+    RCOND: "Condition Assessment",
+    RSCOR: "Scour / Marine Growth Survey",
+    RMGI: "MGI Wall Thickness Survey",
+    RCPSU: "Cathodic Protection Survey",
+    BSINS: "Bolt Survey",
+    CLEAN: "Cleaning Survey",
+    CPCLB: "CP Calibration",
+    CPSURV: "CP Survey",
+    SZONE: "Splash Zone Survey",
+    RSZCI: "Splash Zone Inspection",
+    DSZCI: "Diving Splash Zone Inspection",
+    UTCLB: "UT Calibration",
+    UTWTK: "UT Wall Thickness",
+    UTWT: "UT Wall Thickness",
+    MGROW: "Marine Growth Survey",
+    PL_AN: "Pipeline Anode Inspection",
+    GVINS: "General Visual Inspection",
+    RISER: "Riser Inspection",
+    DANOD: "Diving Anode Inspection",
+    RANOD: "ROV Anode Inspection",
+    ITMAIN: "Item Maintenance Inspection",
+};
+
+export function getInspectionTaskName(code?: string | null): string {
+    if (!code) return "";
+    const cleanCode = String(code).trim().toUpperCase();
+    if (TASK_NAME_FALLBACKS[cleanCode]) return TASK_NAME_FALLBACKS[cleanCode];
+    return cleanCode;
+}
+
+export function parseTimecodeToSeconds(tc: any): number {
+    if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return -1;
+    if (typeof tc === "number") return tc;
+    const str = String(tc).trim();
+    if (str.includes(":")) {
+        const parts = str.split(":").map(Number);
+        if (parts.length === 3 && parts.every(p => !isNaN(p))) {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+        if (parts.length === 2 && parts.every(p => !isNaN(p))) {
+            return parts[0] * 60 + parts[1];
+        }
+    }
+    const num = Number(str);
+    if (!isNaN(num)) return num;
+    return -1;
+}
+
+export function formatTimecode(tc: any): string {
+    if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return "—";
+    const str = String(tc).trim();
+    if (str.includes(":")) {
+        const parts = str.split(":");
+        if (parts.length === 2) return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+        if (parts.length === 3) return parts.map(p => p.padStart(2, "0")).join(":");
+        return str;
+    }
+    const num = Number(str);
+    if (!isNaN(num) && num >= 0) {
+        const hrs = Math.floor(num / 3600);
+        const mins = Math.floor((num % 3600) / 60);
+        const secs = Math.floor(num % 60);
+        return [hrs, mins, secs].map(v => String(v).padStart(2, "0")).join(":");
+    }
+    return str;
+}
+
+export function formatInspectionDateTime(dateStr?: string | null, timeStr?: string | null): string {
+    if (!dateStr) return "—";
+    let d = dateStr;
+    let t = timeStr || "";
+    if (d.includes("T")) {
+        const parts = d.split("T");
+        d = parts[0];
+        if (!t) t = parts[1];
+    }
+    const [y, m, day] = d.split("-");
+    const formattedDate = (y && m && day) ? `${day.padStart(2, "0")}/${m.padStart(2, "0")}/${y}` : d;
+    if (!t) return formattedDate;
+    const timeClean = t.replace(/Z|[\+\-].*$/, "").trim();
+    const timeParts = timeClean.split(":");
+    const formattedTime = timeParts.length >= 2 ? `${timeParts[0].padStart(2, "0")}:${timeParts[1].padStart(2, "0")}` : timeClean;
+    return `${formattedDate}, ${formattedTime}`;
+}
+
 function friendlyEventType(eventType: string): string {
     if (!eventType) return "—";
     if (EVENT_TYPE_LABELS[eventType]) return EVENT_TYPE_LABELS[eventType];
@@ -63,9 +154,6 @@ export const generateVideoLogReport = async (
     } catch (e) {
         console.error("Error fetching video log data", e);
     }
-
-
-
 
     // ── Logos ────────────────────────────────────────────────────────────────
     let clientLogo: any = null;
@@ -193,11 +281,58 @@ export const generateVideoLogReport = async (
                     if (rawTapes && rawTapes.length > 0) {
                         const rawTapeIds = rawTapes.map((t: any) => t.tape_id);
                         const { data: rawLogs } = await (supabase as any).from("insp_video_logs").select("video_log_id, tape_id, event_type, event_time, timecode_start, tape_counter_start, remarks, inspection_id").in("tape_id", rawTapeIds).order("event_time", { ascending: true });
+                        
                         const lByTape: Record<number, any[]> = {};
                         (rawLogs || []).forEach((l: any) => {
                             if (!lByTape[l.tape_id]) lByTape[l.tape_id] = [];
                             lByTape[l.tape_id].push(l);
                         });
+
+                        // Also fetch insp_records for fallback
+                        try {
+                            const { data: rawInspRecs } = await (supabase as any)
+                                .from("insp_records")
+                                .select("insp_id, tape_id, component_id, inspection_type_code, tape_count_no, description, inspection_date, inspection_time, inspection_data, structure_components:component_id(id, q_id)")
+                                .in("tape_id", rawTapeIds);
+
+                            (rawInspRecs || []).forEach((r: any) => {
+                                const targetTapeId = r.tape_id;
+                                if (!targetTapeId) return;
+                                const rawTc = r.inspection_data?.tape_count_no || r.inspection_data?._meta_timecode || r.tape_count_no;
+                                const timecode = formatTimecode(rawTc);
+                                const dateStr = r.inspection_date || r.inspection_data?.inspection_date || "";
+                                const timeStr = r.inspection_time || r.inspection_data?.inspection_time || "";
+                                const qid = r.structure_components?.q_id || r.inspection_data?.q_id || r.inspection_data?.qid || "";
+                                const taskCode = r.inspection_type_code || "";
+                                const taskName = getInspectionTaskName(taskCode);
+
+                                const inspLog = {
+                                    video_log_id: `insp_${r.insp_id}`,
+                                    tape_id: targetTapeId,
+                                    event_type: "INSPECTION",
+                                    is_inspection: true,
+                                    event_time: dateStr && timeStr ? `${dateStr}T${timeStr}` : (dateStr || ""),
+                                    date_time_display: formatInspectionDateTime(dateStr, timeStr),
+                                    timecode_start: timecode,
+                                    tape_counter_start: r.tape_count_no,
+                                    qid,
+                                    inspection_task: taskName,
+                                    inspection_type_code: taskCode,
+                                    description: r.description,
+                                    remarks: r.description || r.inspection_data?.finding || r.inspection_data?.remarks || "",
+                                    inspection_id: r.insp_id,
+                                    inspection_data: r.inspection_data,
+                                    structure_components: r.structure_components,
+                                    insp_records: r
+                                };
+
+                                if (!lByTape[targetTapeId]) lByTape[targetTapeId] = [];
+                                lByTape[targetTapeId].push(inspLog);
+                            });
+                        } catch (recErr) {
+                            console.warn("[VideoLog] Fallback insp_records fetch failed:", recErr);
+                        }
+
                         tapes = rawTapes.map((t: any) => ({
                             ...t,
                             dive_no: diveMap[t.dive_job_id] || diveMap[t.rov_job_id] || null,
@@ -243,8 +378,21 @@ export const generateVideoLogReport = async (
     let isFirstPage = true;
 
     // ── Per-Tape Groups ──────────────────────────────────────────────────────
-    // Sort tapes by tape_no ascending
+    // Sort tapes by tape_no ascending, keeping chapters in numeric sequence
     const sortedTapes = [...tapes].sort((a, b) => {
+        const an = String(a.tape_no ?? "").toLowerCase();
+        const bn = String(b.tape_no ?? "").toLowerCase();
+
+        // If same tape_no, sort by chapter_no numeric ascending
+        if (an === bn) {
+            const chA = Number(a.chapter_no);
+            const chB = Number(b.chapter_no);
+            if (!isNaN(chA) && !isNaN(chB) && chA !== chB) {
+                return chA - chB;
+            }
+            return String(a.chapter_no ?? "").localeCompare(String(b.chapter_no ?? ""), undefined, { numeric: true });
+        }
+
         const aLogs = a.logs || [];
         const bLogs = b.logs || [];
         
@@ -268,14 +416,29 @@ export const generateVideoLogReport = async (
             return aTime - bTime;
         }
         
-        const an = String(a.tape_no ?? "").toLowerCase();
-        const bn = String(b.tape_no ?? "").toLowerCase();
-        return an < bn ? -1 : an > bn ? 1 : 0;
+        return an.localeCompare(bn, undefined, { numeric: true });
     });
 
     for (let i = 0; i < sortedTapes.length; i++) {
         const tape = sortedTapes[i];
         const logs = [...(tape.logs || [])].sort((a: any, b: any) => {
+            const secA = parseTimecodeToSeconds(a.timecode_start);
+            const secB = parseTimecodeToSeconds(b.timecode_start);
+
+            if (secA !== -1 && secB !== -1 && secA !== secB) {
+                return secA - secB;
+            }
+
+            const isStartA = a.event_type === "NEW_LOG_START" || a.event_type === "START_TAPE";
+            const isStartB = b.event_type === "NEW_LOG_START" || b.event_type === "START_TAPE";
+            if (isStartA && !isStartB) return -1;
+            if (!isStartA && isStartB) return 1;
+
+            const isEndA = a.event_type === "END" || a.event_type === "STOP" || a.event_type === "STOP_TAPE";
+            const isEndB = b.event_type === "END" || b.event_type === "STOP" || b.event_type === "STOP_TAPE";
+            if (isEndA && !isEndB) return 1;
+            if (!isEndA && isEndB) return -1;
+
             const aT = a.event_time ? new Date(a.event_time).getTime() : 0;
             const bT = b.event_time ? new Date(b.event_time).getTime() : 0;
             return aT - bT;
@@ -319,7 +482,7 @@ export const generateVideoLogReport = async (
             tableBody.push([{ content: "No log entries for this tape.", colSpan: 5, styles: {halign: "center", textColor: [100, 100, 100], lineWidth: 0.1, lineColor: [200, 200, 200]} }]);
         } else {
             logs.forEach((log: any, idx: number) => {
-                const eventDateTime = log.event_time
+                const eventDateTime = log.date_time_display || (log.event_time
                     ? (() => {
                         let t = String(log.event_time).trim().replace(" ", "T");
                         if (!t.includes("Z") && !/[\+\-]\d{2}(:\d{2})?$/.test(t)) {
@@ -330,29 +493,54 @@ export const generateVideoLogReport = async (
                             ? "—"
                             : d.toLocaleString("en-GB", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
                     })()
-                    : "—";
+                    : "—");
 
-                const timecode = log.timecode_start || (log.tape_counter_start !== undefined && log.tape_counter_start !== null ? String(log.tape_counter_start) : "—");
-                const action = friendlyEventType(log.event_type || log.action);
+                const timecode = formatTimecode(log.timecode_start ?? log.tape_counter_start);
+                const isInspection = log.event_type === "INSPECTION" || Boolean(log.is_inspection) || Boolean(log.qid) || Boolean(log.inspection_task);
 
-                // Extract any remarks, notes or inspection details
-                const remarkParts: string[] = [];
-                const directRemark = log.remarks ?? log.remark ?? log.notes ?? log.note ?? "";
-                if (directRemark && String(directRemark).trim()) {
-                    remarkParts.push(String(directRemark).trim());
-                }
-                const inspDesc = log.insp_records?.description ?? log.description ?? "";
-                if (inspDesc && String(inspDesc).trim() && !remarkParts.includes(String(inspDesc).trim())) {
-                    remarkParts.push(String(inspDesc).trim());
-                }
-                const inspData = log.insp_records?.inspection_data ?? log.inspection_data ?? {};
-                const dataRemark = inspData.remarks ?? inspData.notes ?? inspData.comment ?? "";
-                if (dataRemark && String(dataRemark).trim() && !remarkParts.includes(String(dataRemark).trim())) {
-                    remarkParts.push(String(dataRemark).trim());
-                }
+                let actionDisplay = "";
 
-                const remarksText = remarkParts.join("\n");
-                const actionDisplay = remarksText ? `${action}\n${remarksText}` : action;
+                if (isInspection) {
+                    const taskCode = log.inspection_type_code || log.insp_records?.inspection_type_code || "";
+                    const taskName = log.inspection_task || getInspectionTaskName(taskCode);
+                    const qid = log.qid || log.structure_components?.q_id || log.insp_records?.structure_components?.q_id || log.inspection_data?.q_id || log.inspection_data?.qid || log.insp_records?.inspection_data?.q_id || log.insp_records?.inspection_data?.qid || "—";
+
+                    const actionHeader = taskCode ? `Inspection (${taskCode})` : "Inspection";
+                    const metaLine = `QID: ${qid}   |   Task: ${taskName || "General Visual Inspection"}`;
+
+                    const remarkParts: string[] = [];
+                    const inspDesc = log.insp_records?.description ?? log.description ?? "";
+                    if (inspDesc && String(inspDesc).trim()) {
+                        remarkParts.push(String(inspDesc).trim());
+                    }
+                    const inspData = log.insp_records?.inspection_data ?? log.inspection_data ?? {};
+                    const dataRemark = inspData.remarks ?? inspData.notes ?? inspData.comments ?? inspData.comment ?? inspData.finding ?? inspData.findings ?? "";
+                    if (dataRemark && String(dataRemark).trim() && !remarkParts.includes(String(dataRemark).trim())) {
+                        remarkParts.push(String(dataRemark).trim());
+                    }
+                    const directRemark = log.remarks ?? log.remark ?? log.notes ?? log.note ?? "";
+                    if (directRemark && String(directRemark).trim() && !remarkParts.includes(String(directRemark).trim())) {
+                        remarkParts.push(String(directRemark).trim());
+                    }
+
+                    const remarksText = remarkParts.join("\n");
+                    actionDisplay = remarksText
+                        ? `${actionHeader}\n${metaLine}\n${remarksText}`
+                        : `${actionHeader}\n${metaLine}`;
+                } else {
+                    const action = friendlyEventType(log.event_type || log.action);
+                    const remarkParts: string[] = [];
+                    const directRemark = log.remarks ?? log.remark ?? log.notes ?? log.note ?? "";
+                    if (directRemark && String(directRemark).trim()) {
+                        remarkParts.push(String(directRemark).trim());
+                    }
+                    const inspDesc = log.insp_records?.description ?? log.description ?? "";
+                    if (inspDesc && String(inspDesc).trim() && !remarkParts.includes(String(inspDesc).trim())) {
+                        remarkParts.push(String(inspDesc).trim());
+                    }
+                    const remarksText = remarkParts.join("\n");
+                    actionDisplay = remarksText ? `${action}\n${remarksText}` : action;
+                }
 
                 tableBody.push([
                     String(idx + 1),

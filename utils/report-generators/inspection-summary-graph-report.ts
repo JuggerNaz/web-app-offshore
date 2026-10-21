@@ -9,6 +9,7 @@ import {
     formatPdfDate, 
     REPORT_FOOTER_APP_TEXT 
 } from "./shared-logo";
+import { getInspectionDateRange } from "./date-range-utils";
 
 export interface CompanySettings {
     company_name?: string;
@@ -281,6 +282,35 @@ export const generateInspectionSummaryGraphReport = async (
             try { contractorLogo = await loadLogoWithTransparency(contractorLogoUrl); } catch (_) {}
         }
 
+        // Comprehensive Jobpack Name Resolution (Config -> HeaderData -> Structure -> SummaryData -> JobPack API Fallback)
+        let jobPackName = (config as any)?.jobpackName || 
+                          (config as any)?.jobPackName || 
+                          (config as any)?.jobpack || 
+                          headerDataOrStructure?.jobpackName || 
+                          headerDataOrStructure?.jobPackName || 
+                          headerDataOrStructure?.jobpack_name || 
+                          headerDataOrStructure?.jobpack || 
+                          jobPackObj?.name || 
+                          jobPackObj?.jobpack_name || 
+                          summaryData?.jobpackName ||
+                          summaryData?.jobpack?.name || 
+                          summaryData?.jobPack?.name || 
+                          summaryData?.jobpackInfo?.name ||
+                          (dataOrJobPack as any)?.jobpackName ||
+                          (dataOrJobPack as any)?.name ||
+                          "";
+
+        if (!jobPackName && jobPackId && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+                if (jpRes.ok) {
+                    const jpData = await jpRes.json();
+                    const jp = jpData?.data || jpData;
+                    if (jp?.name) jobPackName = jp.name;
+                }
+            } catch (_) {}
+        }
+
         // ── 3. Header Drawing Function (Universal Standard 3-Section Header) ─────
         const HEADER_H = 25;
         const HEADER_Y = 7;
@@ -314,7 +344,7 @@ export const generateInspectionSummaryGraphReport = async (
 
         let currentY = HEADER_Y + HEADER_H + 2.5;
 
-        // ── 4. Sub-Header Platform & Depth Banner ────────────────────────────────
+        // ── 4. Sub-Header Scope Banner (Field Name, Structure Name, Jobpack Name, Inspection Date) ──
         const SUB_H = 6.5;
         doc.setDrawColor(...colors.border);
         doc.setLineWidth(0.2);
@@ -324,17 +354,130 @@ export const generateInspectionSummaryGraphReport = async (
         }
         doc.rect(margin, currentY, contentWidth, SUB_H, "S");
 
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.textDark);
-        const facilityLabel = fieldName 
-            ? `${fieldName.toUpperCase()} | ${platformName.toUpperCase()}`
-            : platformName.toUpperCase();
-        doc.text(facilityLabel, margin + 3, currentY + 4.5);
+        // Resolve Jobpack Name
+        if (!jobPackName) {
+            jobPackName = (config as any)?.jobpackName || 
+                          (config as any)?.jobPackName || 
+                          (config as any)?.jobpack || 
+                          headerDataOrStructure?.jobpackName || 
+                          headerDataOrStructure?.jobPackName || 
+                          headerDataOrStructure?.jobpack_name || 
+                          headerDataOrStructure?.jobpack || 
+                          jobPackObj?.name || 
+                          jobPackObj?.jobpack_name || 
+                          summaryData?.jobpackName ||
+                          summaryData?.jobpack?.name || 
+                          summaryData?.jobPack?.name || 
+                          summaryData?.jobpackInfo?.name ||
+                          "";
+        }
 
-        doc.setFont("helvetica", "normal");
-        const depthText = waterDepth ? `${waterDepth} m` : "-- m";
-        doc.text(`Water depth: ${depthText}`, pageWidth - margin - 3, currentY + 4.5, { align: "right" });
+        // Resolve Inspection Date Range (start to end date)
+        let inspDateRangeStr = "";
+        const candidateDate = (config as any)?.dateRange || 
+                             (config as any)?.inspDateRange || 
+                             headerDataOrStructure?.dateRange || 
+                             headerDataOrStructure?.inspDateRange || 
+                             headerDataOrStructure?.date_range ||
+                             headerDataOrStructure?.inspectionDateRange;
+
+        if (candidateDate && typeof candidateDate === "string" && candidateDate.trim() && candidateDate.trim().toUpperCase() !== "N/A") {
+            inspDateRangeStr = candidateDate.trim();
+        } else if (summaryData?.records?.startDate && summaryData?.records?.endDate) {
+            try {
+                const d1 = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy");
+                const d2 = format(new Date(summaryData.records.endDate), "dd-MMM-yyyy");
+                inspDateRangeStr = d1 === d2 ? d1 : `${d1} – ${d2}`;
+            } catch (_) {
+                inspDateRangeStr = `${summaryData.records.startDate} – ${summaryData.records.endDate}`;
+            }
+        } else if (summaryData?.records?.startDate) {
+            try { inspDateRangeStr = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(summaryData.records.startDate); }
+        } else {
+            try {
+                const calc = getInspectionDateRange(
+                    summaryData?.records?.items || summaryData?.records || [],
+                    headerDataOrStructure,
+                    config
+                );
+                if (calc && calc !== "N/A") inspDateRangeStr = calc;
+            } catch (_) {}
+        }
+        if (!inspDateRangeStr || inspDateRangeStr === "N/A") {
+            if (headerDataOrStructure?.inspection_date || headerDataOrStructure?.insp_date || headerDataOrStructure?.date) {
+                const singleD = headerDataOrStructure.inspection_date || headerDataOrStructure.insp_date || headerDataOrStructure.date;
+                try { inspDateRangeStr = format(new Date(singleD), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(singleD); }
+            }
+        }
+
+        const fieldVal = fieldName ? fieldName.toUpperCase() : "--";
+        const structVal = platformName ? platformName.toUpperCase() : "--";
+        const jpVal = jobPackName || "--";
+        const dateVal = inspDateRangeStr || "--";
+
+        let bannerFontSize = 6.8;
+        doc.setFontSize(bannerFontSize);
+        const textY = currentY + 4.5;
+
+        // Left text: Field Name: ...  |  Structure Name: ...
+        const leftParts = [
+            { text: "Field Name: ", bold: true, color: colors.textDark },
+            { text: `${fieldVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Structure Name: ", bold: true, color: colors.textDark },
+            { text: structVal, bold: false, color: colors.navy },
+        ];
+
+        // Right text: Jobpack Name: ...  |  Inspection Date: ...
+        const rightParts = [
+            { text: "Jobpack Name: ", bold: true, color: colors.textDark },
+            { text: `${jpVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Inspection Date: ", bold: true, color: colors.textDark },
+            { text: dateVal, bold: false, color: colors.navy },
+        ];
+
+        // Measure widths and auto-scale font if overall text is wider than available width
+        let totalLeftW = leftParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        let totalRightW = rightParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        while ((totalLeftW + totalRightW) > (contentWidth - 8) && bannerFontSize > 4.8) {
+            bannerFontSize -= 0.3;
+            doc.setFontSize(bannerFontSize);
+            totalLeftW = leftParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+            totalRightW = rightParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+        }
+
+        // Render Left items
+        let curLeftX = margin + 3;
+        leftParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curLeftX, textY);
+            curLeftX += doc.getTextWidth(p.text);
+        });
+
+        // Render Right items
+        let curRightX = pageWidth - margin - 3 - totalRightW;
+        rightParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curRightX, textY);
+            curRightX += doc.getTextWidth(p.text);
+        });
 
         currentY += SUB_H + 2.5;
 
@@ -597,86 +740,17 @@ export const generateInspectionSummaryGraphReport = async (
             }
         };
 
-        // ── 6. Middle Two-Column Section: Visual Coverage & Anomaly Graphs ────────
-        const MID_H = 48;
-        const COL_GAP = 4;
-        const LEFT_COL_W = 150;
-        const RIGHT_COL_W = contentWidth - LEFT_COL_W - COL_GAP; // 119mm
-
-        // --- 6A. LEFT COLUMN: Task Coverage Progress Bars ---
-        const leftX = margin;
-        doc.setDrawColor(...colors.navy);
-        doc.setLineWidth(0.2);
-        if (isPF) {
-            doc.rect(leftX, currentY, LEFT_COL_W, 5.5, "S");
-            doc.setTextColor(...colors.navy);
-        } else {
-            doc.setFillColor(...colors.navy);
-            doc.rect(leftX, currentY, LEFT_COL_W, 5.5, "F");
-            doc.setTextColor(255);
-        }
-        // Parse Task Level Aggregate Statistics
-        const taskStats = summaryData?.tasks || {};
-        const totalRecordTasks = taskStats.total || rec.total || 0;
-        const incompleteRecordTasks = taskStats.incomplete !== undefined ? taskStats.incomplete : (rec.incomplete || 0);
-        const completedRecordTasks = taskStats.completed !== undefined ? taskStats.completed : Math.max(0, totalRecordTasks - incompleteRecordTasks);
-        const overallTaskCompPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
-        const overallTaskIncPct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
-
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "bold");
-        doc.text("INSPECTION TASK COVERAGE", leftX + 3, currentY + 3.8);
-        doc.setFontSize(5.5);
-        doc.setFont("helvetica", "normal");
-        if (!isPF) doc.setTextColor(220, 230, 242);
-        const headerSubtext = totalRecordTasks > 0 
-            ? `Tasks: ${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks})` 
-            : "Completion progress by task";
-        doc.text(headerSubtext, leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
-
-        // Outer box for Left Column
-        const covBoxY = currentY + 5.5;
-        const covBoxH = MID_H - 5.5;
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.15);
-        if (!isPF) {
-            doc.setFillColor(255, 255, 255);
-            doc.rect(leftX, covBoxY, LEFT_COL_W, covBoxH, "F");
-        }
-        doc.rect(leftX, covBoxY, LEFT_COL_W, covBoxH, "S");
-
-        // ── Task Completion Overview Ribbon inside box ──
-        const ribY = covBoxY + 1.2;
-        const ribH = 5.2;
-        doc.setFillColor(248, 250, 252);
-        doc.rect(leftX + 1.5, ribY, LEFT_COL_W - 3, ribH, "F");
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.12);
-        doc.rect(leftX + 1.5, ribY, LEFT_COL_W - 3, ribH, "S");
-
-        doc.setFontSize(5.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.navy);
-        doc.text("TASK LEVEL PROGRESS:", leftX + 3.5, ribY + 3.5);
-
-        doc.setFont("helvetica", "normal");
-        doc.setFontSize(5.2);
-        doc.setTextColor(...colors.textDark);
-        doc.text(`${completedRecordTasks} Completed (${overallTaskCompPct}%)  •  ${incompleteRecordTasks} Incomplete (${overallTaskIncPct}%)  •  ${totalRecordTasks} Total Tasks`, leftX + 44, ribY + 3.5);
-
-        const miniBarW = 20;
-        const miniBarH = 2.6;
-        const miniBarX = leftX + LEFT_COL_W - miniBarW - 4;
-        drawProgressBar(miniBarX, ribY + 1.3, miniBarW, miniBarH, overallTaskCompPct, overallTaskCompPct >= 100 ? colors.teal : colors.navy);
-
-        // Parse Coverage Items
+        // ── 6. Middle Section: Inspection Task Coverage & Anomaly Distribution ────
+        // Parse Coverage Items first to compute accurate scope-level aggregates
         let rawTasks: any[] = [];
         if (sowSummaryList.length > 0) {
             rawTasks = sowSummaryList.map((item: any) => ({
                 name: item.inspectionName || item.name || item.taskType || "Task",
-                total: Number(item.totalQid || 0),
-                completed: Number(item.completedQid || 0),
-                incomplete: Number(item.incompleteQid || 0),
+                mode: item.taskType || item.task_type || item.tasktype || "",
+                code: item.inspectionCode || item.inspection_code || item.code || "",
+                total: Number(item.totalQid !== undefined ? item.totalQid : (item.total || 0)),
+                completed: Number(item.completedQid !== undefined ? item.completedQid : (item.completed || 0)),
+                incomplete: Number(item.incompleteQid !== undefined ? item.incompleteQid : (item.incomplete || 0)),
                 pct: parseFloat(String(item.completionPct || item.completedPct || "0").replace("%", "")) || 0
             }));
         } else {
@@ -685,139 +759,87 @@ export const generateInspectionSummaryGraphReport = async (
             rawTasks = keys.map(k => {
                 const item = breakdown[k];
                 const total = Number(item.count || 0);
-                return { name: item.name || k, total, completed: total, incomplete: 0, pct: 100 };
+                return {
+                    name: item.name || k,
+                    mode: (item.rov > 0 && !item.dive) ? "ROV" : (item.dive > 0 && !item.rov) ? "Diving" : "",
+                    code: k,
+                    total,
+                    completed: total,
+                    incomplete: 0,
+                    pct: 100
+                };
             });
         }
 
         if (rawTasks.length === 0) {
             rawTasks = [
-                { name: "General Visual Inspection (GVI)", total: 180, completed: 180, incomplete: 0, pct: 100 },
-                { name: "Scour Survey Inspection", total: 8, completed: 8, incomplete: 0, pct: 100 },
-                { name: "Splash Zone Inspection (SZI)", total: 8, completed: 8, incomplete: 0, pct: 100 },
-                { name: "Water Depth Measurement", total: 4, completed: 4, incomplete: 0, pct: 100 },
+                { name: "General Visual Inspection (GVI)", mode: "ROV", total: 180, completed: 180, incomplete: 0, pct: 100 },
+                { name: "Scour Survey Inspection", mode: "ROV", total: 8, completed: 8, incomplete: 0, pct: 100 },
+                { name: "Splash Zone Inspection (SZI)", mode: "ROV", total: 8, completed: 8, incomplete: 0, pct: 100 },
+                { name: "Water Depth Measurement", mode: "ROV", total: 4, completed: 4, incomplete: 0, pct: 100 },
             ];
         }
 
-        // Limit to 5 visible tasks to account for the top ribbon
-        const visibleTasks = rawTasks.slice(0, 5);
-        const taskAreaTop = covBoxY + 7.5;
-        const taskAreaH = covBoxH - 11;
-        const taskRowH = taskAreaH / (visibleTasks.length || 1);
+        // Helper to categorize task by inspection mode (ROV vs Diving)
+        const getTaskMode = (t: any): "ROV" | "Diving" => {
+            const m = String(t.mode || "").trim().toUpperCase();
+            if (m === "ROV") return "ROV";
+            if (m === "DIVING" || m === "DIVE") return "Diving";
 
-        visibleTasks.forEach((t, tIdx) => {
-            const rowY = taskAreaTop + (tIdx * taskRowH);
-            
-            // Task Name
-            doc.setFontSize(5.8);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.textDark);
-            let nameStr = t.name;
-            if (doc.getTextWidth(nameStr) > 46) {
-                while (nameStr.length > 3 && doc.getTextWidth(nameStr + "...") > 46) {
-                    nameStr = nameStr.slice(0, -1);
-                }
-                nameStr += "...";
-            }
-            doc.text(nameStr, leftX + 3, rowY + 3.0);
+            const name = String(t.name || "").trim().toUpperCase();
+            const code = String(t.code || "").trim().toUpperCase();
 
-            // Graphical Progress Bar
-            const barX = leftX + 50;
-            const barW = 58;
-            const barH = 3.4;
-            const pctVal = t.total > 0 ? Math.min(100, Math.round((t.completed / t.total) * 100)) : (t.pct || 0);
-            drawProgressBar(barX, rowY + 0.8, barW, barH, pctVal, pctVal >= 100 ? colors.teal : colors.navy);
+            if (name.includes("(ROV)") || name.startsWith("ROV ") || name.includes("ROV")) return "ROV";
+            if (name.includes("(DIVING)") || name.startsWith("DIVING ") || name.includes("DIVER") || name.includes("DIVING")) return "Diving";
 
-            // Counts text
-            doc.setFontSize(5.2);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textMuted);
-            const countStr = t.incomplete > 0 
-                ? `${t.completed}/${t.total} (${t.incomplete} inc)` 
-                : `${t.completed}/${t.total} QIDs`;
-            doc.text(countStr, barX + barW + 2.5, rowY + 3.0);
+            if (code.startsWith("R") && code !== "RISER" && code !== "RB") return "ROV";
+            if (code.startsWith("D") && code !== "DEBRIS" && code !== "DK") return "Diving";
+            if (["BSINS", "CVINS", "ACFMC", "MPINS", "SZONE", "SANI", "ANMAIN"].includes(code)) return "Diving";
 
-            // Percentage pill badge
-            const badgeX = leftX + LEFT_COL_W - 14;
-            const badgeW = 11;
-            const badgeH = 3.8;
-            doc.setFillColor(pctVal >= 100 ? 240 : 241, pctVal >= 100 ? 253 : 245, pctVal >= 100 ? 244 : 249);
-            doc.roundedRect(badgeX, rowY + 0.5, badgeW, badgeH, 1, 1, "F");
-            doc.setDrawColor(pctVal >= 100 ? 187 : 203, pctVal >= 100 ? 247 : 213, pctVal >= 100 ? 208 : 225);
-            doc.setLineWidth(0.1);
-            doc.roundedRect(badgeX, rowY + 0.5, badgeW, badgeH, 1, 1, "S");
+            if (summaryData?.sow?.rov?.total > 0 && (!summaryData?.sow?.dive?.total || summaryData.sow.dive.total === 0)) return "ROV";
+            if (summaryData?.sow?.dive?.total > 0 && (!summaryData?.sow?.rov?.total || summaryData.sow.rov.total === 0)) return "Diving";
 
-            doc.setFontSize(5.2);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...(pctVal >= 100 ? colors.emerald : (pctVal > 0 ? colors.navy : colors.amber)));
-            doc.text(`${pctVal}%`, badgeX + (badgeW / 2), rowY + 3.0, { align: "center" });
+            return "ROV";
+        };
 
-            // Dividing line between tasks
-            if (tIdx < visibleTasks.length - 1) {
-                doc.setDrawColor(...colors.border);
-                doc.setLineWidth(0.08);
-                doc.line(leftX + 2, rowY + taskRowH, leftX + LEFT_COL_W - 2, rowY + taskRowH);
-            }
-        });
+        const rovTasks = rawTasks.filter(t => getTaskMode(t) === "ROV");
+        const diveTasks = rawTasks.filter(t => getTaskMode(t) === "Diving");
 
-        // Bottom legend
-        const legY = covBoxY + covBoxH - 2.5;
-        doc.setFontSize(4.8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...colors.textMuted);
-        doc.setFillColor(...colors.teal);
-        doc.rect(leftX + 3, legY - 2, 2.2, 2.2, "F");
-        doc.text("Completed Tasks / QIDs", leftX + 6.5, legY);
-        doc.setFillColor(...colors.barTrack);
-        doc.rect(leftX + 42, legY - 2, 2.2, 2.2, "F");
-        doc.text("Remaining / Incomplete Tasks", leftX + 45.5, legY);
+        const hasRovTasks = rovTasks.length > 0 && (rovTasks.some(t => t.total > 0) || (summaryData?.sow?.rov?.total || 0) > 0);
+        const hasDiveTasks = diveTasks.length > 0 && (diveTasks.some(t => t.total > 0) || (summaryData?.sow?.dive?.total || 0) > 0);
 
-        // --- 6B. RIGHT COLUMN: Anomaly Severity Donut & Defect Ranking Bars ---
-        const rightX = leftX + LEFT_COL_W + COL_GAP;
-        doc.setDrawColor(...colors.navy);
-        doc.setLineWidth(0.2);
-        if (isPF) {
-            doc.rect(rightX, currentY, RIGHT_COL_W, 5.5, "S");
-            doc.setTextColor(...colors.navy);
+        // Conditional display: If both inspection modes have tasks, show both ROV and Diving separately.
+        // If either one of the inspection modes is NOT done, do NOT show that task and its list!
+        const hasBothTaskModes = hasRovTasks && hasDiveTasks;
+
+        // Auto-resize height based on the number of inspection tasks
+        const maxTasksCount = hasBothTaskModes 
+            ? Math.max(rovTasks.length, diveTasks.length) 
+            : (hasRovTasks ? rovTasks.length : (hasDiveTasks ? diveTasks.length : rawTasks.length));
+
+        const computedMidH = 19.0 + (maxTasksCount * 5.4);
+        const MID_H = Math.min(68, Math.max(48, Math.round(computedMidH * 10) / 10));
+        const COL_GAP = 4;
+
+        let rovColW = 0;
+        let diveColW = 0;
+        let anomalyColW = 0;
+
+        if (hasBothTaskModes) {
+            rovColW = 97;
+            diveColW = 97;
+            anomalyColW = contentWidth - rovColW - diveColW - (2 * COL_GAP); // 277 - 194 - 8 = 75mm
         } else {
-            doc.setFillColor(...colors.navy);
-            doc.rect(rightX, currentY, RIGHT_COL_W, 5.5, "F");
-            doc.setTextColor(255);
+            const singleTaskColW = 150;
+            if (hasRovTasks || !hasDiveTasks) {
+                rovColW = singleTaskColW;
+            } else {
+                diveColW = singleTaskColW;
+            }
+            anomalyColW = contentWidth - singleTaskColW - COL_GAP; // 277 - 150 - 4 = 123mm
         }
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "bold");
-        doc.text("ANOMALY DISTRIBUTION", rightX + 3, currentY + 3.8);
-        doc.setFontSize(6);
-        doc.setFont("helvetica", "normal");
-        if (!isPF) doc.setTextColor(220, 230, 242);
-        doc.text("Priority donut & defect ranking", rightX + RIGHT_COL_W - 3, currentY + 3.8, { align: "right" });
 
-        // Outer box for Right Column
-        const anomBoxY = currentY + 5.5;
-        const anomBoxH = covBoxH;
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.15);
-        if (!isPF) {
-            doc.setFillColor(255, 255, 255);
-            doc.rect(rightX, anomBoxY, RIGHT_COL_W, anomBoxH, "F");
-        }
-        doc.rect(rightX, anomBoxY, RIGHT_COL_W, anomBoxH, "S");
-
-        // Parse Priorities
-        const prioMap = anomalies.byPriority || {};
-        const p1 = Number(prioMap["Priority 1"] ?? prioMap["P1"] ?? 0);
-        const p2 = Number(prioMap["Priority 2"] ?? prioMap["P2"] ?? 0);
-        const p3 = Number(prioMap["Priority 3"] ?? prioMap["P3"] ?? 0);
-        const obs = Number(prioMap["Observation"] ?? prioMap["OBS"] ?? 0);
-
-        let rectifiedVal = anomalies?.rectified ?? anomalies?.rectifiedCount;
-        if (rectifiedVal === undefined && Array.isArray(anomalies?.items)) {
-            rectifiedVal = anomalies.items.filter((i: any) => 
-                String(i.status || "").toUpperCase() === "CLOSED" || i.is_rectified === true || i.rectified === true
-            ).length;
-        }
-        const rectifiedCount = Number(rectifiedVal || 0);
-
-        // ── Priority Colors from Library (u_lib_combo ANMLYCLR: P1=Red, P2=Yellow, P3=Green, Obs=Orange)
+        // Load Priority Colors from Library
         const libraryPrioColors: Record<string, [number, number, number]> = {
             p1: [220, 38, 38],           // 255,000,000 (Red)
             "priority 1": [220, 38, 38],
@@ -893,168 +915,583 @@ export const generateInspectionSummaryGraphReport = async (
             return [100, 116, 139];
         };
 
-        const colP1 = getPrioColor("P1");
-        const colP2 = getPrioColor("P2");
-        const colP3 = getPrioColor("P3");
-        const colObs = getPrioColor("OBSERVATION");
-
-        // Sub-block 1 (Left 50mm): PRIORITY SEVERITY DONUT CHART
-        const donutCenterX = rightX + 24;
-        const donutCenterY = anomBoxY + 15.5;
-        const outerR = 12;
-        const innerR = 7;
-
-        drawDonutChart(donutCenterX, donutCenterY, outerR, innerR, [
-            { value: p1, color: colP1 },
-            { value: p2, color: colP2 },
-            { value: p3, color: colP3 },
-            { value: obs, color: colObs },
-        ], true);
-
-        // Donut Center Text: Total Anomalies
-        const totalAnom = p1 + p2 + p3 + obs;
-        doc.setFontSize(8.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.navy);
-        doc.text(String(totalAnom), donutCenterX, donutCenterY + 1.2, { align: "center" });
-        doc.setFontSize(4.5);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...colors.textMuted);
-        doc.text("TOTAL", donutCenterX, donutCenterY + 4, { align: "center" });
-
-        // Donut Legend: 2x2 grid with count and percentage
-        const p1Pct = totalAnom > 0 ? Math.round((p1 / totalAnom) * 100) : 0;
-        const p2Pct = totalAnom > 0 ? Math.round((p2 / totalAnom) * 100) : 0;
-        const p3Pct = totalAnom > 0 ? Math.round((p3 / totalAnom) * 100) : 0;
-        const obsPct = totalAnom > 0 ? Math.round((obs / totalAnom) * 100) : 0;
-
-        const pItems = [
-            { label: "P1", count: p1, pct: p1Pct, color: colP1 },
-            { label: "P2", count: p2, pct: p2Pct, color: colP2 },
-            { label: "P3", count: p3, pct: p3Pct, color: colP3 },
-            { label: "Obs", count: obs, pct: obsPct, color: colObs },
-        ];
-
-        // Row 1: P1 & P2
-        const legRow1Y = anomBoxY + 31.0;
-        const legRow2Y = anomBoxY + 35.0;
-
-        // P1
-        doc.setFillColor(...pItems[0].color);
-        doc.rect(rightX + 4, legRow1Y - 2, 2.2, 2.2, "F");
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.1);
-        doc.rect(rightX + 4, legRow1Y - 2, 2.2, 2.2, "S");
-        doc.setFontSize(4.6);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.textDark);
-        doc.text(`P1: ${p1} (${p1Pct}%)`, rightX + 7, legRow1Y - 0.3);
-
-        // P2
-        doc.setFillColor(...pItems[1].color);
-        doc.rect(rightX + 26, legRow1Y - 2, 2.2, 2.2, "F");
-        doc.rect(rightX + 26, legRow1Y - 2, 2.2, 2.2, "S");
-        doc.text(`P2: ${p2} (${p2Pct}%)`, rightX + 29, legRow1Y - 0.3);
-
-        // Row 2: P3 & Obs
-        // P3
-        doc.setFillColor(...pItems[2].color);
-        doc.rect(rightX + 4, legRow2Y - 2, 2.2, 2.2, "F");
-        doc.rect(rightX + 4, legRow2Y - 2, 2.2, 2.2, "S");
-        doc.text(`P3: ${p3} (${p3Pct}%)`, rightX + 7, legRow2Y - 0.3);
-
-        // Obs
-        doc.setFillColor(...pItems[3].color);
-        doc.rect(rightX + 26, legRow2Y - 2, 2.2, 2.2, "F");
-        doc.rect(rightX + 26, legRow2Y - 2, 2.2, 2.2, "S");
-        doc.text(`Obs: ${obs} (${obsPct}%)`, rightX + 29, legRow2Y - 0.3);
-
-        // Rectified Status Badge
-        doc.setFillColor(240, 253, 244);
-        doc.roundedRect(rightX + 4, anomBoxY + 39.5, 43, 4.2, 1, 1, "F");
-        doc.setDrawColor(187, 247, 208);
-        doc.setLineWidth(0.1);
-        doc.roundedRect(rightX + 4, anomBoxY + 39.5, 43, 4.2, 1, 1, "S");
-        doc.setFontSize(4.8);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.emerald);
-        doc.text(`Rectified Anomalies: ${rectifiedCount}`, rightX + 25.5, anomBoxY + 42.4, { align: "center" });
-
-        // Vertical divider between Donut and Defect bars
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.1);
-        doc.line(rightX + 50, anomBoxY, rightX + 50, anomBoxY + anomBoxH);
-
-        // Sub-block 2 (Right ~69mm): DEFECT CRITERIA RANKING BARS
-        const defectX = rightX + 50;
-        doc.setFontSize(5.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.navy);
-        doc.text("DEFECT CRITERIA RANKING", defectX + 2, anomBoxY + 4.2);
-
-        doc.setFontSize(4.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.textMuted);
-        doc.text("COUNT (%)", rightX + RIGHT_COL_W - 3, anomBoxY + 4.2, { align: "right" });
-
-        const defectMap = anomalies.byDefectType || {};
-        const defectList = [
-            { code: "AW", label: "Anode wastage (AW)" },
-            { code: "CP", label: "Cathodic potential (CP)" },
-            { code: "DB", label: "Debris (DB)" },
-            { code: "LI", label: "Lack of integrity (LI)" },
-            { code: "PD", label: "Physical damage (PD)" },
-            { code: "SC", label: "Scour (SC)" },
-            { code: "VS", label: "Variation to spec (VS)" },
-        ];
-
-        const getDefectCount = (code: string): number => {
-            if (defectMap[code] !== undefined) return Number(defectMap[code]) || 0;
-            for (const [k, v] of Object.entries(defectMap)) {
-                if (k.toUpperCase() === code.toUpperCase()) return Number(v) || 0;
+        // Render Task Coverage Block (usable for ROV, Diving, or Single Combined)
+        const renderTaskCoverageBlock = (bx: number, by: number, bw: number, bh: number, title: string, tasks: any[], modeKey: "ROV" | "Diving" | "ALL") => {
+            doc.setDrawColor(...colors.navy);
+            doc.setLineWidth(0.2);
+            if (isPF) {
+                doc.rect(bx, by, bw, 5.5, "S");
+                doc.setTextColor(...colors.navy);
+            } else {
+                doc.setFillColor(...colors.navy);
+                doc.rect(bx, by, bw, 5.5, "F");
+                doc.setTextColor(255);
             }
-            return 0;
+
+            const sumRawTotal = tasks.reduce((acc, t) => acc + (t.total || 0), 0);
+            const sumRawCompleted = tasks.reduce((acc, t) => acc + (t.completed || 0), 0);
+            const sumRawIncomplete = tasks.reduce((acc, t) => acc + (t.incomplete || 0), 0);
+
+            let totalRecordTasks = sumRawTotal;
+            let completedRecordTasks = sumRawCompleted;
+            let incompleteRecordTasks = sumRawIncomplete;
+
+            if (modeKey === "ROV" && summaryData?.sow?.rov?.total > 0 && sumRawTotal === 0) {
+                totalRecordTasks = summaryData.sow.rov.total;
+                completedRecordTasks = summaryData.sow.rov.completed;
+                incompleteRecordTasks = summaryData.sow.rov.incomplete;
+            } else if (modeKey === "Diving" && summaryData?.sow?.dive?.total > 0 && sumRawTotal === 0) {
+                totalRecordTasks = summaryData.sow.dive.total;
+                completedRecordTasks = summaryData.sow.dive.completed;
+                incompleteRecordTasks = summaryData.sow.dive.incomplete;
+            } else if (modeKey === "ALL" && sumRawTotal === 0) {
+                const taskStats = summaryData?.tasks || {};
+                totalRecordTasks = taskStats.total || rec.total || 0;
+                incompleteRecordTasks = taskStats.incomplete !== undefined ? taskStats.incomplete : (rec.incomplete || 0);
+                completedRecordTasks = taskStats.completed !== undefined ? taskStats.completed : Math.max(0, totalRecordTasks - incompleteRecordTasks);
+            }
+
+            const overallTaskCompPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+            const overallTaskIncPct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
+            const isWide = bw >= 120;
+            doc.setFontSize(isWide ? 7.5 : 6.4);
+            doc.setFont("helvetica", "bold");
+            doc.text(title, bx + 3, by + 3.8);
+
+            doc.setFontSize(isWide ? 5.5 : 4.8);
+            doc.setFont("helvetica", "normal");
+            if (!isPF) doc.setTextColor(220, 230, 242);
+            const headerSubtext = totalRecordTasks > 0 
+                ? (isWide ? `Tasks: ${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks})` : `${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks})`)
+                : "Completion progress";
+            doc.text(headerSubtext, bx + bw - 3, by + 3.8, { align: "right" });
+
+            // Outer box for Column
+            const covBoxY = by + 5.5;
+            const covBoxH = bh - 5.5;
+            doc.setDrawColor(...colors.border);
+            doc.setLineWidth(0.15);
+            if (!isPF) {
+                doc.setFillColor(255, 255, 255);
+                doc.rect(bx, covBoxY, bw, covBoxH, "F");
+            }
+            doc.rect(bx, covBoxY, bw, covBoxH, "S");
+
+            // Task Completion Overview Ribbon inside box
+            const ribY = covBoxY + 1.2;
+            const ribH = 5.2;
+            doc.setFillColor(248, 250, 252);
+            doc.rect(bx + 1.5, ribY, bw - 3, ribH, "F");
+            doc.setDrawColor(...colors.border);
+            doc.setLineWidth(0.12);
+            doc.rect(bx + 1.5, ribY, bw - 3, ribH, "S");
+
+            if (isWide) {
+                doc.setFontSize(5.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("TASK LEVEL PROGRESS:", bx + 3.5, ribY + 3.5);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(5.2);
+                doc.setTextColor(...colors.textDark);
+                doc.text(`${completedRecordTasks} Completed (${overallTaskCompPct}%)  •  ${incompleteRecordTasks} Incomplete (${overallTaskIncPct}%)  •  ${totalRecordTasks} Total Tasks`, bx + 44, ribY + 3.5);
+
+                const miniBarW = 20;
+                const miniBarH = 2.6;
+                const miniBarX = bx + bw - miniBarW - 4;
+                drawProgressBar(miniBarX, ribY + 1.3, miniBarW, miniBarH, overallTaskCompPct, overallTaskCompPct >= 100 ? colors.teal : colors.navy);
+            } else {
+                doc.setFontSize(4.8);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("PROGRESS:", bx + 2.5, ribY + 3.5);
+
+                doc.setFont("helvetica", "normal");
+                doc.setFontSize(4.5);
+                doc.setTextColor(...colors.textDark);
+                doc.text(`${completedRecordTasks} Comp (${overallTaskCompPct}%) • ${incompleteRecordTasks} Inc (${overallTaskIncPct}%)`, bx + 23, ribY + 3.5);
+
+                const miniBarW = 15;
+                const miniBarH = 2.4;
+                const miniBarX = bx + bw - miniBarW - 2.5;
+                drawProgressBar(miniBarX, ribY + 1.4, miniBarW, miniBarH, overallTaskCompPct, overallTaskCompPct >= 100 ? colors.teal : colors.navy);
+            }
+
+            // Tasks rows
+            const visibleTasks = tasks;
+            const taskAreaTop = covBoxY + 7.5;
+            const taskAreaH = covBoxH - 11;
+            const numTasks = visibleTasks.length || 1;
+            const taskRowH = taskAreaH / numTasks;
+            const barH = Math.min(3.4, Math.max(2.0, taskRowH * 0.58));
+            const badgeH = Math.min(3.8, Math.max(2.4, taskRowH * 0.68));
+            const fontSize = Math.min(5.8, Math.max(4.0, taskRowH * (isWide ? 1.05 : 0.95)));
+            const subFontSize = Math.min(5.2, Math.max(3.6, taskRowH * (isWide ? 0.95 : 0.85)));
+
+            visibleTasks.forEach((t, tIdx) => {
+                const rowY = taskAreaTop + (tIdx * taskRowH);
+                const rowMidY = rowY + (taskRowH / 2);
+                const pctVal = t.total > 0 ? Math.min(100, Math.round((t.completed / t.total) * 100)) : (t.pct || 0);
+
+                if (isWide) {
+                    // Task Name
+                    doc.setFontSize(fontSize);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...colors.textDark);
+                    let nameStr = t.name;
+                    if (doc.getTextWidth(nameStr) > 46) {
+                        while (nameStr.length > 3 && doc.getTextWidth(nameStr + "...") > 46) {
+                            nameStr = nameStr.slice(0, -1);
+                        }
+                        nameStr += "...";
+                    }
+                    doc.text(nameStr, bx + 3, rowMidY + (fontSize * 0.18));
+
+                    // Progress bar
+                    const barX = bx + 50;
+                    const barW = 58;
+                    drawProgressBar(barX, rowMidY - (barH / 2), barW, barH, pctVal, pctVal >= 100 ? colors.teal : colors.navy);
+
+                    // Counts text
+                    doc.setFontSize(subFontSize);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    const countStr = t.incomplete > 0 
+                        ? `${t.completed}/${t.total} (${t.incomplete} inc)` 
+                        : `${t.completed}/${t.total} QIDs`;
+                    doc.text(countStr, barX + barW + 2.5, rowMidY + (subFontSize * 0.18));
+
+                    // Percentage pill badge
+                    const badgeX = bx + bw - 14;
+                    const badgeW = 11;
+                    doc.setFillColor(pctVal >= 100 ? 240 : 241, pctVal >= 100 ? 253 : 245, pctVal >= 100 ? 244 : 249);
+                    doc.roundedRect(badgeX, rowMidY - (badgeH / 2), badgeW, badgeH, 0.8, 0.8, "F");
+                    doc.setDrawColor(pctVal >= 100 ? 187 : 203, pctVal >= 100 ? 247 : 213, pctVal >= 100 ? 208 : 225);
+                    doc.setLineWidth(0.1);
+                    doc.roundedRect(badgeX, rowMidY - (badgeH / 2), badgeW, badgeH, 0.8, 0.8, "S");
+
+                    doc.setFontSize(subFontSize);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...(pctVal >= 100 ? colors.emerald : (pctVal > 0 ? colors.navy : colors.amber)));
+                    doc.text(`${pctVal}%`, badgeX + (badgeW / 2), rowMidY + (subFontSize * 0.18), { align: "center" });
+                } else {
+                    // Compact 95mm column layout
+                    // Task Name (max 32mm)
+                    doc.setFontSize(fontSize);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...colors.textDark);
+                    let nameStr = t.name;
+                    if (doc.getTextWidth(nameStr) > 32) {
+                        while (nameStr.length > 3 && doc.getTextWidth(nameStr + "...") > 32) {
+                            nameStr = nameStr.slice(0, -1);
+                        }
+                        nameStr += "...";
+                    }
+                    doc.text(nameStr, bx + 2.5, rowMidY + (fontSize * 0.18));
+
+                    // Progress bar (width 26mm at bx + 36)
+                    const barX = bx + 36;
+                    const barW = 26;
+                    drawProgressBar(barX, rowMidY - (barH / 2), barW, barH, pctVal, pctVal >= 100 ? colors.teal : colors.navy);
+
+                    // Counts text (compact)
+                    doc.setFontSize(subFontSize);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    const countStr = t.incomplete > 0 ? `${t.completed}/${t.total} (${t.incomplete}i)` : `${t.completed}/${t.total}`;
+                    doc.text(countStr, barX + barW + 1.5, rowMidY + (subFontSize * 0.18));
+
+                    // Percentage badge
+                    const badgeX = bx + bw - 11.5;
+                    const badgeW = 9.5;
+                    doc.setFillColor(pctVal >= 100 ? 240 : 241, pctVal >= 100 ? 253 : 245, pctVal >= 100 ? 244 : 249);
+                    doc.roundedRect(badgeX, rowMidY - (badgeH / 2), badgeW, badgeH, 0.8, 0.8, "F");
+                    doc.setDrawColor(pctVal >= 100 ? 187 : 203, pctVal >= 100 ? 247 : 213, pctVal >= 100 ? 208 : 225);
+                    doc.setLineWidth(0.1);
+                    doc.roundedRect(badgeX, rowMidY - (badgeH / 2), badgeW, badgeH, 0.8, 0.8, "S");
+
+                    doc.setFontSize(subFontSize);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...(pctVal >= 100 ? colors.emerald : (pctVal > 0 ? colors.navy : colors.amber)));
+                    doc.text(`${pctVal}%`, badgeX + (badgeW / 2), rowMidY + (subFontSize * 0.18), { align: "center" });
+                }
+
+                // Dividing line
+                if (tIdx < visibleTasks.length - 1) {
+                    doc.setDrawColor(...colors.border);
+                    doc.setLineWidth(0.08);
+                    doc.line(bx + 2, rowY + taskRowH, bx + bw - 2, rowY + taskRowH);
+                }
+            });
+
+            // Legend at bottom
+            const legY = covBoxY + covBoxH - 2.5;
+            doc.setFontSize(isWide ? 4.8 : 4.2);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(...colors.textMuted);
+            doc.setFillColor(...colors.teal);
+            doc.rect(bx + (isWide ? 3 : 2.5), legY - 2, 2.2, 2.2, "F");
+            doc.text(isWide ? "Completed Tasks / QIDs" : "Completed", bx + (isWide ? 6.5 : 5.5), legY);
+            doc.setFillColor(...colors.barTrack);
+            doc.rect(bx + (isWide ? 42 : 32), legY - 2, 2.2, 2.2, "F");
+            doc.text(isWide ? "Remaining / Incomplete Tasks" : "Incomplete", bx + (isWide ? 45.5 : 35), legY);
         };
 
-        // Sort descending by count to immediately reveal highest ranking defect types
-        const sortedDefectList = defectList
-            .map(d => ({ ...d, count: getDefectCount(d.code) }))
-            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-
-        const maxDefectCount = Math.max(1, ...sortedDefectList.map(d => d.count));
-        const dRowH = (anomBoxH - 7.5) / sortedDefectList.length;
-
-        sortedDefectList.forEach((d, dIdx) => {
-            const dy = anomBoxY + 6.5 + (dIdx * dRowH);
-            const val = d.count;
-            const dPctOfTot = totalAnom > 0 ? Math.round((val / totalAnom) * 100) : 0;
-
-            // Label
-            doc.setFontSize(4.8);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textDark);
-            doc.text(d.label, defectX + 2, dy + 2.4);
-
-            // Progress bar
-            const dBarX = defectX + 29;
-            const dBarW = 21;
-            const dBarH = 2.8;
-            const dPct = (val / maxDefectCount) * 100;
-
-            doc.setFillColor(...colors.barTrack);
-            doc.roundedRect(dBarX, dy + 0.3, dBarW, dBarH, 0.8, 0.8, "F");
-            if (val > 0) {
+        // Render Anomaly Distribution Block
+        const renderAnomalyBlock = (bx: number, by: number, bw: number, bh: number) => {
+            doc.setDrawColor(...colors.navy);
+            doc.setLineWidth(0.2);
+            if (isPF) {
+                doc.rect(bx, by, bw, 5.5, "S");
+                doc.setTextColor(...colors.navy);
+            } else {
                 doc.setFillColor(...colors.navy);
-                const fillW = Math.max(1.5, (dBarW * dPct) / 100);
-                doc.roundedRect(dBarX, dy + 0.3, fillW, dBarH, 0.8, 0.8, "F");
+                doc.rect(bx, by, bw, 5.5, "F");
+                doc.setTextColor(255);
             }
+            const isWide = bw >= 100;
+            doc.setFontSize(isWide ? 7.5 : 6.4);
+            doc.setFont("helvetica", "bold");
+            doc.text("ANOMALY DISTRIBUTION", bx + 3, by + 3.8);
+            doc.setFontSize(isWide ? 6.0 : 4.8);
+            doc.setFont("helvetica", "normal");
+            if (!isPF) doc.setTextColor(220, 230, 242);
+            doc.text(isWide ? "Priority donut & defect ranking" : "Priority & defect ranking", bx + bw - 3, by + 3.8, { align: "right" });
 
-            // Count and percentage clearly visible beside bar, right-aligned to card edge
-            doc.setFontSize(4.8);
-            doc.setFont("helvetica", val > 0 ? "bold" : "normal");
-            doc.setTextColor(...(val > 0 ? colors.navy : colors.textMuted));
-            doc.text(`${val} (${dPctOfTot}%)`, rightX + RIGHT_COL_W - 3, dy + 2.4, { align: "right" });
-        });
+            // Outer box
+            const anomBoxY = by + 5.5;
+            const anomBoxH = bh - 5.5;
+            doc.setDrawColor(...colors.border);
+            doc.setLineWidth(0.15);
+            if (!isPF) {
+                doc.setFillColor(255, 255, 255);
+                doc.rect(bx, anomBoxY, bw, anomBoxH, "F");
+            }
+            doc.rect(bx, anomBoxY, bw, anomBoxH, "S");
+
+            // Parse Priorities
+            const prioMap = anomalies.byPriority || {};
+            const p1 = Number(prioMap["Priority 1"] ?? prioMap["P1"] ?? 0);
+            const p2 = Number(prioMap["Priority 2"] ?? prioMap["P2"] ?? 0);
+            const p3 = Number(prioMap["Priority 3"] ?? prioMap["P3"] ?? 0);
+            const obs = Number(prioMap["Observation"] ?? prioMap["OBS"] ?? 0);
+
+            let rectifiedVal = anomalies?.rectified ?? anomalies?.rectifiedCount;
+            if (rectifiedVal === undefined && Array.isArray(anomalies?.items)) {
+                rectifiedVal = anomalies.items.filter((i: any) => 
+                    String(i.status || "").toUpperCase() === "CLOSED" || i.is_rectified === true || i.rectified === true
+                ).length;
+            }
+            const rectifiedCount = Number(rectifiedVal || 0);
+
+            const colP1 = getPrioColor("P1");
+            const colP2 = getPrioColor("P2");
+            const colP3 = getPrioColor("P3");
+            const colObs = getPrioColor("OBSERVATION");
+
+            const totalAnom = p1 + p2 + p3 + obs;
+            const p1Pct = totalAnom > 0 ? Math.round((p1 / totalAnom) * 100) : 0;
+            const p2Pct = totalAnom > 0 ? Math.round((p2 / totalAnom) * 100) : 0;
+            const p3Pct = totalAnom > 0 ? Math.round((p3 / totalAnom) * 100) : 0;
+            const obsPct = totalAnom > 0 ? Math.round((obs / totalAnom) * 100) : 0;
+
+            if (isWide) {
+                // 119mm layout
+                const donutCenterX = bx + 25;
+                const donutCenterY = anomBoxY + 14.2;
+                const outerR = 11.0;
+                const innerR = 6.5;
+
+                drawDonutChart(donutCenterX, donutCenterY, outerR, innerR, [
+                    { value: p1, color: colP1 },
+                    { value: p2, color: colP2 },
+                    { value: p3, color: colP3 },
+                    { value: obs, color: colObs },
+                ], true);
+
+                doc.setFontSize(8.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text(String(totalAnom), donutCenterX, donutCenterY + 1.1, { align: "center" });
+                doc.setFontSize(4.5);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("TOTAL", donutCenterX, donutCenterY + 3.8, { align: "center" });
+
+                const pItems = [
+                    { label: "P1", count: p1, pct: p1Pct, color: colP1 },
+                    { label: "P2", count: p2, pct: p2Pct, color: colP2 },
+                    { label: "P3", count: p3, pct: p3Pct, color: colP3 },
+                    { label: "Obs", count: obs, pct: obsPct, color: colObs },
+                ];
+
+                const legRow1Y = anomBoxY + 28.5;
+                const legRow2Y = anomBoxY + 32.2;
+
+                // P1
+                doc.setFillColor(...pItems[0].color);
+                doc.rect(bx + 4, legRow1Y - 1.8, 2.0, 2.0, "F");
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.1);
+                doc.rect(bx + 4, legRow1Y - 1.8, 2.0, 2.0, "S");
+                doc.setFontSize(4.6);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.textDark);
+                doc.text(`P1: ${p1} (${p1Pct}%)`, bx + 7, legRow1Y - 0.2);
+
+                // P2
+                doc.setFillColor(...pItems[1].color);
+                doc.rect(bx + 26, legRow1Y - 1.8, 2.0, 2.0, "F");
+                doc.rect(bx + 26, legRow1Y - 1.8, 2.0, 2.0, "S");
+                doc.text(`P2: ${p2} (${p2Pct}%)`, bx + 29, legRow1Y - 0.2);
+
+                // P3
+                doc.setFillColor(...pItems[2].color);
+                doc.rect(bx + 4, legRow2Y - 1.8, 2.0, 2.0, "F");
+                doc.rect(bx + 4, legRow2Y - 1.8, 2.0, 2.0, "S");
+                doc.text(`P3: ${p3} (${p3Pct}%)`, bx + 7, legRow2Y - 0.2);
+
+                // Obs
+                doc.setFillColor(...pItems[3].color);
+                doc.rect(bx + 26, legRow2Y - 1.8, 2.0, 2.0, "F");
+                doc.rect(bx + 26, legRow2Y - 1.8, 2.0, 2.0, "S");
+                doc.text(`Obs: ${obs} (${obsPct}%)`, bx + 29, legRow2Y - 0.2);
+
+                // Rectified badge
+                const rectPillY = anomBoxY + 35.5;
+                const rectPillH = 4.0;
+                doc.setFillColor(240, 253, 244);
+                doc.roundedRect(bx + 3.5, rectPillY, 43, rectPillH, 1, 1, "F");
+                doc.setDrawColor(187, 247, 208);
+                doc.setLineWidth(0.1);
+                doc.roundedRect(bx + 3.5, rectPillY, 43, rectPillH, 1, 1, "S");
+                doc.setFontSize(4.8);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.emerald);
+                doc.text(`Rectified Anomalies: ${rectifiedCount}`, bx + 25, rectPillY + (rectPillH / 2) + 0.9, { align: "center" });
+
+                // Vertical divider
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.1);
+                doc.line(bx + 50, anomBoxY, bx + 50, anomBoxY + anomBoxH);
+
+                // Defect ranking
+                const defectX = bx + 50;
+                doc.setFontSize(5.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("DEFECT CRITERIA RANKING", defectX + 2, anomBoxY + 4.2);
+
+                doc.setFontSize(4.5);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("COUNT (%)", bx + bw - 3, anomBoxY + 4.2, { align: "right" });
+
+                const defectMap = anomalies.byDefectType || {};
+                const defectList = [
+                    { code: "AW", label: "Anode wastage (AW)" },
+                    { code: "CP", label: "Cathodic potential (CP)" },
+                    { code: "DB", label: "Debris (DB)" },
+                    { code: "LI", label: "Lack of integrity (LI)" },
+                    { code: "PD", label: "Physical damage (PD)" },
+                    { code: "SC", label: "Scour (SC)" },
+                    { code: "VS", label: "Variation to spec (VS)" },
+                ];
+
+                const getDefectCount = (code: string): number => {
+                    if (defectMap[code] !== undefined) return Number(defectMap[code]) || 0;
+                    for (const [k, v] of Object.entries(defectMap)) {
+                        if (k.toUpperCase() === code.toUpperCase()) return Number(v) || 0;
+                    }
+                    return 0;
+                };
+
+                const sortedDefectList = defectList
+                    .map(d => ({ ...d, count: getDefectCount(d.code) }))
+                    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+                const maxDefectCount = Math.max(1, ...sortedDefectList.map(d => d.count));
+                const dRowH = (anomBoxH - 7.5) / sortedDefectList.length;
+
+                sortedDefectList.forEach((d, dIdx) => {
+                    const dy = anomBoxY + 6.5 + (dIdx * dRowH);
+                    const val = d.count;
+                    const dPctOfTot = totalAnom > 0 ? Math.round((val / totalAnom) * 100) : 0;
+
+                    doc.setFontSize(4.8);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textDark);
+                    doc.text(d.label, defectX + 2, dy + 2.4);
+
+                    const dBarX = defectX + 29;
+                    const dBarW = 21;
+                    const dBarH = 2.8;
+                    const dPct = (val / maxDefectCount) * 100;
+
+                    doc.setFillColor(...colors.barTrack);
+                    doc.roundedRect(dBarX, dy + 0.3, dBarW, dBarH, 0.8, 0.8, "F");
+                    if (val > 0) {
+                        doc.setFillColor(...colors.navy);
+                        const fillW = Math.max(1.5, (dBarW * dPct) / 100);
+                        doc.roundedRect(dBarX, dy + 0.3, fillW, dBarH, 0.8, 0.8, "F");
+                    }
+
+                    doc.setFontSize(4.8);
+                    doc.setFont("helvetica", val > 0 ? "bold" : "normal");
+                    doc.setTextColor(...(val > 0 ? colors.navy : colors.textMuted));
+                    doc.text(`${val} (${dPctOfTot}%)`, bx + bw - 3, dy + 2.4, { align: "right" });
+                });
+            } else {
+                // Compact 75mm layout for dual mode
+                const donutCenterX = bx + 15.0;
+                const donutCenterY = anomBoxY + 11.5;
+                const outerR = 8.5;
+                const innerR = 4.8;
+
+                drawDonutChart(donutCenterX, donutCenterY, outerR, innerR, [
+                    { value: p1, color: colP1 },
+                    { value: p2, color: colP2 },
+                    { value: p3, color: colP3 },
+                    { value: obs, color: colObs },
+                ], true);
+
+                doc.setFontSize(7.0);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text(String(totalAnom), donutCenterX, donutCenterY + 1.0, { align: "center" });
+                doc.setFontSize(3.8);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("TOTAL", donutCenterX, donutCenterY + 3.2, { align: "center" });
+
+                const legRow1Y = anomBoxY + 23.0;
+                const legRow2Y = anomBoxY + 26.5;
+
+                // P1
+                doc.setFillColor(...colP1);
+                doc.rect(bx + 2.5, legRow1Y - 1.6, 1.8, 1.8, "F");
+                doc.setFontSize(4.2);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.textDark);
+                doc.text(`P1: ${p1}`, bx + 5.0, legRow1Y - 0.2);
+
+                // P2
+                doc.setFillColor(...colP2);
+                doc.rect(bx + 16.5, legRow1Y - 1.6, 1.8, 1.8, "F");
+                doc.text(`P2: ${p2}`, bx + 19.0, legRow1Y - 0.2);
+
+                // P3
+                doc.setFillColor(...colP3);
+                doc.rect(bx + 2.5, legRow2Y - 1.6, 1.8, 1.8, "F");
+                doc.text(`P3: ${p3}`, bx + 5.0, legRow2Y - 0.2);
+
+                // Obs
+                doc.setFillColor(...colObs);
+                doc.rect(bx + 16.5, legRow2Y - 1.6, 1.8, 1.8, "F");
+                doc.text(`Obs: ${obs}`, bx + 19.0, legRow2Y - 0.2);
+
+                // Rectified pill
+                const rectPillY = anomBoxY + 29.5;
+                const rectPillH = 3.6;
+                doc.setFillColor(240, 253, 244);
+                doc.roundedRect(bx + 2.0, rectPillY, 26.5, rectPillH, 0.8, 0.8, "F");
+                doc.setDrawColor(187, 247, 208);
+                doc.setLineWidth(0.1);
+                doc.roundedRect(bx + 2.0, rectPillY, 26.5, rectPillH, 0.8, 0.8, "S");
+                doc.setFontSize(4.0);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.emerald);
+                doc.text(`Rectified: ${rectifiedCount}`, bx + 15.2, rectPillY + (rectPillH / 2) + 0.8, { align: "center" });
+
+                // Vertical divider
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.1);
+                doc.line(bx + 30.5, anomBoxY, bx + 30.5, anomBoxY + anomBoxH);
+
+                // Defect ranking in remaining 44.5mm
+                const defectX = bx + 30.5;
+                doc.setFontSize(5.0);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("DEFECTS", defectX + 2, anomBoxY + 3.8);
+
+                doc.setFontSize(4.0);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("CNT (%)", bx + bw - 2.5, anomBoxY + 3.8, { align: "right" });
+
+                const defectMap = anomalies.byDefectType || {};
+                const defectList = [
+                    { code: "AW", label: "AW (Anode)" },
+                    { code: "CP", label: "CP (Cathodic)" },
+                    { code: "DB", label: "DB (Debris)" },
+                    { code: "LI", label: "LI (Integrity)" },
+                    { code: "PD", label: "PD (Damage)" },
+                    { code: "SC", label: "SC (Scour)" },
+                    { code: "VS", label: "VS (Spec)" },
+                ];
+
+                const getDefectCount = (code: string): number => {
+                    if (defectMap[code] !== undefined) return Number(defectMap[code]) || 0;
+                    for (const [k, v] of Object.entries(defectMap)) {
+                        if (k.toUpperCase() === code.toUpperCase()) return Number(v) || 0;
+                    }
+                    return 0;
+                };
+
+                const sortedDefectList = defectList
+                    .map(d => ({ ...d, count: getDefectCount(d.code) }))
+                    .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+                const maxDefectCount = Math.max(1, ...sortedDefectList.map(d => d.count));
+                const dRowH = (anomBoxH - 6.5) / sortedDefectList.length;
+
+                sortedDefectList.forEach((d, dIdx) => {
+                    const dy = anomBoxY + 5.5 + (dIdx * dRowH);
+                    const val = d.count;
+                    const dPctOfTot = totalAnom > 0 ? Math.round((val / totalAnom) * 100) : 0;
+
+                    doc.setFontSize(4.2);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textDark);
+                    doc.text(d.label, defectX + 2, dy + 2.2);
+
+                    const dBarX = defectX + 19;
+                    const dBarW = 12;
+                    const dBarH = 2.4;
+                    const dPct = (val / maxDefectCount) * 100;
+
+                    doc.setFillColor(...colors.barTrack);
+                    doc.roundedRect(dBarX, dy + 0.3, dBarW, dBarH, 0.6, 0.6, "F");
+                    if (val > 0) {
+                        doc.setFillColor(...colors.navy);
+                        const fillW = Math.max(1.2, (dBarW * dPct) / 100);
+                        doc.roundedRect(dBarX, dy + 0.3, fillW, dBarH, 0.6, 0.6, "F");
+                    }
+
+                    doc.setFontSize(4.2);
+                    doc.setFont("helvetica", val > 0 ? "bold" : "normal");
+                    doc.setTextColor(...(val > 0 ? colors.navy : colors.textMuted));
+                    doc.text(`${val} (${dPctOfTot}%)`, bx + bw - 2.5, dy + 2.2, { align: "right" });
+                });
+            }
+        };
+
+        // Render Section 6 Blocks
+        if (hasBothTaskModes) {
+            renderTaskCoverageBlock(margin, currentY, rovColW, MID_H, "ROV TASK COVERAGE", rovTasks, "ROV");
+            renderTaskCoverageBlock(margin + rovColW + COL_GAP, currentY, diveColW, MID_H, "DIVING TASK COVERAGE", diveTasks, "Diving");
+            renderAnomalyBlock(margin + rovColW + diveColW + (2 * COL_GAP), currentY, anomalyColW, MID_H);
+        } else {
+            if (hasRovTasks || !hasDiveTasks) {
+                renderTaskCoverageBlock(margin, currentY, rovColW, MID_H, "ROV INSPECTION TASK COVERAGE", rovTasks, "ROV");
+            } else {
+                renderTaskCoverageBlock(margin, currentY, diveColW, MID_H, "DIVING INSPECTION TASK COVERAGE", diveTasks, "Diving");
+            }
+            renderAnomalyBlock(margin + (rovColW || diveColW) + COL_GAP, currentY, anomalyColW, MID_H);
+        }
 
         currentY += MID_H + 3.5;
 
@@ -1308,9 +1745,8 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.text(ar.label, bx + 3, textY);
 
                     const barX = bx + 16;
-                    const barW = bw - 32;
+                    const barW = bw - 26;
                     const pct = (ar.count / maxAnodeDep) * 100;
-                    const pctOfTot = totAnodeCount > 0 ? Math.round((ar.count / totAnodeCount) * 100) : 0;
 
                     doc.setFillColor(...colors.barTrack);
                     doc.roundedRect(barX, dySafe(barY), barW, barH, 0.8, 0.8, "F");
@@ -1323,28 +1759,29 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.setFontSize(4.8);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(...colors.textDark);
-                    doc.text(`${ar.count} (${pctOfTot}%)`, bx + bw - 3, textY, { align: "right" });
+                    doc.text(String(ar.count), bx + bw - 3, textY, { align: "right" });
                 });
 
-                // Actionable offshore integrity advice: concise wording with >75% count only
-                const isRetrofitNeeded = d75 > 0;
-                doc.setFillColor(isRetrofitNeeded ? 254 : 240, isRetrofitNeeded ? 243 : 253, isRetrofitNeeded ? 199 : 244);
+                // Bottom health spectrum pill as shown in pic1: Anode Health: <pct>% (<50% dep.)
+                const totAnodesForHealth = totalAnodes || totAnodeCount || 1;
+                const healthPct = Math.round(((d0 + d25) / totAnodesForHealth) * 100);
+
+                doc.setFillColor(248, 250, 252);
                 const pillH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
                 doc.roundedRect(bx + 3, graphY + graphH - pillH - 1.2, bw - 6, pillH, 1, 1, "F");
 
-                const aAdviceStr = isRetrofitNeeded
-                    ? `Retrofit Planning: ${d75} Anodes (>75% Dep.)`
-                    : `All Anodes ≤75% Depleted (Serviceable)`;
+                const aHealthStr = `Anode Health: ${healthPct}% (<50% dep.)`;
 
                 let aFontSize = 4.4;
                 doc.setFontSize(aFontSize);
                 doc.setFont("helvetica", "bold");
-                while (aFontSize > 3.0 && doc.getTextWidth(aAdviceStr) > (bw - 8)) {
+                while (aFontSize > 3.0 && doc.getTextWidth(aHealthStr) > (bw - 8)) {
                     aFontSize -= 0.2;
                     doc.setFontSize(aFontSize);
                 }
-                doc.setTextColor(...(isRetrofitNeeded ? colors.amber : colors.emerald));
-                doc.text(aAdviceStr, bx + (bw / 2), graphY + graphH - 1.2 - (pillH / 2) + 1.0, { align: "center" });
+                // >=70% emerald (healthy), 50-69% amber (caution, matching pic1 63%), <50% red
+                doc.setTextColor(...(healthPct >= 70 ? colors.emerald : (healthPct >= 50 ? colors.amber : colors.red)));
+                doc.text(aHealthStr, bx + (bw / 2), graphY + graphH - 1.2 - (pillH / 2) + 1.0, { align: "center" });
             }
         });
 
@@ -1398,7 +1835,7 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFontSize(4.3);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
-                doc.text("Faces Surv.", bx + 2 + (gW / 2) - 0.5, gaugeY + 3.2, { align: "center" });
+                doc.text("Faces Survey", bx + 2 + (gW / 2) - 0.5, gaugeY + 3.2, { align: "center" });
                 doc.setFontSize(6);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
@@ -1410,7 +1847,7 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFontSize(4.3);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
-                doc.text("Piles Surv.", bx + 2 + (gW * 1.5) - 0.5, gaugeY + 3.2, { align: "center" });
+                doc.text("Piles Survey", bx + 2 + (gW * 1.5) - 0.5, gaugeY + 3.2, { align: "center" });
                 doc.setFontSize(6);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
@@ -1446,8 +1883,9 @@ export const generateInspectionSummaryGraphReport = async (
                 );
 
                 // Scour Depth Visual Spectrum Meter - Centered in middle
-                const bottomTextY = graphY + graphH - 2.0;
-                const availMiddle = (bottomTextY - 3.0) - (gaugeY + gaugeH);
+                const scourBadgeH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
+                const scourBadgeY = graphY + graphH - scourBadgeH - 1.5;
+                const availMiddle = (scourBadgeY - 1.0) - (gaugeY + gaugeH);
                 const meterBarH = Math.min(4.8, Math.max(3.6, graphH * 0.08));
                 const meterSectionH = 3.5 + meterBarH + 3.6;
                 const meterTopY = gaugeY + gaugeH + Math.max(1.0, (availMiddle - meterSectionH) / 2);
@@ -1535,27 +1973,26 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setTextColor(...colors.textMuted);
                 doc.text(`${meterScaleMax} mm`, meterBarX + meterBarW, labelY, { align: "right" });
 
-                // Bottom findings & safety status summary
+                // Bottom Safety status summary badge with background color (Pic 1)
                 const isAnomaly = maxDepthMm > scourLimit || Number(exposedPileCount) > 0;
-                let scourSummaryText = "";
+                const safetyBg: [number, number, number] = isAnomaly ? [254, 242, 242] : [240, 253, 244];
+                const safetyTextColor: [number, number, number] = isAnomaly ? colors.red : colors.emerald;
+                const safetyText = isAnomaly 
+                    ? `Safety: Anomaly - Exceeds ${scourLimit}mm limit` 
+                    : `Safety: Normal (<${scourLimit}mm)`;
 
-                if (isAnomaly) {
-                    const locPart = maxLocClean ? ` at ${maxLocClean}` : "";
-                    scourSummaryText = `ANOMALY: Exceeds ${scourLimit}mm limit${locPart} (Max: ${Math.round(maxDepthMm)} mm)!`;
-                } else {
-                    const locPart = maxLocClean ? ` • Max at ${maxLocClean}` : "";
-                    scourSummaryText = `Findings on ${scourFindings} piles | Safety: Normal (<${scourLimit}mm)${locPart}`;
-                }
+                doc.setFillColor(...safetyBg);
+                doc.roundedRect(bx + 3, scourBadgeY, bw - 6, scourBadgeH, 1, 1, "F");
 
-                let sFontSize = 4.2;
+                let sFontSize = 4.4;
                 doc.setFontSize(sFontSize);
-                doc.setFont("helvetica", isAnomaly ? "bold" : "normal");
-                while (sFontSize > 2.8 && doc.getTextWidth(scourSummaryText) > (bw - 6)) {
+                doc.setFont("helvetica", "bold");
+                while (sFontSize > 2.8 && doc.getTextWidth(safetyText) > (bw - 8)) {
                     sFontSize -= 0.2;
                     doc.setFontSize(sFontSize);
                 }
-                doc.setTextColor(...(isAnomaly ? colors.red : colors.textMuted));
-                doc.text(scourSummaryText, bx + (bw / 2), bottomTextY, { align: "center" });
+                doc.setTextColor(...safetyTextColor);
+                doc.text(safetyText, bx + (bw / 2), scourBadgeY + (scourBadgeH / 2) + 1.0, { align: "center" });
             }
         });
 
@@ -1596,19 +2033,51 @@ export const generateInspectionSummaryGraphReport = async (
                     // 3. Critical Max Limit (P1 Critical Under-protection): -650 mV
                     const cpCriticalMax = Number(cp?.criticalMaxMv || defectCriteria?.cp?.criticalMaxMv || -650);
 
-                    // Top Callouts: Min, Counts (Primary + Addl), and Max
-                    doc.setFontSize(4.8);
-                    doc.setFont("helvetica", "bold");
-                    doc.setTextColor(13, 148, 136); // Teal for Min
-                    doc.text(`Min: ${minV} mV`, bx + 3, graphY + 4.2);
+                    // Top 3 Header Gauges / Boxes (Total Readings Taken, Min CP, Max CP - Pic 2)
+                    const cpGaugeY = graphY + 2.5;
+                    const cpGaugeH = Math.min(10.5, Math.max(8.5, graphH * 0.22));
+                    const cpGW = (bw - 6) / 3;
 
+                    // Box 1: Total Readings Taken (Normal CP and Additional CP)
+                    doc.setFillColor(241, 245, 249);
+                    doc.roundedRect(bx + 2, cpGaugeY, cpGW - 1, cpGaugeH, 1, 1, "F");
+                    doc.setFontSize(3.9);
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textMuted);
-                    doc.text(`Readings: ${totCp} (${primaryCount} Pri, ${additionalCount} Addl)`, bx + (bw / 2), graphY + 4.2, { align: "center" });
-
+                    doc.text("Total Readings", bx + 2 + (cpGW / 2) - 0.5, cpGaugeY + 2.8, { align: "center" });
+                    doc.setFontSize(5.8);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...(maxV > cpNominalMax ? colors.red : colors.navy));
-                    doc.text(`Max: ${maxV} mV`, bx + bw - 3, graphY + 4.2, { align: "right" });
+                    doc.setTextColor(...colors.navy);
+                    doc.text(String(totCp), bx + 2 + (cpGW / 2) - 0.5, cpGaugeY + 6.0, { align: "center" });
+                    doc.setFontSize(3.3);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text(`${primaryCount} Pri, ${additionalCount} Addl`, bx + 2 + (cpGW / 2) - 0.5, cpGaugeY + cpGaugeH - 1.2, { align: "center" });
+
+                    // Box 2: Min CP
+                    doc.setFillColor(241, 245, 249);
+                    doc.roundedRect(bx + 2 + cpGW, cpGaugeY, cpGW - 1, cpGaugeH, 1, 1, "F");
+                    doc.setFontSize(3.9);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("Min CP", bx + 2 + (cpGW * 1.5) - 0.5, cpGaugeY + 3.0, { align: "center" });
+                    doc.setFontSize(5.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(13, 148, 136); // Teal for Min
+                    doc.text(`${minV} mV`, bx + 2 + (cpGW * 1.5) - 0.5, cpGaugeY + cpGaugeH - 2.0, { align: "center" });
+
+                    // Box 3: Max CP
+                    const isMaxAnom = maxV > cpNominalMax;
+                    doc.setFillColor(isMaxAnom ? 254 : 241, isMaxAnom ? 242 : 245, isMaxAnom ? 242 : 249);
+                    doc.roundedRect(bx + 2 + (cpGW * 2), cpGaugeY, cpGW - 1, cpGaugeH, 1, 1, "F");
+                    doc.setFontSize(3.9);
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...(isMaxAnom ? colors.red : colors.textMuted));
+                    doc.text("Max CP", bx + 2 + (cpGW * 2.5) - 0.5, cpGaugeY + 3.0, { align: "center" });
+                    doc.setFontSize(5.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...(isMaxAnom ? colors.red : colors.navy));
+                    doc.text(`${maxV} mV`, bx + 2 + (cpGW * 2.5) - 0.5, cpGaugeY + cpGaugeH - 2.0, { align: "center" });
 
                     // Wide spectrum bar scale to provide clean margins preventing label overlap
                     const vMinScale = Math.min(-1250, Math.floor((minV - 50) / 50) * 50);
@@ -1619,10 +2088,10 @@ export const generateInspectionSummaryGraphReport = async (
                     const meterW = bw - 8;
                     const badgeH = Math.min(5.6, Math.max(4.6, graphH * 0.11));
                     const badgeY = graphY + graphH - badgeH - 1.5;
-                    const availMiddle = badgeY - (graphY + 6.0);
+                    const availMiddle = badgeY - (cpGaugeY + cpGaugeH);
                     const meterH = Math.min(6.5, Math.max(4.8, graphH * 0.11));
                     const meterSectionH = 3.2 + meterH + 3.4;
-                    const meterY = graphY + 6.0 + 3.2 + Math.max(0.5, (availMiddle - meterSectionH) / 2);
+                    const meterY = cpGaugeY + cpGaugeH + Math.max(0.5, (availMiddle - meterSectionH) / 2);
 
                     // Allowable limit coordinates on scale
                     const minCritX = meterX + (meterW * ((cpMinAllowable - vMinScale) / vRange));
@@ -1728,7 +2197,7 @@ export const generateInspectionSummaryGraphReport = async (
                     let statusTextColor: [number, number, number] = colors.emerald;
 
                     if (isSafe) {
-                        statusStr = `CRITERIA MET: Safe protection [${cpMinAllowable} to ${cpNominalMax} mV] (${totCp} Readings Logged)`;
+                        statusStr = `CRITERIA MET: Safe protection [${cpMinAllowable} to ${cpNominalMax} mV]`;
                         statusBg = [240, 253, 244];
                         statusTextColor = colors.emerald;
                     } else if (isCriticalDefect) {
@@ -1744,7 +2213,7 @@ export const generateInspectionSummaryGraphReport = async (
                         statusBg = [254, 242, 242];
                         statusTextColor = colors.red;
                     } else {
-                        statusStr = `Readings: ${totCp} Logged (${primaryCount} Pri, ${additionalCount} Addl) | Range: ${minV} to ${maxV} mV`;
+                        statusStr = `Protection Status: Range ${minV} to ${maxV} mV`;
                         statusBg = [241, 245, 249];
                         statusTextColor = colors.textDark;
                     }
@@ -1848,12 +2317,9 @@ export const generateInspectionSummaryGraphReport = async (
         }
 
         // 7F. Task Block: Marine Growth Profile & Effective Thickness Line Graph
-        const thkStats = mgi?.thickness || {};
+        // Only include MGI thickness chart if actual inspection data by QID was carried out
         const hasMgiProfileData = Boolean(
-            mgi?.hasProfileGraphData ||
-            (mgi?.byQid && Object.keys(mgi.byQid).length > 0) ||
-            (mgi?.profilePoints && mgi.profilePoints.length > 0) ||
-            thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)
+            mgi?.byQid && Object.values(mgi.byQid).some((arr: any) => Array.isArray(arr) && arr.length > 0)
         );
 
         if (hasMgiProfileData) {
@@ -1863,6 +2329,9 @@ export const generateInspectionSummaryGraphReport = async (
                 subtitle: mgi?.profileName ? `Profile: ${mgi.profileName}` : "Effective thk vs elev",
                 isDone: true,
                 render: (bx, by, bw, bh) => {
+                    const qidMap: Record<string, Array<{ elevation: number; effectiveThickness: number; limit?: number; isAnomaly?: boolean }>> = mgi?.byQid || {};
+                    if (Object.keys(qidMap).length === 0) return;
+
                     const profileTitle = mgi?.profileName ? `Profile: ${mgi.profileName}` : "Effective thk vs elev";
                     drawBlockHeader(bx, by, bw, "MGI THICKNESS PROFILE", profileTitle);
 
@@ -1912,22 +2381,6 @@ export const generateInspectionSummaryGraphReport = async (
                         });
                     }
                     profPts.sort((a, b) => b.elevation - a.elevation);
-
-                    // 2. QID Readings: Effective Thickness vs Elevation
-                    let qidMap: Record<string, Array<{ elevation: number; effectiveThickness: number; limit?: number; isAnomaly?: boolean }>> = {};
-                    if (mgi?.byQid && Object.keys(mgi.byQid).length > 0) {
-                        qidMap = mgi.byQid;
-                    } else {
-                        // Fallback sample readings for visual demonstration
-                        const avgT = Number(thkStats.avg || mgi?.avg || 28);
-                        const sampleQid = mgi?.maxComp && mgi.maxComp !== "N/A" ? mgi.maxComp : "LEG A1";
-                        qidMap[sampleQid] = [
-                            { elevation: 0, effectiveThickness: Math.round(avgT * 1.3), limit: 127 },
-                            { elevation: -Math.round(wDepth * 0.3), effectiveThickness: Math.round(avgT * 1.05), limit: 95 },
-                            { elevation: -Math.round(wDepth * 0.6), effectiveThickness: Math.round(avgT * 0.75), limit: 65 },
-                            { elevation: -wDepth, effectiveThickness: Math.round(avgT * 0.35), limit: 25 },
-                        ];
-                    }
 
                     // 3. Compute Scales: Thickness on Y-axis, Elevation on X-axis
                     const allElevs: number[] = [0, -wDepth];

@@ -2089,6 +2089,10 @@ export default function ExecutiveSummaryPage() {
                         no: idx + 1
                     }));
 
+                const isSecIncomplete = sec.id === "incomplete" || 
+                    String(sec.id || "").toLowerCase().includes("incomplete") || 
+                    String(sec.title || "").toLowerCase().includes("incomplete");
+
                 return {
                     ...sec,
                     // Section-specific filtered tables
@@ -2139,8 +2143,10 @@ export default function ExecutiveSummaryPage() {
                     has_anomalies: totalAnomCount > 0 || rawAnomalies.length > 0,
                     HAS_FINDINGS: totalFindingsCount > 0,
                     has_findings: totalFindingsCount > 0,
-                    HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
-                    NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
+                    HAS_OUTSTANDING_TASKS: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                    has_outstanding_tasks: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                    NO_OUTSTANDING_TASKS: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
+                    no_outstanding_tasks: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
                     ANOMALY_SUMMARY_TABLE: categoryStats,
                     anomaly_summary_table: categoryStats,
                     ANOMALIES_SUMMARY_TABLE: categoryStats,
@@ -2253,8 +2259,14 @@ export default function ExecutiveSummaryPage() {
                     has_incomplete_rov: incompleteRecords.some(isROV),
                     HAS_INCOMPLETE_DIVE: incompleteRecords.some(isDiving),
                     has_incomplete_dive: incompleteRecords.some(isDiving),
-                    IS_INCOMPLETE: incompleteRecords.length > 0,
-                    is_incomplete: incompleteRecords.length > 0,
+                    IS_INCOMPLETE: isSecIncomplete,
+                    is_incomplete: isSecIncomplete,
+                    IS_SECTION_INCOMPLETE: isSecIncomplete,
+                    is_section_incomplete: isSecIncomplete,
+                    IS_INCOMPLETE_SCOPE: isSecIncomplete,
+                    is_incomplete_scope: isSecIncomplete,
+                    IS_INCOMPLETE_SECTION: isSecIncomplete,
+                    is_incomplete_section: isSecIncomplete,
                     HAS_INCOMPLETE: incompleteRecords.length > 0,
                     has_incomplete: incompleteRecords.length > 0,
                     NO_INCOMPLETE: incompleteRecords.length === 0,
@@ -2591,8 +2603,10 @@ export default function ExecutiveSummaryPage() {
                     return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.30.2`;
                 })(),
 
-                HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
-                NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
+                HAS_OUTSTANDING_TASKS: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                has_outstanding_tasks: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                NO_OUTSTANDING_TASKS: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
+                no_outstanding_tasks: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
                 OUTSTANDING_TASKS: [...outstandingRawList].sort((a: any, b: any) => {
                     const valA = parseElevationForSort(a.elevation || a.elev);
                     const valB = parseElevationForSort(b.elevation || b.elev);

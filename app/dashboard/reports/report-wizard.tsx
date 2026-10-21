@@ -2244,6 +2244,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 ...reportConfig, 
                 showSignatures: reportConfig?.showSignatures !== false, 
                 jobPack,
+                jobPackId: selections.jobPackId || jobPack?.id,
                 contractorLogoUrl,
                 procedureId: selections.procedureId, 
                 sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, 
@@ -2378,10 +2379,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
                     depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
                     contractorLogoUrl,
-                    sowReportNo: selections.sowReportNo
+                    sowReportNo: selections.sowReportNo,
+                    jobpackName: jobPack?.name || summaryData?.jobpackName || summaryData?.jobpack?.name || "",
                 },
                 companySettings,
-                { ...reportConfig, contractorLogoUrl }
+                { ...reportConfig, contractorLogoUrl, jobpackName: jobPack?.name || summaryData?.jobpackName || summaryData?.jobpack?.name || "" }
             );
         }
 
@@ -7264,11 +7266,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         query = query.eq('sow_report_no', selections.sowReportNo);
                     }
 
-                    const { data, error } = await query;
-                    if (error) {
-                        console.error("Error fetching records for inspection incomplete flagged report:", error);
+                    const allRecords: any[] = [];
+                    let page = 0;
+                    const PAGE_SIZE = 1000;
+                    while (true) {
+                        const { data: pageData, error } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+                        if (error) {
+                            console.error("Error fetching records for inspection incomplete flagged report:", error);
+                            break;
+                        }
+                        if (!pageData || pageData.length === 0) break;
+                        allRecords.push(...pageData);
+                        if (pageData.length < PAGE_SIZE) break;
+                        page++;
                     }
-                    const allRecords = data || [];
                     incompleteRecords = allRecords.filter(isStatusIncomplete);
 
                     if (incompleteRecords.length === 0) {

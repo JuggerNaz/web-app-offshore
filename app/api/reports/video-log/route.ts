@@ -2,6 +2,97 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
 
+const TASK_NAME_FALLBACKS: Record<string, string> = {
+    NAVIG: "Pipeline Navigation Inspection",
+    RGVI: "ROV General Visual Inspection",
+    RFMD: "Flooded Member Detection",
+    RSEAB: "Seabed Survey",
+    RRISI: "Riser Inspection",
+    RCOND: "Condition Assessment",
+    RSCOR: "Scour / Marine Growth Survey",
+    RMGI: "MGI Wall Thickness Survey",
+    RCPSU: "Cathodic Protection Survey",
+    BSINS: "Bolt Survey",
+    CLEAN: "Cleaning Survey",
+    CPCLB: "CP Calibration",
+    CPSURV: "CP Survey",
+    SZONE: "Splash Zone Survey",
+    RSZCI: "Splash Zone Inspection",
+    DSZCI: "Diving Splash Zone Inspection",
+    UTCLB: "UT Calibration",
+    UTWTK: "UT Wall Thickness",
+    UTWT: "UT Wall Thickness",
+    MGROW: "Marine Growth Survey",
+    PL_AN: "Pipeline Anode Inspection",
+    GVINS: "General Visual Inspection",
+    RISER: "Riser Inspection",
+    DANOD: "Diving Anode Inspection",
+    RANOD: "ROV Anode Inspection",
+    ITMAIN: "Item Maintenance Inspection",
+};
+
+function getInspectionTaskName(code?: string | null): string {
+    if (!code) return "";
+    const cleanCode = String(code).trim().toUpperCase();
+    if (TASK_NAME_FALLBACKS[cleanCode]) return TASK_NAME_FALLBACKS[cleanCode];
+    return cleanCode;
+}
+
+function parseTimecodeToSeconds(tc: any): number {
+    if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return -1;
+    if (typeof tc === "number") return tc;
+    const str = String(tc).trim();
+    if (str.includes(":")) {
+        const parts = str.split(":").map(Number);
+        if (parts.length === 3 && parts.every(p => !isNaN(p))) {
+            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+        }
+        if (parts.length === 2 && parts.every(p => !isNaN(p))) {
+            return parts[0] * 60 + parts[1];
+        }
+    }
+    const num = Number(str);
+    if (!isNaN(num)) return num;
+    return -1;
+}
+
+function formatTimecode(tc: any): string {
+    if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return "—";
+    const str = String(tc).trim();
+    if (str.includes(":")) {
+        const parts = str.split(":");
+        if (parts.length === 2) return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
+        if (parts.length === 3) return parts.map(p => p.padStart(2, "0")).join(":");
+        return str;
+    }
+    const num = Number(str);
+    if (!isNaN(num) && num >= 0) {
+        const hrs = Math.floor(num / 3600);
+        const mins = Math.floor((num % 3600) / 60);
+        const secs = Math.floor(num % 60);
+        return [hrs, mins, secs].map(v => String(v).padStart(2, "0")).join(":");
+    }
+    return str;
+}
+
+function formatInspectionDateTime(dateStr?: string | null, timeStr?: string | null): string {
+    if (!dateStr) return "—";
+    let d = dateStr;
+    let t = timeStr || "";
+    if (d.includes("T")) {
+        const parts = d.split("T");
+        d = parts[0];
+        if (!t) t = parts[1];
+    }
+    const [y, m, day] = d.split("-");
+    const formattedDate = (y && m && day) ? `${day.padStart(2, "0")}/${m.padStart(2, "0")}/${y}` : d;
+    if (!t) return formattedDate;
+    const timeClean = t.replace(/Z|[\+\-].*$/, "").trim();
+    const timeParts = timeClean.split(":");
+    const formattedTime = timeParts.length >= 2 ? `${timeParts[0].padStart(2, "0")}:${timeParts[1].padStart(2, "0")}` : timeClean;
+    return `${formattedDate}, ${formattedTime}`;
+}
+
 export async function GET(request: NextRequest) {
     try {
         const supabase = await createClient();
@@ -103,6 +194,24 @@ export async function GET(request: NextRequest) {
 
         const tapeIds = tapes.map((t: any) => t.tape_id);
 
+        // Build tape lookup maps
+        const tapeById = new Map<number, any>();
+        const tapesByNoAndChapter = new Map<string, any>();
+        const tapesByNo = new Map<string, any[]>();
+
+        tapes.forEach((t: any) => {
+            tapeById.set(Number(t.tape_id), t);
+            const tapeNoClean = String(t.tape_no || "").trim().toLowerCase();
+            const chClean = String(t.chapter_no || "").trim();
+            if (tapeNoClean && chClean) {
+                tapesByNoAndChapter.set(`${tapeNoClean}__ch_${chClean}`, t);
+            }
+            if (tapeNoClean) {
+                if (!tapesByNo.has(tapeNoClean)) tapesByNo.set(tapeNoClean, []);
+                tapesByNo.get(tapeNoClean)!.push(t);
+            }
+        });
+
         // 3. Fetch all video logs for these tapes, ordered by event_time ascending (chronological)
         const { data: logs, error: logsError } = await (supabase as any)
             .from("insp_video_logs")
@@ -117,11 +226,11 @@ export async function GET(request: NextRequest) {
         const inspRecordMap: Record<number, any> = {};
         if (inspIds.length > 0) {
             try {
-                const { data: inspRecords } = await (supabase as any)
+                const { data: linkedRecs } = await (supabase as any)
                     .from("insp_records")
-                    .select("insp_id, description, inspection_data")
+                    .select("insp_id, description, inspection_type_code, inspection_data, structure_components:component_id(id, q_id)")
                     .in("insp_id", inspIds);
-                (inspRecords || []).forEach((r: any) => {
+                (linkedRecs || []).forEach((r: any) => {
                     inspRecordMap[r.insp_id] = r;
                 });
             } catch (e) {
@@ -131,58 +240,200 @@ export async function GET(request: NextRequest) {
 
         (logs || []).forEach((l: any) => {
             if (l.inspection_id && inspRecordMap[l.inspection_id]) {
-                l.insp_records = inspRecordMap[l.inspection_id];
+                const r = inspRecordMap[l.inspection_id];
+                l.insp_records = r;
+                l.is_inspection = true;
+                l.qid = r.structure_components?.q_id || r.inspection_data?.q_id || r.inspection_data?.qid || "";
+                l.inspection_type_code = r.inspection_type_code || "";
+                l.inspection_task = getInspectionTaskName(r.inspection_type_code);
             }
         });
 
-        // 4. Group logs by tape_id, then deduplicate:
-        //    - Same event is identified by: event_type + timecode_start (a modified record shares these)
-        //    - Keep the EARLIEST event_time (first time it was recorded)
-        //    - Keep the LATEST remarks/content (most recent version after edits)
+        // 4. Fetch all inspection records for these tapes or dive/ROV jobs
+        let inspRecsQuery = (supabase as any)
+            .from("insp_records")
+            .select(`
+                insp_id,
+                tape_id,
+                dive_job_id,
+                rov_job_id,
+                component_id,
+                inspection_type_code,
+                tape_count_no,
+                description,
+                inspection_date,
+                inspection_time,
+                inspection_data,
+                structure_components:component_id ( id, q_id )
+            `);
+
+        const orFilters: string[] = [];
+        if (tapeIds.length > 0) orFilters.push(`tape_id.in.(${tapeIds.join(",")})`);
+        if (diveJobIds.length > 0) orFilters.push(`dive_job_id.in.(${diveJobIds.join(",")})`);
+        if (rovJobIds.length > 0) orFilters.push(`rov_job_id.in.(${rovJobIds.join(",")})`);
+
+        if (orFilters.length > 0) {
+            inspRecsQuery = inspRecsQuery.or(orFilters.join(","));
+        }
+
+        let allInspRecords: any[] = [];
+        let page = 0;
+        const pageSize = 1000;
+        while (true) {
+            const { data: chunk, error: chunkErr } = await inspRecsQuery.range(page * pageSize, (page + 1) * pageSize - 1);
+            if (chunkErr) {
+                console.warn("[VideoLog] Error fetching insp_records chunk:", chunkErr);
+                break;
+            }
+            if (!chunk || chunk.length === 0) break;
+            allInspRecords.push(...chunk);
+            if (chunk.length < pageSize) break;
+            page++;
+        }
+
+        console.log(`[VideoLog] Fetched ${allInspRecords.length} inspection records across tapes`);
+
+        // Helper to resolve which tape an inspection belongs to
+        const resolveTargetTapeId = (record: any): number | null => {
+            if (record.tape_id && tapeById.has(Number(record.tape_id))) {
+                return Number(record.tape_id);
+            }
+            const dTapeId = record.inspection_data?.tape_id || record.inspection_data?.tapeId;
+            if (dTapeId && !isNaN(Number(dTapeId)) && tapeById.has(Number(dTapeId))) {
+                return Number(dTapeId);
+            }
+            const rawTapeNo = String(record.inspection_data?.tape_no || record.inspection_data?.TAPE_NO || record.tape_no || "").trim().toLowerCase();
+            const rawCh = String(record.inspection_data?.chapter_no || record.inspection_data?.CHAPTER_NO || record.chapter_no || "").trim();
+            if (rawTapeNo && rawCh && tapesByNoAndChapter.has(`${rawTapeNo}__ch_${rawCh}`)) {
+                return Number(tapesByNoAndChapter.get(`${rawTapeNo}__ch_${rawCh}`).tape_id);
+            }
+            if (rawTapeNo && tapesByNo.has(rawTapeNo)) {
+                const matchingTapes = tapesByNo.get(rawTapeNo)!;
+                if (matchingTapes.length === 1) return Number(matchingTapes[0].tape_id);
+                if (rawCh) {
+                    const found = matchingTapes.find((t: any) => String(t.chapter_no || "").trim() === rawCh);
+                    if (found) return Number(found.tape_id);
+                }
+                return Number(matchingTapes[0].tape_id);
+            }
+            if (record.dive_job_id) {
+                const found = tapes.find((t: any) => t.dive_job_id === record.dive_job_id && (rawCh ? String(t.chapter_no || "").trim() === rawCh : true));
+                if (found) return Number(found.tape_id);
+            }
+            if (record.rov_job_id) {
+                const found = tapes.find((t: any) => t.rov_job_id === record.rov_job_id && (rawCh ? String(t.chapter_no || "").trim() === rawCh : true));
+                if (found) return Number(found.tape_id);
+            }
+            return null;
+        };
+
+        // 5. Group logs by tape_id, including inspection logs
         const logsByTape: Record<number, any[]> = {};
         (logs || []).forEach((log: any) => {
             if (!logsByTape[log.tape_id]) logsByTape[log.tape_id] = [];
             logsByTape[log.tape_id].push(log);
         });
 
-        // Deduplicate each tape's logs
+        // Track inspection IDs already in logs to prevent duplicates
+        const existingLogInspIds = new Set(
+            (logs || []).map((l: any) => Number(l.inspection_id)).filter(id => !isNaN(id) && id > 0)
+        );
+
+        allInspRecords.forEach((record: any) => {
+            if (existingLogInspIds.has(Number(record.insp_id))) return;
+
+            const targetTapeId = resolveTargetTapeId(record);
+            if (!targetTapeId) return;
+
+            const rawTc = record.inspection_data?.tape_count_no || record.inspection_data?._meta_timecode || record.tape_count_no;
+            const timecode = formatTimecode(rawTc);
+            const dateStr = record.inspection_date || record.inspection_data?.inspection_date || "";
+            const timeStr = record.inspection_time || record.inspection_data?.inspection_time || "";
+            const formattedDateTime = formatInspectionDateTime(dateStr, timeStr);
+            const qid = record.structure_components?.q_id || record.inspection_data?.q_id || record.inspection_data?.qid || record.inspection_data?.component_qid || record.inspection_data?.COMP_QID || "";
+            const taskCode = record.inspection_type_code || record.inspection_data?.insp_type || record.inspection_data?.INSP_TYPE || "";
+            const taskName = getInspectionTaskName(taskCode);
+
+            const inspLog = {
+                video_log_id: `insp_${record.insp_id}`,
+                tape_id: targetTapeId,
+                event_type: "INSPECTION",
+                is_inspection: true,
+                event_time: dateStr && timeStr ? `${dateStr}T${timeStr}` : (dateStr || ""),
+                date_time_display: formattedDateTime,
+                timecode_start: timecode,
+                tape_counter_start: record.tape_count_no,
+                qid,
+                inspection_task: taskName,
+                inspection_type_code: taskCode,
+                description: record.description,
+                remarks: record.description || record.inspection_data?.finding || record.inspection_data?.findings || record.inspection_data?.remarks || record.inspection_data?.comments || "",
+                inspection_id: record.insp_id,
+                inspection_data: record.inspection_data,
+                structure_components: record.structure_components,
+                insp_records: record
+            };
+
+            if (!logsByTape[targetTapeId]) logsByTape[targetTapeId] = [];
+            logsByTape[targetTapeId].push(inspLog);
+        });
+
+        // 6. Deduplicate and sort each tape's logs
         for (const tapeId of Object.keys(logsByTape)) {
             const tapeLogs = logsByTape[Number(tapeId)];
 
-            // Sort ascending by event_time so earliest comes first
-            tapeLogs.sort((a: any, b: any) =>
-                new Date(a.event_time).getTime() - new Date(b.event_time).getTime()
-            );
-
-            // Build a map keyed by "event_type|timecode_start" to deduplicate
             const deduped = new Map<string, any>();
             for (const log of tapeLogs) {
-                const key = `${log.event_type}|${log.timecode_start ?? ""}`;
+                // Key inspection events by inspection ID to preserve every distinct inspection
+                const key = log.is_inspection || log.inspection_id
+                    ? `insp_${log.inspection_id || log.video_log_id}`
+                    : `${log.event_type}|${log.timecode_start ?? ""}`;
+
                 if (!deduped.has(key)) {
-                    // First occurrence — use this as the base (earliest event_time)
                     deduped.set(key, { ...log });
                 } else {
-                    // Later occurrence — update only the content fields (latest remarks/content)
                     const existing = deduped.get(key);
                     existing.remarks = log.remarks || existing.remarks;
                     if (log.insp_records) existing.insp_records = log.insp_records;
-                    if (log.inspection_id) existing.inspection_id = log.inspection_id;
-                    // Keep existing (earliest) event_time intact
+                    if (log.qid) existing.qid = log.qid;
+                    if (log.inspection_task) existing.inspection_task = log.inspection_task;
+                    if (log.inspection_type_code) existing.inspection_type_code = log.inspection_type_code;
+                    if (log.description) existing.description = log.description;
+                    if (log.date_time_display) existing.date_time_display = log.date_time_display;
                 }
             }
 
-            // Replace with deduplicated list, sorted by event_time ascending
-            logsByTape[Number(tapeId)] = Array.from(deduped.values()).sort(
-                (a: any, b: any) => new Date(a.event_time).getTime() - new Date(b.event_time).getTime()
-            );
+            // Sort by timecode ascending (Start Tape first, Stop Tape last, inspections in timecode order)
+            logsByTape[Number(tapeId)] = Array.from(deduped.values()).sort((a: any, b: any) => {
+                const secA = parseTimecodeToSeconds(a.timecode_start);
+                const secB = parseTimecodeToSeconds(b.timecode_start);
+
+                if (secA !== -1 && secB !== -1 && secA !== secB) {
+                    return secA - secB;
+                }
+
+                const isStartA = a.event_type === "NEW_LOG_START" || a.event_type === "START_TAPE";
+                const isStartB = b.event_type === "NEW_LOG_START" || b.event_type === "START_TAPE";
+                if (isStartA && !isStartB) return -1;
+                if (!isStartA && isStartB) return 1;
+
+                const isEndA = a.event_type === "END" || a.event_type === "STOP" || a.event_type === "STOP_TAPE";
+                const isEndB = b.event_type === "END" || b.event_type === "STOP" || b.event_type === "STOP_TAPE";
+                if (isEndA && !isEndB) return 1;
+                if (!isEndA && isEndB) return -1;
+
+                const tA = a.event_time ? new Date(a.event_time).getTime() : 0;
+                const tB = b.event_time ? new Date(b.event_time).getTime() : 0;
+                return tA - tB;
+            });
         }
 
-        // 5. Assemble result grouped by tape
+        // 7. Assemble result grouped by tape
         const result = tapes.map((tape: any) => ({
             ...tape,
             dive_no: diveNoMap[tape.dive_job_id] || diveNoMap[tape.rov_job_id] || null,
             logs: logsByTape[tape.tape_id] || []
-        })).filter((t: any) => t.logs.length > 0); // Only include tapes with logs
+        })).filter((t: any) => t.logs.length > 0);
 
         console.log(`[VideoLog] Found ${result.length} tapes with logs`);
         return NextResponse.json({ data: result });

@@ -177,34 +177,65 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         }
 
+        if (!jobpackInfo && resolvedSowId) {
+            try {
+                const { data: sRow } = await (supabase as any)
+                    .from("u_sow")
+                    .select("jobpack_id")
+                    .eq("id", Number(resolvedSowId))
+                    .maybeSingle();
+                if (sRow?.jobpack_id) {
+                    const { data: jpRow } = await (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", sRow.jobpack_id)
+                        .maybeSingle();
+                    if (jpRow) jobpackInfo = jpRow;
+                }
+            } catch (_) {}
+        }
+
         // ─── 2. SOW ITEMS ─────────────────────────────────────────────────────
         let allSowItems: any[] = [];
         let itemsErr: any = null;
         if (resolvedSowId) {
-            let sowItemsQuery = (supabase as any)
-                .from("u_sow_items")
-                .select(`
-                    status, 
-                    component_id, 
-                    component_qid,
-                    component_type, 
-                    inspection_code,
-                    inspection_name,
-                    elevation_required,
-                    elevation_data,
-                    notes,
-                    report_number
-                `)
-                .eq("sow_id", Number(resolvedSowId));
-            if (companyId) {
-                sowItemsQuery = sowItemsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            let fromSow = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                let sowItemsQuery = (supabase as any)
+                    .from("u_sow_items")
+                    .select(`
+                        status, 
+                        component_id, 
+                        component_qid,
+                        component_type, 
+                        inspection_code,
+                        inspection_name,
+                        elevation_required,
+                        elevation_data,
+                        notes,
+                        report_number
+                    `)
+                    .eq("sow_id", Number(resolvedSowId))
+                    .range(fromSow, fromSow + PAGE_SIZE - 1);
+
+                if (companyId) {
+                    sowItemsQuery = sowItemsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+                }
+                const { data: itemsData, error: err } = await sowItemsQuery;
+                if (err) {
+                    console.error("[Summary API] SOW Items fetch error:", err);
+                    itemsErr = err;
+                    break;
+                }
+                if (itemsData && itemsData.length > 0) {
+                    allSowItems.push(...itemsData);
+                    if (itemsData.length < PAGE_SIZE) break;
+                    fromSow += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
-            const { data: itemsData, error: err } = await sowItemsQuery;
-            itemsErr = err;
-            if (itemsErr) {
-                console.error("[Summary API] SOW Items fetch error:", itemsErr);
-            }
-            allSowItems = itemsData || [];
         }
 
         const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all" && sowReportNo !== "undefined" && String(sowReportNo).trim() !== "";
@@ -309,6 +340,20 @@ export const GET = withTenant(async (request, { companyId }) => {
                     inspPage++;
                 }
             }
+        }
+
+        if (!jobpackInfo && allRecordsData.length > 0) {
+            try {
+                const recWithJp = allRecordsData.find((r: any) => r.jobpack_id != null);
+                if (recWithJp?.jobpack_id) {
+                    const { data: jpRow } = await (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", recWithJp.jobpack_id)
+                        .maybeSingle();
+                    if (jpRow) jobpackInfo = jpRow;
+                }
+            } catch (_) {}
         }
 
         // Fetch anomalies in a fast targeted query scoped strictly to matching inspection records
@@ -2504,16 +2549,19 @@ export const GET = withTenant(async (request, { companyId }) => {
         return NextResponse.json({
             data: {
                 structureInfo,
+                jobpack: jobpackInfo,
+                jobpackName: jobpackInfo?.name || "",
+                jobpackInfo,
                 componentSummary,
                 inspectionTypeSummary,
                 sow_summary: sowSummary,
                 tasks: {
-                    total: totalRecordTasks,
-                    completed: completedRecordTasks,
-                    incomplete: incompleteRecordTasks,
-                    completedPct: taskCompletedPct,
-                    incompletePct: taskIncompletePct,
-                    completionPct: taskCompletedPct,
+                    total: totalSow > 0 ? totalSow : totalRecordTasks,
+                    completed: totalSow > 0 ? completedSow : completedRecordTasks,
+                    incomplete: totalSow > 0 ? incompleteSow : incompleteRecordTasks,
+                    completedPct: totalSow > 0 ? completedPct : taskCompletedPct,
+                    incompletePct: totalSow > 0 ? incompletePct : taskIncompletePct,
+                    completionPct: totalSow > 0 ? completedPct : taskCompletedPct,
                 },
                 sow: {
                     total: totalSow,
@@ -2834,7 +2882,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     profilePoints: mgiProfilePoints,
                     byQid: mgiByQid,
                     waterDepth: mgiWaterDepth,
-                    hasProfileGraphData: Object.keys(mgiByQid).length > 0 || mgiProfilePoints.length > 0
+                    hasProfileGraphData: Object.keys(mgiByQid).length > 0
                 },
                 scour: { 
                     total: scourRecords.length, 

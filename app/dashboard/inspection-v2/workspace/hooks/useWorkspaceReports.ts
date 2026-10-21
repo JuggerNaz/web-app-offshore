@@ -2685,7 +2685,7 @@ export function useWorkspaceReports(
         },
         generateInspectionSummaryGraphReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+            const { data: jobPack } = await supabase.from('jobpack').select('id, name, metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2702,12 +2702,14 @@ export function useWorkspaceReports(
             const json = await res.json();
             const summaryData = json.data || {};
 
+            const resolvedJobpackName = jobPack?.name || headerData.jobpackName || summaryData?.jobpackName || summaryData?.jobpack?.name || "";
+
             const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
             return await generateInspectionSummaryGraphReport(
                 summaryData,
-                { ...headerData, contractorLogoUrl },
+                { ...headerData, contractorLogoUrl, jobpackName: resolvedJobpackName },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures } as any
+                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures, jobpackName: resolvedJobpackName } as any
             ) as Blob;
         },
         generateSZONEReport,

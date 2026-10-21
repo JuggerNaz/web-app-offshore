@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
                 .from("structure_components")
                 .select("*")
                 .eq("structure_id", parseInt(structureId))
-                .order("q_id", { ascending: true })
+                .order("id", { ascending: true })
                 .range(from, to);
 
             if (error) {
@@ -56,32 +56,84 @@ export async function GET(request: NextRequest) {
 
         const data = allData;
 
-        // Fetch ALL inspection records for this structure
-        const { data: inspRecords } = await supabase
-            .from("insp_records")
-            .select("insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no, jobpack_id, inspection_data")
-            .eq("structure_id", parseInt(structureId));
+        // Fetch ALL inspection records for this structure with pagination
+        const allInspRecords: any[] = [];
+        let inspPage = 0;
+        while (true) {
+            const { data: pageInsps, error: inspError } = await supabase
+                .from("insp_records")
+                .select("insp_id, component_id, has_anomaly, status, inspection_date, inspection_type_code, description, sow_report_no, jobpack_id")
+                .eq("structure_id", parseInt(structureId))
+                .range(inspPage * pageSize, (inspPage + 1) * pageSize - 1);
 
-        // Fetch ALL anomalies for this structure
-        const { data: componentAnomalies } = await (supabase as any)
-            .from("v_anomaly_details")
-            .select("anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name, structure_id")
-            .eq("structure_id", parseInt(structureId));
+            if (inspError) {
+                console.error("Error fetching insp_records:", inspError);
+                break;
+            }
+            if (pageInsps && pageInsps.length > 0) {
+                allInspRecords.push(...pageInsps);
+                if (pageInsps.length < pageSize) break;
+                inspPage++;
+            } else {
+                break;
+            }
+        }
+        const inspRecords = allInspRecords;
 
-        // Map data: match inspection records & anomalies strictly by component_id
+        // Fetch ALL anomalies for this structure with pagination
+        const allComponentAnomalies: any[] = [];
+        let anomPage = 0;
+        while (true) {
+            const { data: pageAnoms, error: anomError } = await (supabase as any)
+                .from("v_anomaly_details")
+                .select("anomaly_id, component_id, component_qid, priority, status, defect_type, category, description, display_ref_no, jobpack_name, structure_id, sow_report_no")
+                .eq("structure_id", parseInt(structureId))
+                .range(anomPage * pageSize, (anomPage + 1) * pageSize - 1);
+
+            if (anomError) {
+                console.error("Error fetching anomalies:", anomError);
+                break;
+            }
+            if (pageAnoms && pageAnoms.length > 0) {
+                allComponentAnomalies.push(...pageAnoms);
+                if (pageAnoms.length < pageSize) break;
+                anomPage++;
+            } else {
+                break;
+            }
+        }
+        const componentAnomalies = allComponentAnomalies;
+
+        // Group inspections and anomalies into Maps for O(1) matching instead of O(N*M) nested loops
+        const inspMap = new Map<number, any[]>();
+        for (const r of inspRecords) {
+            if (r.component_id) {
+                let list = inspMap.get(r.component_id);
+                if (!list) {
+                    list = [];
+                    inspMap.set(r.component_id, list);
+                }
+                list.push(r);
+            }
+        }
+
+        const anomMap = new Map<number, any[]>();
+        for (const a of componentAnomalies) {
+            if (a.component_id) {
+                let list = anomMap.get(a.component_id);
+                if (!list) {
+                    list = [];
+                    anomMap.set(a.component_id, list);
+                }
+                list.push(a);
+            }
+        }
+
+        // Map data: match inspection records & anomalies in O(1)
         const mappedData = (data || []).map((item: any) => {
             const metadata = item.metadata || {};
-
-            const compInsps = (inspRecords || []).filter((r: any) => {
-                if (r.component_id) return r.component_id === item.id;
-                return false;
-            });
-
-            const compAnoms = (componentAnomalies || []).filter((a: any) => {
-                if (a.component_id) return a.component_id === item.id;
-                return false;
-            });
-
+            const compInsps = inspMap.get(item.id) || [];
+            const compAnoms = anomMap.get(item.id) || [];
             const hasAnom = compAnoms.length > 0 || compInsps.some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === 'ANOMALY');
 
             return {

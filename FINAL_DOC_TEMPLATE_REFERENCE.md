@@ -443,6 +443,7 @@ When the Executive Summary is placed inside a Final Document as Section/Chapter 
    - `{no}` : Sequential item integer (`1`, `2`, `3`). You can also write `{parent_no}.{no}` or `2.{no}` directly in Word.
 3. **Explicit Override**: You can also place an optional tag anywhere in the template: `{PARENT_SECTION_NO: 2}`.
 
+
 | Tag Name | Value Example (Parent = 2) | Description |
 |---|---|---|
 | `{paragraph_no}` | `2.1` | Section paragraph number inside `{#SECTIONS}` |
@@ -461,7 +462,50 @@ When the Executive Summary is placed inside a Final Document as Section/Chapter 
 | `{PARAGRAPH_NO_INCOMPLETE_SCOPE}`| `2.31.1`| Incomplete scope sub-heading |
 | `{PARAGRAPH_NO_OUTSTANDING_TASKS}`| `2.31.2`| Outstanding tasks sub-heading |
 
+### 11.2 Section Discriminator Tags Inside `{#SECTIONS}`
+
+When iterating over all sections in the Word template using `{#SECTIONS} ... {/SECTIONS}`, you can restrict special tables, lists, or custom blocks so they **only print in their designated section** using section discriminator flags:
+
+| Section Discriminator Tag | Matching Section in Report | Use Case |
+|---|---|---|
+| `{#is_incomplete}` / `{#IS_INCOMPLETE}` / `{#is_section_incomplete}` | **Incomplete Scope Summary** (Section 1.30) | Incomplete scope table & site memo references |
+| `{#is_anomaly_finding}` / `{#IS_ANOMALY_FINDING}` | **Anomaly & Findings Summary** (Section 1.29) | Global anomaly register & findings tables |
+| `{#is_gvi}` / `{#IS_GVI}` | **General Visual Inspection (GVI)** | Jacket GVI summary & component findings |
+| `{#is_cp}` / `{#IS_CP}` | **Cathodic Potential (CP) Survey** | CP stabs, min/max potential stats |
+| `{#is_fmd}` / `{#IS_FMD}` | **Flooded Member Detection (FMD)** | FMD members table & flooding conditions |
+| `{#is_mgi}` / `{#IS_MGI}` | **Marine Growth Inspection (MGI)** | Marine growth coverage & thickness charts |
+| `{#is_scour}` / `{#IS_SCOUR}` | **Base Level / Scour Survey** | Seabed scour depth & exposed pile table |
+| `{#is_seabed}` / `{#IS_SEABED}` | **Seabed Survey** | Debris & seabed bathymetry |
+| `{#is_intro}` / `{#IS_INTRO}` | **Introduction** | Scope background & project details |
+
+#### Example: Restricting Incomplete Tasks Table to Section 1.30 Only
+```
+{#SECTIONS}
+{paragraph_no}  {title}
+
+{content}
+
+{#is_incomplete}
+{#NO_OUTSTANDING_TASKS}
+No outstanding tasks exist for this report.
+{/NO_OUTSTANDING_TASKS}
+
+{#HAS_OUTSTANDING_TASKS}
+{sub_paragraph_no_1} Summary of Incomplete task List
+
++----+-----------+-----------+------------------------------------------------------+
+| No.| QID       | Elev (m)  | Findings                                             |
++----+-----------+-----------+------------------------------------------------------+
+| {#INCOMPLETE_RECORDS}{no} | {qid} | {elevation} | {findings}{/INCOMPLETE_RECORDS}  |
++----+-----------+-----------+------------------------------------------------------+
+{/HAS_OUTSTANDING_TASKS}
+{/is_incomplete}
+
+{/SECTIONS}
+```
+
 ---
+
 
 ## 12. Ready-to-Copy Template Examples
 

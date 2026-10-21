@@ -234,21 +234,33 @@ export const GET = withTenant(async (request, { companyId }) => {
         const allSowIds = Array.from(new Set(fetched.flatMap((f) => f.sowRows.map((s: any) => s.id).filter(Boolean))));
         const sowItemsBySow = new Map<any, any[]>();
         if (allSowIds.length > 0) {
-            let sowItemsQuery = (supabase as any)
-                .from("u_sow_items")
-                .select("sow_id, status")
-                .eq("company_id", companyId)
-                .in("sow_id", allSowIds);
+            let fromSow = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                let sowItemsQuery = (supabase as any)
+                    .from("u_sow_items")
+                    .select("sow_id, status")
+                    .eq("company_id", companyId)
+                    .in("sow_id", allSowIds)
+                    .range(fromSow, fromSow + PAGE_SIZE - 1);
 
-            if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
-                sowItemsQuery = sowItemsQuery.eq("report_number", sowReportNo);
-            }
+                if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null") {
+                    sowItemsQuery = sowItemsQuery.eq("report_number", sowReportNo);
+                }
 
-            const { data: sowItems } = await sowItemsQuery;
-            for (const item of sowItems || []) {
-                const bucket = sowItemsBySow.get(item.sow_id);
-                if (bucket) bucket.push(item);
-                else sowItemsBySow.set(item.sow_id, [item]);
+                const { data: pageSowItems, error: sowErr } = await sowItemsQuery;
+                if (sowErr) break;
+                if (pageSowItems && pageSowItems.length > 0) {
+                    for (const item of pageSowItems) {
+                        const bucket = sowItemsBySow.get(item.sow_id);
+                        if (bucket) bucket.push(item);
+                        else sowItemsBySow.set(item.sow_id, [item]);
+                    }
+                    if (pageSowItems.length < PAGE_SIZE) break;
+                    fromSow += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
         }
 

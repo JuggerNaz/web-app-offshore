@@ -9,6 +9,7 @@ import {
     formatPdfDate, 
     REPORT_FOOTER_APP_TEXT 
 } from "./shared-logo";
+import { getInspectionDateRange } from "./date-range-utils";
 
 export interface CompanySettings {
     company_name?: string;
@@ -310,7 +311,7 @@ export const generateInspectionSummaryReport = async (
 
         let currentY = HEADER_Y + HEADER_H + 2.5;
 
-        // ── 4. Sub-Header Platform & Depth Banner ────────────────────────────────
+        // ── 4. Sub-Header Scope Banner (Field Name, Structure Name, Jobpack Name, Inspection Date) ──
         const SUB_H = 6.5;
         doc.setDrawColor(...colors.border);
         doc.setLineWidth(0.2);
@@ -320,20 +321,126 @@ export const generateInspectionSummaryReport = async (
         }
         doc.rect(margin, currentY, contentWidth, SUB_H, "S");
 
-        // Left text: FIELD | STRUCTURE
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.textDark);
-        const facilityLabel = fieldName 
-            ? `${fieldName.toUpperCase()} | ${platformName.toUpperCase()}`
-            : platformName.toUpperCase();
-        doc.text(facilityLabel, margin + 3, currentY + 4.5);
+        // Resolve Jobpack Name
+        let jobPackName = (config as any)?.jobpackName || 
+                          (config as any)?.jobPackName || 
+                          (config as any)?.jobpack || 
+                          headerDataOrStructure?.jobpackName || 
+                          headerDataOrStructure?.jobPackName || 
+                          headerDataOrStructure?.jobpack_name || 
+                          headerDataOrStructure?.jobpack || 
+                          jobPackObj?.name || 
+                          jobPackObj?.jobpack_name || 
+                          summaryData?.jobpack?.name || 
+                          summaryData?.jobPack?.name || 
+                          "";
 
-        // Right text: Water depth (Registered anodes removed per user request)
-        doc.setFont("helvetica", "normal");
-        const depthText = waterDepth ? `${waterDepth} m` : "-- m";
-        const metaRightStr = `Water depth: ${depthText}`;
-        doc.text(metaRightStr, pageWidth - margin - 3, currentY + 4.5, { align: "right" });
+        // Resolve Inspection Date Range (start to end date)
+        let inspDateRangeStr = "";
+        const candidateDate = (config as any)?.dateRange || 
+                             (config as any)?.inspDateRange || 
+                             headerDataOrStructure?.dateRange || 
+                             headerDataOrStructure?.inspDateRange || 
+                             headerDataOrStructure?.date_range ||
+                             headerDataOrStructure?.inspectionDateRange;
+
+        if (candidateDate && typeof candidateDate === "string" && candidateDate.trim() && candidateDate.trim().toUpperCase() !== "N/A") {
+            inspDateRangeStr = candidateDate.trim();
+        } else if (summaryData?.records?.startDate && summaryData?.records?.endDate) {
+            try {
+                const d1 = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy");
+                const d2 = format(new Date(summaryData.records.endDate), "dd-MMM-yyyy");
+                inspDateRangeStr = d1 === d2 ? d1 : `${d1} – ${d2}`;
+            } catch (_) {
+                inspDateRangeStr = `${summaryData.records.startDate} – ${summaryData.records.endDate}`;
+            }
+        } else if (summaryData?.records?.startDate) {
+            try { inspDateRangeStr = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(summaryData.records.startDate); }
+        } else {
+            try {
+                const calc = getInspectionDateRange(
+                    summaryData?.records?.items || summaryData?.records || [],
+                    headerDataOrStructure,
+                    config
+                );
+                if (calc && calc !== "N/A") inspDateRangeStr = calc;
+            } catch (_) {}
+        }
+        if (!inspDateRangeStr || inspDateRangeStr === "N/A") {
+            if (headerDataOrStructure?.inspection_date || headerDataOrStructure?.insp_date || headerDataOrStructure?.date) {
+                const singleD = headerDataOrStructure.inspection_date || headerDataOrStructure.insp_date || headerDataOrStructure.date;
+                try { inspDateRangeStr = format(new Date(singleD), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(singleD); }
+            }
+        }
+
+        const fieldVal = fieldName ? fieldName.toUpperCase() : "--";
+        const structVal = platformName ? platformName.toUpperCase() : "--";
+        const jpVal = jobPackName || "--";
+        const dateVal = inspDateRangeStr || "--";
+
+        let bannerFontSize = 6.8;
+        doc.setFontSize(bannerFontSize);
+        const textY = currentY + 4.5;
+
+        // Left text: Field Name: ...  |  Structure Name: ...
+        const leftParts = [
+            { text: "Field Name: ", bold: true, color: colors.textDark },
+            { text: `${fieldVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Structure Name: ", bold: true, color: colors.textDark },
+            { text: structVal, bold: false, color: colors.navy },
+        ];
+
+        // Right text: Jobpack Name: ...  |  Inspection Date: ...
+        const rightParts = [
+            { text: "Jobpack Name: ", bold: true, color: colors.textDark },
+            { text: `${jpVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Inspection Date: ", bold: true, color: colors.textDark },
+            { text: dateVal, bold: false, color: colors.navy },
+        ];
+
+        // Measure widths and auto-scale font if overall text is wider than available width
+        let totalLeftW = leftParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        let totalRightW = rightParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        while ((totalLeftW + totalRightW) > (contentWidth - 8) && bannerFontSize > 4.8) {
+            bannerFontSize -= 0.3;
+            doc.setFontSize(bannerFontSize);
+            totalLeftW = leftParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+            totalRightW = rightParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+        }
+
+        // Render Left items
+        let curLeftX = margin + 3;
+        leftParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curLeftX, textY);
+            curLeftX += doc.getTextWidth(p.text);
+        });
+
+        // Render Right items
+        let curRightX = pageWidth - margin - 3 - totalRightW;
+        rightParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curRightX, textY);
+            curRightX += doc.getTextWidth(p.text);
+        });
 
         currentY += SUB_H + 2.5;
 
@@ -371,21 +478,21 @@ export const generateInspectionSummaryReport = async (
             color: [number, number, number];
         }> = [
             {
-                title: "TOTAL QIDs",
+                title: "TOTAL TASKS / QIDs",
                 value: totalQidsCount > 0 ? String(totalQidsCount) : "--",
-                subtext: "Unique in approved jobpack",
+                subtext: "Scoped in approved SOW",
                 color: colors.navy,
             },
             {
                 title: "COMPLETED",
                 value: completedCount > 0 ? String(completedCount) : "--",
-                subtext: "Verified completed QIDs",
+                subtext: "Verified completed tasks",
                 color: colors.navy,
             },
             {
                 title: "INCOMPLETE",
                 value: incompleteCount > 0 ? String(incompleteCount) : "--",
-                subtext: "Outstanding / restricted",
+                subtext: "Outstanding / restricted tasks",
                 color: incompleteCount > 0 ? colors.amber : colors.navy,
             },
             {
@@ -1123,10 +1230,8 @@ export const generateInspectionSummaryReport = async (
                 const pct50 = totAnodeCount > 0 ? Math.round((Number(d50) / totAnodeCount) * 100) : 0;
                 const pct75 = totAnodeCount > 0 ? Math.round((Number(d75) / totAnodeCount) * 100) : 0;
 
-                const isRetrofitNeeded = Number(d75) > 0;
-                const adviceText = isRetrofitNeeded
-                    ? `Retrofit Planning: ${d75} Anodes (>75% Dep.)`
-                    : "All Anodes ≤75% Depleted (Serviceable)";
+                const healthPct = totAnodeCount > 0 ? Math.round(((Number(d0) + Number(d25)) / totAnodeCount) * 100) : 100;
+                const adviceText = `Anode Health: ${healthPct}% (<50% dep.)`;
 
                 const rows = [
                     { cols: [{ val: "Platform Anode Type", align: "left" as const }, { val: anodeTypeDisplay, bold: true, align: "right" as const }] },
@@ -1134,7 +1239,7 @@ export const generateInspectionSummaryReport = async (
                     { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: Number(d25) > 0, align: "right" as const }] },
                     { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: Number(d50) > 0, align: "right" as const }] },
                     { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: Number(d75) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Condition / Advice", align: "left" as const }, { val: adviceText, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Anode Health", align: "left" as const }, { val: `${healthPct}% (<50% dep.)`, bold: true, align: "right" as const }] },
                     { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || totAnodeCount), bold: true, align: "right" as const }] },
                 ];
 
@@ -1331,7 +1436,9 @@ export const generateInspectionSummaryReport = async (
         // 7F. Task Block: MGI Thickness Reading — Conditional if inspection data contains thickness readings
         const thkStats = mgi?.thickness || {};
         const hasThicknessRecords = Boolean(
-            thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0) || mgi?.hasProfileGraphData
+            (thkStats.hasData && thkStats.count > 0) ||
+            (mgi?.byQid && Object.values(mgi.byQid).some((arr: any) => Array.isArray(arr) && arr.length > 0)) ||
+            (mgi?.total && mgi.total > 0 && ((mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)))
         );
 
         if (hasThicknessRecords) {

@@ -247,11 +247,7 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
     let textColor = REPORT_COLORS.text;
     let hexColor = '#1E293B';
 
-    if (isIncomplete) {
-        type = 'INCOMPLETE';
-        textColor = REPORT_COLORS.incomplete;
-        hexColor = '#F59E0B';
-    } else if (isRectified && (hasAnomaly || isFinding)) {
+    if (isRectified && (hasAnomaly || isFinding)) {
         type = 'RECTIFIED';
         textColor = REPORT_COLORS.rectified;
         hexColor = '#16A34A';
@@ -263,6 +259,10 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         type = 'FINDING';
         textColor = REPORT_COLORS.finding;
         hexColor = '#D97706';
+    } else if (isIncomplete) {
+        type = 'INCOMPLETE';
+        textColor = REPORT_COLORS.incomplete;
+        hexColor = '#F59E0B';
     }
 
     return {
@@ -284,71 +284,112 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
 }
 
 /**
- * Formats the complete Finding / Description / Observation cell text according to requirements:
- * - If status is INCOMPLETE: priority is for Reason for Incomplete Task value. If blank/null, fallback to inspection finding value.
- * - Otherwise:
- *   1. Base Finding / Description
- *   2. Additional CP (if Got data)
- *   3. Additional UT (if Got data)
- *   4. 'Anomaly Description:' or 'Finding Description:' (if got data)
- *   5. If rectified: 'Rectified Description: {desc}'
- *   6. 'Please refer to Anomaly No.:' / 'Please refer to Finding No.:' {reference no.}
+ * Formats the complete Finding / Description / Observation cell text:
+ * 1. Base Inspection Finding (if keyed in)
+ * 2. Additional CP readings (if got data)
+ * 3. Additional UT readings (if got data)
+ * 4. Incomplete Reason: {reason} (if incomplete reason keyed in or status is incomplete)
+ * 5. 'Anomaly Description:' or 'Finding Description:' {desc} (if anomaly/finding flagged)
+ * 6. If rectified: 'Rectified Description: {desc}'
+ * 7. 'Please refer to Anomaly No.:' / 'Please refer to Finding No.:' {reference no.}
  */
 export function formatReportFindingText(r: any, baseFinding?: string): string {
     const info = getRecordStatusInfo(r);
-
-    // If status is INCOMPLETE:
-    if (info.isIncomplete) {
-        const cleanInc = info.incompleteReason ? info.incompleteReason.trim() : "";
-        let initialFinding = (baseFinding !== undefined ? baseFinding : (r.description || r.findings || r.inspection_data?.findings || r.inspection_data?.description || r.remarks || r.inspection_data?.remarks || "")).toString().trim();
-        if (initialFinding === "No significant findings" || initialFinding === "N/A" || initialFinding === "-" || initialFinding === "—" || initialFinding === "None") {
-            initialFinding = "";
-        }
-
-        const chosenText = cleanInc || initialFinding;
-        return chosenText || "Incomplete";
-    }
-
     const lines: string[] = [];
+    const cleanInc = (info.incompleteReason || "").trim();
 
-    // 1. Base Finding / Description
-    let initialFinding = (baseFinding !== undefined ? baseFinding : (r.description || r.findings || r.inspection_data?.findings || r.inspection_data?.description || "")).toString().trim();
-    
-    // Clean up placeholder text if we have substantive anomaly/additional data
-    const hasExtraInfo = info.isAnomaly || info.isFinding || info.isRectified || info.additionalCpEntries.length > 0 || info.additionalUtEntries.length > 0;
-    if (hasExtraInfo && (initialFinding === "No significant findings" || initialFinding === "N/A" || initialFinding === "-" || initialFinding === "—" || initialFinding === "None")) {
+    // 1. Base Finding / Inspection Finding
+    let initialFinding = (baseFinding !== undefined ? baseFinding : (r.description || r.findings || r.inspection_data?.findings || r.inspection_data?.description || r.remarks || r.inspection_data?.remarks || "")).toString().trim();
+
+    // Clean up placeholder text if we have substantive data
+    const hasSubstantiveData = Boolean(
+        cleanInc ||
+        info.isIncomplete ||
+        info.isAnomaly ||
+        info.isFinding ||
+        info.isRectified ||
+        info.additionalCpEntries.length > 0 ||
+        info.additionalUtEntries.length > 0
+    );
+
+    if (hasSubstantiveData && (
+        initialFinding === "No significant findings" ||
+        initialFinding === "N/A" ||
+        initialFinding === "-" ||
+        initialFinding === "—" ||
+        initialFinding === "None"
+    )) {
         initialFinding = "";
     }
 
-    let baseText = initialFinding;
-    if (info.defectDescription && baseText === info.defectDescription) {
-        baseText = ""; // Avoid duplicate text, will be shown under Anomaly Description / Finding Description
-    }
+    // Split initialFinding into lines if multiline, and filter out any line matching cleanInc
+    if (initialFinding) {
+        const findingLines = initialFinding.split("\n").map(l => l.trim()).filter(Boolean);
+        const filteredLines = cleanInc 
+            ? findingLines.filter(l => {
+                const lower = l.toLowerCase();
+                const incLower = cleanInc.toLowerCase();
+                return lower !== incLower && 
+                       lower !== `incomplete reason: ${incLower}` && 
+                       lower !== `reason: ${incLower}` &&
+                       lower !== `incomplete: ${incLower}`;
+            })
+            : findingLines;
 
-    if (baseText) {
-        lines.push(baseText);
+        // If not incomplete and defectDescription is identical to single initialFinding, avoid back-to-back exact duplicate
+        if (!cleanInc && !info.isIncomplete && info.defectDescription && filteredLines.length === 1 && filteredLines[0] === info.defectDescription) {
+            // Will be shown under Anomaly Description
+        } else {
+            filteredLines.forEach(l => {
+                if (!lines.includes(l)) {
+                    lines.push(l);
+                }
+            });
+        }
     }
 
     // 2. Append Additional CP (if Got data)
-    info.additionalCpEntries.forEach(cpStr => lines.push(cpStr));
+    info.additionalCpEntries.forEach(cpStr => {
+        if (!lines.includes(cpStr)) lines.push(cpStr);
+    });
 
     // 3. Append Additional UT (if Got data)
-    info.additionalUtEntries.forEach(utStr => lines.push(utStr));
+    info.additionalUtEntries.forEach(utStr => {
+        if (!lines.includes(utStr)) lines.push(utStr);
+    });
 
-    // 4. Append Anomaly/Finding Description (if Got data)
-    if (info.isAnomaly || info.isFinding) {
-        if (info.defectDescription) {
-            const prefix = info.isFinding ? "Finding Description:" : "Anomaly Description:";
-            if (!baseText.includes(info.defectDescription)) {
+    // 4. Incomplete Reason (if got incomplete reason data or status is incomplete)
+    if (cleanInc || info.isIncomplete) {
+        if (cleanInc && cleanInc !== "-" && cleanInc !== "—") {
+            const formattedInc = cleanInc.match(/^(incomplete(\s+reason)?|reason)\s*:/i)
+                ? cleanInc
+                : `Incomplete Reason: ${cleanInc}`;
+            if (!lines.includes(formattedInc)) {
                 if (lines.length > 0 && lines[lines.length - 1] !== "") {
                     lines.push("");
                 }
-                lines.push(`${prefix} ${info.defectDescription}`);
+                lines.push(formattedInc);
+            }
+        } else if (info.isIncomplete && lines.length === 0) {
+            lines.push("Incomplete");
+        }
+    }
+
+    // 5. Append Anomaly/Finding Description (if Got data)
+    if (info.isAnomaly || info.isFinding) {
+        if (info.defectDescription) {
+            const prefix = info.isFinding ? "Finding Description:" : "Anomaly Description:";
+            const formattedDesc = `${prefix} ${info.defectDescription}`;
+            if (!lines.includes(formattedDesc)) {
+                if (lines.length > 0 && lines[lines.length - 1] !== "") {
+                    lines.push("");
+                }
+                lines.push(formattedDesc);
             }
         }
     }
 
-    // 5. If rectified, append Rectified Description
+    // 6. If rectified, append Rectified Description
     if (info.isRectified) {
         let rectText = info.rectifiedDescription || "Rectified";
         if (info.rectifiedDate) {
@@ -357,19 +398,19 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
                 rectText += ` (${dateStr})`;
             }
         }
-        if (lines.length > 0 && lines[lines.length - 1] !== "") {
-            lines.push("");
+        const formattedRect = `Rectified Description: ${rectText}`;
+        if (!lines.includes(formattedRect)) {
+            lines.push(formattedRect);
         }
-        lines.push(`Rectified Description: ${rectText}`);
     }
 
-    // 6. Append Reference No.
+    // 7. Append Reference No.
     if (info.anomalyRefNo) {
         const refLabel = info.isFinding ? "Please refer to Finding No.:" : "Please refer to Anomaly No.:";
-        if (lines.length > 0 && lines[lines.length - 1] !== "") {
-            lines.push("");
+        const formattedRef = `${refLabel} ${info.anomalyRefNo}`;
+        if (!lines.includes(formattedRef)) {
+            lines.push(formattedRef);
         }
-        lines.push(`${refLabel} ${info.anomalyRefNo}`);
     }
 
     if (lines.length === 0) {
