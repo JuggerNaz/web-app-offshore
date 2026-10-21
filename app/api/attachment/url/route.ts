@@ -439,6 +439,7 @@ export async function GET(request: NextRequest) {
     let fileName = "";
     let fileType = "";
     let originalTitle = "";
+    let altPaths: string[] = [];
 
     // 1. Fetch attachment record if ID provided
     if (id) {
@@ -461,10 +462,11 @@ export async function GET(request: NextRequest) {
           originalTitle = attachment.name || meta?.title || "";
           fileName = meta?.original_file_name || (attachment.name && attachment.name.includes(".") ? attachment.name : "");
           fileType = meta?.file_type || "";
-          filePath = meta?.file_path || attachment.path || filePath;
-          fileUrl = meta?.file_url || (typeof attachment.path === "string" && (attachment.path.startsWith("http://") || attachment.path.startsWith("https://")) ? attachment.path : null);
+          filePath = attachment.path || fallbackPath || meta?.file_path || filePath;
+          fileUrl = (typeof attachment.path === "string" && (attachment.path.startsWith("http://") || attachment.path.startsWith("https://")) ? attachment.path : null) || (typeof fallbackPath === "string" && (fallbackPath.startsWith("http://") || fallbackPath.startsWith("https://")) ? fallbackPath : null) || meta?.file_url;
           provider = meta?.storage_provider || "Supabase";
           bucket = meta?.bucket || "attachments";
+          altPaths = [attachment.path, meta?.file_url, meta?.file_path].filter((p: any) => typeof p === "string" && p.trim());
         }
       }
 
@@ -516,11 +518,14 @@ export async function GET(request: NextRequest) {
       return { buffer: uint8, contentType: mime };
     }
 
+    const isBackblaze = provider?.toLowerCase() === "backblaze" || targetUrlOrPath.includes("backblazeb2.com") || Boolean(fallbackPath && fallbackPath.includes("backblazeb2.com"));
+
     // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
+    // Note: Skip private cloud endpoints like backblazeb2.com that require signed auth headers and will 401
     const directHttpCandidates = Array.from(
       new Set(
         [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
-          (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://"))
+          (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://")) && !u.includes("backblazeb2.com")
         )
       )
     );
@@ -562,8 +567,8 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // 5. Direct Supabase Storage Download (with sanitized key)
-    if (provider === "Supabase" || !provider || isWindowsOrLocalPath) {
+    // 5. Direct Supabase Storage Download (with sanitized key) - only if NOT Backblaze
+    if (!isBackblaze && (provider === "Supabase" || !provider || isWindowsOrLocalPath)) {
       let relativePath = targetUrlOrPath.trim();
       if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
         const parts = relativePath.split("/");
@@ -669,32 +674,35 @@ export async function GET(request: NextRequest) {
     }
 
     // 6. Resolve via Storage Handler for multi-cloud (Backblaze B2, S3, GDrive, Azure, Cloudinary)
-    // ONLY if active provider is explicitly configured and not legacy/supabase
-    let settingsQuery = (supabase as any).from("company_settings").select("storage_provider, storage_config");
-    const targetCompanyId = companyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
-    if (targetCompanyId) {
-      settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
-    }
-    let { data: settings } = await settingsQuery.limit(1).maybeSingle();
+    let settings: any = null;
+    if (!isBackblaze) {
+      let settingsQuery = (supabase as any).from("company_settings").select("storage_provider, storage_config");
+      const targetCompanyId = companyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
+      if (targetCompanyId) {
+        settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
+      }
+      const { data: sData } = await settingsQuery.limit(1).maybeSingle();
+      settings = sData;
 
-    if (!settings?.storage_config || Object.keys(settings.storage_config).length === 0) {
-      try {
-        const { data: fallbackSettings } = await (supabase as any)
-          .from("company_settings")
-          .select("storage_provider, storage_config")
-          .not("storage_config", "is", null)
-          .filter("storage_config", "neq", "{}")
-          .limit(1)
-          .maybeSingle();
-        if (fallbackSettings?.storage_config && Object.keys(fallbackSettings.storage_config).length > 0) {
-          settings = fallbackSettings;
-        }
-      } catch (_) {}
+      if (!settings?.storage_config || Object.keys(settings.storage_config).length === 0) {
+        try {
+          const { data: fallbackSettings } = await (supabase as any)
+            .from("company_settings")
+            .select("storage_provider, storage_config")
+            .not("storage_config", "is", null)
+            .filter("storage_config", "neq", "{}")
+            .limit(1)
+            .maybeSingle();
+          if (fallbackSettings?.storage_config && Object.keys(fallbackSettings.storage_config).length > 0) {
+            settings = fallbackSettings;
+          }
+        } catch (_) {}
+      }
     }
 
     try {
       let activeProvider = provider || settings?.storage_provider;
-      if (targetUrlOrPath.includes("backblazeb2.com") || (fallbackPath && fallbackPath.includes("backblazeb2.com"))) {
+      if (isBackblaze) {
         activeProvider = "Backblaze";
       } else if (targetUrlOrPath.includes("amazonaws.com") || (fallbackPath && fallbackPath.includes("amazonaws.com"))) {
         activeProvider = "AWS S3";
@@ -705,16 +713,19 @@ export async function GET(request: NextRequest) {
 
       // 1. Direct server-side download (Immune to CORS, zero redirects, fastest)
       if (typeof (handler as any).download === "function") {
-        try {
-          const dlResult = await (handler as any).download(targetUrlOrPath);
-          if (dlResult && dlResult.buffer) {
-            const ct = dlResult.contentType || "image/jpeg";
-            const uint8 = dlResult.buffer instanceof Uint8Array ? dlResult.buffer : new Uint8Array(dlResult.buffer);
-            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
-            return { buffer: uint8, contentType: ct };
+        const dlCandidates = Array.from(new Set([targetUrlOrPath, ...altPaths].filter(Boolean)));
+        for (const candidate of dlCandidates) {
+          try {
+            const dlResult = await (handler as any).download(candidate);
+            if (dlResult && dlResult.buffer) {
+              const ct = dlResult.contentType || "image/jpeg";
+              const uint8 = dlResult.buffer instanceof Uint8Array ? dlResult.buffer : new Uint8Array(dlResult.buffer);
+              setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
+              return { buffer: uint8, contentType: ct };
+            }
+          } catch (dlErr) {
+            console.warn("[AttachmentURL] Handler direct download error:", dlErr);
           }
-        } catch (dlErr) {
-          console.warn("[AttachmentURL] Handler direct download error:", dlErr);
         }
       }
 

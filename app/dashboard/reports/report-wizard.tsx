@@ -75,9 +75,9 @@ interface ReportWizardProps {
 interface ReportConfig {
     reportNoPrefix: string;
     reportYear: string;
-    preparedBy: { name: string; date: string };
-    reviewedBy: { name: string; date: string };
-    approvedBy: { name: string; date: string };
+    preparedBy: { name: string; date: string; position?: string };
+    reviewedBy: { name: string; date: string; position?: string };
+    approvedBy: { name: string; date: string; position?: string };
     watermark: { enabled: boolean; text: string; transparency: number };
     showContractorLogo: boolean;
     showPageNumbers: boolean;
@@ -141,9 +141,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
         reportYear: new Date().getFullYear().toString(),
-        preparedBy: { name: "", date: "" },
-        reviewedBy: { name: "", date: "" },
-        approvedBy: { name: "", date: "" },
+        preparedBy: { name: "", date: "", position: "" },
+        reviewedBy: { name: "", date: "", position: "" },
+        approvedBy: { name: "", date: "", position: "" },
         watermark: { enabled: true, text: "DRAFT", transparency: 0.1 },
         showContractorLogo: true,
         showPageNumbers: true,
@@ -1755,9 +1755,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             </div>
 
                             <div className="space-y-4">
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     <Label className="text-xs uppercase tracking-wide text-muted-foreground">Prepared By</Label>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-3 gap-2">
                                         <Input
                                             className="col-span-2"
                                             placeholder="Name"
@@ -1770,13 +1770,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             onChange={(e) => setConfig({ ...config, preparedBy: { ...config.preparedBy, date: e.target.value } })}
                                         />
                                     </div>
+                                    <Input
+                                        placeholder="Position"
+                                        value={config.preparedBy.position || ""}
+                                        onChange={(e) => setConfig({ ...config, preparedBy: { ...config.preparedBy, position: e.target.value } })}
+                                    />
                                 </div>
 
                                 <Separator />
 
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     <Label className="text-xs uppercase tracking-wide text-muted-foreground">Reviewed By</Label>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-3 gap-2">
                                         <Input
                                             className="col-span-2"
                                             placeholder="Name"
@@ -1789,13 +1794,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             onChange={(e) => setConfig({ ...config, reviewedBy: { ...config.reviewedBy, date: e.target.value } })}
                                         />
                                     </div>
+                                    <Input
+                                        placeholder="Position"
+                                        value={config.reviewedBy.position || ""}
+                                        onChange={(e) => setConfig({ ...config, reviewedBy: { ...config.reviewedBy, position: e.target.value } })}
+                                    />
                                 </div>
 
                                 <Separator />
 
-                                <div className="space-y-3">
+                                <div className="space-y-2">
                                     <Label className="text-xs uppercase tracking-wide text-muted-foreground">Approved By</Label>
-                                    <div className="grid grid-cols-3 gap-3">
+                                    <div className="grid grid-cols-3 gap-2">
                                         <Input
                                             className="col-span-2"
                                             placeholder="Name"
@@ -1808,6 +1818,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             onChange={(e) => setConfig({ ...config, approvedBy: { ...config.approvedBy, date: e.target.value } })}
                                         />
                                     </div>
+                                    <Input
+                                        placeholder="Position"
+                                        value={config.approvedBy.position || ""}
+                                        onChange={(e) => setConfig({ ...config, approvedBy: { ...config.approvedBy, position: e.target.value } })}
+                                    />
                                 </div>
                             </div>
                         </CardContent>
