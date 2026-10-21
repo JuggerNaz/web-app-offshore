@@ -107,13 +107,67 @@ export const generateROVAnodeReport = async (
             return elevB - elevA; // Top to bottom (descending order)
         });
 
+        const formatGrowthPercent = (val: any): string => {
+            if (val === undefined || val === null || val === '') return '-';
+            const s = String(val).trim();
+            if (s === '-' || s.toUpperCase() === 'N/A' || s.toUpperCase() === 'NONE') return '-';
+            if (s.includes('%')) return s;
+            const num = parseFloat(s);
+            if (!isNaN(num)) return `${num}%`;
+            return s;
+        };
+
+        const extractMarineGrowth = (d: any) => {
+            let rawHard = d.marine_growth_hard ?? d.hard_growth ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.mg_hard;
+            let rawSoft = d.marine_growth_soft ?? d.soft_growth ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.mg_soft;
+
+            if ((rawHard === undefined || rawHard === null || rawHard === '') && (rawSoft === undefined || rawSoft === null || rawSoft === '') && d.marine_growth) {
+                const mgStr = String(d.marine_growth).trim();
+                const lower = mgStr.toLowerCase();
+                
+                const hMatch = lower.match(/hard\s*[:=-]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+                if (hMatch) rawHard = hMatch[1];
+                
+                const sMatch = lower.match(/soft\s*[:=-]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+                if (sMatch) rawSoft = sMatch[1];
+
+                if (!hMatch && !sMatch) {
+                    if (lower.startsWith('hard:')) {
+                        rawHard = mgStr.split(':').pop()?.replace(/coverage/i, '').trim();
+                    } else if (lower.startsWith('soft:')) {
+                        rawSoft = mgStr.split(':').pop()?.replace(/coverage/i, '').trim();
+                    }
+                }
+            }
+
+            return {
+                hard: formatGrowthPercent(rawHard),
+                soft: formatGrowthPercent(rawSoft)
+            };
+        };
+
+        const topHeader = [
+            { content: 'Item No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'QID', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Elevation (m)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Depletion (%)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Anode CP (mV)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Anode Type', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Marine Growth (%)', colSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Anomaly', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Dive No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Findings', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+        ];
+
+        const bottomHeader = [
+            { content: 'Hard', styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Soft', styles: { valign: 'middle' as const, halign: 'center' as const } },
+        ];
+
         autoTable(doc, {
             startY: startY,
             margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: config.showSignatures !== false ? 35 : 15 },
-            head: [[
-                'Item No.', 'QID', 'Elevation (m)', 'Depletion (%)', 
-                'Anode CP (mV)', 'Anode Type', 'Anomaly', 'Dive No.', 'Findings'
-            ]],
+            head: [topHeader, bottomHeader],
             body: sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
                 const qid = r.structure_components?.q_id || r.component?.q_id || 'N/A';
@@ -149,6 +203,9 @@ export const generateROVAnodeReport = async (
                         }
                     }
                 }
+
+                // Formulate Marine Growth Hard and Soft Percentages
+                const mg = extractMarineGrowth(d);
                 
                 // Linked anomaly
                 const linkedAnomaly = (r.insp_anomalies && r.insp_anomalies.length > 0) ? r.insp_anomalies[0] : null;
@@ -171,26 +228,30 @@ export const generateROVAnodeReport = async (
                     depletion,
                     cp,
                     anodeType,
+                    mg.hard,
+                    mg.soft,
                     (isAnomaly || isDefect) ? 'Yes' : 'No',
                     diveNo,
                     findings
                 ];
             }) : [
-                ["-", "-", "-", "-", "-", "-", "-", "-", "No anode observations recorded for this scope."]
+                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No anode observations recorded for this scope."]
             ],
             theme: 'grid',
             headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
             styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             columnStyles: {
-                0: { cellWidth: 15, halign: 'center' },
-                1: { cellWidth: 35 },
-                2: { cellWidth: 22, halign: 'center' },
+                0: { cellWidth: 14, halign: 'center' },
+                1: { cellWidth: 30 },
+                2: { cellWidth: 20, halign: 'center' },
                 3: { cellWidth: 22, halign: 'center' },
                 4: { cellWidth: 22, halign: 'center' },
-                5: { cellWidth: 25 },
-                6: { cellWidth: 18, halign: 'center' },
-                7: { cellWidth: 25, halign: 'center' },
-                8: { cellWidth: 'auto' }
+                5: { cellWidth: 24 },
+                6: { cellWidth: 16, halign: 'center' },
+                7: { cellWidth: 16, halign: 'center' },
+                8: { cellWidth: 17, halign: 'center' },
+                9: { cellWidth: 22, halign: 'center' },
+                10: { cellWidth: 'auto' }
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;

@@ -452,7 +452,7 @@ export const generateDefectCriteriaReport = async (
                 });
 
                 // Add Group Header
-                tableBody.push([{ content: groupKey, colSpan: 6, styles: {fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
+                tableBody.push([{ content: groupKey, colSpan: 5, styles: {fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
 
                 // Add Rules
                 groupRules.forEach(rule => {
@@ -476,7 +476,6 @@ export const generateDefectCriteriaReport = async (
                         : "-";
 
                     tableBody.push([
-                        rule.order || "-",
                         structureGroupDisplay,
                         defectType,
                         condition,
@@ -488,7 +487,7 @@ export const generateDefectCriteriaReport = async (
 
             autoTable(doc, {
                 startY: currentY,
-                head: [['Order', 'Structure Group', 'Defect Type', 'Condition', 'Priority', 'Alert Message']],
+                head: [['Structure Group', 'Defect Type', 'Condition', 'Priority', 'Alert Message']],
                 body: tableBody,
                 theme: 'grid',
                 headStyles: {
@@ -499,7 +498,7 @@ export const generateDefectCriteriaReport = async (
                     lineColor: [200, 200, 200],
                     halign: 'center',
                     valign: 'middle',
-                    minCellHeight: 10
+                    minCellHeight: 8
                 },
                 styles: {
                     fontSize: 7,
@@ -510,18 +509,17 @@ export const generateDefectCriteriaReport = async (
                     valign: 'middle'
                 },
                 columnStyles: {
-                    0: { cellWidth: 10, halign: 'center' }, // Order
-                    1: { cellWidth: 34, halign: 'center' }, // Structure Group
-                    2: { cellWidth: 46, halign: 'left' },   // Defect Type
-                    3: { cellWidth: 24, halign: 'center' }, // Condition
-                    4: { cellWidth: 24, halign: 'center' }, // Priority
-                    5: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
+                    0: { cellWidth: 38, halign: 'center' }, // Structure Group
+                    1: { cellWidth: 48, halign: 'left' },   // Defect Type
+                    2: { cellWidth: 26, halign: 'center' }, // Condition
+                    3: { cellWidth: 26, halign: 'center' }, // Priority
+                    4: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
                 },
                 didDrawPage: (data: any) => {
                     if (data.pageNumber > 1) addHeader(data.pageNumber);
                 },
                 didParseCell: (data: any) => {
-                    if (data.section === 'body' && data.column.index === 4) {
+                    if (data.section === 'body' && data.column.index === 3) {
                         const rawPriorityId = data.cell.raw.rawPriorityId;
                         if (rawPriorityId && libraryData.anomalyColors) {
                             // Find color for this priority

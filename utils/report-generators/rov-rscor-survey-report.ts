@@ -276,9 +276,19 @@ export const generateROVRSCORSurveyReport = async (
                 scourDetails.push(`Location: ${d.scour_location}`);
             }
 
-            if (d.scour_depth !== undefined && d.scour_depth !== null && String(d.scour_depth).trim() !== "") {
+            const rawBurial = d.Burial_percent ?? d.burial_percent ?? d.burial;
+            const burialNum = parseFloat(String(rawBurial ?? '').replace(/[^0-9.-]/g, ''));
+            const hasBurial = !isNaN(burialNum) && burialNum > 0;
+
+            const rawDepth = d.scour_depth ?? d.scourDepth ?? d.depth;
+            const hasDepth = rawDepth !== undefined && rawDepth !== null && String(rawDepth).trim() !== "" && String(rawDepth).trim() !== "-" && String(rawDepth).trim() !== "—";
+
+            if (hasDepth) {
                 const unit = d.scour_depth_unit || "mm";
-                scourDetails.push(`Scour Depth: ${d.scour_depth} ${unit}`);
+                const s = String(rawDepth).trim();
+                scourDetails.push(`Scour Depth: ${s.toLowerCase().includes('mm') || s.toLowerCase().includes('m') ? s : `${s} ${unit}`}`);
+            } else if (hasBurial) {
+                scourDetails.push(`Scour Depth: 0 mm`);
             }
 
             if (d.Exposed_pile !== undefined && d.Exposed_pile !== null && String(d.Exposed_pile).trim() !== "") {

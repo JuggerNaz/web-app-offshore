@@ -656,11 +656,30 @@ export const generateROVRSCORV2Report = async (
 
                         const findings = formatReportFindingText(r);
 
+                        const rawBurial = rd.Burial_percent ?? rd.burial_percent ?? rd.burial;
+                        const burialNum = parseFloat(String(rawBurial ?? '').replace(/[^0-9.-]/g, ''));
+                        const hasBurial = !isNaN(burialNum) && burialNum > 0;
+
+                        const rawDepth = rd.scour_depth ?? rd.scourDepth ?? rd.depth;
+                        const hasDepth = rawDepth !== undefined && rawDepth !== null && String(rawDepth).trim() !== '' && String(rawDepth).trim() !== '-' && String(rawDepth).trim() !== '—';
+
+                        let depthDisplay = '-';
+                        if (hasDepth) {
+                            const s = String(rawDepth).trim();
+                            depthDisplay = s.toLowerCase().includes('mm') || s.toLowerCase().includes('m') ? s : `${s} mm`;
+                        } else if (hasBurial) {
+                            depthDisplay = '0 mm';
+                        }
+
+                        const burialDisplay = rawBurial !== undefined && rawBurial !== null && String(rawBurial).trim() !== '' && String(rawBurial).trim() !== '-' && String(rawBurial).trim() !== '—'
+                            ? (String(rawBurial).includes('%') ? String(rawBurial).trim() : `${rawBurial}%`)
+                            : '-';
+
                         return [
                             qid,
                             rd.scour_location || 'N/A',
-                            rd.scour_depth ? `${rd.scour_depth} mm` : '-',
-                            rd.Burial_percent ? `${rd.Burial_percent}%` : '-',
+                            depthDisplay,
+                            burialDisplay,
                             rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true ? 'Yes' : 'No',
                             findings
                         ];

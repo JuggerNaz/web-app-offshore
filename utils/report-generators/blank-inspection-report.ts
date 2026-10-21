@@ -467,7 +467,8 @@ export const generateBlankInspectionReport = async (
                 const { generateDivingSZONEReport } = await import("./diving-szone-report");
                 return await generateDivingSZONEReport(blankRecords, headerData, companySettings, generatorConfig as any, null);
             }
-            case "szci-report": {
+            case "szci-report":
+            case "rov-szci-report": {
                 const { generateROVSZCIReport } = await import("./rov-szci-report");
                 return await generateROVSZCIReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }

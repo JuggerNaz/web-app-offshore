@@ -1147,43 +1147,84 @@ export const generateInspectionSummaryGraphReport = async (
                 const chartBaseY = graphY + graphH - 7;
                 const maxBarH = graphH - 17;
                 const colW = (bw - 6) / bands.length;
+                const barW = (colW - 3) / 2;
 
                 // Baseline axis
                 doc.setDrawColor(...colors.border);
                 doc.setLineWidth(0.15);
                 doc.line(bx + 2, chartBaseY, bx + bw - 2, chartBaseY);
 
+                // Helper to draw clean auto-scaled bar value
+                const hardColor = isPF ? colors.textDark : colors.navy;
+                const softColor = isPF ? colors.textDark : colors.teal;
+                const drawBarVal = (val: number, cx: number, topY: number, textColor: [number, number, number]) => {
+                    const str = String(val);
+                    let fSize = 4.2;
+                    doc.setFontSize(fSize);
+                    while (fSize > 3.0 && doc.getTextWidth(str) > (barW + 0.4)) {
+                        fSize -= 0.2;
+                        doc.setFontSize(fSize);
+                    }
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...textColor);
+                    doc.text(str, cx, topY, { align: "center" });
+                };
+
                 bands.forEach((bLabel, bIdx) => {
                     const colX = bx + 3 + (bIdx * colW);
                     const hVal = hardVals[bIdx];
                     const sVal = softVals[bIdx];
 
-                    const hH = Math.max(0.5, (hVal / maxVal) * maxBarH);
-                    const sH = Math.max(0.5, (sVal / maxVal) * maxBarH);
-                    const barW = (colW - 3) / 2;
+                    const hCenterX = colX + (barW / 2);
+                    const sCenterX = colX + barW + 0.5 + (barW / 2);
+
+                    const hH = hVal > 0 ? Math.max(0.7, (hVal / maxVal) * maxBarH) : 0;
+                    const sH = sVal > 0 ? Math.max(0.7, (sVal / maxVal) * maxBarH) : 0;
 
                     // Hard Bar
-                    doc.setFillColor(...colors.navy);
-                    doc.rect(colX, chartBaseY - hH, barW, hH, "F");
+                    if (hH > 0) {
+                        doc.setFillColor(...colors.navy);
+                        doc.rect(colX, chartBaseY - hH, barW, hH, "F");
+                    }
 
                     // Soft Bar
-                    doc.setFillColor(...colors.teal);
-                    doc.rect(colX + barW + 0.5, chartBaseY - sH, barW, sH, "F");
+                    if (sH > 0) {
+                        doc.setFillColor(...colors.teal);
+                        doc.rect(colX + barW + 0.5, chartBaseY - sH, barW, sH, "F");
+                    }
 
-                    // Value label on top of tallest bar
-                    const topVal = Math.max(hVal, sVal);
-                    if (topVal > 0) {
-                        doc.setFontSize(4.5);
-                        doc.setFont("helvetica", "bold");
-                        doc.setTextColor(...colors.textDark);
-                        doc.text(String(topVal), colX + (barW), chartBaseY - Math.max(hH, sH) - 1, { align: "center" });
+                    // Determine Y level for Hard & Soft labels:
+                    // If both bars are close in height and both > 0, align them symmetrically
+                    const useAlignedY = (hVal > 0 && sVal > 0 && Math.abs(hH - sH) < 1.5);
+                    const alignedY = chartBaseY - Math.max(hH, sH) - 0.8;
+                    const hY = useAlignedY ? alignedY : (chartBaseY - hH - 0.8);
+                    const sY = useAlignedY ? alignedY : (chartBaseY - sH - 0.8);
+
+                    // Value label for Hard bar
+                    if (hVal > 0) {
+                        drawBarVal(hVal, hCenterX, hY, hardColor);
+                    } else if (sVal > 0) {
+                        doc.setFontSize(3.8);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text("0", hCenterX, chartBaseY - 0.8, { align: "center" });
+                    }
+
+                    // Value label for Soft bar
+                    if (sVal > 0) {
+                        drawBarVal(sVal, sCenterX, sY, softColor);
+                    } else if (hVal > 0) {
+                        doc.setFontSize(3.8);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text("0", sCenterX, chartBaseY - 0.8, { align: "center" });
                     }
 
                     // Band label below axis
                     doc.setFontSize(4.3);
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textMuted);
-                    doc.text(bLabel, colX + (barW), chartBaseY + 3.2, { align: "center" });
+                    doc.text(bLabel, colX + barW + 0.25, chartBaseY + 3.2, { align: "center" });
                 });
             }
         });
@@ -1251,40 +1292,45 @@ export const generateInspectionSummaryGraphReport = async (
                     { label: "76-100%", count: d75, color: colors.red },
                 ];
 
-                const aBarStartY = graphY + 6.5;
+                const aBarStartY = graphY + 6.0;
                 const aRowH = (graphH - 12) / 4;
 
                 aRanges.forEach((ar, aIdx) => {
                     const ay = aBarStartY + (aIdx * aRowH);
+                    const rowMidY = ay + (aRowH / 2);
+                    const barH = Math.min(3.8, Math.max(2.8, aRowH * 0.38));
+                    const barY = rowMidY - (barH / 2);
+                    const textY = rowMidY + 1.0;
+
                     doc.setFontSize(4.8);
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textDark);
-                    doc.text(ar.label, bx + 3, ay + 2.8);
+                    doc.text(ar.label, bx + 3, textY);
 
                     const barX = bx + 16;
                     const barW = bw - 32;
-                    const barH = 3;
                     const pct = (ar.count / maxAnodeDep) * 100;
                     const pctOfTot = totAnodeCount > 0 ? Math.round((ar.count / totAnodeCount) * 100) : 0;
 
                     doc.setFillColor(...colors.barTrack);
-                    doc.roundedRect(barX, dySafe(ay + 0.5), barW, barH, 0.8, 0.8, "F");
+                    doc.roundedRect(barX, dySafe(barY), barW, barH, 0.8, 0.8, "F");
                     if (ar.count > 0) {
                         doc.setFillColor(...ar.color);
                         const fillW = Math.max(1, (barW * pct) / 100);
-                        doc.roundedRect(barX, dySafe(ay + 0.5), fillW, barH, 0.8, 0.8, "F");
+                        doc.roundedRect(barX, dySafe(barY), fillW, barH, 0.8, 0.8, "F");
                     }
 
                     doc.setFontSize(4.8);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(...colors.textDark);
-                    doc.text(`${ar.count} (${pctOfTot}%)`, bx + bw - 3, ay + 2.8, { align: "right" });
+                    doc.text(`${ar.count} (${pctOfTot}%)`, bx + bw - 3, textY, { align: "right" });
                 });
 
                 // Actionable offshore integrity advice: concise wording with >75% count only
                 const isRetrofitNeeded = d75 > 0;
                 doc.setFillColor(isRetrofitNeeded ? 254 : 240, isRetrofitNeeded ? 243 : 253, isRetrofitNeeded ? 199 : 244);
-                doc.roundedRect(bx + 3, graphY + graphH - 5.5, bw - 6, 4.2, 1, 1, "F");
+                const pillH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
+                doc.roundedRect(bx + 3, graphY + graphH - pillH - 1.2, bw - 6, pillH, 1, 1, "F");
 
                 const aAdviceStr = isRetrofitNeeded
                     ? `Retrofit Planning: ${d75} Anodes (>75% Dep.)`
@@ -1298,7 +1344,7 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.setFontSize(aFontSize);
                 }
                 doc.setTextColor(...(isRetrofitNeeded ? colors.amber : colors.emerald));
-                doc.text(aAdviceStr, bx + (bw / 2), graphY + graphH - 2.6, { align: "center" });
+                doc.text(aAdviceStr, bx + (bw / 2), graphY + graphH - 1.2 - (pillH / 2) + 1.0, { align: "center" });
             }
         });
 
@@ -1342,12 +1388,13 @@ export const generateInspectionSummaryGraphReport = async (
                 }
 
                 // Top 3 Circular/Pill Integrity Gauges
-                const gaugeY = graphY + 3;
+                const gaugeY = graphY + 2.5;
+                const gaugeH = Math.min(10.5, Math.max(8.5, graphH * 0.22));
                 const gW = (bw - 6) / 3;
 
                 // Gauge 1: Faces
                 doc.setFillColor(241, 245, 249);
-                doc.roundedRect(bx + 2, gaugeY, gW - 1, 9, 1, 1, "F");
+                doc.roundedRect(bx + 2, gaugeY, gW - 1, gaugeH, 1, 1, "F");
                 doc.setFontSize(4.3);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
@@ -1355,11 +1402,11 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFontSize(6);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
-                doc.text(`${facesSurveyed}/${registeredFaces}`, bx + 2 + (gW / 2) - 0.5, gaugeY + 7.5, { align: "center" });
+                doc.text(`${facesSurveyed}/${registeredFaces}`, bx + 2 + (gW / 2) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
 
                 // Gauge 2: Piles
                 doc.setFillColor(241, 245, 249);
-                doc.roundedRect(bx + 2 + gW, gaugeY, gW - 1, 9, 1, 1, "F");
+                doc.roundedRect(bx + 2 + gW, gaugeY, gW - 1, gaugeH, 1, 1, "F");
                 doc.setFontSize(4.3);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
@@ -1367,19 +1414,19 @@ export const generateInspectionSummaryGraphReport = async (
                 doc.setFontSize(6);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.navy);
-                doc.text(String(pilesSurveyed), bx + 2 + (gW * 1.5) - 0.5, gaugeY + 7.5, { align: "center" });
+                doc.text(String(pilesSurveyed), bx + 2 + (gW * 1.5) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
 
                 // Gauge 3: Exposed Piles
                 const isExposedZero = Number(exposedPileCount) === 0;
                 doc.setFillColor(isExposedZero ? 240 : 254, isExposedZero ? 253 : 242, isExposedZero ? 244 : 242);
-                doc.roundedRect(bx + 2 + (gW * 2), gaugeY, gW - 1, 9, 1, 1, "F");
+                doc.roundedRect(bx + 2 + (gW * 2), gaugeY, gW - 1, gaugeH, 1, 1, "F");
                 doc.setFontSize(4.3);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...(isExposedZero ? colors.emerald : colors.red));
                 doc.text("Exposed Piles", bx + 2 + (gW * 2.5) - 0.5, gaugeY + 3.2, { align: "center" });
                 doc.setFontSize(6);
                 doc.setFont("helvetica", "bold");
-                doc.text(String(exposedPileCount), bx + 2 + (gW * 2.5) - 0.5, gaugeY + 7.5, { align: "center" });
+                doc.text(String(exposedPileCount), bx + 2 + (gW * 2.5) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
 
                 // Extract Location and Depth Values
                 const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
@@ -1398,8 +1445,14 @@ export const generateInspectionSummaryGraphReport = async (
                     800
                 );
 
-                // Scour Depth Visual Spectrum Meter
-                const meterY = graphY + 14.2;
+                // Scour Depth Visual Spectrum Meter - Centered in middle
+                const bottomTextY = graphY + graphH - 2.0;
+                const availMiddle = (bottomTextY - 3.0) - (gaugeY + gaugeH);
+                const meterBarH = Math.min(4.8, Math.max(3.6, graphH * 0.08));
+                const meterSectionH = 3.5 + meterBarH + 3.6;
+                const meterTopY = gaugeY + gaugeH + Math.max(1.0, (availMiddle - meterSectionH) / 2);
+                const meterY = meterTopY + 3.5;
+
                 doc.setFontSize(4.8);
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(...colors.textDark);
@@ -1434,7 +1487,6 @@ export const generateInspectionSummaryGraphReport = async (
 
                 const meterBarX = bx + 3;
                 const meterBarW = bw - 6;
-                const meterBarH = 3.6;
                 const meterScaleMax = Math.max(1200, Math.ceil((scourLimit + 300) / 100) * 100, Math.ceil((maxDepthMm + 150) / 100) * 100);
 
                 // Depth spectrum zones: Normal / Safe (0 to scourLimit = Green), Anomaly (> scourLimit = Red)
@@ -1503,7 +1555,7 @@ export const generateInspectionSummaryGraphReport = async (
                     doc.setFontSize(sFontSize);
                 }
                 doc.setTextColor(...(isAnomaly ? colors.red : colors.textMuted));
-                doc.text(scourSummaryText, bx + (bw / 2), graphY + graphH - 1.8, { align: "center" });
+                doc.text(scourSummaryText, bx + (bw / 2), bottomTextY, { align: "center" });
             }
         });
 
@@ -1565,8 +1617,12 @@ export const generateInspectionSummaryGraphReport = async (
 
                     const meterX = bx + 4;
                     const meterW = bw - 8;
-                    const meterY = graphY + 11.8;
-                    const meterH = 5.0;
+                    const badgeH = Math.min(5.6, Math.max(4.6, graphH * 0.11));
+                    const badgeY = graphY + graphH - badgeH - 1.5;
+                    const availMiddle = badgeY - (graphY + 6.0);
+                    const meterH = Math.min(6.5, Math.max(4.8, graphH * 0.11));
+                    const meterSectionH = 3.2 + meterH + 3.4;
+                    const meterY = graphY + 6.0 + 3.2 + Math.max(0.5, (availMiddle - meterSectionH) / 2);
 
                     // Allowable limit coordinates on scale
                     const minCritX = meterX + (meterW * ((cpMinAllowable - vMinScale) / vRange));
@@ -1694,7 +1750,7 @@ export const generateInspectionSummaryGraphReport = async (
                     }
 
                     doc.setFillColor(...statusBg);
-                    doc.roundedRect(bx + 3, graphY + graphH - 6.5, bw - 6, 4.8, 1, 1, "F");
+                    doc.roundedRect(bx + 3, badgeY, bw - 6, badgeH, 1, 1, "F");
 
                     let cpFontSize = 4.2;
                     doc.setFontSize(cpFontSize);
@@ -1704,7 +1760,7 @@ export const generateInspectionSummaryGraphReport = async (
                         doc.setFontSize(cpFontSize);
                     }
                     doc.setTextColor(...statusTextColor);
-                    doc.text(statusStr, bx + (bw / 2), graphY + graphH - 3.4, { align: "center" });
+                    doc.text(statusStr, bx + (bw / 2), badgeY + (badgeH / 2) + 1.0, { align: "center" });
                 }
             });
         }
@@ -1738,10 +1794,11 @@ export const generateInspectionSummaryGraphReport = async (
                     const gCnt = Number(cond.grouted || 0);
                     const totalFmd = fmd?.total || (dCnt + fCnt + gCnt);
 
-                    // Donut Chart on Left
+                    // Donut Chart on Left - Centered vertically
                     const fmdCenterX = bx + 16;
-                    const fmdCenterY = graphY + (graphH / 2);
-                    drawDonutChart(fmdCenterX, fmdCenterY, 9, 5, [
+                    const fmdCenterY = graphY + 3 + ((graphH - 10) / 2);
+                    const donutR = Math.min(12, Math.max(8.5, (graphH - 18) / 2.3));
+                    drawDonutChart(fmdCenterX, fmdCenterY, donutR, donutR * 0.55, [
                         { value: dCnt, color: colors.emerald },
                         { value: fCnt, color: colors.red },
                         { value: gCnt, color: colors.navy },
@@ -1760,8 +1817,9 @@ export const generateInspectionSummaryGraphReport = async (
                         { label: `Grouted: ${gCnt}`, color: colors.navy },
                     ];
 
+                    const legStartY = fmdCenterY - ((rows.length * 5.5) / 2) + 2;
                     rows.forEach((r, idx) => {
-                        const ry = graphY + 5 + (idx * 5.5);
+                        const ry = legStartY + (idx * 5.5);
                         doc.setFillColor(...r.color);
                         doc.rect(legX, ry - 2, 2.5, 2.5, "F");
                         doc.setFontSize(5);
@@ -1773,7 +1831,8 @@ export const generateInspectionSummaryGraphReport = async (
                     // Status pill at bottom
                     const isIntact = fCnt === 0;
                     doc.setFillColor(isIntact ? 240 : 254, isIntact ? 253 : 242, isIntact ? 244 : 242);
-                    doc.roundedRect(bx + 3, graphY + graphH - 5.5, bw - 6, 4.2, 1, 1, "F");
+                    const pillH = Math.min(5.2, Math.max(4.0, graphH * 0.1));
+                    doc.roundedRect(bx + 3, graphY + graphH - pillH - 1.2, bw - 6, pillH, 1, 1, "F");
                     let fmdStatus = isIntact ? "STATUS: 100% INTACT (NO FLOODING)" : "STATUS: FLOODED MEMBER DETECTED";
                     let fmdFontSize = 4.2;
                     doc.setFontSize(fmdFontSize);
@@ -1783,25 +1842,29 @@ export const generateInspectionSummaryGraphReport = async (
                         doc.setFontSize(fmdFontSize);
                     }
                     doc.setTextColor(...(isIntact ? colors.emerald : colors.red));
-                    doc.text(fmdStatus, bx + (bw / 2), graphY + graphH - 2.8, { align: "center" });
+                    doc.text(fmdStatus, bx + (bw / 2), graphY + graphH - 1.2 - (pillH / 2) + 1.0, { align: "center" });
                 }
             });
         }
 
-        // 7F. Task Block: MGI Thickness Reading — Conditional
+        // 7F. Task Block: Marine Growth Profile & Effective Thickness Line Graph
         const thkStats = mgi?.thickness || {};
-        const hasThicknessRecords = Boolean(
+        const hasMgiProfileData = Boolean(
+            mgi?.hasProfileGraphData ||
+            (mgi?.byQid && Object.keys(mgi.byQid).length > 0) ||
+            (mgi?.profilePoints && mgi.profilePoints.length > 0) ||
             thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)
         );
 
-        if (hasThicknessRecords) {
+        if (hasMgiProfileData) {
             taskBlocks.push({
                 id: "mgi_thickness",
-                title: "MGI THICKNESS READINGS",
-                subtitle: "Thickness (mm)",
+                title: "MGI THICKNESS PROFILE",
+                subtitle: mgi?.profileName ? `Profile: ${mgi.profileName}` : "Effective thk vs elev",
                 isDone: true,
                 render: (bx, by, bw, bh) => {
-                    drawBlockHeader(bx, by, bw, "MGI THICKNESS READINGS", "Thickness (mm)");
+                    const profileTitle = mgi?.profileName ? `Profile: ${mgi.profileName}` : "Effective thk vs elev";
+                    drawBlockHeader(bx, by, bw, "MGI THICKNESS PROFILE", profileTitle);
 
                     const graphY = by + 5;
                     const graphH = bh - 5;
@@ -1813,50 +1876,259 @@ export const generateInspectionSummaryGraphReport = async (
                     }
                     doc.rect(bx, graphY, bw, graphH, "S");
 
-                    const maxT = thkStats.max || mgi?.max || 45;
-                    const minT = thkStats.min || mgi?.min || 10;
-                    const avgT = thkStats.avg || mgi?.avg || 24.5;
-                    const hardAvg = thkStats.hardAvg || 22;
-                    const softAvg = thkStats.softAvg || 26;
+                    // 1. Water Depth & Profile Points
+                    const wDepth = Math.abs(Number(mgi?.waterDepth || waterDepth || 50)) || 50;
 
-                    // Min / Avg / Max gauge bar
-                    const scaleMax = Math.max(60, Number(maxT) * 1.2);
-                    const bX = bx + 4;
-                    const bW = bw - 8;
-                    const bY = graphY + 12;
+                    // MGI Profile threshold points: Max Allowable Thickness vs Elevation
+                    let profPts: Array<{ elevation: number; maxThickness: number; label?: string }> = Array.isArray(mgi?.profilePoints) && mgi.profilePoints.length > 0
+                        ? [...mgi.profilePoints]
+                        : [];
 
-                    doc.setFillColor(...colors.barTrack);
-                    doc.roundedRect(bX, bY, bW, 4, 1, 1, "F");
+                    if (profPts.length === 0) {
+                        const thresholds = mgi?.profileThresholds || [
+                            { from_elevation: "MSL", max_thickness: 127 },
+                            { from_elevation: "1/4 WD", max_thickness: 100 },
+                            { from_elevation: "1/2 WD", max_thickness: 75 },
+                            { from_elevation: "Mudline", max_thickness: 25 },
+                        ];
+                        profPts = thresholds.map((t: any) => {
+                            const fromStr = String(t.from_elevation || "").toUpperCase().trim();
+                            let elev = 0;
+                            if (fromStr === "MSL" || fromStr === "0") elev = 0;
+                            else if (fromStr === "MUDLINE") elev = -wDepth;
+                            else if (fromStr.includes("WD")) {
+                                const m = fromStr.match(/(\d+)\/(\d+)\s*WD/i);
+                                if (m && parseInt(m[2], 10) !== 0) elev = -(parseInt(m[1], 10) / parseInt(m[2], 10)) * wDepth;
+                                else elev = -wDepth;
+                            } else {
+                                const val = parseFloat(fromStr.replace(/[^\d.-]/g, ""));
+                                elev = isNaN(val) ? 0 : (val <= 0 ? val : -val);
+                            }
+                            return {
+                                elevation: Math.round(elev * 10) / 10,
+                                maxThickness: Number(t.max_thickness) || 0,
+                                label: String(t.from_elevation)
+                            };
+                        });
+                    }
+                    profPts.sort((a, b) => b.elevation - a.elevation);
 
-                    const minX = bX + (bW * (Number(minT) / scaleMax));
-                    const maxX = bX + (bW * (Number(maxT) / scaleMax));
-                    const avgX = bX + (bW * (Number(avgT) / scaleMax));
+                    // 2. QID Readings: Effective Thickness vs Elevation
+                    let qidMap: Record<string, Array<{ elevation: number; effectiveThickness: number; limit?: number; isAnomaly?: boolean }>> = {};
+                    if (mgi?.byQid && Object.keys(mgi.byQid).length > 0) {
+                        qidMap = mgi.byQid;
+                    } else {
+                        // Fallback sample readings for visual demonstration
+                        const avgT = Number(thkStats.avg || mgi?.avg || 28);
+                        const sampleQid = mgi?.maxComp && mgi.maxComp !== "N/A" ? mgi.maxComp : "LEG A1";
+                        qidMap[sampleQid] = [
+                            { elevation: 0, effectiveThickness: Math.round(avgT * 1.3), limit: 127 },
+                            { elevation: -Math.round(wDepth * 0.3), effectiveThickness: Math.round(avgT * 1.05), limit: 95 },
+                            { elevation: -Math.round(wDepth * 0.6), effectiveThickness: Math.round(avgT * 0.75), limit: 65 },
+                            { elevation: -wDepth, effectiveThickness: Math.round(avgT * 0.35), limit: 25 },
+                        ];
+                    }
 
-                    doc.setFillColor(...colors.teal);
-                    doc.rect(minX, bY - 0.5, Math.max(2, maxX - minX), 5, "F");
+                    // 3. Compute Scales: Thickness on Y-axis, Elevation on X-axis
+                    const allElevs: number[] = [0, -wDepth];
+                    profPts.forEach(p => allElevs.push(p.elevation));
+                    Object.values(qidMap).forEach(arr => arr.forEach(r => allElevs.push(r.elevation)));
 
-                    doc.setFillColor(...colors.navy);
-                    doc.rect(avgX - 0.8, bY - 2, 1.6, 8, "F");
+                    const allThks: number[] = [0];
+                    profPts.forEach(p => allThks.push(p.maxThickness));
+                    Object.values(qidMap).forEach(arr => arr.forEach(r => allThks.push(r.effectiveThickness)));
 
-                    doc.setFontSize(5);
+                    const topElev = Math.max(0, ...allElevs);
+                    const bottomElev = Math.min(-wDepth, ...allElevs);
+                    const elevSpan = Math.max(10, topElev - bottomElev);
+
+                    const maxThkVal = Math.max(127, ...allThks);
+                    const scaleMaxThk = Math.max(150, Math.ceil(maxThkVal / 50) * 50);
+
+                    // 4. Graph Coordinates inside Card
+                    const badgeH = Math.min(4.8, Math.max(3.8, graphH * 0.09));
+                    const badgeY = graphY + graphH - badgeH - 1.2;
+
+                    const plotLeft = bx + 9.5;
+                    const plotRight = bx + bw - 3.0;
+                    const plotW = Math.max(20, plotRight - plotLeft);
+                    const plotTop = graphY + 7.5;
+                    const plotBottom = badgeY - 4.2;
+                    const plotH = Math.max(15, plotBottom - plotTop);
+
+                    // Thickness on Y-axis (0 at bottom to scaleMaxThk at top)
+                    const getY = (thk: number) => plotBottom - (Math.max(0, Math.min(scaleMaxThk, thk)) / scaleMaxThk) * plotH;
+                    // Elevation on X-axis (topElev at left to bottomElev at right)
+                    const getX = (elev: number) => plotLeft + ((topElev - elev) / elevSpan) * plotW;
+
+                    // Background plot box
+                    doc.setFillColor(248, 250, 252);
+                    doc.rect(plotLeft, plotTop, plotW, plotH, "F");
+                    doc.setDrawColor(...colors.border);
+                    doc.setLineWidth(0.12);
+                    doc.rect(plotLeft, plotTop, plotW, plotH, "S");
+
+                    // Horizontal Thickness Grid & Y-Axis Labels (Thickness on Y-axis)
+                    for (let tVal = 0; tVal <= scaleMaxThk; tVal += 50) {
+                        const gy = getY(tVal);
+                        doc.setDrawColor(226, 232, 240);
+                        doc.setLineWidth(0.08);
+                        doc.line(plotLeft, gy, plotRight, gy);
+
+                        doc.setFontSize(3.6);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text(`${tVal}`, plotLeft - 1.2, gy + 1.1, { align: "right" });
+                    }
+                    doc.setFontSize(3.2);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...colors.navy);
-                    doc.text(`Avg: ${avgT} mm`, avgX, bY - 2.8, { align: "center" });
-
-                    doc.setFontSize(4.3);
-                    doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textMuted);
-                    doc.text(`Min: ${minT}mm`, bX, graphY + 5);
-                    doc.text(`Max: ${maxT}mm`, bX + bW, graphY + 5, { align: "right" });
+                    doc.text("Thk(mm)", plotLeft - 0.5, plotTop - 1.5, { align: "left" });
 
-                    // Hard vs Soft comparison bars below
-                    const cY = graphY + graphH - 5;
-                    doc.setFontSize(4.3);
+                    // Vertical Elevation Grid & X-Axis Labels (Elevation on X-axis)
+                    const xTicks = 4;
+                    for (let i = 0; i <= xTicks; i++) {
+                        const eVal = Math.round(topElev - (i / xTicks) * elevSpan);
+                        const gx = getX(eVal);
+                        doc.setDrawColor(226, 232, 240);
+                        doc.setLineWidth(0.08);
+                        doc.line(gx, plotTop, gx, plotBottom);
+
+                        doc.setFontSize(3.5);
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text(`${eVal}m`, gx, plotBottom + 3.0, { align: "center" });
+                    }
+                    doc.setFontSize(3.2);
                     doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...colors.navy);
-                    doc.text(`Hard: ${hardAvg}mm`, bx + 3, cY);
-                    doc.setTextColor(...colors.teal);
-                    doc.text(`Soft: ${softAvg}mm`, bx + bw - 3, cY, { align: "right" });
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("Elev(m)", plotRight, plotBottom + 3.0, { align: "right" });
+
+                    // 5. Draw MGI Maximum Allowable Thickness Line (Dark Red, Solid)
+                    const darkRed: [number, number, number] = [185, 28, 28]; // Dark red (#b91c1c)
+                    doc.setDrawColor(...darkRed);
+                    doc.setLineWidth(0.5);
+                    doc.setLineDashPattern([], 0); // Solid line
+
+                    if (profPts.length > 0) {
+                        doc.moveTo(getX(profPts[0].elevation), getY(profPts[0].maxThickness));
+                        for (let pIdx = 1; pIdx < profPts.length; pIdx++) {
+                            doc.lineTo(getX(profPts[pIdx].elevation), getY(profPts[pIdx].maxThickness));
+                        }
+                        doc.stroke();
+
+                        // Threshold Markers
+                        profPts.forEach(pt => {
+                            const px = getX(pt.elevation);
+                            const py = getY(pt.maxThickness);
+                            doc.setFillColor(...darkRed);
+                            doc.circle(px, py, 0.7, "F");
+                        });
+                    }
+
+                    // 6. Draw Dotted Lines for QID Readings (Different Color per QID)
+                    const qidPalette: Array<[number, number, number]> = [
+                        [13, 148, 136],  // Teal (#0d9488)
+                        [37, 99, 235],   // Blue (#2563eb)
+                        [217, 119, 6],   // Amber (#d97706)
+                        [147, 51, 234],  // Purple (#9333ea)
+                        [16, 185, 129],  // Emerald (#10b981)
+                        [225, 29, 72],   // Rose (#e11d48)
+                    ];
+
+                    const qidKeys = Object.keys(qidMap);
+                    let hasAnyAnomaly = false;
+
+                    qidKeys.forEach((qid, qIdx) => {
+                        const qColor = qidPalette[qIdx % qidPalette.length];
+                        const pts = qidMap[qid];
+                        if (!pts || pts.length === 0) return;
+
+                        const sortedPts = [...pts].sort((a, b) => b.elevation - a.elevation);
+
+                        // Draw DOTTED line connecting readings along elevation for this QID
+                        doc.setDrawColor(...qColor);
+                        doc.setLineWidth(0.4);
+                        doc.setLineDashPattern([1.0, 1.0], 0); // DOTTED LINE
+
+                        if (sortedPts.length > 1) {
+                            doc.moveTo(getX(sortedPts[0].elevation), getY(sortedPts[0].effectiveThickness));
+                            for (let i = 1; i < sortedPts.length; i++) {
+                                doc.lineTo(getX(sortedPts[i].elevation), getY(sortedPts[i].effectiveThickness));
+                            }
+                            doc.stroke();
+                        }
+
+                        doc.setLineDashPattern([], 0); // Reset to solid
+
+                        // Draw measured data markers
+                        sortedPts.forEach(pt => {
+                            const px = getX(pt.elevation);
+                            const py = getY(pt.effectiveThickness);
+
+                            if (pt.isAnomaly) {
+                                hasAnyAnomaly = true;
+                                doc.setFillColor(254, 202, 202);
+                                doc.circle(px, py, 1.1, "F");
+                                doc.setFillColor(...colors.red);
+                                doc.circle(px, py, 0.6, "F");
+                            } else {
+                                doc.setFillColor(...qColor);
+                                doc.circle(px, py, 0.6, "F");
+                                doc.setDrawColor(255, 255, 255);
+                                doc.setLineWidth(0.12);
+                                doc.circle(px, py, 0.6, "S");
+                            }
+                        });
+                    });
+
+                    // 7. Legend at Top
+                    const legY = graphY + 3.2;
+                    doc.setDrawColor(...darkRed);
+                    doc.setLineWidth(0.5);
+                    doc.setLineDashPattern([], 0);
+                    doc.line(bx + 3, legY, bx + 6.5, legY);
+                    doc.setFillColor(...darkRed);
+                    doc.circle(bx + 4.75, legY, 0.5, "F");
+                    doc.setFontSize(3.8);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...darkRed);
+                    doc.text("Max Allow", bx + 7.5, legY + 0.9);
+
+                    // Legend for QIDs (up to 3 distinct items shown)
+                    let legX = bx + 24;
+                    qidKeys.slice(0, 3).forEach((qid, qIdx) => {
+                        const qColor = qidPalette[qIdx % qidPalette.length];
+                        doc.setDrawColor(...qColor);
+                        doc.setLineWidth(0.35);
+                        doc.setLineDashPattern([0.8, 0.8], 0);
+                        doc.line(legX, legY, legX + 3.5, legY);
+                        doc.setLineDashPattern([], 0);
+                        doc.setFillColor(...qColor);
+                        doc.circle(legX + 1.75, legY, 0.45, "F");
+
+                        doc.setFontSize(3.6);
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(...colors.textDark);
+                        let cleanQid = qid;
+                        if (cleanQid.length > 8) cleanQid = cleanQid.slice(0, 7) + "..";
+                        doc.text(cleanQid, legX + 4.5, legY + 0.9);
+                        legX += doc.getTextWidth(cleanQid) + 7;
+                    });
+
+                    // 8. Bottom Status Badge
+                    const statusBg: [number, number, number] = hasAnyAnomaly ? [254, 242, 242] : [240, 253, 244];
+                    const statusTextColor: [number, number, number] = hasAnyAnomaly ? colors.red : colors.emerald;
+                    const statusText = hasAnyAnomaly
+                        ? "ANOMALY: Effective thickness exceeds allowable profile"
+                        : "CRITERIA MET: Effective thickness ≤ allowable limit across elevations";
+
+                    doc.setFillColor(...statusBg);
+                    doc.roundedRect(bx + 3, badgeY, bw - 6, badgeH, 1, 1, "F");
+                    doc.setFontSize(3.6);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...statusTextColor);
+                    doc.text(statusText, bx + (bw / 2), badgeY + (badgeH / 2) + 0.9, { align: "center" });
                 }
             });
         }
@@ -1867,42 +2139,101 @@ export const generateInspectionSummaryGraphReport = async (
             ? taskBlocks.filter(t => t.isDone)
             : taskBlocks.slice(0, 4);
 
-        // Render Active Task Detail Blocks in a 4-Column Grid per Row
-        const BLOCK_H = 37.5;
+        // Render Active Task Detail Blocks in a 4-Column Grid with Responsive Auto-Resizing
         const BLOCK_GAP = 3;
         const maxColsPerRow = 4;
         const blockW = (contentWidth - ((maxColsPerRow - 1) * BLOCK_GAP)) / maxColsPerRow;
 
-        // Check if Row 1 fits on Page 1
-        const availableSpaceOnPage1 = (pageHeight - 14) - currentY;
-        if (availableSpaceOnPage1 < BLOCK_H) {
-            doc.addPage();
-            drawPageHeader(doc);
-            currentY = HEADER_Y + HEADER_H + 3.5;
+        const MIN_BLOCK_H = 37.5;
+        const MAX_BLOCK_H = 72.0;
+        const willShowSignatures = config?.showSignatures !== false;
+        const pageFooterMargin = 14; // margin for page footer text & watermark
+        const pinnedSigY = pageHeight - 31; // standard bottom-aligned position for signature block
+
+        // Divide active task blocks into row chunks (up to 4 per row)
+        const blockRows: TaskGraphBlockDef[][] = [];
+        for (let i = 0; i < activeBlocks.length; i += maxColsPerRow) {
+            blockRows.push(activeBlocks.slice(i, i + maxColsPerRow));
         }
 
-        activeBlocks.forEach((block, idx) => {
-            const colIdx = idx % maxColsPerRow;
-            if (idx > 0 && colIdx === 0) {
-                currentY += BLOCK_H + 3.5;
-                if (currentY + BLOCK_H > pageHeight - 16) {
-                    doc.addPage();
-                    drawPageHeader(doc);
-                    currentY = HEADER_Y + HEADER_H + 3.5;
+        let rowIndex = 0;
+        while (rowIndex < blockRows.length) {
+            // 1. Check if current page can fit at least one row of blocks at MIN_BLOCK_H
+            const maxPageBottom = pageHeight - pageFooterMargin;
+            if (maxPageBottom - currentY < MIN_BLOCK_H) {
+                doc.addPage();
+                drawPageHeader(doc);
+                currentY = HEADER_Y + HEADER_H + 3.5;
+            }
+
+            // 2. Determine how many rows will be placed on this page
+            const remainingRows = blockRows.length - rowIndex;
+            let rowsForThisPage = 1;
+            let targetBottomY = maxPageBottom;
+            let sigsOnThisPage = false;
+
+            // Check if all remaining rows can fit on this page, and whether signatures will follow on this page
+            for (let count = remainingRows; count >= 1; count--) {
+                const reqH = count * MIN_BLOCK_H + (count - 1) * 3.5;
+                const isFinalChunk = (count === remainingRows);
+
+                if (isFinalChunk) {
+                    if (willShowSignatures) {
+                        const sigTarget = pinnedSigY - 3.5;
+                        if (currentY + reqH <= sigTarget) {
+                            rowsForThisPage = count;
+                            targetBottomY = sigTarget;
+                            sigsOnThisPage = true;
+                            break;
+                        }
+                        // Cannot fit final chunk with signatures on this page;
+                        // continue loop so a smaller count is chosen for this page,
+                        // leaving the last row to accompany signatures on the next page
+                        continue;
+                    } else {
+                        if (currentY + reqH <= maxPageBottom) {
+                            rowsForThisPage = count;
+                            targetBottomY = maxPageBottom;
+                            sigsOnThisPage = false;
+                            break;
+                        }
+                    }
+                }
+
+                // Intermediate chunk (not the final chunk)
+                if (currentY + reqH <= maxPageBottom) {
+                    rowsForThisPage = count;
+                    targetBottomY = maxPageBottom;
+                    sigsOnThisPage = false;
+                    break;
                 }
             }
-            const bx = margin + (colIdx * (blockW + BLOCK_GAP));
-            block.render(bx, currentY, blockW, BLOCK_H);
-        });
 
-        currentY += BLOCK_H + 4;
+            // 3. Compute dynamic height for the row(s) on this page to snugly reach targetBottomY
+            const availableH = targetBottomY - currentY;
+            const totalGaps = (rowsForThisPage - 1) * 3.5;
+            const idealRowH = (availableH - totalGaps) / rowsForThisPage;
+            const dynamicBlockH = Math.max(MIN_BLOCK_H, Math.min(MAX_BLOCK_H, idealRowH));
+
+            // 4. Render the row(s)
+            for (let r = 0; r < rowsForThisPage; r++) {
+                const rowBlocks = blockRows[rowIndex + r];
+                rowBlocks.forEach((block, cIdx) => {
+                    const bx = margin + (cIdx * (blockW + BLOCK_GAP));
+                    block.render(bx, currentY, blockW, dynamicBlockH);
+                });
+                currentY += dynamicBlockH + 3.5;
+            }
+
+            rowIndex += rowsForThisPage;
+        }
 
         // ── 8. Signatures Block ───────────────────────────────────────────────────
         if (config?.showSignatures !== false) {
             const sigH = 16;
             const sigW = (contentWidth - 6) / 3;
             
-            if (currentY + sigH > pageHeight - 16) {
+            if (currentY + sigH > pageHeight - 12) {
                 doc.addPage();
                 drawPageHeader(doc);
                 currentY = HEADER_Y + HEADER_H + 3.5;

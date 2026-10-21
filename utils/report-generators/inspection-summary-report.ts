@@ -1331,34 +1331,37 @@ export const generateInspectionSummaryReport = async (
         // 7F. Task Block: MGI Thickness Reading — Conditional if inspection data contains thickness readings
         const thkStats = mgi?.thickness || {};
         const hasThicknessRecords = Boolean(
-            thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)
+            thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0) || mgi?.hasProfileGraphData
         );
 
         if (hasThicknessRecords) {
             taskBlocks.push({
                 id: "mgi_thickness",
                 title: "MGI THICKNESS READINGS",
-                subtitle: "Measurements in mm",
+                subtitle: mgi?.profileName ? `Profile: ${mgi.profileName}` : "Measurements in mm",
                 isDone: true,
                 render: (bx, by, bw, bh) => {
-                    drawBlockHeader(bx, by, bw, "MGI THICKNESS READINGS", "Measurements in mm");
+                    const profileSubtitle = mgi?.profileName ? `Profile: ${mgi.profileName}` : "Measurements in mm";
+                    drawBlockHeader(bx, by, bw, "MGI THICKNESS READINGS", profileSubtitle);
 
                     const maxT = thkStats.max ? `${thkStats.max} mm` : (mgi?.max ? `${mgi.max} mm` : "--");
                     const minT = thkStats.min ? `${thkStats.min} mm` : (mgi?.min ? `${mgi.min} mm` : "--");
                     const avgT = thkStats.avg ? `${thkStats.avg} mm` : (mgi?.avg ? `${mgi.avg.toFixed(1)} mm` : "--");
                     const hardAvgStr = thkStats.hardAvg ? `${thkStats.hardAvg} mm` : "--";
                     const softAvgStr = thkStats.softAvg ? `${thkStats.softAvg} mm` : "--";
+                    const profileStr = mgi?.profileName || "Standard";
+                    const anomaliesCount = mgi?.anomaliesCount !== undefined ? Number(mgi.anomaliesCount) : (mgi?.exceeded ? 1 : 0);
 
                     const col1W = Math.round(bw * 0.63);
                     const col2W = bw - col1W;
 
                     const rows = [
                         { cols: [{ val: "Readings Logged", align: "left" as const }, { val: String(thkStats.count || mgi?.total || 0), bold: true, align: "right" as const }] },
+                        { cols: [{ val: "MGI Profile Used", align: "left" as const }, { val: profileStr, bold: true, align: "right" as const }] },
                         { cols: [{ val: "Average Thickness", align: "left" as const }, { val: avgT, bold: true, align: "right" as const }] },
                         { cols: [{ val: "Maximum Thickness", align: "left" as const }, { val: maxT, align: "right" as const }] },
-                        { cols: [{ val: "Minimum Thickness", align: "left" as const }, { val: minT, align: "right" as const }] },
-                        { cols: [{ val: "Hard Growth (Avg)", align: "left" as const }, { val: hardAvgStr, align: "right" as const }] },
-                        { cols: [{ val: "Soft Growth (Avg)", align: "left" as const }, { val: softAvgStr, align: "right" as const }] },
+                        { cols: [{ val: "Hard / Soft Avg", align: "left" as const }, { val: `${hardAvgStr} / ${softAvgStr}`, align: "right" as const }] },
+                        { cols: [{ val: "Exceeding Profile", align: "left" as const }, { val: anomaliesCount > 0 ? `${anomaliesCount} (ANOMALY)` : "0 (MET)", bold: anomaliesCount > 0, align: "right" as const }] },
                     ];
 
                     drawTableGrid(

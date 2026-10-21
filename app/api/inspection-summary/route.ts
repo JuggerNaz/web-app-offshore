@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/utils/supabase/server";
 import { withTenant } from "@/utils/tenant-auth";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
+import { getMGIProfileForJobpack, calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Riser":        ["RS", "RIS", "RISER"],
@@ -1159,6 +1160,193 @@ export const GET = withTenant(async (request, { companyId }) => {
                     date
                 });
             }
+        });
+
+        // ─── 8B. MGI EFFECTIVE THICKNESS & ELEVATION PROFILE RESOLUTION ───────
+        let recordMgiProfId: any = null;
+        for (const r of mgiRecords) {
+            const d = r.inspection_data || {};
+            if (d._mgi_profile_id || d.mgi_profile_id || d.profile_id) {
+                recordMgiProfId = d._mgi_profile_id || d.mgi_profile_id || d.profile_id;
+                break;
+            }
+        }
+
+        let resolvedMgiProfile: any = null;
+        try {
+            resolvedMgiProfile = await getMGIProfileForJobpack(
+                supabase,
+                jpNum || jobpackId,
+                recordMgiProfId
+            );
+        } catch (err) {
+            console.warn("[Summary API] Failed to resolve MGI Profile:", err);
+        }
+
+        const mgiWaterDepth = Math.abs(parseFloat(String(structureInfo?.depth ?? structureInfo?.waterDepth ?? 50)) || 50);
+
+        // Standard profile thresholds fallback if profile not configured in DB
+        const profileThresholds = (resolvedMgiProfile?.thresholds && resolvedMgiProfile.thresholds.length > 0)
+            ? resolvedMgiProfile.thresholds
+            : [
+                { from_elevation: "MSL", max_thickness: 127 },
+                { from_elevation: "1/4 WD", max_thickness: 100 },
+                { from_elevation: "1/2 WD", max_thickness: 75 },
+                { from_elevation: "Mudline", max_thickness: 25 },
+            ];
+
+        const mgiProfilePoints = profileThresholds.map((t: any) => {
+            const fromStr = String(t.from_elevation || "").toUpperCase().trim();
+            let elev = 0;
+            if (fromStr === "MSL" || fromStr === "0") {
+                elev = 0;
+            } else if (fromStr === "MUDLINE") {
+                elev = -mgiWaterDepth;
+            } else if (fromStr.includes("WD")) {
+                const m = fromStr.match(/(\d+)\/(\d+)\s*WD/i);
+                if (m && parseInt(m[2], 10) !== 0) {
+                    elev = -(parseInt(m[1], 10) / parseInt(m[2], 10)) * mgiWaterDepth;
+                } else {
+                    elev = -mgiWaterDepth;
+                }
+            } else {
+                const val = parseFloat(fromStr.replace(/[^\d.-]/g, ""));
+                elev = isNaN(val) ? 0 : (val <= 0 ? val : -val);
+            }
+            return {
+                elevation: Math.round(elev * 10) / 10,
+                maxThickness: Number(t.max_thickness) || 0,
+                label: String(t.from_elevation)
+            };
+        }).sort((a: any, b: any) => b.elevation - a.elevation);
+
+        const mgiByQid: Record<string, Array<{
+            elevation: number;
+            effectiveThickness: number;
+            limit: number;
+            mode: "ROV" | "Diving";
+            isAnomaly: boolean;
+            clockReadings?: { hard: number[]; soft: number[] };
+        }>> = {};
+
+        const isRovInspection = (r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (code === "RMGI" || code === "ROV" || code.startsWith("R")) return true;
+            if (code === "MGROW" || code === "DMGI" || code === "DIVE" || code.startsWith("D")) return false;
+            return Boolean(r.rov_job_id || r.insp_rov_jobs);
+        };
+
+        mgiRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const comp = r.structure_components || {};
+            const qid = (comp.q_id || d.q_id || `ID: ${r.component_id || "MGI-MEMBER"}`).trim().toUpperCase();
+
+            // Resolve Elevation
+            const rawElev = d.elevation ?? d.depth ?? r.elevation ?? comp.metadata?.elv_1 ?? comp.metadata?.elevation;
+            let elev = 0;
+            if (rawElev !== undefined && rawElev !== null && String(rawElev).trim() !== "" && String(rawElev) !== "-") {
+                const str = String(rawElev).toUpperCase().trim();
+                if (str === "MSL" || str === "0") {
+                    elev = 0;
+                } else if (str === "MUDLINE") {
+                    elev = -mgiWaterDepth;
+                } else {
+                    const num = parseFloat(str.replace(/[^\d.-]/g, ""));
+                    if (!isNaN(num)) {
+                        elev = num <= 0 ? num : -num;
+                    }
+                }
+            }
+
+            const isRov = isRovInspection(r);
+            let et = 0;
+            let hReadings: number[] = [];
+            let sReadings: number[] = [];
+
+            if (isRov) {
+                // ROV: Effective thickness is the Max thickness observed at the same elevation across different clock positions
+                const clockPositions = ['12', '3', '6', '9'];
+                clockPositions.forEach(pos => {
+                    const h = parseFloat(d[`mgi_hard_thickness_at_${pos}`] ?? d[`hard_thickness_at_${pos}`] ?? d[`hard_thk${pos}`]);
+                    if (!isNaN(h) && h > 0) hReadings.push(h);
+                    const s = parseFloat(d[`mgi_soft_thickness_at_${pos}`] ?? d[`soft_thickness_at_${pos}`] ?? d[`soft_thk${pos}`]);
+                    if (!isNaN(s) && s > 0) sReadings.push(s);
+                });
+                if (d.mgi_hard_thickness) {
+                    const h = parseFloat(d.mgi_hard_thickness);
+                    if (!isNaN(h) && h > 0) hReadings.push(h);
+                }
+                if (d.mgi_soft_thickness) {
+                    const s = parseFloat(d.mgi_soft_thickness);
+                    if (!isNaN(s) && s > 0) sReadings.push(s);
+                }
+
+                const allClockReadings = [...hReadings, ...sReadings];
+                if (allClockReadings.length > 0) {
+                    et = Math.max(...allClockReadings);
+                } else {
+                    et = parseFloat(d.effective_thickness ?? d.max_thickness ?? d.avg_thickness ?? d.thickness ?? 0) || 0;
+                }
+            } else {
+                // Diving job: directly get value from the effective thickness value
+                if (d.effective_thickness !== undefined && d.effective_thickness !== null && String(d.effective_thickness).trim() !== "") {
+                    et = parseFloat(String(d.effective_thickness)) || 0;
+                } else if (d.effective_thk !== undefined && d.effective_thk !== null && String(d.effective_thk).trim() !== "") {
+                    et = parseFloat(String(d.effective_thk)) || 0;
+                } else if (d.eff_thickness !== undefined && d.eff_thickness !== null && String(d.eff_thickness).trim() !== "") {
+                    et = parseFloat(String(d.eff_thickness)) || 0;
+                } else {
+                    // Fallback to circumference measurement if effective_thickness not explicitly filled
+                    const cAbove = parseFloat(d.circumferential_measurement_5m_above) || 0;
+                    const c0m = parseFloat(d.circumferential_measurement_0m) || 0;
+                    const cBelow = parseFloat(d.circumferential_measurement_5m_below) || 0;
+                    const circs = [cAbove, c0m, cBelow].filter(v => v > 0);
+                    const nomDia = parseFloat(d.nominal_diameter) || 0;
+                    if (circs.length > 0 && nomDia > 0) {
+                        const cAvg = circs.reduce((a, b) => a + b, 0) / circs.length;
+                        et = Math.max(0, 0.5 * ((cAvg / Math.PI) - nomDia));
+                    } else {
+                        et = parseFloat(d.thickness ?? d.avg_thickness ?? 0) || 0;
+                    }
+                }
+            }
+
+            // Allowable Limit from MGI Profile
+            let limit = 0;
+            if (profileThresholds.length > 0) {
+                const interpolated = calculateInterpolatedMgiThreshold(Math.abs(elev), mgiWaterDepth, profileThresholds);
+                if (interpolated !== null) limit = Math.round(interpolated * 10) / 10;
+            }
+            if (limit === 0) {
+                const rawLimit = d.max_allowable_thickness ?? d.max_allow ?? d.mgi_max_allowable_thickness ?? d.allowable_thickness;
+                if (rawLimit != null) limit = parseFloat(String(rawLimit).replace(/[^\d.]/g, "")) || 0;
+            }
+
+            const roundedElev = Math.round(elev * 10) / 10;
+            const roundedEt = Math.round(et * 10) / 10;
+
+            if (!mgiByQid[qid]) mgiByQid[qid] = [];
+            const existingEntry = mgiByQid[qid].find(p => p.elevation === roundedElev);
+            if (existingEntry) {
+                // If already has reading at this elevation, take the max thickness observed at this elevation
+                existingEntry.effectiveThickness = Math.max(existingEntry.effectiveThickness, roundedEt);
+                if ((limit > 0 && existingEntry.effectiveThickness > limit) || !!r.has_anomaly) {
+                    existingEntry.isAnomaly = true;
+                }
+            } else {
+                mgiByQid[qid].push({
+                    elevation: roundedElev,
+                    effectiveThickness: roundedEt,
+                    limit,
+                    mode: isRov ? "ROV" : "Diving",
+                    isAnomaly: (limit > 0 && et > limit) || !!r.has_anomaly,
+                    clockReadings: (hReadings.length > 0 || sReadings.length > 0) ? { hard: hReadings, soft: sReadings } : undefined
+                });
+            }
+        });
+
+        Object.keys(mgiByQid).forEach(qid => {
+            mgiByQid[qid].sort((a, b) => b.elevation - a.elevation);
         });
 
         // --- 9. SCOUR ANALYSIS ---
@@ -2638,7 +2826,15 @@ export const GET = withTenant(async (request, { companyId }) => {
 
                     // Readings exceeding effective thickness reported as anomalies
                     exceeded: mgiExceeded,
-                    anomaliesCount: mgiAnomaliesCount 
+                    anomaliesCount: mgiAnomaliesCount,
+
+                    // MGI Elevation & Effective Thickness Profile data
+                    profileName: resolvedMgiProfile?.name || "Standard MGI Profile",
+                    profileThresholds: profileThresholds,
+                    profilePoints: mgiProfilePoints,
+                    byQid: mgiByQid,
+                    waterDepth: mgiWaterDepth,
+                    hasProfileGraphData: Object.keys(mgiByQid).length > 0 || mgiProfilePoints.length > 0
                 },
                 scour: { 
                     total: scourRecords.length, 
