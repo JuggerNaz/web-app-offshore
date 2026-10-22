@@ -255,7 +255,7 @@ export const generateDefectSummaryReport = async (
 
     // ── Draw Header ──────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const reportTitle = config.isFindingsReport ? "Findings Summary Report" : "Defect Summary Report";
+        const reportTitle = config.isFindingsReport ? "Findings Summary Report" : "Anomaly Summary Report";
         const reportNoDisplay = sowReportNo || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
@@ -278,14 +278,14 @@ export const generateDefectSummaryReport = async (
     // ── Draw Sub-Header info table ───────────────────────────────────────────
     const drawSubHeader = (d: jsPDF, startY: number) => {
         const field = structure?.field_name || structure?.str_name || "N/A";
-        const installation = structure?.str_name || structure?.str_desc || "N/A";
+        const structureTitle = structure?.str_name || structure?.title || structure?.str_desc || "N/A";
         let vessel = "N/A";
         if (jobPack?.metadata?.vessel_history && Array.isArray(jobPack.metadata.vessel_history) && jobPack.metadata.vessel_history.length > 0) {
             vessel = jobPack.metadata.vessel_history.map((v: any) => v.name || v).join(" / ");
         } else if (jobPack?.metadata?.vessel) {
             vessel = jobPack.metadata.vessel;
         }
-        const projectDesc = jobPack?.name || "N/A";
+        const jobpackName = jobPack?.name || "N/A";
 
         const labelColWidth = 32;
         const valueColWidth = (contentWidth - labelColWidth * 2) / 2;
@@ -299,8 +299,8 @@ export const generateDefectSummaryReport = async (
             head: [],
             body: [
                 [
-                    { content: "Project Description:", styles: headSt }, { content: projectDesc },
-                    { content: "Installation:", styles: headSt }, { content: installation }
+                    { content: "Jobpack:", styles: headSt }, { content: jobpackName },
+                    { content: "Structure Title:", styles: headSt }, { content: structureTitle }
                 ],
                 [
                     { content: "Field:", styles: headSt }, { content: field },
@@ -782,7 +782,7 @@ export const generateDefectSummaryReport = async (
 
     applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY: activeSigY });
     if (config.returnBlob) return doc.output("blob");
-    const suffix = config.isFindingsReport ? "FindingsSummary" : "DefectSummary";
+    const suffix = config.isFindingsReport ? "FindingsSummary" : "AnomalySummary";
     applyWatermarkAndSignaturesGlobal(doc, { ...config, sigY: activeSigY });
     doc.save(`${config.reportNoPrefix}_${suffix}.pdf`);
 };

@@ -1287,14 +1287,33 @@ export const generateInspectionSummaryReport = async (
                     maxDepthStr = `${maxDepthMm} mm`;
                 }
 
+                const maxQid = scour?.maxDepthQid && scour.maxDepthQid !== "N/A" ? scour.maxDepthQid : "";
                 const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
-                const maxLocClean = maxLoc && maxLoc !== "N/A" ? ` (${maxLoc})` : "";
+                const maxInfo = [maxQid, maxLoc && maxLoc !== "N/A" ? maxLoc : ""].filter(Boolean).join(" - ");
+                const maxLocClean = maxInfo ? ` (${maxInfo})` : "";
 
-                const minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
+                let minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
                     ? Number(scour.minDepthMm) 
                     : (scour?.minDepth ? Number(scour.minDepth) : 0);
-                const minLoc = scour?.minDepthLocation || "";
-                const minLocClean = minLoc && minLoc !== "N/A" ? ` (${minLoc})` : "";
+                let minQid = scour?.minDepthQid && scour.minDepthQid !== "N/A" ? scour.minDepthQid : "";
+                let minLoc = scour?.minDepthLocation || "";
+
+                if (Array.isArray(scour?.qidReadings) && scour.qidReadings.length > 0) {
+                    const posReadings = scour.qidReadings.filter((r: any) => {
+                        const d = Number(r.depthMm ?? r.depth ?? 0);
+                        const b = Number(r.burialPct ?? r.burial ?? 0);
+                        return d > 0 && !r.isBuried && b === 0;
+                    });
+                    if (posReadings.length > 0 && (minDepthMm <= 0 || !minQid)) {
+                        const lowest = [...posReadings].sort((a: any, b: any) => Number(a.depthMm || 0) - Number(b.depthMm || 0))[0];
+                        minDepthMm = Number(lowest.depthMm);
+                        minQid = lowest.qid || minQid;
+                        minLoc = lowest.location || minLoc;
+                    }
+                }
+
+                const minInfo = [minQid, minLoc && minLoc !== "N/A" ? minLoc : ""].filter(Boolean).join(" - ");
+                const minLocClean = minInfo ? ` (${minInfo})` : "";
                 const minDepthStr = minDepthMm > 0 ? `${Math.round(minDepthMm)} mm${minLocClean}` : "0 mm";
 
                 const scourLimit = Number(

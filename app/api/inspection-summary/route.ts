@@ -1435,6 +1435,23 @@ export const GET = withTenant(async (request, { companyId }) => {
         let minScourFace = "N/A";
         let minScourQid = "N/A";
 
+        let fallbackMinDepth = Infinity;
+        let fallbackMinDepthMm = Infinity;
+        let fallbackMinLocation = "N/A";
+        let fallbackMinFace = "N/A";
+        let fallbackMinQid = "N/A";
+
+        const scourQidMap = new Map<string, {
+            qid: string;
+            location: string;
+            face: string;
+            depthMm: number;
+            depthM: number;
+            burialPct?: number;
+            isBuried?: boolean;
+            isExposed?: boolean;
+        }>();
+
         scourRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const face = d.platform_face || d.face || r.structure_components?.metadata?.face || "";
@@ -1455,7 +1472,15 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
 
             const rawDepth = parseFloat(String(d.scour_depth || '0'));
-            if (!isNaN(rawDepth) && rawDepth > 0) {
+            const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
+            const inMm = (!isNaN(rawDepth) && rawDepth > 0)
+                ? ((unit === 'm' || (rawDepth <= 10 && unit !== 'mm')) ? rawDepth * 1000 : rawDepth)
+                : 0;
+            const inM = (!isNaN(rawDepth) && rawDepth > 0)
+                ? ((unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth)
+                : 0;
+
+            if (!isNaN(rawDepth)) {
                 const meta = r.structure_components?.metadata || {};
                 const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
                 const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
@@ -1482,25 +1507,56 @@ export const GET = withTenant(async (request, { companyId }) => {
                     effectiveFace = face || "N/A";
                 }
 
-                if (rawDepth > maxScourDepth) {
+                const compQid = r.structure_components?.q_id || d.q_id || (loc ? `QID-${loc}` : "N/A");
+
+                if (rawDepth > maxScourDepth || (rawDepth === 0 && maxScourDepth === 0 && maxScourQid === "N/A")) {
                     maxScourDepth = rawDepth;
-                    maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
+                    maxScourQid = compQid;
                     maxScourLocation = loc || "N/A";
                     maxScourFace = effectiveFace;
                 }
 
-                const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
-                const inMm = (unit === 'm' || (rawDepth <= 10 && unit !== 'mm')) ? rawDepth * 1000 : rawDepth;
-                const inM = (unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth;
                 if (inMm > maxScourDepthMm) maxScourDepthMm = inMm;
                 if (inM > maxScourDepthMeters) maxScourDepthMeters = inM;
 
-                if (inMm < minScourDepthMm) {
+                const rawBurial = d.Burial_percent ?? d.burial_percent ?? d.burial ?? '0';
+                const burialPct = parseFloat(String(rawBurial).replace(/[^0-9.-]/g, '')) || 0;
+                const isBuried = burialPct > 0 || String(d.status || "").toLowerCase().includes("buried") || d.buried === true || d.buried === "Yes";
+                const isZeroOrNegative = inMm <= 0 || rawDepth <= 0;
+                const isBuriedOrZero = isBuried || isZeroOrNegative;
+
+                // For the minimum scour depth reading: filter out the buried or 0 depth readings
+                if (!isBuriedOrZero && inMm < minScourDepthMm) {
                     minScourDepthMm = inMm;
                     minScourDepth = rawDepth;
                     minScourLocation = loc || "N/A";
-                    minScourQid = r.structure_components?.q_id || d.q_id || "N/A";
+                    minScourQid = compQid;
                     minScourFace = effectiveFace;
+                }
+
+                // Fallback tracker in case all readings are 0 or buried
+                if (inMm < fallbackMinDepthMm) {
+                    fallbackMinDepthMm = inMm;
+                    fallbackMinDepth = rawDepth;
+                    fallbackMinLocation = loc || "N/A";
+                    fallbackMinQid = compQid;
+                    fallbackMinFace = effectiveFace;
+                }
+
+                if (compQid && compQid !== "N/A") {
+                    const existing = scourQidMap.get(compQid);
+                    if (!existing || inMm > existing.depthMm) {
+                        scourQidMap.set(compQid, {
+                            qid: compQid,
+                            location: loc && loc !== "N/A" ? loc : (effectiveFace || "N/A"),
+                            face: effectiveFace || face || "N/A",
+                            depthMm: inMm,
+                            depthM: inM,
+                            burialPct: burialPct,
+                            isBuried: isBuried,
+                            isExposed: d.Exposed_pile === "Yes" || d.Exposed_pile === true
+                        });
+                    }
                 }
             }
 
@@ -1514,6 +1570,18 @@ export const GET = withTenant(async (request, { companyId }) => {
                 }
             }
         });
+
+        if (minScourDepthMm === Infinity) {
+            minScourDepthMm = fallbackMinDepthMm !== Infinity ? fallbackMinDepthMm : 0;
+            minScourDepth = fallbackMinDepth !== Infinity ? fallbackMinDepth : 0;
+            minScourLocation = fallbackMinLocation;
+            minScourQid = fallbackMinQid;
+            minScourFace = fallbackMinFace;
+        }
+
+        const allScourQids = Array.from(scourQidMap.values()).sort((a, b) => b.depthMm - a.depthMm);
+        const nonZeroScourQids = allScourQids.filter(r => r.depthMm > 0 && !r.isBuried && (r.burialPct === undefined || r.burialPct === 0));
+        const finalScourQidReadings = nonZeroScourQids.length > 0 ? nonZeroScourQids : allScourQids;
 
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = (has_anomaly=true OR has insp_anomalies) AND _meta_status != "Finding"
@@ -2911,6 +2979,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     minDepthQid: minScourQid,
                     maxAllowableMm: scourMaxAllowableMm,
                     maxAllowableLimit: scourMaxAllowableMm,
+                    qidReadings: finalScourQidReadings,
                 },
                 defectCriteria: {
                     scour: {

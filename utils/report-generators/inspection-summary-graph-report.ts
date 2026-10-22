@@ -817,8 +817,8 @@ export const generateInspectionSummaryGraphReport = async (
             ? Math.max(rovTasks.length, diveTasks.length) 
             : (hasRovTasks ? rovTasks.length : (hasDiveTasks ? diveTasks.length : rawTasks.length));
 
-        const computedMidH = 19.0 + (maxTasksCount * 5.4);
-        const MID_H = Math.min(68, Math.max(48, Math.round(computedMidH * 10) / 10));
+        const computedMidH = 22.0 + (maxTasksCount * 5.6);
+        const MID_H = Math.min(72, Math.max(48, Math.round(computedMidH * 10) / 10));
         const COL_GAP = 4;
 
         let rovColW = 0;
@@ -1021,8 +1021,9 @@ export const generateInspectionSummaryGraphReport = async (
 
             // Tasks rows
             const visibleTasks = tasks;
-            const taskAreaTop = covBoxY + 7.5;
-            const taskAreaH = covBoxH - 11;
+            const taskAreaTop = covBoxY + 7.4;
+            // Reserve space for top ribbon (7.4mm) and dedicated bottom footer with clean line space (16.0mm)
+            const taskAreaH = Math.max(10, covBoxH - 16.0);
             const numTasks = visibleTasks.length || 1;
             const taskRowH = taskAreaH / numTasks;
             const barH = Math.min(3.4, Math.max(2.0, taskRowH * 0.58));
@@ -1126,17 +1127,24 @@ export const generateInspectionSummaryGraphReport = async (
                 }
             });
 
-            // Legend at bottom
-            const legY = covBoxY + covBoxH - 2.5;
-            doc.setFontSize(isWide ? 4.8 : 4.2);
+            // Footer separator line and Legend at bottom with proper line space separating it from details content
+            const sepY = covBoxY + covBoxH - 6.0;
+            doc.setDrawColor(...colors.border);
+            doc.setLineWidth(0.08);
+            doc.line(bx + 2, sepY, bx + bw - 2, sepY);
+
+            const legY = covBoxY + covBoxH - 2.4;
+            const legBoxH = 2.0;
+            const legBoxY = legY - 1.8;
+            doc.setFontSize(isWide ? 4.6 : 4.0);
             doc.setFont("helvetica", "normal");
             doc.setTextColor(...colors.textMuted);
             doc.setFillColor(...colors.teal);
-            doc.rect(bx + (isWide ? 3 : 2.5), legY - 2, 2.2, 2.2, "F");
-            doc.text(isWide ? "Completed Tasks / QIDs" : "Completed", bx + (isWide ? 6.5 : 5.5), legY);
+            doc.rect(bx + (isWide ? 3 : 2.5), legBoxY, legBoxH, legBoxH, "F");
+            doc.text(isWide ? "Completed Tasks / QIDs" : "Completed", bx + (isWide ? 6.2 : 5.5), legY);
             doc.setFillColor(...colors.barTrack);
-            doc.rect(bx + (isWide ? 42 : 32), legY - 2, 2.2, 2.2, "F");
-            doc.text(isWide ? "Remaining / Incomplete Tasks" : "Incomplete", bx + (isWide ? 45.5 : 35), legY);
+            doc.rect(bx + (isWide ? 42 : 32), legBoxY, legBoxH, legBoxH, "F");
+            doc.text(isWide ? "Remaining / Incomplete Tasks" : "Incomplete", bx + (isWide ? 45.2 : 35), legY);
         };
 
         // Render Anomaly Distribution Block
@@ -1486,9 +1494,9 @@ export const generateInspectionSummaryGraphReport = async (
             renderAnomalyBlock(margin + rovColW + diveColW + (2 * COL_GAP), currentY, anomalyColW, MID_H);
         } else {
             if (hasRovTasks || !hasDiveTasks) {
-                renderTaskCoverageBlock(margin, currentY, rovColW, MID_H, "ROV INSPECTION TASK COVERAGE", rovTasks, "ROV");
+                renderTaskCoverageBlock(margin, currentY, rovColW, MID_H, "ROV TASK COVERAGE", rovTasks, "ROV");
             } else {
-                renderTaskCoverageBlock(margin, currentY, diveColW, MID_H, "DIVING INSPECTION TASK COVERAGE", diveTasks, "Diving");
+                renderTaskCoverageBlock(margin, currentY, diveColW, MID_H, "DIVING TASK COVERAGE", diveTasks, "Diving");
             }
             renderAnomalyBlock(margin + (rovColW || diveColW) + COL_GAP, currentY, anomalyColW, MID_H);
         }
@@ -1824,55 +1832,35 @@ export const generateInspectionSummaryGraphReport = async (
                     maxDepthMm = dNum <= 10 ? dNum * 1000 : dNum;
                 }
 
-                // Top 3 Circular/Pill Integrity Gauges
-                const gaugeY = graphY + 2.5;
-                const gaugeH = Math.min(10.5, Math.max(8.5, graphH * 0.22));
-                const gW = (bw - 6) / 3;
-
-                // Gauge 1: Faces
-                doc.setFillColor(241, 245, 249);
-                doc.roundedRect(bx + 2, gaugeY, gW - 1, gaugeH, 1, 1, "F");
-                doc.setFontSize(4.3);
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(...colors.textMuted);
-                doc.text("Faces Survey", bx + 2 + (gW / 2) - 0.5, gaugeY + 3.2, { align: "center" });
-                doc.setFontSize(6);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(...colors.navy);
-                doc.text(`${facesSurveyed}/${registeredFaces}`, bx + 2 + (gW / 2) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
-
-                // Gauge 2: Piles
-                doc.setFillColor(241, 245, 249);
-                doc.roundedRect(bx + 2 + gW, gaugeY, gW - 1, gaugeH, 1, 1, "F");
-                doc.setFontSize(4.3);
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(...colors.textMuted);
-                doc.text("Piles Survey", bx + 2 + (gW * 1.5) - 0.5, gaugeY + 3.2, { align: "center" });
-                doc.setFontSize(6);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(...colors.navy);
-                doc.text(String(pilesSurveyed), bx + 2 + (gW * 1.5) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
-
-                // Gauge 3: Exposed Piles
-                const isExposedZero = Number(exposedPileCount) === 0;
-                doc.setFillColor(isExposedZero ? 240 : 254, isExposedZero ? 253 : 242, isExposedZero ? 244 : 242);
-                doc.roundedRect(bx + 2 + (gW * 2), gaugeY, gW - 1, gaugeH, 1, 1, "F");
-                doc.setFontSize(4.3);
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(...(isExposedZero ? colors.emerald : colors.red));
-                doc.text("Exposed Piles", bx + 2 + (gW * 2.5) - 0.5, gaugeY + 3.2, { align: "center" });
-                doc.setFontSize(6);
-                doc.setFont("helvetica", "bold");
-                doc.text(String(exposedPileCount), bx + 2 + (gW * 2.5) - 0.5, gaugeY + gaugeH - 1.8, { align: "center" });
-
-                // Extract Location and Depth Values
+                // Extract Location, QID and Depth Values
                 const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
                 const maxLocClean = maxLoc && maxLoc !== "N/A" ? maxLoc : "";
-                const minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
+                const maxQid = scour?.maxDepthQid && scour?.maxDepthQid !== "N/A" ? scour.maxDepthQid : (maxLocClean ? `QID-${maxLocClean}` : "N/A");
+
+                // Filter out buried or 0 depth readings for the minimum scour depth reading
+                const allRawReadings = Array.isArray(scour?.qidReadings) ? scour.qidReadings : [];
+                const nonZeroReadings = allRawReadings.filter((r: any) => {
+                    const d = Number(r.depthMm ?? r.depth ?? 0);
+                    const b = Number(r.burialPct ?? r.burial ?? 0);
+                    const isBuried = Boolean(r.isBuried || b > 0);
+                    return d > 0 && !isBuried;
+                });
+
+                // Resolve effective min depth values: filter out 0 depth or buried reading if positive readings exist
+                let rawMinDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
                     ? Number(scour.minDepthMm) 
                     : (scour?.minDepth ? Number(scour.minDepth) : 0);
-                const minLoc = scour?.minDepthLocation || "";
-                const minLocClean = minLoc && minLoc !== "N/A" ? minLoc : "";
+                let rawMinLoc = scour?.minDepthLocation || "";
+                let rawMinQid = scour?.minDepthQid && scour?.minDepthQid !== "N/A" ? scour.minDepthQid : "";
+
+                if (nonZeroReadings.length > 0) {
+                    const sortedAsc = [...nonZeroReadings].sort((a: any, b: any) => Number(a.depthMm || 0) - Number(b.depthMm || 0));
+                    rawMinDepthMm = Number(sortedAsc[0].depthMm || 0);
+                    rawMinQid = sortedAsc[0].qid || rawMinQid;
+                    rawMinLoc = sortedAsc[0].location || rawMinLoc;
+                }
+
+                const minDepthMm = rawMinDepthMm;
 
                 // Allowable limit dynamically retrieved from Defect Criteria (default fallback 800)
                 const scourLimit = Number(
@@ -1882,49 +1870,98 @@ export const generateInspectionSummaryGraphReport = async (
                     800
                 );
 
-                // Scour Depth Visual Spectrum Meter - Centered in middle
-                const scourBadgeH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
+                // ── Top Header Metric Boxes (Accommodated on first row) ──
+                // Row 1 contains 5 metric boxes: Faces Survey, Piles Survey, Exposed Piles, Min Depth, Max Depth
+                const gaugeY = graphY + 1.8;
+                const gaugeH = Math.min(10.0, Math.max(7.5, graphH * 0.22));
+                const innerW = bw - 4.0;
+                const innerX = bx + 2.0;
+
+                const numBoxes = 5;
+                const boxGap = 1.0;
+                const boxW = (innerW - ((numBoxes - 1) * boxGap)) / numBoxes;
+
+                // Box 1: Faces Survey
+                const b1X = innerX;
+                doc.setFillColor(241, 245, 249);
+                doc.roundedRect(b1X, gaugeY, boxW, gaugeH, 1, 1, "F");
+                doc.setFontSize(3.3);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("Faces Survey", b1X + (boxW / 2), gaugeY + 2.7, { align: "center" });
+                doc.setFontSize(5.4);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text(`${facesSurveyed}/${registeredFaces}`, b1X + (boxW / 2), gaugeY + gaugeH - 1.5, { align: "center" });
+
+                // Box 2: Piles Survey
+                const b2X = b1X + boxW + boxGap;
+                doc.setFillColor(241, 245, 249);
+                doc.roundedRect(b2X, gaugeY, boxW, gaugeH, 1, 1, "F");
+                doc.setFontSize(3.3);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text("Piles Survey", b2X + (boxW / 2), gaugeY + 2.7, { align: "center" });
+                doc.setFontSize(5.4);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text(String(pilesSurveyed), b2X + (boxW / 2), gaugeY + gaugeH - 1.5, { align: "center" });
+
+                // Box 3: Exposed Piles
+                const b3X = b2X + boxW + boxGap;
+                const isExposedZero = Number(exposedPileCount) === 0;
+                doc.setFillColor(isExposedZero ? 240 : 254, isExposedZero ? 253 : 242, isExposedZero ? 244 : 242);
+                doc.roundedRect(b3X, gaugeY, boxW, gaugeH, 1, 1, "F");
+                doc.setFontSize(3.3);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...(isExposedZero ? colors.emerald : colors.red));
+                doc.text("Exposed Piles", b3X + (boxW / 2), gaugeY + 2.7, { align: "center" });
+                doc.setFontSize(5.4);
+                doc.setFont("helvetica", "bold");
+                doc.text(String(exposedPileCount), b3X + (boxW / 2), gaugeY + gaugeH - 1.5, { align: "center" });
+
+                // Box 4: Min Depth
+                const b4X = b3X + boxW + boxGap;
+                doc.setFillColor(240, 253, 250); // Light teal
+                doc.roundedRect(b4X, gaugeY, boxW, gaugeH, 1, 1, "F");
+                doc.setFontSize(3.3);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(13, 148, 136); // Teal
+                doc.text("Min Depth", b4X + (boxW / 2), gaugeY + 2.7, { align: "center" });
+                doc.setFontSize(5.2);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(13, 148, 136);
+                const minValStr = minDepthMm > 0 ? `${Math.round(minDepthMm)} mm` : "None";
+                doc.text(minValStr, b4X + (boxW / 2), gaugeY + gaugeH - 1.5, { align: "center" });
+
+                // Box 5: Max Depth
+                const b5X = b4X + boxW + boxGap;
+                const isMaxAnom = maxDepthMm > scourLimit;
+                doc.setFillColor(isMaxAnom ? 254 : 241, isMaxAnom ? 242 : 245, isMaxAnom ? 242 : 249);
+                doc.roundedRect(b5X, gaugeY, boxW, gaugeH, 1, 1, "F");
+                doc.setFontSize(3.3);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...(isMaxAnom ? colors.red : colors.navy));
+                doc.text("Max Depth", b5X + (boxW / 2), gaugeY + 2.7, { align: "center" });
+                doc.setFontSize(5.2);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...(isMaxAnom ? colors.red : colors.navy));
+                doc.text(`${Math.round(maxDepthMm)} mm`, b5X + (boxW / 2), gaugeY + gaugeH - 1.5, { align: "center" });
+
+                const topBoxesBottomY = gaugeY + gaugeH;
+
+                // ── Auto-Arranged Depth Visual Spectrum Meter Graph ──
+                const scourBadgeH = Math.min(5.2, Math.max(4.0, graphH * 0.11));
                 const scourBadgeY = graphY + graphH - scourBadgeH - 1.5;
-                const availMiddle = (scourBadgeY - 1.0) - (gaugeY + gaugeH);
-                const meterBarH = Math.min(4.8, Math.max(3.6, graphH * 0.08));
-                const meterSectionH = 3.5 + meterBarH + 3.6;
-                const meterTopY = gaugeY + gaugeH + Math.max(1.0, (availMiddle - meterSectionH) / 2);
-                const meterY = meterTopY + 3.5;
 
-                doc.setFontSize(4.8);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(...colors.textDark);
-                doc.text(maxLocClean ? `MAX SCOUR DEPTH (${maxLocClean})` : "MAXIMUM SCOUR DEPTH", bx + 3, meterY);
+                const meterBarH = Math.min(4.8, Math.max(3.6, graphH * 0.10));
+                const availMidH = scourBadgeY - topBoxesBottomY;
+                const meterTotalH = meterBarH + 6.5;
+                const meterTopMargin = Math.max(2.5, (availMidH - meterTotalH) / 2);
+                const meterY = topBoxesBottomY + meterTopMargin + 2.0;
 
-                // Depth callout on top right: Show Max and Min in DIFFERENT colors as requested
-                const maxColor: [number, number, number] = maxDepthMm > scourLimit ? colors.red : colors.navy;
-                const minColor: [number, number, number] = [13, 148, 136]; // Teal for Min
-
-                doc.setFontSize(5.0);
-                doc.setFont("helvetica", "bold");
-                const minText = minDepthMm > 0 ? `Min: ${Math.round(minDepthMm)} mm` : "";
-                const maxText = `Max: ${Math.round(maxDepthMm)} mm`;
-                const sepText = minText ? " | " : "";
-
-                const minW = minText ? doc.getTextWidth(minText) : 0;
-                const sepW = minText ? doc.getTextWidth(sepText) : 0;
-                const maxW = doc.getTextWidth(maxText);
-                const totalCalloutW = maxW + sepW + minW;
-                const calloutStartX = bx + bw - 3 - totalCalloutW;
-
-                doc.setTextColor(...maxColor);
-                doc.text(maxText, calloutStartX, meterY);
-                if (minText) {
-                    doc.setFont("helvetica", "normal");
-                    doc.setTextColor(...colors.textMuted);
-                    doc.text(sepText, calloutStartX + maxW, meterY);
-                    doc.setFont("helvetica", "bold");
-                    doc.setTextColor(...minColor);
-                    doc.text(minText, calloutStartX + maxW + sepW, meterY);
-                }
-
-                const meterBarX = bx + 3;
-                const meterBarW = bw - 6;
+                const meterBarX = bx + 3.5;
+                const meterBarW = bw - 7.0;
                 const meterScaleMax = Math.max(1200, Math.ceil((scourLimit + 300) / 100) * 100, Math.ceil((maxDepthMm + 150) / 100) * 100);
 
                 // Depth spectrum zones: Normal / Safe (0 to scourLimit = Green), Anomaly (> scourLimit = Red)
@@ -1932,46 +1969,87 @@ export const generateInspectionSummaryGraphReport = async (
                 const anomW = Math.max(0, meterBarW - safeW);
 
                 doc.setFillColor(187, 247, 208); // Safe / Normal green
-                doc.rect(meterBarX, meterY + 1.2, safeW, meterBarH, "F");
+                doc.rect(meterBarX, meterY, safeW, meterBarH, "F");
 
                 if (anomW > 0) {
                     doc.setFillColor(254, 202, 202); // Anomaly red
-                    doc.rect(meterBarX + safeW, meterY + 1.2, anomW, meterBarH, "F");
+                    doc.rect(meterBarX + safeW, meterY, anomW, meterBarH, "F");
                 }
 
-                // Red limit threshold dividing line
-                doc.setDrawColor(220, 38, 38);
-                doc.setLineWidth(0.35);
-                doc.line(meterBarX + safeW, meterY + 0.6, meterBarX + safeW, meterY + meterBarH + 1.8);
+                doc.setDrawColor(...colors.border);
+                doc.setLineWidth(0.1);
+                doc.rect(meterBarX, meterY, meterBarW, meterBarH, "S");
 
-                // Needle/Marker for min depth (Teal marker)
-                if (minDepthMm > 0) {
-                    const minNeedlePct = Math.min(1, minDepthMm / meterScaleMax);
-                    const minNeedleX = meterBarX + (meterBarW * minNeedlePct);
-                    doc.setFillColor(...minColor); // Teal for min
-                    doc.rect(minNeedleX - 0.6, meterY + 0.4, 1.2, meterBarH + 1.6, "F");
-                }
-
-                // Needle/Marker for actual maximum depth (Navy or Red)
+                // Positions for Graph Lines:
+                const safeX = meterBarX + safeW;
                 const needlePct = Math.min(1, maxDepthMm / meterScaleMax);
                 const needleX = meterBarX + (meterBarW * needlePct);
-                doc.setFillColor(...maxColor);
-                doc.rect(needleX - 0.8, meterY + 0.2, 1.6, meterBarH + 2.0, "F");
+                const minNeedlePct = Math.min(1, minDepthMm / meterScaleMax);
+                const minNeedleX = meterBarX + (meterBarW * minNeedlePct);
 
-                // Scale ticks & limit markings under bar
-                const labelY = meterY + meterBarH + 3.4;
-                doc.setFontSize(3.6);
+                // Colors:
+                const maxLineColor: [number, number, number] = maxDepthMm > scourLimit ? [220, 38, 38] : colors.navy;
+                const minLineColor: [number, number, number] = [13, 148, 136]; // Teal for Min
+
+                // ── Vertical Indicator Lines crossing the Meter Bar ──
+                // 1. Allowable Limit Dividing Line (Red)
+                doc.setDrawColor(220, 38, 38);
+                doc.setLineWidth(0.38);
+                doc.line(safeX, meterY - 1.2, safeX, meterY + meterBarH + 1.2);
+
+                // 2. Min Depth Line (Teal marker and line)
+                doc.setDrawColor(...minLineColor);
+                doc.setLineWidth(0.38);
+                doc.line(minNeedleX, meterY - 1.2, minNeedleX, meterY + meterBarH + 1.2);
+                doc.setFillColor(...minLineColor);
+                doc.rect(minNeedleX - 0.6, meterY, 1.2, meterBarH, "F");
+
+                // 3. Max Depth Line (Navy or Red marker and line)
+                doc.setDrawColor(...maxLineColor);
+                doc.setLineWidth(0.38);
+                doc.line(needleX, meterY - 1.2, needleX, meterY + meterBarH + 1.2);
+                doc.setFillColor(...maxLineColor);
+                doc.rect(needleX - 0.7, meterY, 1.4, meterBarH, "F");
+
+                // ── Depth readings on the graph lines (similar to max allowable reading) ──
+                const labelBelowY = meterY + meterBarH + 2.8;
+                const labelAboveY = meterY - 1.6;
+
+                // Scale ticks & limit marking below bar
+                doc.setFontSize(3.5);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
-                doc.text("0", meterBarX, labelY);
+                doc.text("0", meterBarX, labelBelowY);
+                doc.text(`${meterScaleMax} mm`, meterBarX + meterBarW, labelBelowY, { align: "right" });
 
+                // Allowable Limit Label (Red bold below line)
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(220, 38, 38);
-                doc.text(`${scourLimit} (Limit)`, meterBarX + safeW, labelY, { align: "center" });
+                doc.text(`${scourLimit} (Limit)`, safeX, labelBelowY, { align: "center" });
 
-                doc.setFont("helvetica", "normal");
-                doc.setTextColor(...colors.textMuted);
-                doc.text(`${meterScaleMax} mm`, meterBarX + meterBarW, labelY, { align: "right" });
+                // Max Reading Label on Graph Line:
+                // If needleX is close to safeX (<13mm), place Max above the bar to avoid collision; otherwise below
+                const isMaxNearLimit = Math.abs(needleX - safeX) < 13;
+                const maxLabelY = isMaxNearLimit ? labelAboveY : labelBelowY;
+
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...maxLineColor);
+                doc.text(`${Math.round(maxDepthMm)} (Max)`, needleX, maxLabelY, { align: "center" });
+
+                // Min Reading Label on Graph Line (filtered: only render when min depth is positive and not buried):
+                if (minDepthMm > 0) {
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...minLineColor);
+                    const isMinNearZero = Math.abs(minNeedleX - meterBarX) < 8;
+                    const isMinNearMax = Math.abs(minNeedleX - needleX) < 13;
+                    let minLabelY = labelBelowY;
+                    if (isMinNearZero || (isMinNearMax && maxLabelY === labelBelowY)) {
+                        minLabelY = labelAboveY;
+                    } else if (isMinNearMax && maxLabelY === labelAboveY) {
+                        minLabelY = labelBelowY;
+                    }
+                    doc.text(`${Math.round(minDepthMm)} (Min)`, minNeedleX, minLabelY, { align: "center" });
+                }
 
                 // Bottom Safety status summary badge with background color (Pic 1)
                 const isAnomaly = maxDepthMm > scourLimit || Number(exposedPileCount) > 0;

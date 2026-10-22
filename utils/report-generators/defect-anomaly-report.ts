@@ -313,7 +313,7 @@ export const generateDefectAnomalyReport = async (
     const isPrintFriendly = config.printFriendly === true;
 
     const drawHeader = (doc: jsPDF) => {
-        const reportTitle = config.isFindingsReport ? "Findings Report" : "Defect / Anomaly Report";
+        const reportTitle = config.isFindingsReport ? "Findings Report" : "Anomaly Report";
         const reportNoDisplay = sowReportNo || (anomalies.length > 0 ? anomalies[0].sow_report_no : null) || (jobPack?.metadata && jobPack?.metadata?.report_no) || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 

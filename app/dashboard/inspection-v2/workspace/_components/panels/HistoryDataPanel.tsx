@@ -63,7 +63,7 @@ export function HistoryDataPanel({
       toast.info("Generating Anomaly Report PDF...");
 
       const fullConfig: any = {
-        reportTitle: "DEFECT / ANOMALY REPORT",
+        reportTitle: "Anomaly Report",
         reportYear: new Date().getFullYear().toString(),
         preparedBy: "Offshore Inspector",
         watermark: { enabled: false, text: "", transparency: 0.1 },

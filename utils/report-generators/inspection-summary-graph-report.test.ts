@@ -765,10 +765,10 @@ describe("generateInspectionSummaryGraphReport", () => {
             expect(recordedTexts).toContain("Jobpack Name: ");
 
             // ROV block is rendered
-            expect(recordedTexts).toContain("ROV INSPECTION TASK COVERAGE");
+            expect(recordedTexts).toContain("ROV TASK COVERAGE");
 
             // Diving was NOT done: Diving task block must NOT be shown!
-            expect(recordedTexts.some(t => t.includes("DIVING TASK COVERAGE") || t.includes("DIVING INSPECTION TASK COVERAGE"))).toBe(false);
+            expect(recordedTexts.some(t => t.includes("DIVING TASK COVERAGE"))).toBe(false);
 
             // Single mode block width: Left block is 150mm, Right anomaly block is 123mm
             const has150w = recordedRects.some(r => Math.abs(r.w - 150) < 0.5);
@@ -896,14 +896,108 @@ describe("generateInspectionSummaryGraphReport", () => {
             );
 
             // Only Diving block is rendered
-            expect(recordedTexts).toContain("DIVING INSPECTION TASK COVERAGE");
+            expect(recordedTexts).toContain("DIVING TASK COVERAGE");
 
             // ROV was NOT done: ROV block must NOT be rendered
-            expect(recordedTexts.some(t => t.includes("ROV TASK COVERAGE") || t.includes("ROV INSPECTION TASK COVERAGE"))).toBe(false);
+            expect(recordedTexts.some(t => t.includes("ROV TASK COVERAGE"))).toBe(false);
 
             // Diving tasks are rendered
             expect(recordedTexts).toContain("Splash Zone Inspection");
             expect(recordedTexts).toContain("Close Visual Inspection");
+        } finally {
+            const idx = (jsPDF.API as any).events.indexOf(initHook);
+            if (idx !== -1) {
+                (jsPDF.API as any).events.splice(idx, 1);
+            }
+        }
+    });
+
+    it("renders Scour survey block with table form multi-QID readings and depth reading labels on graph lines", async () => {
+        const recordedTexts: string[] = [];
+
+        const initHook = [
+            "addPage",
+            function (this: any) {
+                const originalText = this.text;
+                this.text = function (text: any, ...args: any[]) {
+                    if (typeof text === "string") {
+                        recordedTexts.push(text);
+                    } else if (Array.isArray(text)) {
+                        recordedTexts.push(...text.map(t => String(t)));
+                    }
+                    return originalText.apply(this, [text, ...args]);
+                };
+            }
+        ];
+        (jsPDF.API as any).events.push(initHook);
+
+        try {
+            const scourMultiQidSummary = {
+                ...sampleSummaryData,
+                scour: {
+                    total: 8,
+                    registeredFaces: 4,
+                    facesSurveyed: 4,
+                    pilesSurveyed: 4,
+                    exposedCount: 0,
+                    scourFindingsCount: 4,
+                    maxDepthMm: 450,
+                    minDepthMm: 50,
+                    maxDepthLocation: "Leg A1",
+                    minDepthLocation: "Leg B2",
+                    maxDepthQid: "QID-A1",
+                    minDepthQid: "QID-B2",
+                    maxAllowableMm: 800,
+                    qidReadings: [
+                        { qid: "QID-A1", location: "Leg A1", depthMm: 450 },
+                        { qid: "QID-A2", location: "Leg A2", depthMm: 280 },
+                        { qid: "QID-B1", location: "Leg B1", depthMm: 160 },
+                        { qid: "QID-B2", location: "Leg B2", depthMm: 50 },
+                        { qid: "PILE LEG B3", location: "Leg B3", depthMm: 0, burialPct: 100 },
+                    ]
+                }
+            };
+
+            await generateInspectionSummaryGraphReport(
+                scourMultiQidSummary,
+                {
+                    platformName: "BODP-A",
+                    fieldName: "BOKOR.",
+                    sowReportNo: "SCOUR-TEST-01"
+                },
+                { company_name: "PETRONAS CARIGALI" },
+                { returnBlob: true, sowReportNo: "SCOUR-TEST-01" }
+            );
+
+            // 1. Block Header
+            expect(recordedTexts).toContain("SCOUR SURVEY");
+
+            // 2. Row 1 Metric Boxes (5 boxes accommodated on first row)
+            expect(recordedTexts).toContain("Faces Survey");
+            expect(recordedTexts).toContain("Piles Survey");
+            expect(recordedTexts).toContain("Exposed Piles");
+            expect(recordedTexts).toContain("Min Depth");
+            expect(recordedTexts).toContain("Max Depth");
+            expect(recordedTexts).toContain("50 mm");
+            expect(recordedTexts).toContain("450 mm");
+
+            // 3. No QID or table
+            expect(recordedTexts.includes("QID")).toBe(false);
+            expect(recordedTexts.includes("Location")).toBe(false);
+            expect(recordedTexts.includes("QID-A1")).toBe(false);
+            expect(recordedTexts.includes("QID-B2")).toBe(false);
+
+            // 4. Buried / 0 depth reading filtered out
+            expect(recordedTexts.includes("PILE LEG B3")).toBe(false);
+            expect(recordedTexts.includes("0 (Min)")).toBe(false);
+
+            // 5. Graph Line Readings (Min, Max, Limit)
+            expect(recordedTexts).toContain("450 (Max)");
+            expect(recordedTexts).toContain("50 (Min)");
+            expect(recordedTexts).toContain("800 (Limit)");
+
+            // 6. Safety Badge
+            expect(recordedTexts).toContain("Safety: Normal (<800mm)");
         } finally {
             const idx = (jsPDF.API as any).events.indexOf(initHook);
             if (idx !== -1) {
