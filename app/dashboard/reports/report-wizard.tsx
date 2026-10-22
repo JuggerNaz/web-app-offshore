@@ -95,6 +95,7 @@ interface SelectionState {
     procedureId: string;
     sowReportNo: string;
     printBlankReport?: boolean;
+    structureName?: string;
 }
 
 export { REPORT_TEMPLATES, TOC_SECTIONS } from "./report-template-catalog";
@@ -2095,26 +2096,65 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
             } else {
-                // All-in-One: Combine all selected templates with cover sheets!
+                // All-in-One: Combine all selected templates with cover sheets and interactive Table of Contents (TOC)!
                 if (selectedTOC.length === 0) return null;
 
                 const originalAlert = window.alert;
                 window.alert = () => {}; 
                 try {
-                    const mergedPdf = await PDFDocument.create();
+                    const structureData = selections.structureId ? await fetchStructureData() : null;
+                    const jobPackData = selections.jobPackId ? await fetchJobPackData() : null;
+
+                    const selectedStructureObj = structures.find((s: any) => String(s.id) === String(cleanStructureId) || String(s.str_name) === String(cleanStructureId));
+
+                    const coverOptions = {
+                        structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
+                        fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
+                        jobPackName: jobPackData?.name || jobPackData?.title || "UIMC2026/SKA/PLAT01",
+                        sowReportNo: selections.sowReportNo || reportConfig?.sowReportNo || "AM26-016-01",
+                        contractorName: companySettings?.company_name || "NasQuest Resources Sdn Bhd",
+                        companyName: companySettings?.company_name || "NasQuest Resources Sdn Bhd",
+                        inspectionModes: "ROV & Diving Consolidated",
+                        dateStr: new Date().toISOString().split("T")[0],
+                        preparedBy: reportConfig?.preparedBy?.name ? reportConfig.preparedBy : { name: "Inspection Lead", date: new Date().toISOString().split("T")[0] },
+                        reviewedBy: reportConfig?.reviewedBy?.name ? reportConfig.reviewedBy : { name: "Senior QA Engineer", date: new Date().toISOString().split("T")[0] },
+                        approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : { name: "Technical Director", date: new Date().toISOString().split("T")[0] },
+                    };
+
+                    const {
+                        generateMainCoverPage,
+                        generateTOCPages,
+                        generateSectionDividerPage,
+                        generateEndOfReportCoverPage,
+                        applyTOCLinksToPdf
+                    } = await import("@/utils/report-generators/final-datasheet-report");
+
+                    const collectedSections: Array<{
+                        section: typeof TOC_SECTIONS[0];
+                        dividerDonorDoc: any;
+                        reports: Array<{
+                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            donorDoc: any;
+                            pageCount: number;
+                        }>;
+                    }> = [];
 
                     let count = 0;
                     for (const s of TOC_SECTIONS) {
                         const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
                         if (sectionTemplates.length === 0) continue;
 
-                        const sectionReportBlobs: Blob[] = [];
+                        const activeReports: Array<{
+                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            donorDoc: any;
+                            pageCount: number;
+                        }> = [];
 
                         for (const t of sectionTemplates) {
                             count++;
                             setCurrentGeneratingTemplate(t.name);
-                            setGenerationProgress(Math.min(95, 5 + Math.round(((count - 1) / selectedTOC.length) * 90)));
-                            await new Promise(resolve => setTimeout(resolve, 400));
+                            setGenerationProgress(Math.min(90, 5 + Math.round(((count - 1) / selectedTOC.length) * 85)));
+                            await new Promise(resolve => setTimeout(resolve, 300));
 
                             try {
                                 let sectionResult = await generateReportAction(true, t.id); // Must ask for Blob
@@ -2122,7 +2162,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     sectionResult = (sectionResult as any).output('blob');
                                 }
                                 if (sectionResult instanceof Blob) {
-                                    sectionReportBlobs.push(sectionResult);
+                                    const sectionArrayBuffer = await sectionResult.arrayBuffer();
+                                    const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
+                                    activeReports.push({
+                                        template: t,
+                                        donorDoc: donorSectionPdf,
+                                        pageCount: donorSectionPdf.getPageCount()
+                                    });
                                 } else {
                                     console.warn(`Skipping template ${t.name} as it yielded no records.`);
                                 }
@@ -2131,29 +2177,115 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             }
                         }
 
-                        if (sectionReportBlobs.length > 0) {
+                        if (activeReports.length > 0) {
                             try {
-                                // Section generated! NOW add cover page for the entire SECTION
-                                const coverBlob = await generateCoverPage(s.name);
-                                const coverArrayBuffer = await coverBlob.arrayBuffer();
-                                const donorCoverPdf = await PDFDocument.load(coverArrayBuffer);
-                                const copiedCoverPages = await mergedPdf.copyPages(donorCoverPdf, donorCoverPdf.getPageIndices());
-                                copiedCoverPages.forEach((page) => mergedPdf.addPage(page));
+                                const dividerBlob = await generateSectionDividerPage(s.name, coverOptions);
+                                const dividerBuffer = await dividerBlob.arrayBuffer();
+                                const dividerDonor = await PDFDocument.load(dividerBuffer);
 
-                                // Add section pages
-                                for (const blob of sectionReportBlobs) {
-                                    const sectionArrayBuffer = await blob.arrayBuffer();
-                                    const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
-                                    const copiedSectionPages = await mergedPdf.copyPages(donorSectionPdf, donorSectionPdf.getPageIndices());
-                                    copiedSectionPages.forEach((page) => mergedPdf.addPage(page));
-                                }
-                            } catch (coverErr) {
-                                console.error(`Error appending section ${s.name} cover and pages:`, coverErr);
+                                collectedSections.push({
+                                    section: s,
+                                    dividerDonorDoc: dividerDonor,
+                                    reports: activeReports
+                                });
+                            } catch (err) {
+                                console.error(`Error preparing section divider for ${s.name}:`, err);
                             }
                         }
                     }
 
-                    // Stamp global continuous page numbers on all merged pages
+                    if (collectedSections.length === 0) return null;
+
+                    // 1. Calculate Exact Page Numbers for TOC
+                    const totalTocItems = collectedSections.reduce((acc, s) => acc + 1 + s.reports.length, 0);
+                    const tocPagesCount = Math.max(1, Math.ceil(totalTocItems / 22));
+
+                    // Page 1: Main Cover
+                    // Pages 2 .. (1 + tocPagesCount): TOC Pages
+                    let runningPageNum = 1 + tocPagesCount + 1;
+
+                    const sectionsWithPages = collectedSections.map(cs => {
+                        const secPageNum = runningPageNum;
+                        runningPageNum += 1; // Section divider page is 1 page
+
+                        const repItems = cs.reports.map(r => {
+                            const repPageNum = runningPageNum;
+                            runningPageNum += r.pageCount;
+                            return {
+                                id: r.template.id,
+                                name: r.template.name,
+                                mode: r.template.mode,
+                                pageNum: repPageNum,
+                                pageCount: r.pageCount
+                            };
+                        });
+
+                        return {
+                            id: cs.section.id,
+                            name: cs.section.name,
+                            pageNum: secPageNum,
+                            templates: repItems
+                        };
+                    });
+
+                    // 1B. Account for the End of Report Cover Page (1 page at the end of the dossier)
+                    const endOfReportPageNum = runningPageNum;
+                    runningPageNum += 1;
+
+                    const totalDocumentPages = runningPageNum - 1;
+
+                    // 2. Generate Main Cover & TOC Pages
+                    setCurrentGeneratingTemplate("Creating Main Cover Page & Interactive TOC...");
+                    const coverBlob = await generateMainCoverPage(coverOptions);
+                    const coverBuffer = await coverBlob.arrayBuffer();
+                    const coverDonor = await PDFDocument.load(coverBuffer);
+
+                    const { blobs: tocBlobs, linkTargets } = await generateTOCPages(
+                        sectionsWithPages,
+                        totalDocumentPages,
+                        coverOptions
+                    );
+
+                    // 3. Assemble in mergedPdf
+                    const mergedPdf = await PDFDocument.create();
+
+                    // 3A. Main Cover Page (Page 1)
+                    const [copiedCover] = await mergedPdf.copyPages(coverDonor, [0]);
+                    mergedPdf.addPage(copiedCover);
+
+                    // 3B. TOC Pages (Pages 2 .. 1 + tocPagesCount)
+                    const addedTocPages: any[] = [];
+                    for (const tBlob of tocBlobs) {
+                        const tBuffer = await tBlob.arrayBuffer();
+                        const tDonor = await PDFDocument.load(tBuffer);
+                        const [copiedToc] = await mergedPdf.copyPages(tDonor, [0]);
+                        mergedPdf.addPage(copiedToc);
+                        addedTocPages.push(copiedToc);
+                    }
+
+                    // 3C. Section Dividers & Reports
+                    for (const cs of collectedSections) {
+                        const [copiedDiv] = await mergedPdf.copyPages(cs.dividerDonorDoc, [0]);
+                        mergedPdf.addPage(copiedDiv);
+
+                        for (const r of cs.reports) {
+                            const pages = await mergedPdf.copyPages(r.donorDoc, r.donorDoc.getPageIndices());
+                            pages.forEach(p => mergedPdf.addPage(p));
+                        }
+                    }
+
+                    // 3D. End of Report Cover Page
+                    setCurrentGeneratingTemplate("Adding End of Report Cover Page...");
+                    const endCoverBlob = await generateEndOfReportCoverPage(coverOptions);
+                    const endCoverBuffer = await endCoverBlob.arrayBuffer();
+                    const endCoverDonor = await PDFDocument.load(endCoverBuffer);
+                    const [copiedEndCover] = await mergedPdf.copyPages(endCoverDonor, [0]);
+                    mergedPdf.addPage(copiedEndCover);
+
+                    // 4. Attach Interactive PDF Link Annotations to the TOC page(s)
+                    applyTOCLinksToPdf(mergedPdf, addedTocPages, linkTargets);
+
+                    // 5. Stamp global continuous page numbers on all merged pages
                     const totalPagesCount = mergedPdf.getPageCount();
                     const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
 
@@ -2164,12 +2296,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         const fontSize = 8;
                         const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
 
+                        // Front Cover (idx === 0) and End of Report Cover (idx === totalPagesCount - 1) have dark navy backgrounds
+                        const isDarkCover = (idx === 0 || idx === totalPagesCount - 1);
+                        const textColor = isDarkCover ? rgb(0.58, 0.64, 0.72) : rgb(0.12, 0.16, 0.23);
+
                         p.drawText(pageStr, {
                             x: width - 12 - textWidth,
                             y: 6,
                             size: fontSize,
                             font,
-                            color: rgb(0.12, 0.16, 0.23), // slate-800
+                            color: textColor,
                         });
                     }
 
@@ -6713,13 +6849,29 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
                 }
 
+                const metaStatus = String(record?.inspection_data?._meta_status || record?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(record?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || record?.finding_ref || record?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+
                 return {
                     ...a,
                     insp_date: recDate,
                     inspection_date: recDate,
                     inspection_time: recTime,
                     insp_id: record?.insp_id || a.source_id || 0,
-                    anomaly_ref: anomRef
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || record?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 
@@ -6978,13 +7130,29 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
                 }
 
+                const metaStatus = String(record?.inspection_data?._meta_status || record?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(record?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || record?.finding_ref || record?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+
                 return {
                     ...a,
                     insp_date: recDate,
                     inspection_date: recDate,
                     inspection_time: recTime,
                     insp_id: record?.insp_id || a.source_id || 0,
-                    anomaly_ref: anomRef
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || record?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 

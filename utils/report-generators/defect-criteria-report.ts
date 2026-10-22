@@ -36,6 +36,191 @@ const getLibraryLabel = (library: any[], id: string) => {
     return item ? item.lib_desc : id;
 };
 
+/**
+ * Resolves the engineering physical unit for a defect criteria rule based on:
+ * 1. Explicit unit properties (rule.unit, rule.thresholdUnit, customParameters.unit, etc.)
+ * 2. Field name notation with embedded unit in parentheses (e.g., "CP Rdg (mV)", "Depth (mm)", "Loss (%)")
+ * 3. Defect Code / Defect Group / Defect Type standards (AW -> %, CP -> mV, SC -> mm, MG -> mm, PS -> m, IN -> deg)
+ * 4. Value-based heuristics (negative threshold values <= -100 are CP voltage readings in mV)
+ */
+export const resolveRuleUnit = (
+    rule: any,
+    defectCodeDesc?: string,
+    defectTypeDesc?: string
+): string => {
+    if (!rule) return '';
+
+    // 1. Explicit unit from rule or customParameters
+    if (rule.unit && typeof rule.unit === 'string') return rule.unit.trim();
+    if (rule.thresholdUnit && typeof rule.thresholdUnit === 'string') return rule.thresholdUnit.trim();
+    if (rule.threshold_unit && typeof rule.threshold_unit === 'string') return rule.threshold_unit.trim();
+    if (rule.parameterUnit && typeof rule.parameterUnit === 'string') return rule.parameterUnit.trim();
+    if (rule.customParameters?.unit) return String(rule.customParameters.unit).trim();
+    if (rule.customParameters?.threshold_unit) return String(rule.customParameters.threshold_unit).trim();
+
+    // 2. Unit embedded in fieldName (e.g. "CP Rdg (mV)" -> "mV", "Thickness (mm)" -> "mm", "Loss (%)" -> "%")
+    const fieldName = String(rule.fieldName || rule.field_name || "");
+    const fieldParenMatch = fieldName.match(/\((mV|mm|m|%|deg|°|kg|bar|psi|in)\)/i);
+    if (fieldParenMatch) {
+        return fieldParenMatch[1];
+    }
+
+    // 3. Known Defect Code ID / Descriptions
+    const codeId = String(rule.defectCodeId || rule.defect_code_id || "").toUpperCase().trim();
+    const codeDesc = String(defectCodeDesc || "").toUpperCase();
+    const typeDesc = String(defectTypeDesc || "").toUpperCase();
+    const fieldUpper = fieldName.toUpperCase();
+
+    // Anode Wastage -> %
+    if (
+        codeId === 'AW' || 
+        codeDesc.includes('ANODE') || 
+        codeDesc.includes('WASTAGE') || 
+        typeDesc.includes('ANODE') || 
+        fieldUpper.includes('ANODE') || 
+        fieldUpper.includes('DEPLETION')
+    ) {
+        return '%';
+    }
+
+    // Cathodic Potential -> mV
+    if (
+        codeId === 'CP' || 
+        codeDesc.includes('CATHODIC') || 
+        codeDesc.includes('POTENTIAL') || 
+        typeDesc.includes('CATHODIC') || 
+        fieldUpper.includes('CP RDG') || 
+        fieldUpper.includes('CP_RDG') ||
+        fieldUpper.includes('CP READING')
+    ) {
+        return 'mV';
+    }
+
+    // Marine Growth -> mm
+    if (
+        codeId === 'MG' || 
+        codeId === 'MGI' || 
+        codeDesc.includes('MARINE GROWTH') || 
+        typeDesc.includes('MARINE GROWTH')
+    ) {
+        return 'mm';
+    }
+
+    // Scour -> mm (standard scour depth threshold in offshore jacket/subsea inspection, e.g. 900 mm)
+    if (
+        codeId === 'SC' || 
+        codeDesc.includes('SCOUR') || 
+        typeDesc.includes('SCOUR') || 
+        fieldUpper.includes('SCOUR')
+    ) {
+        if (fieldUpper.includes('(M)') || fieldUpper.includes(' (M)')) return 'm';
+        return 'mm';
+    }
+
+    // Free Spanning / Pipeline Spanning -> m
+    if (
+        codeId === 'PS' || 
+        codeDesc.includes('SPAN') || 
+        typeDesc.includes('SPAN') || 
+        fieldUpper.includes('SPAN')
+    ) {
+        return 'm';
+    }
+
+    // Tilt / Inclinometer -> deg
+    if (
+        codeId === 'IN' || 
+        codeId === 'IC' || 
+        codeDesc.includes('INCLINOMETER') || 
+        codeDesc.includes('TILT')
+    ) {
+        return 'deg';
+    }
+
+    // Wall Thickness Loss / Corrosion / Physical Damage
+    if (
+        codeId === 'WT' || 
+        codeDesc.includes('WALL THICKNESS') || 
+        typeDesc.includes('WALL THICKNESS')
+    ) {
+        if (typeDesc.includes('%') || fieldUpper.includes('%') || fieldUpper.includes('LOSS')) {
+            return '%';
+        }
+        return 'mm';
+    }
+
+    if (
+        codeId === 'CR' || 
+        codeId === 'PD' || 
+        codeDesc.includes('CORROSION') || 
+        codeDesc.includes('DAMAGE')
+    ) {
+        if (fieldUpper.includes('%') || typeDesc.includes('%')) {
+            return '%';
+        }
+        return 'mm';
+    }
+
+    // 4. Value-based heuristics
+    const valNum = Number(rule.thresholdValue);
+    if (!isNaN(valNum)) {
+        // CP reading voltages in seawater are negative (typically -650 to -1150 mV)
+        if (valNum <= -100) {
+            return 'mV';
+        }
+    }
+
+    return '';
+};
+
+/**
+ * Formats a rule threshold condition string including its physical engineering unit
+ * when a numeric threshold value is specified.
+ */
+export const formatRuleCondition = (
+    rule: any,
+    defectCodeDesc?: string,
+    defectTypeDesc?: string
+): string => {
+    if (!rule) return "N/A";
+
+    const hasValue = rule.thresholdValue !== undefined && rule.thresholdValue !== null && String(rule.thresholdValue).trim() !== '';
+    const hasText = rule.thresholdText !== undefined && rule.thresholdText !== null && String(rule.thresholdText).trim() !== '';
+    const hasOperator = Boolean(rule.thresholdOperator && String(rule.thresholdOperator).trim() !== '');
+
+    if (!hasValue && !hasText && !hasOperator) {
+        return "N/A";
+    }
+
+    const op = rule.thresholdOperator || (hasText ? 'LIKE' : '');
+    const rawVal = hasValue ? rule.thresholdValue : (rule.thresholdText || '');
+    const rawValStr = String(rawVal).trim();
+
+    // Check if this condition has a numeric value that should carry a unit
+    const isNumericValue = hasValue || /^[-+]?\d+(\.\d+)?/.test(rawValStr);
+
+    let displayVal = rawValStr;
+    if (isNumericValue) {
+        const unit = resolveRuleUnit(rule, defectCodeDesc, defectTypeDesc);
+        if (unit) {
+            const cleanUnit = unit.trim();
+            const endsWithUnit = displayVal.toLowerCase().endsWith(cleanUnit.toLowerCase());
+            if (!endsWithUnit) {
+                if (cleanUnit === '%') {
+                    displayVal = `${displayVal}%`;
+                } else {
+                    displayVal = `${displayVal} ${cleanUnit}`;
+                }
+            }
+        }
+    }
+
+    if (op) {
+        return `${op} ${displayVal}`.trim();
+    }
+    return displayVal || "N/A";
+};
+
 export const generateDefectCriteriaReport = async (
     companySettings?: CompanySettings,
     config?: ReportConfig
@@ -502,20 +687,18 @@ export const generateDefectCriteriaReport = async (
 
                 // Add Rules
                 groupRules.forEach(rule => {
-                    // Format Threshold
-                    let condition = "N/A";
-                    if (rule.thresholdOperator || rule.thresholdText) {
-                        const op = rule.thresholdOperator || (rule.thresholdText ? 'LIKE' : '');
-                        const val = rule.thresholdText || rule.thresholdValue;
-                        condition = `${op} ${val}`.trim();
-                    }
-
-                    // Format Priority
-                    const prioLabel = getLibraryLabel(libraryData.priorities, rule.priorityId);
-
                     // Labels - Defect Type in Proper Case
                     const defectTypeRaw = getLibraryLabel(libraryData.defectTypes, rule.defectTypeId);
                     const defectType = toProperCase(defectTypeRaw);
+
+                    // Defect Code Description
+                    const defectCodeDesc = getLibraryLabel(libraryData.defectCodes, rule.defectCodeId);
+
+                    // Format Threshold / Condition with Unit
+                    const condition = formatRuleCondition(rule, defectCodeDesc, defectTypeRaw);
+
+                    // Format Priority
+                    const prioLabel = getLibraryLabel(libraryData.priorities, rule.priorityId);
 
                     const structureGroupDisplay = rule.structureGroup 
                         ? rule.structureGroup.split(',').map((s: string) => s.trim()).filter(Boolean).join(', ')
@@ -556,8 +739,8 @@ export const generateDefectCriteriaReport = async (
                 },
                 columnStyles: {
                     0: { cellWidth: 38, halign: 'center' }, // Structure Group
-                    1: { cellWidth: 48, halign: 'left' },   // Defect Type
-                    2: { cellWidth: 26, halign: 'center' }, // Condition
+                    1: { cellWidth: 46, halign: 'left' },   // Defect Type
+                    2: { cellWidth: 28, halign: 'center' }, // Condition (with units)
                     3: { cellWidth: 26, halign: 'center' }, // Priority
                     4: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
                 },

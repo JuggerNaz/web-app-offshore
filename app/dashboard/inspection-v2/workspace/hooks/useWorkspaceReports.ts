@@ -1947,13 +1947,29 @@ export function useWorkspaceReports(
             const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
             const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
             const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+            const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+            const isFinding = Boolean(
+                a.is_finding ||
+                metaStatus === 'finding' ||
+                String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+            );
+            const findingRef = isFinding 
+                ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                : null;
             return {
                 ...a,
                 insp_date: recDate,
                 inspection_date: recDate,
                 inspection_time: recTime,
                 insp_id: rec?.insp_id || a.source_id || 0,
-                anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                anomaly_ref: !isFinding ? anomRef : null,
+                finding_ref: findingRef,
+                is_finding: isFinding,
+                is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
             };
         });
 
@@ -1965,6 +1981,17 @@ export function useWorkspaceReports(
                 const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
                 const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
                 const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+                const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
                 return {
                     ...a,
                     path: a.path || a.previewUrl,
@@ -1972,7 +1999,12 @@ export function useWorkspaceReports(
                     inspection_date: recDate,
                     inspection_time: recTime,
                     insp_id: rec?.insp_id || a.source_id || 0,
-                    anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 
@@ -2007,13 +2039,29 @@ export function useWorkspaceReports(
             const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
             const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
             const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+            const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+            const isFinding = Boolean(
+                a.is_finding ||
+                metaStatus === 'finding' ||
+                String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+            );
+            const findingRef = isFinding 
+                ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                : null;
             return {
                 ...a,
                 insp_date: recDate,
                 inspection_date: recDate,
                 inspection_time: recTime,
                 insp_id: rec?.insp_id || a.source_id || 0,
-                anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                anomaly_ref: !isFinding ? anomRef : null,
+                finding_ref: findingRef,
+                is_finding: isFinding,
+                is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
             };
         });
 
@@ -2023,6 +2071,17 @@ export function useWorkspaceReports(
                 const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
                 const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
                 const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+                const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
                 return {
                     ...a,
                     path: a.path || a.previewUrl,
@@ -2030,7 +2089,12 @@ export function useWorkspaceReports(
                     inspection_date: recDate,
                     inspection_time: recTime,
                     insp_id: rec?.insp_id || a.source_id || 0,
-                    anomaly_ref: rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 
