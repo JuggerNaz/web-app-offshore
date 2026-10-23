@@ -40,9 +40,7 @@ const loadPhotoData = async (url: string): Promise<LoadedPhoto | null> => {
         return null;
     }
 
-    if (photoDataCache.has(url)) {
-        return photoDataCache.get(url)!;
-    }
+    // Always fetch fresh each time as requested (no memory cache)
 
     const tryViaImageElement = (src: string, useCrossOrigin = true): Promise<LoadedPhoto | null> => {
         if (typeof process !== 'undefined' && process.env?.VITEST && src.startsWith("data:")) {
@@ -469,6 +467,7 @@ export const generateROVPhotographyReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
+        photoDataCache.clear();
         const doc = new jsPDF({
             orientation: "portrait",
             unit: "mm",

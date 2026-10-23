@@ -47,9 +47,7 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   }
 
   const cacheKey = `${id || ''}::${cleanUrl}`;
-  if (pdfImageCache.has(cacheKey)) {
-    return pdfImageCache.get(cacheKey)!;
-  }
+  // Always fetch fresh each time as requested (no memory cache)
 
   // Helper: convert a Blob to a base64 data URL string
   const blobToDataUrl = (blob: Blob): Promise<string | null> => {

@@ -11,7 +11,9 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
         return null;
     }
 
-    if (logoCache.has(url)) {
+    const isAttachmentUrl = url.includes("/api/attachment/");
+
+    if (!isAttachmentUrl && logoCache.has(url)) {
         return logoCache.get(url)!;
     }
 
@@ -96,7 +98,7 @@ export const loadLogoWithTransparency = async (url: string): Promise<{ data: str
         img.src = finalSrc;
     });
 
-    if (result) {
+    if (result && !isAttachmentUrl) {
         logoCache.set(url, result);
     }
     return result;
