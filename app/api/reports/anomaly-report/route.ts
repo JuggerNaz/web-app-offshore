@@ -60,6 +60,79 @@ export async function GET(request: NextRequest) {
         let anomalies = anomaliesData || [];
 
         if (viewError) {
+            console.warn("[AnomalyReport] View query error, attempting direct query fallback:", viewError);
+        }
+
+        // Robust Fallback: If view query returned 0 rows or errored and specific inspectionId or anomalyId is requested
+        if (anomalies.length === 0 && (inspectionId || anomalyId)) {
+            try {
+                console.log(`[AnomalyReport] View returned 0 rows for inspectionId=${inspectionId}, anomalyId=${anomalyId}. Attempting direct query fallback...`);
+                let directQuery = (supabase as any)
+                    .from("insp_anomalies")
+                    .select("*, insp_records!inner(*, structure_components(*), insp_video_tapes(*), insp_dive_jobs(*), insp_rov_jobs(*))");
+
+                if (anomalyId) {
+                    directQuery = directQuery.eq("anomaly_id", anomalyId);
+                } else if (inspectionId) {
+                    directQuery = directQuery.eq("inspection_id", inspectionId);
+                }
+
+                const { data: directAnoms, error: directErr } = await directQuery;
+                if (!directErr && directAnoms && directAnoms.length > 0) {
+                    anomalies = directAnoms.map((da: any) => {
+                        const r = da.insp_records || {};
+                        const sc = r.structure_components || {};
+                        const dj = r.insp_dive_jobs || {};
+                        const rj = r.insp_rov_jobs || {};
+                        const vt = r.insp_video_tapes || {};
+                        return {
+                            anomaly_id: da.anomaly_id,
+                            display_ref_no: da.anomaly_ref_no,
+                            description: da.defect_description,
+                            priority: da.priority_code,
+                            category: da.defect_category_code,
+                            defect_type: da.defect_type_code,
+                            recommended_action: da.recommended_action,
+                            status: da.status,
+                            rectified: da.is_rectified,
+                            rectified_by: da.rectified_by,
+                            rectified_date: da.rectified_date,
+                            rectified_remarks: da.rectified_remarks,
+                            action_priority: da.action_priority,
+                            anomaly_status: da.status,
+                            id: r.insp_id,
+                            inspection_date: r.inspection_date,
+                            observations: r.description,
+                            has_anomaly: r.has_anomaly,
+                            elevation: r.elevation,
+                            fp_kp: r.fp_kp,
+                            tape_id: r.tape_id,
+                            tape_no: vt.tape_no || r.tape_no,
+                            video_ref: r.tape_count_no,
+                            component_id: sc.id || r.component_id,
+                            component_type: sc.code || r.component_type,
+                            component_qid: sc.q_id || r.component_qid,
+                            jobpack_id: r.jobpack_id,
+                            structure_id: r.structure_id,
+                            sow_report_no: r.sow_report_no,
+                            dive_job_id: dj.dive_job_id,
+                            dive_no: dj.dive_no,
+                            diver_name: dj.diver_name,
+                            dive_start: dj.start_time,
+                            rov_job_id: rj.rov_job_id,
+                            deployment_no: rj.deployment_no,
+                            rov_name: rj.rov_operator,
+                            rov_machine: rj.rov_serial_no,
+                            rov_start: rj.start_time,
+                        };
+                    });
+                }
+            } catch (fbErr) {
+                console.error("[AnomalyReport] Fallback query error:", fbErr);
+            }
+        }
+
+        if (viewError && anomalies.length === 0) {
             console.error("View Error:", viewError);
             throw viewError;
         }

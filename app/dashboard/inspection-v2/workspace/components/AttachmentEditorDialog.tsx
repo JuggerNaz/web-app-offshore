@@ -789,6 +789,44 @@ export function AttachmentEditorDialog({
         }
     };
 
+    // ─── File Details Helpers ───────────────────────────────────────────
+    const isVideo = replacedFileType ? replacedFileType === 'VIDEO' : (String(activeAttachment?.type).toUpperCase() === 'VIDEO' || String(activeAttachment?.meta?.type).toUpperCase() === 'VIDEO');
+    const isDoc = replacedFileType ? replacedFileType === 'DOCUMENT' : (String(activeAttachment?.type).toUpperCase() === 'DOCUMENT' || String(activeAttachment?.meta?.type).toUpperCase() === 'DOCUMENT');
+
+    const actualFileName = (
+        replacedFile?.name ||
+        activeAttachment?.meta?.original_file_name ||
+        activeAttachment?.file?.name ||
+        activeAttachment?.meta?.file_name ||
+        activeAttachment?.file_name ||
+        (activeAttachment?.path && typeof activeAttachment.path === 'string' ? activeAttachment.path.split('?')[0].split('/').pop() : '') ||
+        activeAttachment?.name ||
+        'attachment'
+    );
+
+    const fileExtension = (() => {
+        if (actualFileName && actualFileName.includes('.')) {
+            const ext = actualFileName.split('.').pop()?.toUpperCase();
+            if (ext && ext.length >= 1 && ext.length <= 6) return ext;
+        }
+        const typeStr = (replacedFileType || activeAttachment?.type || activeAttachment?.meta?.type || '').toUpperCase();
+        if (typeStr === 'VIDEO') return 'MP4';
+        if (typeStr === 'DOCUMENT') return 'PDF';
+        const mimeStr = (replacedFile?.type || activeAttachment?.meta?.mime || activeAttachment?.meta?.file_type || activeAttachment?.file?.type || '').toLowerCase();
+        if (mimeStr.includes('png')) return 'PNG';
+        if (mimeStr.includes('webp')) return 'WEBP';
+        if (mimeStr.includes('gif')) return 'GIF';
+        if (mimeStr.includes('pdf')) return 'PDF';
+        if (mimeStr.includes('jpeg') || mimeStr.includes('jpg')) return 'JPG';
+        if (mimeStr.includes('mp4')) return 'MP4';
+        return isVideo ? 'MP4' : isDoc ? 'PDF' : 'JPG';
+    })();
+
+    const mimeType = replacedFile?.type || activeAttachment?.meta?.mime || activeAttachment?.meta?.file_type || activeAttachment?.file?.type || (isVideo ? 'video/mp4' : isDoc ? 'application/pdf' : 'image/jpeg');
+
+    const rawSize = replacedFile ? replacedFile.size : (activeAttachment?.file?.size || activeAttachment?.meta?.file_size || activeAttachment?.meta?.size || activeAttachment?.size || null);
+    const formattedSize = rawSize ? (rawSize < 1024 * 1024 ? `${(rawSize / 1024).toFixed(1)} KB` : `${(rawSize / (1024 * 1024)).toFixed(2)} MB`) : null;
+
     // ─── Save Changes ──────────────────────────────────────────────────
     const handleSave = async () => {
         if (!activeAttachment) return;
@@ -823,6 +861,9 @@ export function AttachmentEditorDialog({
         // Update allAttachments list
         const updatedAllAttachments = allAttachments.map((item, idx) => {
             const itemOrder = item.sort_order !== undefined ? Number(item.sort_order) : idx;
+            const itemKey = item.id ? String(item.id) : (item.path || item.previewUrl || `idx-${idx}`);
+            const cached = modificationsMapRef.current.get(itemKey);
+
             if (idx === activeIndex) {
                 return {
                     ...item,
@@ -838,6 +879,28 @@ export function AttachmentEditorDialog({
                     }
                 };
             }
+            if (cached) {
+                return {
+                    ...item,
+                    title: cached.title,
+                    name: cached.title || item.name,
+                    description: cached.description,
+                    sort_order: itemOrder,
+                    meta: {
+                        ...(item.meta || {}),
+                        title: cached.title,
+                        description: cached.description,
+                        sort_order: itemOrder,
+                    },
+                    ...(cached.replacedFile ? {
+                        file: cached.replacedFile,
+                        previewUrl: cached.replacementPreviewUrl,
+                        type: cached.replacedFileType || item.type,
+                        isEdited: true,
+                        isReplaced: true,
+                    } : {})
+                };
+            }
             return {
                 ...item,
                 sort_order: itemOrder,
@@ -850,15 +913,26 @@ export function AttachmentEditorDialog({
 
         if (canvas && isPhoto && hasVisualEdits) {
             try {
+                const baseName = (actualFileName || effectiveName).replace(/\.[^/.]+$/, "");
+                const ext = (replacedFile?.type?.includes('png') || actualFileName.toLowerCase().endsWith('.png')) ? 'png' : 'jpg';
+                const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+
                 canvas.toBlob((blob) => {
                     if (blob) {
-                        const newFile = new File([blob], `${effectiveName.replace(/\.[^/.]+$/, "")}.jpg`, { type: 'image/jpeg' });
+                        const newFile = new File([blob], `${baseName}_edited.${ext}`, { type: mime });
                         const newUrl = URL.createObjectURL(blob);
                         const finalUpdated = buildUpdatedAttachment({
                             file: newFile,
                             previewUrl: newUrl,
                             type: effectiveType,
-                            isEdited: true
+                            isEdited: true,
+                            isReplaced: true,
+                            meta: {
+                                original_file_name: `${baseName}_edited.${ext}`,
+                                file_size: blob.size,
+                                file_type: mime,
+                                mime: mime,
+                            }
                         });
                         onSave(finalUpdated, updatedAllAttachments);
                         onOpenChange(false);
@@ -867,24 +941,44 @@ export function AttachmentEditorDialog({
                             file: replacedFile,
                             previewUrl: replacementPreviewUrl,
                             type: effectiveType,
-                            isEdited: true
+                            isEdited: true,
+                            isReplaced: true,
+                            meta: {
+                                original_file_name: replacedFile.name,
+                                file_size: replacedFile.size,
+                                file_type: replacedFile.type,
+                                mime: replacedFile.type,
+                            }
                         });
                         onSave(finalUpdated, updatedAllAttachments);
                         onOpenChange(false);
                     } else {
-                        const finalUpdated = buildUpdatedAttachment();
+                        const finalUpdated = buildUpdatedAttachment({
+                            isEdited: false,
+                            isReplaced: false
+                        });
                         onSave(finalUpdated, updatedAllAttachments);
                         onOpenChange(false);
                     }
-                }, replacedFile?.type || 'image/jpeg', 0.9);
+                }, mime, 0.92);
             } catch (canvasErr) {
                 console.warn("[AttachmentEditorDialog] Canvas toBlob error fallback:", canvasErr);
                 const finalUpdated = buildUpdatedAttachment(replacedFile ? {
                     file: replacedFile,
                     previewUrl: replacementPreviewUrl,
                     type: effectiveType,
-                    isEdited: true
-                } : {});
+                    isEdited: true,
+                    isReplaced: true,
+                    meta: {
+                        original_file_name: replacedFile.name,
+                        file_size: replacedFile.size,
+                        file_type: replacedFile.type,
+                        mime: replacedFile.type,
+                    }
+                } : {
+                    isEdited: false,
+                    isReplaced: false
+                });
                 onSave(finalUpdated, updatedAllAttachments);
                 onOpenChange(false);
             }
@@ -893,12 +987,22 @@ export function AttachmentEditorDialog({
                 file: replacedFile,
                 previewUrl: replacementPreviewUrl,
                 type: effectiveType,
-                isEdited: true
+                isEdited: true,
+                isReplaced: true,
+                meta: {
+                    original_file_name: replacedFile.name,
+                    file_size: replacedFile.size,
+                    file_type: replacedFile.type,
+                    mime: replacedFile.type,
+                }
             });
             onSave(finalUpdated, updatedAllAttachments);
             onOpenChange(false);
         } else {
-            const finalUpdated = buildUpdatedAttachment();
+            const finalUpdated = buildUpdatedAttachment({
+                isEdited: false,
+                isReplaced: false
+            });
             onSave(finalUpdated, updatedAllAttachments);
             onOpenChange(false);
         }
@@ -906,8 +1010,6 @@ export function AttachmentEditorDialog({
 
     if (!open || !activeAttachment) return null;
 
-    const isVideo = replacedFileType ? replacedFileType === 'VIDEO' : (String(activeAttachment?.type).toUpperCase() === 'VIDEO' || String(activeAttachment?.meta?.type).toUpperCase() === 'VIDEO');
-    const isDoc = replacedFileType ? replacedFileType === 'DOCUMENT' : (String(activeAttachment?.type).toUpperCase() === 'DOCUMENT' || String(activeAttachment?.meta?.type).toUpperCase() === 'DOCUMENT');
     const rawDirectUrl = replacementPreviewUrl || (activeAttachment?.id ? `/api/attachment/url?id=${activeAttachment.id}` : '') || activeAttachment?.previewUrl || (activeAttachment?.path ? `/api/attachment/download?path=${encodeURIComponent(activeAttachment.path)}` : '');
 
     return (
@@ -1506,61 +1608,110 @@ export function AttachmentEditorDialog({
                                 />
                             </div>
 
-                            {/* File Replacement Section */}
-                            <div className="space-y-2 pt-2 border-t border-white/5">
+                            {/* File Information & Replacement Section */}
+                            <div className="space-y-2.5 pt-3 border-t border-white/5">
                                 <div className="flex items-center justify-between">
-                                    <Label className="text-[10px] font-bold uppercase text-slate-400 flex items-center gap-1.5">
+                                    <Label className="text-[10px] font-black uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
                                         <FileUp className="w-3.5 h-3.5 text-blue-400" />
                                         <span>Attachment File</span>
                                     </Label>
-                                    {isReplaced && (
-                                        <span className="text-[9px] font-black text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-600/50 uppercase tracking-wider">
-                                            Replaced
+                                    {isReplaced ? (
+                                        <span className="text-[9px] font-black text-emerald-300 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/40 uppercase tracking-wider">
+                                            File Replaced
+                                        </span>
+                                    ) : (
+                                        <span className="text-[9px] font-mono font-bold text-blue-400 bg-blue-950/60 px-2 py-0.5 rounded border border-blue-500/30 uppercase">
+                                            .{fileExtension}
                                         </span>
                                     )}
                                 </div>
 
-                                {isReplaced && replacedFile ? (
-                                    <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/40 space-y-2 text-xs">
-                                        <div className="flex items-start gap-2 text-emerald-300 font-medium">
-                                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                                            <div className="flex-1 min-w-0">
-                                                <p className="font-mono text-[11px] font-bold text-white truncate" title={replacedFile.name}>
-                                                    {replacedFile.name}
-                                                </p>
-                                                <p className="text-[10px] text-emerald-400/80 font-mono">
-                                                    {(replacedFile.size / (1024 * 1024)).toFixed(2)} MB • {replacedFile.type || 'File'}
-                                                </p>
-                                            </div>
+                                {/* Actual File Information Card */}
+                                <div className={`p-3 rounded-lg border transition-all ${
+                                    isReplaced 
+                                        ? 'bg-emerald-950/30 border-emerald-500/40 shadow-sm' 
+                                        : 'bg-slate-800/80 border-white/10'
+                                }`}>
+                                    <div className="flex items-start gap-2.5">
+                                        <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                                            isReplaced 
+                                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' 
+                                                : isVideo 
+                                                ? 'bg-purple-500/20 text-purple-400 border border-purple-500/30'
+                                                : isDoc 
+                                                ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' 
+                                                : 'bg-blue-500/20 text-blue-400 border border-blue-500/30'
+                                        }`}>
+                                            {isVideo ? (
+                                                <Video className="w-4 h-4" />
+                                            ) : isDoc ? (
+                                                <FileText className="w-4 h-4" />
+                                            ) : (
+                                                <ImagePlus className="w-4 h-4" />
+                                            )}
                                         </div>
-                                        <div className="flex items-center justify-between pt-1 border-t border-emerald-500/20 text-[10px]">
-                                            <button
-                                                type="button"
-                                                onClick={() => fileInputRef.current?.click()}
-                                                className="text-blue-400 hover:text-blue-300 underline font-bold"
-                                            >
-                                                Choose Another
-                                            </button>
-                                            <button 
-                                                type="button" 
-                                                onClick={handleRevertReplacement}
-                                                className="text-amber-400 hover:text-amber-300 underline font-bold"
-                                            >
-                                                Revert Original
-                                            </button>
+
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <span className="font-mono text-[11px] font-bold text-white break-all select-all leading-tight" title={actualFileName}>
+                                                    {actualFileName}
+                                                </span>
+                                                <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-black uppercase bg-slate-700 text-slate-200 border border-white/10 shrink-0">
+                                                    .{fileExtension}
+                                                </span>
+                                            </div>
+
+                                            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-400 font-mono flex-wrap">
+                                                <span className="truncate max-w-[140px]">{mimeType}</span>
+                                                {formattedSize && (
+                                                    <>
+                                                        <span>•</span>
+                                                        <span className="text-slate-300 font-bold">{formattedSize}</span>
+                                                    </>
+                                                )}
+                                            </div>
+
+                                            {isReplaced && replacedFile && (
+                                                <p className="text-[10px] text-emerald-400 font-medium mt-1.5 flex items-center gap-1">
+                                                    <CheckCircle2 className="w-3 h-3 text-emerald-400 shrink-0" />
+                                                    <span>New file ready to upload upon saving</span>
+                                                </p>
+                                            )}
                                         </div>
                                     </div>
-                                ) : (
-                                    <Button
-                                        type="button"
-                                        variant="outline"
-                                        onClick={() => fileInputRef.current?.click()}
-                                        className="w-full h-8 bg-slate-800/90 hover:bg-slate-700 text-slate-200 hover:text-white border-white/10 hover:border-blue-500/50 text-xs font-bold gap-2 shadow-sm"
-                                    >
-                                        <Upload className="w-3.5 h-3.5 text-blue-400" />
-                                        Replace Attachment File
-                                    </Button>
-                                )}
+
+                                    {/* Action Buttons */}
+                                    <div className="mt-3 pt-2.5 border-t border-white/5 flex items-center gap-2">
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => fileInputRef.current?.click()}
+                                            className={`flex-1 h-7 text-[11px] font-bold gap-1.5 transition-all ${
+                                                isReplaced 
+                                                    ? 'bg-emerald-900/40 hover:bg-emerald-800/60 text-emerald-200 border-emerald-500/40' 
+                                                    : 'bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border-white/10 hover:border-blue-500/50'
+                                            }`}
+                                            title="Choose a new file to replace this attachment"
+                                        >
+                                            <Upload className="w-3 h-3 text-blue-400" />
+                                            <span>{isReplaced ? "Choose Different File" : "Replace Attachment File"}</span>
+                                        </Button>
+
+                                        {isReplaced && (
+                                            <Button
+                                                type="button"
+                                                variant="ghost"
+                                                size="sm"
+                                                onClick={handleRevertReplacement}
+                                                className="h-7 px-2 text-[11px] font-bold text-amber-400 hover:text-amber-300 hover:bg-amber-950/40"
+                                                title="Cancel replacement and keep original file"
+                                            >
+                                                Revert
+                                            </Button>
+                                        )}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 

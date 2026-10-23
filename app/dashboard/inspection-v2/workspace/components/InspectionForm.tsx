@@ -1578,7 +1578,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     />
                     <div className="flex items-center gap-1">
                         {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
-                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
+                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title={!isEditing ? "Save record to print report" : (findingType === 'Finding' ? 'Print Finding Report' : 'Print Anomaly Report')}><Printer className="w-3.5 h-3.5" /></button>
                         )}
                         {isEditing && onDeleteRecord && (
                             <button onClick={onDeleteRecord} className="p-1 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" title="Delete Record"><Trash2 className="w-3.5 h-3.5" /></button>

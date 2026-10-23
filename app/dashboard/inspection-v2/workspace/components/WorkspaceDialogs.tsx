@@ -27,7 +27,8 @@ import {
     Anchor,
     Eye,
     RotateCcw,
-    ChevronLeft
+    ChevronLeft,
+    MapPin
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -153,6 +154,7 @@ interface WorkspaceDialogsProps {
         showRemovalConfirm: boolean;
         editingRecordId: number | null;
         pendingReclass: any;
+        elevationSuggestion?: any;
         showTaskSelector: boolean;
         activeSpec: string | null;
         allInspectionTypes: any[];
@@ -275,6 +277,7 @@ interface WorkspaceDialogsProps {
         setNavigPreviewOpen?: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
         setPendingReclass: (val: any) => void;
+        setElevationSuggestion?: (val: any) => void;
         setShowTaskSelector: (open: boolean) => void;
         setAddTaskSearch: (val: string) => void;
         setShowCompSelector: (open: boolean) => void;
@@ -340,6 +343,7 @@ interface WorkspaceDialogsProps {
         handleRegisterAnomaly: () => void;
         handleConfirmRemoval: () => void;
         confirmReclassification: () => void;
+        applyComponentChange?: (newComp: any, updateElevation: boolean, newElevValue?: number) => void;
         handleTaskChange: (code: string) => void;
         handleComponentSelection: (comp: any) => void;
         handleExternalFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -541,6 +545,7 @@ export function WorkspaceDialogs({
         showRemovalConfirm,
         editingRecordId,
         pendingReclass,
+        elevationSuggestion,
         showTaskSelector,
         activeSpec,
         allInspectionTypes,
@@ -653,6 +658,7 @@ export function WorkspaceDialogs({
         setNavigPreviewOpen,
         setShowRemovalConfirm,
         setPendingReclass,
+        setElevationSuggestion,
         setShowTaskSelector,
         setAddTaskSearch,
         setShowCompSelector,
@@ -712,6 +718,7 @@ export function WorkspaceDialogs({
         handleRegisterAnomaly,
         handleConfirmRemoval,
         confirmReclassification,
+        applyComponentChange,
         handleTaskChange,
         handleComponentSelection,
         handleExternalFileUpload,
@@ -1944,11 +1951,15 @@ export function WorkspaceDialogs({
                     if (isExistingRecord) {
                         try {
                             let finalPath = updated.path;
-                            if (updated.isEdited && updated.file) {
+                            if ((updated.isEdited || updated.isReplaced) && updated.file) {
                                 const formData = new FormData();
                                 formData.append("id", String(updated.id));
                                 formData.append("file", updated.file);
-                                formData.append("filePath", updated.path || "");
+                                if (updated.path) formData.append("filePath", updated.path);
+                                if (updatedTitle) formData.append("title", updatedTitle);
+                                if (updatedDesc) formData.append("description", updatedDesc);
+                                if (updatedSortOrder !== null && updatedSortOrder !== undefined) formData.append("sort_order", String(updatedSortOrder));
+
                                 const response = await fetch("/api/attachment", {
                                     method: "PUT",
                                     body: formData
@@ -1959,12 +1970,15 @@ export function WorkspaceDialogs({
                                         finalPath = result.url;
                                         updated.path = result.url;
                                     }
+                                } else {
+                                    const errJson = await response.json().catch(() => ({}));
+                                    console.error("PUT /api/attachment failed:", errJson);
                                 }
                             }
 
-                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            const isMediaPrefix = String(updated.id).startsWith("media-") || String(updated.id).startsWith("m-");
                             if (isMediaPrefix) {
-                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                const cleanId = Number(String(updated.id).replace(/^(media-|m-)/, ""));
                                 if (!isNaN(cleanId)) {
                                     await (supabase as any)
                                         .from('insp_media')
@@ -1991,6 +2005,7 @@ export function WorkspaceDialogs({
                                             description: updatedDesc,
                                             type: updated.type || 'PHOTO',
                                             sort_order: updatedSortOrder,
+                                            ...(updated.meta?.original_file_name ? { original_file_name: updated.meta.original_file_name } : {}),
                                         }
                                     })
                                     .eq('id', Number(updated.id));
@@ -2117,6 +2132,60 @@ export function WorkspaceDialogs({
                                 })()}
                             </Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Component Elevation Suggestion Dialog */}
+            <Dialog 
+                open={!!elevationSuggestion} 
+                onOpenChange={(open) => {
+                    if (!open && elevationSuggestion) {
+                        applyComponentChange?.(elevationSuggestion.newComponent, false);
+                        setElevationSuggestion?.(null);
+                    }
+                }}
+            >
+                <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-2 border-blue-200 dark:border-blue-900/50 shadow-2xl">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
+                            <MapPin className="w-5 h-5" />
+                            <DialogTitle className="text-base font-bold uppercase tracking-tight">Elevation Difference Detected</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+                            The selected component <span className="font-bold text-slate-900 dark:text-slate-100">{elevationSuggestion?.newComponent?.name || elevationSuggestion?.newComponent?.q_id}</span> has elevation <span className="font-bold text-blue-600 dark:text-blue-400">{elevationSuggestion?.elevationRangeText || `${elevationSuggestion?.suggestedElevation}m`}</span>, but the current record elevation is <span className="font-bold text-amber-600 dark:text-amber-400">{elevationSuggestion?.currentElevation}m</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                        <p className="font-bold uppercase tracking-wider text-[9px] text-slate-400 dark:text-slate-500">Inspection Data Preservation:</p>
+                        <p>All other inspection data and findings are strictly maintained. Would you like to update the record elevation to match the new component?</p>
+                    </div>
+
+                    <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                        <Button 
+                            variant="outline" 
+                            className="flex-1 font-bold text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 text-xs uppercase tracking-wider"
+                            onClick={() => {
+                                if (elevationSuggestion) {
+                                    applyComponentChange?.(elevationSuggestion.newComponent, false);
+                                    setElevationSuggestion?.(null);
+                                }
+                            }}
+                        >
+                            Keep Current ({elevationSuggestion?.currentElevation}m)
+                        </Button>
+                        <Button 
+                            className="flex-1 font-bold bg-blue-600 hover:bg-blue-700 text-white text-xs uppercase tracking-wider"
+                            onClick={() => {
+                                if (elevationSuggestion) {
+                                    applyComponentChange?.(elevationSuggestion.newComponent, true, elevationSuggestion.suggestedElevation);
+                                    setElevationSuggestion?.(null);
+                                }
+                            }}
+                        >
+                            Update to {elevationSuggestion?.suggestedElevation}m
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -2436,17 +2505,26 @@ export function WorkspaceDialogs({
                 />
             )}
 
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={previewOpen} 
-                onOpenChange={setPreviewOpen} 
-                title="Anomaly Report Preview" 
-                fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`} 
-                generateReport={generateAnomalyReportBlob} 
-            />
+            {(() => {
+                const isFinding = previewRecord?.record_category === "FINDING" ||
+                                  previewRecord?.insp_anomalies?.[0]?.record_category === "FINDING" ||
+                                  previewRecord?.findingType === "Finding" ||
+                                  previewRecord?.status === "Finding";
+                const refNo = previewRecord?.anomaly_ref_no || previewRecord?.insp_anomalies?.[0]?.anomaly_ref_no || 'Draft';
+                return (
+                    <ReportPreviewDialog
+                        reportConfig={reportConfig}
+                        onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                        initialShowSignatures={wizardShowSignatures}
+                        initialPrintFriendly={wizardPrintFriendly}
+                        open={previewOpen} 
+                        onOpenChange={setPreviewOpen} 
+                        title={isFinding ? "Findings Report Preview" : "Anomaly Report Preview"} 
+                        fileName={`${isFinding ? 'Finding' : 'Anomaly'}_Report_${refNo}`} 
+                        generateReport={generateAnomalyReportBlob} 
+                    />
+                );
+            })()}
             <ReportPreviewDialog
                 reportConfig={reportConfig}
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}

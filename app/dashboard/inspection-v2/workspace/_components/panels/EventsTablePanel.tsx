@@ -761,37 +761,71 @@ export function EventsTablePanel({
                             ) : (
                               <div title="Incomplete / Draft" className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-950/40"><FileClock className="w-3 h-3 text-amber-600 dark:text-amber-400" /></div>
                             )}
-                            {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
-                              <Button variant="ghost" size="sm" className="h-5 w-5 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-500" onClick={async (e) => {
-                                e.stopPropagation();
-                                const [attsRes, mediaRes] = await Promise.all([
-                                  supabase.from("attachment").select("*").eq("source_id", r.insp_id).in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]),
-                                  supabase.from("insp_media" as any).select("*").eq("inspection_id", r.insp_id),
-                                ]);
-                                const list = [...(attsRes.data || [])];
-                                if (mediaRes.data) {
-                                  for (const m of mediaRes.data as any[]) {
-                                    if (!list.some(a => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
-                                      list.push({
-                                        id: `media-${m.media_id}`,
-                                        name: m.name || `Photo ${m.media_id}`,
-                                        path: m.file_path,
-                                        source_type: "INSPECTION",
-                                        source_id: m.inspection_id,
-                                        meta: { ...m.meta, bucket: "inspection-media", is_insp_media: true },
-                                        created_at: m.captured_at,
-                                      });
+                            {Boolean(
+                              (Number(r.attachment_count) || 0) > 0 ||
+                              (Number(r._attachment_count) || 0) > 0 ||
+                              (Array.isArray(r.attachments) && r.attachments.length > 0) ||
+                              (Array.isArray(r.inspection_data?.attachments) && r.inspection_data.attachments.length > 0) ||
+                              (Array.isArray(r.insp_media) && r.insp_media.length > 0) ||
+                              (r.insp_media && r.insp_media[0]?.count > 0)
+                            ) && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-5 w-5 p-0 rounded-full hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-500"
+                                title={`${r.attachment_count || 1} Attachment(s)`}
+                                onClick={async (e) => {
+                                  e.stopPropagation();
+                                  try {
+                                    const res = await fetch(`/api/attachment/inspection/${r.insp_id}`);
+                                    if (res.ok) {
+                                      const atts = await res.json();
+                                      if (Array.isArray(atts) && atts.length > 0) {
+                                        atts.sort((a: any, b: any) => {
+                                          const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                          const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                          if (orderA !== orderB) return orderA - orderB;
+                                          return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+                                        });
+                                        setViewingRecordAttachments(atts);
+                                        return;
+                                      }
+                                    }
+                                  } catch (err) {
+                                    console.warn("Failed to fetch via API, falling back to direct query:", err);
+                                  }
+
+                                  const [attsRes, mediaRes] = await Promise.all([
+                                    supabase.from("attachment").select("*").eq("source_id", r.insp_id).in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]),
+                                    supabase.from("insp_media" as any).select("*").eq("inspection_id", r.insp_id),
+                                  ]);
+                                  const list = [...(attsRes.data || [])];
+                                  if (mediaRes.data) {
+                                    for (const m of mediaRes.data as any[]) {
+                                      if (!list.some(a => a.path === m.file_path || String(a.id) === `media-${m.media_id}`)) {
+                                        list.push({
+                                          id: `media-${m.media_id}`,
+                                          name: m.name || `Photo ${m.media_id}`,
+                                          path: m.file_path,
+                                          source_type: "INSPECTION",
+                                          source_id: m.inspection_id,
+                                          meta: { ...m.meta, bucket: "inspection-media", is_insp_media: true },
+                                          created_at: m.captured_at,
+                                        });
+                                      }
                                     }
                                   }
-                                }
-                                list.sort((a: any, b: any) => {
-                                  const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-                                  const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
-                                  if (orderA !== orderB) return orderA - orderB;
-                                  return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
-                                });
-                                setViewingRecordAttachments(list);
-                              }}><Paperclip className="w-2.5 h-2.5" /></Button>
+                                  list.sort((a: any, b: any) => {
+                                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                                    if (orderA !== orderB) return orderA - orderB;
+                                    return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+                                  });
+                                  setViewingRecordAttachments(list);
+                                }}
+                              >
+                                <Paperclip className="w-2.5 h-2.5" />
+                              </Button>
                             )}
                           </div>
                         </td>

@@ -201,11 +201,19 @@ export function useWorkspaceReports(
                 showSignatures: showSignatures ?? reportConfig.showSignatures
             };
 
+            const matchedAnomalyId = previewRecord?.anomaly_id || previewRecord?.insp_anomalies?.[0]?.anomaly_id;
+            if (matchedAnomalyId) {
+                config.anomalyId = matchedAnomalyId;
+            }
             if (previewRecord?.insp_id) {
                 config.inspectionId = previewRecord.insp_id;
-            } else if (previewRecord?.anomaly_id) {
-                config.anomalyId = previewRecord.anomaly_id;
             }
+
+            const isFinding = previewRecord?.record_category === "FINDING" ||
+                              previewRecord?.insp_anomalies?.[0]?.record_category === "FINDING" ||
+                              previewRecord?.findingType === "Finding" ||
+                              previewRecord?.status === "Finding";
+            config.isFindingsReport = isFinding;
 
             const result = await generateDefectAnomalyReport(
                 { id: jobPackId || "0", name: headerData.jobpackName },

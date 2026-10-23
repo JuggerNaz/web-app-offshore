@@ -789,10 +789,7 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                 }}
                 isEditing={!!editingRecordId}
                 onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
-                onPrintReport={() => {
-                  const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
-                  if (r) handlePrintAnomaly(r);
-                }}
+                onPrintReport={() => handlePrintAnomaly(editingRecordId)}
                 supabase={supabase}
                 activeMGIProfile={props.activeMGIProfile}
                 setEditingAttachment={setEditingAttachment}
@@ -1020,7 +1017,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                       <FileClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                     </div>
                                   )}
-                                  {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                  {Boolean(
+                                    (Number(r.attachment_count) || 0) > 0 ||
+                                    (Number(r._attachment_count) || 0) > 0 ||
+                                    (Array.isArray(r.attachments) && r.attachments.length > 0) ||
+                                    (Array.isArray(r.inspection_data?.attachments) && r.inspection_data.attachments.length > 0) ||
+                                    (Array.isArray(r.insp_media) && r.insp_media.length > 0) ||
+                                    (r.insp_media && r.insp_media[0]?.count > 0)
+                                  ) && (
                                     <Button 
                                       variant="ghost" 
                                       size="sm" 
@@ -1433,7 +1437,14 @@ export function WorkspaceMain(props: WorkspaceMainProps) {
                                           <FileClock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                                         </div>
                                       )}
-                                      {(r.attachment_count > 0 || (r.insp_media && r.insp_media[0]?.count > 0)) && (
+                                      {Boolean(
+                                        (Number(r.attachment_count) || 0) > 0 ||
+                                        (Number(r._attachment_count) || 0) > 0 ||
+                                        (Array.isArray(r.attachments) && r.attachments.length > 0) ||
+                                        (Array.isArray(r.inspection_data?.attachments) && r.inspection_data.attachments.length > 0) ||
+                                        (Array.isArray(r.insp_media) && r.insp_media.length > 0) ||
+                                        (r.insp_media && r.insp_media[0]?.count > 0)
+                                      ) && (
                                         <Button 
                                           variant="ghost" 
                                           size="sm" 
