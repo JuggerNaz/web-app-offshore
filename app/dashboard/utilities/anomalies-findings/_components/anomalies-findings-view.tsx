@@ -42,12 +42,14 @@ import {
   ArrowUp,
   ArrowDown,
   Save,
-  RotateCcw
+  RotateCcw,
+  Printer
 } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentSection } from "@/components/component/attachment-section";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
 import { AnomalyDetailDialog } from "@/components/dialogs/anomaly-detail-dialog";
+import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 
 
 interface ComponentSpec {
@@ -196,6 +198,90 @@ export function AnomaliesFindingsView() {
   const [approvedBy, setApprovedBy] = useState("");
   const [evaluatedBy, setEvaluatedBy] = useState("");
   const [isRectifying, setIsRectifying] = useState(false);
+
+  // Report Preview State
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<any>(null);
+
+  const handlePrintReport = (item: any) => {
+    if (!item) return;
+    setPreviewItem(item);
+    setPreviewOpen(true);
+  };
+
+  const generateReportBlob = async (printFriendly: boolean, showSignatures: boolean): Promise<Blob | void> => {
+    if (!previewItem) return;
+
+    try {
+      const { getReportHeaderData } = await import("@/utils/company-settings");
+      const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+
+      const settings = await getReportHeaderData();
+
+      const targetStrId = viewMode === "anomalies" 
+        ? (previewItem.inspection?.structure_id || previewItem.structure_id || selectedStructureId)
+        : (previewItem.structure_id || selectedStructureId);
+      const targetStructure = structures.find(s => String(s.id) === String(targetStrId));
+
+      const targetJpId = viewMode === "anomalies"
+        ? (previewItem.inspection?.jobpack_id || previewItem.jobpack_id)
+        : previewItem.jobpack_id;
+      const targetJobpack = jobpacks.find(jp => String(jp.id) === String(targetJpId));
+
+      const sowNo = (viewMode === "anomalies" ? previewItem.inspection?.sow_report_no : previewItem.sow_report_no) || "";
+
+      const isFinding = viewMode === "findings" || previewItem.record_category === "FINDING";
+      const matchedAnomalyId = !isFinding ? (previewItem.anomaly_id || (viewMode === "anomalies" ? previewItem.id : null)) : null;
+      const matchedInspId = viewMode === "anomalies" 
+        ? (previewItem.inspection?.insp_id || previewItem.inspection_id || previewItem.insp_id)
+        : previewItem.insp_id;
+
+      const strName = targetStructure?.title || previewItem.structure_name || previewItem.inspection?.structure_name || "Structure";
+      const jpName = targetJobpack?.name || previewItem.jobpack_name || previewItem.inspection?.jobpack_name || "Project Reference";
+
+      const config: any = {
+        reportNoPrefix: sowNo || (isFinding ? "FINDING" : "ANOMALY"),
+        reportYear: new Date().getFullYear().toString(),
+        preparedBy: { name: "Inspector", date: "" },
+        reviewedBy: { name: previewItem.reviewed_by || "", date: "" },
+        approvedBy: { name: previewItem.approved_by || "", date: previewItem.approved_date || "" },
+        watermark: { enabled: false, text: "", transparency: 0.1 },
+        showContractorLogo: true,
+        showPageNumbers: true,
+        returnBlob: true,
+        printFriendly: printFriendly ?? false,
+        showSignatures: showSignatures ?? true,
+        isFindingsReport: isFinding,
+      };
+
+      if (matchedAnomalyId) {
+        config.anomalyId = matchedAnomalyId;
+      }
+      if (matchedInspId) {
+        config.inspectionId = matchedInspId;
+      }
+
+      const result = await generateDefectAnomalyReport(
+        { id: targetJobpack?.id || targetJpId || "0", name: jpName, metadata: targetJobpack?.metadata || {} },
+        { id: targetStructure?.id || targetStrId || "0", str_name: strName },
+        sowNo,
+        {
+          company_name: settings.companyName,
+          logo_url: settings.companyLogo || undefined,
+          department_name: settings.departmentName,
+          departmentName: settings.departmentName,
+        } as any,
+        config
+      );
+
+      return result as Blob;
+    } catch (error) {
+      console.error("Error generating report blob:", error);
+      toast.error("Failed to generate report");
+      return;
+    }
+  };
+
   const handleSaveChanges = async () => {
     if (!selectedItem) return;
 
@@ -204,8 +290,9 @@ export function AnomaliesFindingsView() {
         const codeChanged = editDefectCode !== selectedItem.defect_type_code;
         const typeChanged = editDefectType !== selectedItem.defect_category_code;
         const priorityChanged = editPriority !== selectedItem.priority_code;
+        const descChanged = editDefectDescription !== (selectedItem.defect_description || "");
         
-        const isModified = codeChanged || typeChanged || priorityChanged;
+        const isModified = codeChanged || typeChanged || priorityChanged || descChanged;
 
         let newRefNo = selectedItem.anomaly_ref_no || "";
 
@@ -225,6 +312,7 @@ export function AnomaliesFindingsView() {
           defect_type_code: editDefectCode,
           defect_category_code: editDefectType,
           priority_code: editPriority,
+          defect_description: editDefectDescription,
           anomaly_ref_no: newRefNo
         };
 
@@ -244,19 +332,25 @@ export function AnomaliesFindingsView() {
         // For findings
         const updatedData = {
           ...selectedItem.inspection_data,
-          priority: editPriority
+          priority: editPriority,
+          finding: editDefectDescription,
+          findings: editDefectDescription
+        };
+        const payload: any = {
+          description: editDefectDescription,
+          inspection_data: updatedData
         };
         const { error } = await supabase
           .from('insp_records')
-          .update({ inspection_data: updatedData })
+          .update(payload)
           .eq('insp_id', selectedItem.insp_id);
 
         if (error) {
           toast.error(`Failed to save changes: ${error.message}`);
         } else {
           toast.success(`Changes saved successfully.`);
-          updateItem((f: any) => (f.insp_id === selectedItem.insp_id ? { ...f, inspection_data: updatedData } : f));
-          setSelectedItem((prev: any) => ({ ...prev, inspection_data: updatedData }));
+          updateItem((f: any) => (f.insp_id === selectedItem.insp_id ? { ...f, ...payload } : f));
+          setSelectedItem((prev: any) => ({ ...prev, ...payload }));
         }
       }
     } catch (e: any) {
@@ -266,6 +360,7 @@ export function AnomaliesFindingsView() {
   const [editDefectCode, setEditDefectCode] = useState("");
   const [editDefectType, setEditDefectType] = useState("");
   const [editPriority, setEditPriority] = useState("");
+  const [editDefectDescription, setEditDefectDescription] = useState("");
   const [defectCodes, setDefectCodes] = useState<any[]>([]);
   const [priorities, setPriorities] = useState<any[]>([]);
   const [allDefectTypes, setAllDefectTypes] = useState<any[]>([]);
@@ -315,13 +410,21 @@ export function AnomaliesFindingsView() {
   // Pick the first structure that has items for the current view once the
   // counts and structure list are in.
   useEffect(() => {
-    if (selectedStructureId || loadingLookups || !countsData) return;
+    if (loadingLookups) return;
+
+    // Check if the currently selected structure has items in the current view
+    const currentCount = selectedStructureId ? (structureCounts[selectedStructureId]?.[viewMode] || 0) : 0;
+    if (selectedStructureId && currentCount > 0) {
+      return;
+    }
+
+    // Try to pick first structure with items
     const firstWithItems = structures.find(
       (str) => (structureCounts[String(str.id)]?.[viewMode] || 0) > 0
     );
     if (firstWithItems) {
       setSelectedStructureId(String(firstWithItems.id));
-    } else if (structures.length > 0) {
+    } else if (!selectedStructureId && structures.length > 0) {
       setSelectedStructureId(String(structures[0].id));
     }
   }, [selectedStructureId, loadingLookups, countsData, structures, structureCounts, viewMode]);
@@ -345,6 +448,7 @@ export function AnomaliesFindingsView() {
       setEditDefectCode(row.defect_type_code || "");
       setEditDefectType(row.defect_category_code || "");
       setEditPriority(row.priority_code || "");
+      setEditDefectDescription(row.defect_description || row.description || row.observation || row.inspection_data?.finding || row.inspection_data?.findings || "");
       setRectificationNotes(row.follow_up_notes || "");
       setRectifiedDate(row.rectified_date
         ? new Date(row.rectified_date).toISOString().split('T')[0]
@@ -407,16 +511,41 @@ export function AnomaliesFindingsView() {
     filterDefectTypes();
   }, [editDefectCode, defectCodes, allDefectTypes, viewMode, supabase]);
 
-  // Filtered Structures (Only those with items, per server-provided counts)
+  // Filtered Structures (Prioritize structures with items, fall back so sidebar is never blank)
   const filteredStructures = useMemo(() => {
-    return structures.filter(str => {
-      const count = structureCounts[String(str.id)]?.[viewMode] || 0;
-      if (count === 0) return false;
+    const hasCounts = Object.keys(structureCounts).length > 0;
+    const searchLower = structureSearchQuery.trim().toLowerCase();
 
-      const matchesSearch = str.title?.toLowerCase().includes(structureSearchQuery.toLowerCase());
+    const matching = structures.filter((str) =>
+      !searchLower || str.title?.toLowerCase().includes(searchLower)
+    );
 
-      return matchesSearch;
-    });
+    // If searching, show all search matches sorted by count then title
+    if (searchLower) {
+      return [...matching].sort((a, b) => {
+        const countA = structureCounts[String(a.id)]?.[viewMode] || 0;
+        const countB = structureCounts[String(b.id)]?.[viewMode] || 0;
+        if (countB !== countA) return countB - countA;
+        return (a.title || "").localeCompare(b.title || "");
+      });
+    }
+
+    // Default: show structures that have items in the current view
+    const withItems = matching.filter(
+      (str) => (structureCounts[String(str.id)]?.[viewMode] || 0) > 0
+    );
+
+    // If counts are loaded and we have structures with items, show them sorted by count
+    if (hasCounts && withItems.length > 0) {
+      return withItems.sort((a, b) => {
+        const countA = structureCounts[String(a.id)]?.[viewMode] || 0;
+        const countB = structureCounts[String(b.id)]?.[viewMode] || 0;
+        return countB - countA;
+      });
+    }
+
+    // Fallback: show all structures (e.g. while counts loading or if no structure has items)
+    return matching;
   }, [structures, structureCounts, viewMode, structureSearchQuery]);
 
   // Grouped and Sorted Items by Jobpack
@@ -799,7 +928,9 @@ export function AnomaliesFindingsView() {
                           const compId = viewMode === "anomalies" ? item.inspection?.component_id : item.component_id;
                           const comp = components[compId];
                           const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
-                          const desc = viewMode === "anomalies" ? (item.defect_category_code || "N/A") : (item.description || item.observation);
+                          const desc = viewMode === "anomalies" 
+                            ? (item.defect_description || item.defect_category_code || "N/A") 
+                            : (item.description || item.observation || item.inspection_data?.finding || item.inspection_data?.findings || "N/A");
                           const qid = viewMode === "anomalies"
                             ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
                             : (item.structure_components?.q_id || comp?.q_id || "N/A");
@@ -813,6 +944,9 @@ export function AnomaliesFindingsView() {
                                 setEditDefectCode(viewMode === "anomalies" ? (item.defect_type_code || "") : (item.inspection_type_code || ""));
                                 setEditDefectType(viewMode === "anomalies" ? (item.defect_category_code || "") : (item.inspection_type_code || ""));
                                 setEditPriority(viewMode === "anomalies" ? (item.priority_code || "") : (item.inspection_data?.priority || ""));
+                                setEditDefectDescription(viewMode === "anomalies" 
+                                  ? (item.defect_description || "") 
+                                  : (item.description || item.observation || item.inspection_data?.finding || item.inspection_data?.findings || ""));
                                 setRectificationNotes(viewMode === "anomalies" ? (item.follow_up_notes || "") : (item.description || ""));
                                 setRectifiedDate(viewMode === "anomalies" 
                                   ? (item.rectified_date ? new Date(item.rectified_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
@@ -824,9 +958,24 @@ export function AnomaliesFindingsView() {
                             >
                               <CardHeader className="pb-3">
                                 <div className="flex justify-between items-start">
-                                  <Badge variant="outline" className="font-mono">
-                                    {refNo}
-                                  </Badge>
+                                  <div className="flex items-center gap-1.5">
+                                    <Badge variant="outline" className="font-mono">
+                                      {refNo}
+                                    </Badge>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-6 w-6 p-0 text-muted-foreground hover:text-primary hover:bg-muted rounded"
+                                      title={viewMode === "anomalies" ? "Print Anomaly Report" : "Print Finding Report"}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePrintReport(item);
+                                      }}
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </div>
                                   {viewMode === "anomalies" && (
                                     <Badge 
                                       style={{ 
@@ -882,6 +1031,7 @@ export function AnomaliesFindingsView() {
                               {renderSortHeader(viewMode === "anomalies" ? "Defect Type" : "Description", "description")}
                               {renderSortHeader("QID", "qid")}
                               {viewMode === "anomalies" && renderSortHeader("Status", "status")}
+                              <th className="px-4 py-3 text-right">Action</th>
                             </tr>
                           </thead>
                           <tbody>
@@ -889,7 +1039,9 @@ export function AnomaliesFindingsView() {
                               const compId = viewMode === "anomalies" ? item.inspection?.component_id : item.component_id;
                               const comp = components[compId];
                               const refNo = viewMode === "anomalies" ? item.anomaly_ref_no : `INSP-${item.insp_id}`;
-                              const desc = viewMode === "anomalies" ? (item.defect_category_code || "N/A") : (item.description || item.observation);
+                              const desc = viewMode === "anomalies" 
+                                ? (item.defect_description || item.defect_category_code || "N/A") 
+                                : (item.description || item.observation || item.inspection_data?.finding || item.inspection_data?.findings || "N/A");
                               const qid = viewMode === "anomalies"
                                 ? (item.inspection?.structure_components?.q_id || comp?.q_id || "N/A")
                                 : (item.structure_components?.q_id || comp?.q_id || "N/A");
@@ -902,6 +1054,9 @@ export function AnomaliesFindingsView() {
                                     setEditDefectCode(viewMode === "anomalies" ? (item.defect_type_code || "") : (item.inspection_type_code || ""));
                                     setEditDefectType(viewMode === "anomalies" ? (item.defect_category_code || "") : (item.inspection_type_code || ""));
                                     setEditPriority(viewMode === "anomalies" ? (item.priority_code || "") : (item.inspection_data?.priority || ""));
+                                    setEditDefectDescription(viewMode === "anomalies" 
+                                      ? (item.defect_description || "") 
+                                      : (item.description || item.observation || item.inspection_data?.finding || item.inspection_data?.findings || ""));
                                     setRectificationNotes(viewMode === "anomalies" ? (item.follow_up_notes || "") : (item.description || ""));
                                     setRectifiedDate(viewMode === "anomalies" 
                                       ? (item.rectified_date ? new Date(item.rectified_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0])
@@ -948,6 +1103,21 @@ export function AnomaliesFindingsView() {
                                       </Badge>
                                     </td>
                                   )}
+                                  <td className="px-4 py-3 text-right">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 w-7 p-0 text-muted-foreground hover:text-primary hover:bg-muted"
+                                      title={viewMode === "anomalies" ? "Print Anomaly Report" : "Print Finding Report"}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handlePrintReport(item);
+                                      }}
+                                    >
+                                      <Printer className="w-3.5 h-3.5" />
+                                    </Button>
+                                  </td>
 
                                 </tr>
                               );
@@ -976,13 +1146,28 @@ export function AnomaliesFindingsView() {
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="bg-card text-foreground border-border max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-              {viewMode === "anomalies" ? <AlertTriangle className="h-5 w-5 text-destructive" /> : <ClipboardCheck className="h-5 w-5 text-emerald-600" />}
-              {viewMode === "anomalies" ? "Anomaly Details" : "Finding Details"}
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Review information and rectify.
-            </DialogDescription>
+            <div className="flex items-center justify-between pr-8">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                  {viewMode === "anomalies" ? <AlertTriangle className="h-5 w-5 text-destructive" /> : <ClipboardCheck className="h-5 w-5 text-emerald-600" />}
+                  {viewMode === "anomalies" ? "Anomaly Details" : "Finding Details"}
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground mt-0.5">
+                  Review information and rectify.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => handlePrintReport(selectedItem)}
+                className="gap-1.5 text-xs font-semibold h-8 border-border bg-background hover:bg-muted"
+                title={viewMode === "anomalies" ? "Print Anomaly Report" : "Print Finding Report"}
+              >
+                <Printer className="h-3.5 w-3.5 text-primary" />
+                <span>Print Report</span>
+              </Button>
+            </div>
           </DialogHeader>
 
           {selectedItem && (
@@ -1086,7 +1271,30 @@ export function AnomaliesFindingsView() {
                       className="bg-background border-border h-9"
                     />
                   </div>
-                  <div className="flex justify-end pt-2">
+                  
+                  <div className="space-y-1 col-span-2">
+                    <Label className="text-xs uppercase text-muted-foreground font-semibold">Defect Description</Label>
+                    <textarea 
+                      value={editDefectDescription}
+                      onChange={(e) => setEditDefectDescription(e.target.value)}
+                      rows={3}
+                      className="flex w-full rounded-md border border-border bg-background p-2.5 text-xs text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary resize-y"
+                      placeholder="Enter defect description..."
+                    />
+                  </div>
+
+                  <div className="col-span-2 flex justify-between items-center pt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePrintReport(selectedItem)}
+                      className="font-semibold text-xs h-8 gap-1.5 border-border bg-background hover:bg-muted"
+                      title={viewMode === "anomalies" ? "Print Anomaly Report" : "Print Finding Report"}
+                    >
+                      <Printer className="h-3.5 w-3.5 text-primary" />
+                      <span>Print Report</span>
+                    </Button>
                     <Button 
                       size="sm"
                       onClick={handleSaveChanges}
@@ -1126,7 +1334,9 @@ export function AnomaliesFindingsView() {
                 const qid = viewMode === "anomalies"
                   ? (selectedItem.inspection?.structure_components?.q_id || "N/A")
                   : (selectedItem.structure_components?.q_id || "N/A");
-                const findings = viewMode === "anomalies" ? selectedItem.defect_description : (selectedItem.description || selectedItem.observation);
+                const findings = viewMode === "anomalies" 
+                  ? (selectedItem.defect_description || selectedItem.defect_category_code || "N/A") 
+                  : (selectedItem.description || selectedItem.observation || selectedItem.inspection_data?.finding || selectedItem.inspection_data?.findings || "N/A");
 
                 return (
                   <div className="p-4 rounded-md border border-border bg-muted/10 space-y-3 mt-4">
@@ -1168,6 +1378,15 @@ export function AnomaliesFindingsView() {
                   </div>
                 );
               })()}
+
+              {/* Attachments Section */}
+              <div className="mt-4">
+                <AttachmentSection 
+                  sourceId={viewMode === "anomalies" ? selectedItem.anomaly_id : selectedItem.insp_id} 
+                  sourceType={viewMode === "anomalies" ? "anomaly" : "inspection"} 
+                  inspectionId={viewMode === "anomalies" ? (selectedItem.inspection?.insp_id || selectedItem.inspection_id || selectedItem.insp_id) : selectedItem.insp_id}
+                />
+              </div>
 
               {(selectedItem.status === 'CLOSED' || selectedItem.status === 'COMPLETED') && (
                 <div className="p-4 rounded-md bg-emerald-500/10 border border-emerald-500/30 space-y-3 mt-4">
@@ -1284,17 +1503,6 @@ export function AnomaliesFindingsView() {
                   </Button>
                 </div>
               )}
-
-              <div className="space-y-2">
-                <h3 className="text-sm font-semibold text-muted-foreground flex items-center gap-1">
-                  <Paperclip className="h-4 w-4" /> Attachments
-                </h3>
-                <AttachmentSection 
-                  sourceId={viewMode === "anomalies" ? selectedItem.anomaly_id : selectedItem.insp_id} 
-                  sourceType={viewMode === "anomalies" ? "anomaly" : "inspection"} 
-                  inspectionId={viewMode === "anomalies" ? (selectedItem.inspection?.insp_id || selectedItem.insp_id) : selectedItem.insp_id}
-                />
-              </div>
             </div>
           )}
         </DialogContent>
@@ -1306,6 +1514,17 @@ export function AnomaliesFindingsView() {
         onOpenChange={setIsSpecOpen}
         component={selectedCompForSpec as any}
         mode="view"
+      />
+
+      {/* Report Preview Dialog */}
+      <ReportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={viewMode === "findings" || previewItem?.record_category === "FINDING" ? "Findings Report Preview" : "Anomaly Report Preview"}
+        fileName={`${viewMode === "findings" || previewItem?.record_category === "FINDING" ? 'Finding' : 'Anomaly'}_Report_${
+          previewItem ? (previewItem.anomaly_ref_no || `INSP-${previewItem.insp_id || 'Draft'}`) : 'Draft'
+        }`}
+        generateReport={generateReportBlob}
       />
 
     </div>

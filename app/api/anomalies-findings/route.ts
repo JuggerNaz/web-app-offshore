@@ -18,7 +18,7 @@ import { handleSupabaseError } from "@/utils/api-error-handler";
  */
 const ANOMALY_SELECT = `
   *,
-  inspection:insp_records(
+  inspection:insp_records!inner(
     insp_id,
     structure_id,
     component_id,
@@ -47,26 +47,19 @@ const FINDING_SELECT = `
   insp_video_tapes:tape_id!left(tape_no)
 `;
 
-// _meta_status casing seen in the wild ("Finding" / "finding"); the old
-// client compared lowercased values, so both spellings are handled.
-const META_FINDING_VALUES = ["finding", "Finding"];
-
 /**
  * GET /api/anomalies-findings
  *
  * ?mode=counts
  *   Slim per-structure aggregation for the sidebar:
  *   [{ structure_id, anomalies, findings }]
- *   - anomalies  = insp_anomalies rows whose joined inspection _meta_status
- *                  is NOT "finding" (case-insensitive; missing counts as anomaly)
- *   - findings   = insp_records rows with has_anomaly=true whose
- *                  _meta_status IS "finding" (case-insensitive)
+ *   - anomalies  = insp_anomalies rows joined to insp_records
+ *   - findings   = insp_records rows with has_anomaly=true
  *
  * ?view=anomalies|findings&structure_id=&page=&pageSize=&q=&id=
  *   Paged items for one structure with the same nested join shape the view
- *   uses. `q` searches ref no / description / observation and the joined
- *   component QID. `id=` fetches a single record by primary key (deep links),
- *   optionally scoped to a structure.
+ *   uses. `q` searches ref no / description / defect code.
+ *   `id=` fetches a single record by primary key (deep links), optionally scoped to a structure.
  */
 export const GET = withAuth(async (request: NextRequest) => {
   const supabase = createClient();
@@ -75,17 +68,16 @@ export const GET = withAuth(async (request: NextRequest) => {
   const view = searchParams.get("view") === "findings" ? "findings" : "anomalies";
 
   // ------------------------------------------------------------------
-  // Counts mode: slim selects, aggregate in-route (mirrors the client-side
-  // filtering the Anomalies & Findings view used to apply to full tables).
+  // Counts mode: slim selects, aggregate in-route
   // ------------------------------------------------------------------
   if (mode === "counts") {
     const [anomsRes, findingsRes] = await Promise.all([
       supabase
         .from("insp_anomalies")
-        .select("insp_records!inner(structure_id, inspection_data)"),
+        .select("insp_records!inner(structure_id)"),
       supabase
         .from("insp_records")
-        .select("structure_id, inspection_data")
+        .select("structure_id")
         .eq("has_anomaly", true),
     ]);
 
@@ -106,17 +98,11 @@ export const GET = withAuth(async (request: NextRequest) => {
     };
 
     (anomsRes.data || []).forEach((a: any) => {
-      const metaStatus = String(a.insp_records?.inspection_data?._meta_status || "").toLowerCase();
-      if (metaStatus !== "finding") {
-        bump(a.insp_records?.structure_id, "anomalies");
-      }
+      bump(a.insp_records?.structure_id, "anomalies");
     });
 
     (findingsRes.data || []).forEach((f: any) => {
-      const metaStatus = String(f.inspection_data?._meta_status || "").toLowerCase();
-      if (metaStatus === "finding") {
-        bump(f.structure_id, "findings");
-      }
+      bump(f.structure_id, "findings");
     });
 
     return apiSuccess(Array.from(counts.values()));
@@ -140,39 +126,25 @@ export const GET = withAuth(async (request: NextRequest) => {
     .select(select, { count: "exact" });
 
   if (isFindings) {
-    // Finding = record flagged has_anomaly whose _meta_status is "finding".
-    query = query.eq("has_anomaly", true).or(
-      META_FINDING_VALUES.map((v) => `inspection_data->_meta_status.eq.${v}`).join(",")
-    );
+    query = query.eq("has_anomaly", true);
+    if (structureId !== null && !isNaN(structureId)) {
+      query = query.eq("structure_id", structureId);
+    }
   } else {
-    // Anomaly = joined inspection whose _meta_status is NOT "finding"
-    // (case-insensitive; records with no _meta_status still count).
-    // Filtering on the embedded inspection also acts as an inner join.
-    query = query.or(
-      [
-        "inspection.inspection_data->_meta_status.is.null",
-        `and(${META_FINDING_VALUES.map(
-          (v) => `inspection.inspection_data->_meta_status.neq.${v}`
-        ).join(",")})`,
-      ].join(",")
-    );
-  }
-
-  if (structureId !== null && !isNaN(structureId)) {
-    query = isFindings
-      ? query.eq("structure_id", structureId)
-      : query.eq("inspection.structure_id", structureId);
+    if (structureId !== null && !isNaN(structureId)) {
+      query = query.eq("inspection.structure_id", structureId);
+    }
   }
 
   const searchColumns = isFindings
-    ? ["description", "observation", "sow_report_no", "structure_components.q_id"]
+    ? ["description", "observation", "sow_report_no"]
     : [
         "anomaly_ref_no",
         "defect_description",
         "defect_type_code",
         "defect_category_code",
-        "inspection.structure_components.q_id",
       ];
+
   const searchFilter = buildSearchFilter(q, searchColumns);
   if (searchFilter) {
     query = query.or(searchFilter);

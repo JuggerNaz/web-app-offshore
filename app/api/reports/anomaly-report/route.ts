@@ -127,6 +127,57 @@ export async function GET(request: NextRequest) {
                         };
                     });
                 }
+
+                // If still empty and inspectionId is provided (e.g. Findings that do not have an insp_anomalies row)
+                if (anomalies.length === 0 && inspectionId) {
+                    const { data: recData, error: recErr } = await (supabase as any)
+                        .from("insp_records")
+                        .select("*, structure_components(*), insp_video_tapes(*), insp_dive_jobs(*), insp_rov_jobs(*)")
+                        .eq("insp_id", inspectionId)
+                        .maybeSingle();
+
+                    if (!recErr && recData) {
+                        const sc = recData.structure_components || {};
+                        const dj = recData.insp_dive_jobs || {};
+                        const rj = recData.insp_rov_jobs || {};
+                        const vt = recData.insp_video_tapes || {};
+                        anomalies = [{
+                            anomaly_id: null,
+                            display_ref_no: `INSP-${recData.insp_id}`,
+                            description: recData.description || recData.observation || recData.inspection_data?.finding || recData.inspection_data?.findings || "Finding",
+                            priority: recData.inspection_data?.priority || "Normal",
+                            category: recData.inspection_type_code,
+                            defect_type: recData.inspection_type_code,
+                            recommended_action: recData.inspection_data?.recommended_action || "",
+                            status: recData.status || "OPEN",
+                            rectified: recData.status === "COMPLETED" || recData.status === "CLOSED",
+                            id: recData.insp_id,
+                            inspection_date: recData.inspection_date,
+                            observations: recData.description,
+                            has_anomaly: recData.has_anomaly,
+                            elevation: recData.elevation,
+                            fp_kp: recData.fp_kp,
+                            tape_id: recData.tape_id,
+                            tape_no: vt.tape_no || recData.tape_no,
+                            video_ref: recData.tape_count_no,
+                            component_id: sc.id || recData.component_id,
+                            component_type: sc.code || recData.component_type,
+                            component_qid: sc.q_id || recData.component_qid,
+                            jobpack_id: recData.jobpack_id,
+                            structure_id: recData.structure_id,
+                            sow_report_no: recData.sow_report_no,
+                            dive_job_id: dj.dive_job_id,
+                            dive_no: dj.dive_no,
+                            diver_name: dj.diver_name,
+                            dive_start: dj.start_time,
+                            rov_job_id: rj.rov_job_id,
+                            deployment_no: rj.deployment_no,
+                            rov_name: rj.rov_operator,
+                            rov_machine: rj.rov_serial_no,
+                            rov_start: rj.start_time,
+                        }];
+                    }
+                }
             } catch (fbErr) {
                 console.error("[AnomalyReport] Fallback query error:", fbErr);
             }

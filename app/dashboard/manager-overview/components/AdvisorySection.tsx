@@ -44,8 +44,8 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                        {predictions.integrity_scores.map(s => (
-                            <div key={s.structure} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center transition-all hover:scale-[1.02]">
+                        {predictions.integrity_scores.map((s, idx) => (
+                            <div key={`integrity-${s.structure}-${idx}`} className="p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 text-center transition-all hover:scale-[1.02]">
                                 <div className={cn("text-3xl font-black", GRADE_COLORS[s.grade] || "text-slate-500")}>{s.grade}</div>
                                 <div className="text-lg font-black text-slate-700 dark:text-white">{s.score}/100</div>
                                 <div className="text-[9px] font-bold text-slate-500 uppercase tracking-wider mt-1 truncate">{s.structure}</div>
@@ -65,10 +65,10 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        {predictions.corrosion_risk.map(r => {
+                        {predictions.corrosion_risk.map((r, idx) => {
                             const colors = RISK_COLORS[r.level] || RISK_COLORS.LOW;
                             return (
-                                <div key={r.structure} className={cn("flex items-center gap-4 p-3 rounded-xl border transition-all hover:scale-[1.005]", colors.bg, colors.border)}>
+                                <div key={`corrosion-${r.structure}-${idx}`} className={cn("flex items-center gap-4 p-3 rounded-xl border transition-all hover:scale-[1.005]", colors.bg, colors.border)}>
                                     <div className="flex-shrink-0 w-12 text-center">
                                         <div className={cn("text-xl font-black", colors.text)}>{r.score}</div>
                                         <div className="text-[8px] font-bold text-slate-400 uppercase">/100</div>
@@ -99,8 +99,8 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2">
-                            {predictions.anode_life.map(a => (
-                                <div key={a.structure} className={cn("p-3 rounded-xl border transition-all",
+                            {predictions.anode_life.map((a, idx) => (
+                                <div key={`anode-${a.structure}-${idx}`} className={cn("p-3 rounded-xl border transition-all",
                                     a.alert ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30" : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700")}>
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs font-bold text-slate-800 dark:text-white truncate">{a.structure}</span>
@@ -129,8 +129,8 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                             </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-2">
-                            {predictions.cp_forecast.map(c => (
-                                <div key={c.structure} className={cn("p-3 rounded-xl border transition-all",
+                            {predictions.cp_forecast.map((c, idx) => (
+                                <div key={`cp-${c.structure}-${idx}`} className={cn("p-3 rounded-xl border transition-all",
                                     c.alert ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30" : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700")}>
                                     <div className="flex items-center justify-between mb-1">
                                         <span className="text-xs font-bold text-slate-800 dark:text-white truncate">{c.structure}</span>
@@ -163,7 +163,7 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                             {predictions.inspection_priority.map((p, i) => {
                                 const colors = PRIORITY_COLORS[p.classification] || PRIORITY_COLORS["LOW PRIORITY"];
                                 return (
-                                    <div key={p.structure} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 transition-all hover:scale-[1.005]">
+                                    <div key={`priority-${p.structure}-${i}`} className="flex items-center gap-3 p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 transition-all hover:scale-[1.005]">
                                         <span className="text-lg font-black text-slate-300 dark:text-slate-600 w-6 text-center">#{i + 1}</span>
                                         <div className="flex-1 min-w-0">
                                             <div className="text-sm font-bold text-slate-800 dark:text-white truncate">{p.structure}</div>
@@ -190,8 +190,8 @@ export function AdvisorySection({ predictions }: { predictions: Predictions | nu
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="space-y-2">
-                        {predictions.anomaly_recurrence.map(r => (
-                            <div key={r.structure} className={cn("p-3 rounded-xl border transition-all",
+                        {predictions.anomaly_recurrence.map((r, idx) => (
+                            <div key={`recurrence-${r.structure}-${idx}`} className={cn("p-3 rounded-xl border transition-all",
                                 r.chronic ? "bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/30" : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700")}>
                                 <div className="flex items-center justify-between">
                                     <span className="text-xs font-bold text-slate-800 dark:text-white">{r.structure}</span>
