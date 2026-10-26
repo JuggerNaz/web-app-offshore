@@ -122,13 +122,13 @@ export async function GET(request: NextRequest) {
 
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
         
-        // Enrich missing tape_no and inspection_data from insp_records & insp_video_tapes
+        // Enrich missing tape_no, inspection_data, dive_job_id, rov_job_id from insp_records & insp_video_tapes
         const allInspIds = Array.from(new Set(anomalies.map((a: any) => a.id || a.insp_id).filter(Boolean)));
         if (allInspIds.length > 0) {
             try {
                 const { data: recData } = await (supabase as any)
                     .from("insp_records")
-                    .select("insp_id, tape_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
+                    .select("insp_id, tape_id, dive_job_id, rov_job_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
                     .in("insp_id", allInspIds);
                 if (recData && recData.length > 0) {
                     const recMap = new Map<number, any>();
@@ -143,11 +143,68 @@ export async function GET(request: NextRequest) {
                             if (!a.inspection_data && match.inspection_data) {
                                 a.inspection_data = match.inspection_data;
                             }
+                            if (!a.dive_job_id && match.dive_job_id) {
+                                a.dive_job_id = match.dive_job_id;
+                            }
+                            if (!a.rov_job_id && match.rov_job_id) {
+                                a.rov_job_id = match.rov_job_id;
+                            }
                         }
                     });
                 }
             } catch (err) {
                 console.warn("[AnomalyReport] Error enriching insp_records:", err);
+            }
+        }
+
+        // Enrich dive and ROV job metadata (supervisor, report_coordinator, deployment_no / dive_no)
+        const rovJobIds = Array.from(new Set(anomalies.map((a: any) => a.rov_job_id).filter(Boolean)));
+        if (rovJobIds.length > 0) {
+            try {
+                const { data: rovData } = await (supabase as any)
+                    .from("insp_rov_jobs")
+                    .select("rov_job_id, deployment_no, rov_operator, rov_supervisor, report_coordinator")
+                    .in("rov_job_id", rovJobIds);
+                if (rovData && rovData.length > 0) {
+                    const rovMap = new Map<number, any>();
+                    rovData.forEach((rj: any) => rovMap.set(Number(rj.rov_job_id), rj));
+                    anomalies.forEach((a: any) => {
+                        const rj = rovMap.get(Number(a.rov_job_id));
+                        if (rj) {
+                            if (!a.deployment_no && rj.deployment_no) a.deployment_no = rj.deployment_no;
+                            if (!a.rov_name && rj.rov_operator) a.rov_name = rj.rov_operator;
+                            if (!a.supervisor && rj.rov_supervisor) a.supervisor = rj.rov_supervisor;
+                            if (!a.report_coordinator && rj.report_coordinator) a.report_coordinator = rj.report_coordinator;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_rov_jobs:", err);
+            }
+        }
+
+        const diveJobIds = Array.from(new Set(anomalies.map((a: any) => a.dive_job_id).filter(Boolean)));
+        if (diveJobIds.length > 0) {
+            try {
+                const { data: diveData } = await (supabase as any)
+                    .from("insp_dive_jobs")
+                    .select("dive_job_id, dive_no, diver_name, dive_supervisor, report_coordinator")
+                    .in("dive_job_id", diveJobIds);
+                if (diveData && diveData.length > 0) {
+                    const diveMap = new Map<number, any>();
+                    diveData.forEach((dj: any) => diveMap.set(Number(dj.dive_job_id), dj));
+                    anomalies.forEach((a: any) => {
+                        const dj = diveMap.get(Number(a.dive_job_id));
+                        if (dj) {
+                            if (!a.dive_no && dj.dive_no) a.dive_no = dj.dive_no;
+                            if (!a.diver_name && dj.diver_name) a.diver_name = dj.diver_name;
+                            if (!a.supervisor && dj.dive_supervisor) a.supervisor = dj.dive_supervisor;
+                            if (!a.report_coordinator && dj.report_coordinator) a.report_coordinator = dj.report_coordinator;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_dive_jobs:", err);
             }
         }
 

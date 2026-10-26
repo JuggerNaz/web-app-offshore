@@ -357,6 +357,13 @@ export const generateDefectAnomalyReport = async (
                 diver_name: "",
                 rov_machine: "",
                 rov_name: "",
+                dive_no: "",
+                deployment_no: "",
+                supervisor: "",
+                rov_supervisor: "",
+                dive_supervisor: "",
+                report_coordinator: "",
+                rep_cord: "",
                 component_qid: "",
                 elevation: "",
                 description: "",
@@ -387,6 +394,7 @@ export const generateDefectAnomalyReport = async (
 
     let globalPage = 1;
     const labelColWidth = 32;
+    const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
     const anomalyPageRanges: { start: number; end: number }[] = [];
     const pageNoCellCoordinates: { [anomalyIndex: number]: { x: number; y: number; w: number; h: number } } = {};
 
@@ -520,9 +528,48 @@ export const generateDefectAnomalyReport = async (
             elevVal = "N/A";
         }
 
+        const d = (typeof record.inspection_data === "string" ? JSON.parse(record.inspection_data) : record.inspection_data) || {};
+
+        // Dive no.
+        const diveNoVal = (
+            record.dive_no ||
+            record.deployment_no ||
+            record.insp_dive_jobs?.dive_no ||
+            record.insp_rov_jobs?.deployment_no ||
+            d.dive_no ||
+            d.DIVE_NO ||
+            d.deployment_no ||
+            ""
+        ).toString().trim() || "N/A";
+
+        // Supervisor: info from anomaly event log; supervisor is same name as rov pilot if not specified
+        const supervisorVal = (
+            record.supervisor ||
+            record.rov_supervisor ||
+            record.dive_supervisor ||
+            d.supervisor ||
+            d.SUPERVISOR ||
+            record.rov_name ||
+            record.diver_name ||
+            d.pilot ||
+            d.PILOT ||
+            ""
+        ).toString().trim() || "N/A";
+
+        // Rep. cord: coordinator name from anomaly event log / job setup
+        const repCordVal = (
+            record.report_coordinator ||
+            record.rep_cord ||
+            record.insp_rov_jobs?.report_coordinator ||
+            record.insp_dive_jobs?.report_coordinator ||
+            d.rep_cord ||
+            d.REP_CORD ||
+            d.report_coordinator ||
+            d.REPORT_COORDINATOR ||
+            ""
+        ).toString().trim() || "N/A";
+
         const isRectified = Boolean(record.rectified || anomalyDetails.rectified || anomalyDetails.rectified_remarks);
-        const labelColWidth = 32;
-        const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
 
         autoTable(doc, {
             startY: margin + headerH + 2,
@@ -547,16 +594,21 @@ export const generateDefectAnomalyReport = async (
                     { content: rovDiverLabel, styles: headStylesString }, { content: rovDiverVal }
                 ],
                 [
+                    { content: "Dive no.:", styles: headStylesString }, { content: diveNoVal },
+                    { content: "Supervisor:", styles: headStylesString }, { content: supervisorVal }
+                ],
+                [
+                    { content: "Rep. cord:", styles: headStylesString }, { content: repCordVal },
+                    { content: "Status:", styles: headStylesString }, { content: isRectified ? "RECTIFIED" : "OPEN" }
+                ],
+                [
                     { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
                     { content: compLabel, styles: headStylesString }, { content: compVal || "N/A" }
                 ],
                 [
                     { content: elevLabel, styles: headStylesString }, { content: elevVal },
-                    { content: "Status:", styles: headStylesString }, { content: isRectified ? "RECTIFIED" : "OPEN" }
-                ],
-                [
                     { content: "Page No.:", styles: headStylesString },
-                    { content: "", colSpan: 3 }
+                    { content: "" }
                 ]
             ] as any,
             theme: 'grid',
@@ -571,7 +623,7 @@ export const generateDefectAnomalyReport = async (
             },
             margin: { left: margin, right: margin, top: margin + headerH + 2 },
             didDrawCell: (data) => {
-                if (data.row.index === 6 && data.column.index >= 1 && !pageNoCellCoordinates[i]) {
+                if (data.row.index === 7 && data.column.index === 3 && !pageNoCellCoordinates[i]) {
                     pageNoCellCoordinates[i] = {
                         x: data.cell.x,
                         y: data.cell.y,
@@ -601,7 +653,6 @@ export const generateDefectAnomalyReport = async (
             : "";
 
         // 4. Primary CP & Additional CP readings
-        const d = (typeof record.inspection_data === "string" ? JSON.parse(record.inspection_data) : record.inspection_data) || {};
         const primaryCp = record.cp_reading ?? record.cp_rdg ?? record.cp_reading_mv ?? record.cp ?? d.cp_reading ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_val ?? "";
 
         const cpLines: string[] = [];
@@ -1014,7 +1065,7 @@ export const generateDefectAnomalyReport = async (
             // If on Page 1 of this anomaly, draw inside the dedicated Page No. table cell!
             if (i === range.start) {
                 const cell = pageNoCellCoordinates[rangeIdx];
-                const cellX = cell ? cell.x + 2 : (margin + labelColWidth + 2);
+                const cellX = cell ? cell.x + 2 : (margin + (labelColWidth * 2) + valueColWidth + 2);
                 const cellY = cell ? (cell.y + 4.8) : 82;
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "normal");
