@@ -456,22 +456,53 @@ export const GET = withTenant(async (request, { companyId }) => {
                     return (code === "RGVI" || code === "GVI" || code === "RSANI" || code === "ANMAIN") &&
                         (ct === "AN" || ct === "ANODE" || ct.startsWith("AN"));
                 });
-                const depletionBuckets: Record<string, number> = { "0–25%": 0, "25–50%": 0, "50–75%": 0, "75–100%": 0 };
+                // Group anode records by unique anode key to avoid duplicate counts
+                const anodeGroups = new Map<string, any[]>();
                 anodeRecs.forEach((r: any) => {
-                    const raw = r.anode_depletion || r.anode_depletion_percent || r.depletion;
-                    if (raw === undefined || raw === null || raw === "") return;
-                    const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^0-9.]/g, ""));
-                    if (!isNaN(num)) {
-                        if (num <= 25) depletionBuckets["0–25%"]++;
-                        else if (num <= 50) depletionBuckets["25–50%"]++;
-                        else if (num <= 75) depletionBuckets["50–75%"]++;
-                        else depletionBuckets["75–100%"]++;
+                    const qid = (r.structure_components?.q_id || r.q_id || "").toString().trim().toUpperCase();
+                    const key = qid && qid !== "N/A" && qid !== "NONE" ? `qid_${qid}` : (r.component_id ? `comp_${r.component_id}` : `insp_${r.insp_id || r.id || Math.random()}`);
+                    if (!anodeGroups.has(key)) anodeGroups.set(key, []);
+                    anodeGroups.get(key)!.push(r);
+                });
+
+                const depletionBuckets: Record<string, number> = { "0–25%": 0, "25–50%": 0, "50–75%": 0, "75–100%": 0, "Not Evaluated": 0 };
+                let evaluatedCount = 0;
+
+                anodeGroups.forEach((recs) => {
+                    // Sort chronologically
+                    recs.sort((a, b) => {
+                        const tA = a.inspection_date ? Date.parse(a.inspection_date) : (a.created_at ? Date.parse(a.created_at) : 0);
+                        const tB = b.inspection_date ? Date.parse(b.inspection_date) : (b.created_at ? Date.parse(b.created_at) : 0);
+                        if (!isNaN(tA) && !isNaN(tB) && tA !== tB) return tA - tB;
+                        return Number(a.insp_id || a.id || 0) - Number(b.insp_id || b.id || 0);
+                    });
+
+                    // Search for latest depletion from newest to oldest
+                    let bucket: string | null = null;
+                    for (let i = recs.length - 1; i >= 0; i--) {
+                        const r = recs[i];
+                        const raw = r.anode_depletion || r.anode_depletion_percent || r.depletion;
+                        if (raw === undefined || raw === null || raw === "") continue;
+                        const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^0-9.]/g, ""));
+                        if (!isNaN(num)) {
+                            if (num <= 25) { bucket = "0–25%"; break; }
+                            else if (num <= 50) { bucket = "25–50%"; break; }
+                            else if (num <= 75) { bucket = "50–75%"; break; }
+                            else { bucket = "75–100%"; break; }
+                        } else {
+                            const s = String(raw).toLowerCase();
+                            if (s.includes("0-25") || s.includes("0–25")) { bucket = "0–25%"; break; }
+                            else if (s.includes("25-50") || s.includes("25–50")) { bucket = "25–50%"; break; }
+                            else if (s.includes("50-75") || s.includes("50–75")) { bucket = "50–75%"; break; }
+                            else if (s.includes("75-100") || s.includes("75–100")) { bucket = "75–100%"; break; }
+                        }
+                    }
+
+                    if (bucket) {
+                        depletionBuckets[bucket]++;
+                        evaluatedCount++;
                     } else {
-                        const s = String(raw).toLowerCase();
-                        if (s.includes("0-25") || s.includes("0–25")) depletionBuckets["0–25%"]++;
-                        else if (s.includes("25-50") || s.includes("25–50")) depletionBuckets["25–50%"]++;
-                        else if (s.includes("50-75") || s.includes("50–75")) depletionBuckets["50–75%"]++;
-                        else if (s.includes("75-100") || s.includes("75–100")) depletionBuckets["75–100%"]++;
+                        depletionBuckets["Not Evaluated"]++;
                     }
                 });
 
@@ -585,12 +616,12 @@ export const GET = withTenant(async (request, { companyId }) => {
                         depthPoints: cpDepthPoints.slice(0, 100),
                     },
                     anode: {
-                        total: anodeRecs.length, depletionBuckets,
-                        avgDepletion: anodeRecs.length > 0
+                        total: anodeGroups.size, depletionBuckets,
+                        avgDepletion: evaluatedCount > 0
                             ? Math.round(
                                 ((depletionBuckets["0–25%"] * 12.5) + (depletionBuckets["25–50%"] * 37.5)
                                     + (depletionBuckets["50–75%"] * 62.5) + (depletionBuckets["75–100%"] * 87.5))
-                                / anodeRecs.length
+                                / evaluatedCount
                             ) : 35,
                     },
                     fmd: {

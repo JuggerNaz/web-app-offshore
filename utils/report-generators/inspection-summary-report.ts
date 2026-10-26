@@ -1220,15 +1220,17 @@ export const generateInspectionSummaryReport = async (
                 const d25 = depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 0;
                 const d50 = depletions["50-75%"] ?? depletions["50–75%"] ?? 0;
                 const d75 = depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 0;
+                const dNotEval = depletions["Not Evaluated"] ?? depletions["not evaluated"] ?? depletions["Not Recorded"] ?? depletions["not recorded"] ?? 0;
 
                 const col1W = Math.round(bw * 0.63);
                 const col2W = bw - col1W;
 
-                const totAnodeCount = (Number(d0) + Number(d25) + Number(d50) + Number(d75)) || anodeGvi?.total || 1;
+                const totAnodeCount = (Number(d0) + Number(d25) + Number(d50) + Number(d75) + Number(dNotEval)) || anodeGvi?.total || 1;
                 const pct0 = totAnodeCount > 0 ? Math.round((Number(d0) / totAnodeCount) * 100) : 0;
                 const pct25 = totAnodeCount > 0 ? Math.round((Number(d25) / totAnodeCount) * 100) : 0;
                 const pct50 = totAnodeCount > 0 ? Math.round((Number(d50) / totAnodeCount) * 100) : 0;
                 const pct75 = totAnodeCount > 0 ? Math.round((Number(d75) / totAnodeCount) * 100) : 0;
+                const pctNotEval = totAnodeCount > 0 ? Math.round((Number(dNotEval) / totAnodeCount) * 100) : 0;
 
                 const healthPct = totAnodeCount > 0 ? Math.round(((Number(d0) + Number(d25)) / totAnodeCount) * 100) : 100;
                 const adviceText = `Anode Health: ${healthPct}% (<50% dep.)`;
@@ -1239,6 +1241,7 @@ export const generateInspectionSummaryReport = async (
                     { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: Number(d25) > 0, align: "right" as const }] },
                     { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: Number(d50) > 0, align: "right" as const }] },
                     { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: Number(d75) > 0, align: "right" as const }] },
+                    { cols: [{ val: "Not Evaluated", align: "left" as const }, { val: `${dNotEval} (${pctNotEval}%)`, bold: Number(dNotEval) > 0, align: "right" as const }] },
                     { cols: [{ val: "Anode Health", align: "left" as const }, { val: `${healthPct}% (<50% dep.)`, bold: true, align: "right" as const }] },
                     { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || totAnodeCount), bold: true, align: "right" as const }] },
                 ];

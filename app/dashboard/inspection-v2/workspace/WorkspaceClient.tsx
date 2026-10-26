@@ -937,11 +937,14 @@ function V10PreviewLayout() {
   };
 
   const sortedRecords = useMemo(() => {
-    if (!currentRecords || currentRecords.length === 0) return [];
+    const baseSource = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+      ? allWorkspaceRecords
+      : currentRecords;
+    if (!baseSource || baseSource.length === 0) return [];
 
     // Filter out calibration/test records as requested
     const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
-    const filtered = currentRecords.filter((r: any) => {
+    const filtered = baseSource.filter((r: any) => {
       const code = r.inspection_type_code || r.inspection_type?.code;
       return !excludedCodes.includes(code);
     });
@@ -1022,7 +1025,7 @@ function V10PreviewLayout() {
     });
 
     return sortableRecords;
-  }, [currentRecords, sortConfig]);
+  }, [allWorkspaceRecords, currentRecords, sortConfig]);
 
   // Search Matching Mode ("ANY" | "ALL" | "EXACT")
   const [searchMode, setSearchMode] = useState<"ANY" | "ALL" | "EXACT">("ALL");
@@ -1387,6 +1390,11 @@ function V10PreviewLayout() {
     return scoredRecords.map((item) => item.record);
   }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
 
+  // Paginated window for silky smooth 60 FPS table rendering (0ms in-memory page flips)
+  const pagedDisplayRecords = useMemo(() => {
+    return displayRecords.slice(recordsOffset, recordsOffset + recordsLimit);
+  }, [displayRecords, recordsOffset, recordsLimit]);
+
   const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
 
   const fetchFullWorkspaceRecords = useCallback(async () => {
@@ -1397,164 +1405,45 @@ function V10PreviewLayout() {
       const numStrId = rawStructureId && !isNaN(Number(rawStructureId)) ? Number(rawStructureId) : null;
       const numJpId = parseInt(jobPackId);
 
-      const selectFields = `
-        *,
-        inspection_type:inspection_type_id!left(id, code, name),
-        structure_components:component_id!left(id, q_id, code, metadata),
-        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-        insp_video_tapes:tape_id!left(tape_no, chapter_no)
-      `;
-
       const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
         ? headerData.sowReportNo
         : (targetReportNumber || sowParam);
 
-      // 1. Get exact total count for parallel batching
-      let countQuery = supabase
-        .from("insp_records")
-        .select("insp_id", { count: "exact", head: true })
-        .eq("jobpack_id", numJpId);
-
-      if (numStrId) {
-        countQuery = countQuery.eq("structure_id", numStrId);
-      }
-      if (activeReportNo) {
-        countQuery = countQuery.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
-      }
-
-      const { count: totalCount } = await countQuery;
-      const total = totalCount || 0;
-      const batchSize = 1000;
-      const numBatches = Math.max(1, Math.ceil(total / batchSize));
-
-      // 2. Fetch all pages in parallel to avoid Supabase 1000-row cap
-      const batchPromises: any[] = [];
-      for (let i = 0; i < numBatches; i++) {
-        const offset = i * batchSize;
-        let query = supabase
-          .from("insp_records")
-          .select(selectFields)
-          .eq("jobpack_id", numJpId)
-          .order("inspection_date", { ascending: false })
-          .order("inspection_time", { ascending: false })
-          .range(offset, offset + batchSize - 1);
-
-        if (numStrId) {
-          query = query.eq("structure_id", numStrId);
-        }
-        if (activeReportNo) {
-          query = query.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
-        }
-        batchPromises.push(query);
-      }
-
-      const batchResults = await Promise.all(batchPromises);
-      const allData: any[] = [];
-      for (const res of batchResults) {
-        if (res.data && res.data.length > 0) {
-          allData.push(...res.data);
-        }
-      }
-
-      if (allData.length === 0) {
-        setAllWorkspaceRecords([]);
-        return;
-      }
-
-      // 3. Fetch anomalies and attachments for all retrieved records
-      const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
-      const anomData: any[] = [];
-      const attCountMap: Record<number, number> = {};
-
-      if (allInspIds.length > 0) {
-        const chunkSize = 500;
-        for (let i = 0; i < allInspIds.length; i += chunkSize) {
-          const chunk = allInspIds.slice(i, i + chunkSize);
-          const [anomsRes, attsRes, mediaRes] = await Promise.all([
-            supabase
-              .from("insp_anomalies")
-              .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id")
-              .in("inspection_id", chunk),
-            supabase
-              .from("attachment")
-              .select("source_id, source_type")
-              .in("source_id", chunk)
-              .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"]),
-            (supabase as any)
-              .from("insp_media")
-              .select("inspection_id, media_id")
-              .in("inspection_id", chunk),
-          ]);
-
-          if (anomsRes.data && anomsRes.data.length > 0) {
-            anomData.push(...anomsRes.data);
-          }
-          (attsRes.data || []).forEach((att: any) => {
-            const sid = Number(att.source_id);
-            if (sid) attCountMap[sid] = (attCountMap[sid] || 0) + 1;
-          });
-          (mediaRes.data || []).forEach((m: any) => {
-            const sid = Number(m.inspection_id);
-            if (sid) attCountMap[sid] = (attCountMap[sid] || 0) + 1;
-          });
-        }
-
-        // Also fetch attachments linked to anomaly IDs
-        const allAnomIds = anomData.map((a: any) => Number(a.anomaly_id)).filter(Boolean);
-        if (allAnomIds.length > 0) {
-          const anomToInsp = new Map<number, number>();
-          anomData.forEach((a: any) => {
-            if (a.anomaly_id && a.inspection_id) anomToInsp.set(Number(a.anomaly_id), Number(a.inspection_id));
-          });
-          for (let i = 0; i < allAnomIds.length; i += 500) {
-            const chunk = allAnomIds.slice(i, i + 500);
-            const { data: anomAtts } = await supabase
-              .from("attachment")
-              .select("source_id, source_type")
-              .in("source_id", chunk);
-            (anomAtts || []).forEach((att: any) => {
-              const parentInspId = anomToInsp.get(Number(att.source_id));
-              if (parentInspId) {
-                attCountMap[parentInspId] = (attCountMap[parentInspId] || 0) + 1;
-              }
-            });
-          }
-        }
-      }
-
-      const anomMap = new Map<number, any[]>();
-      anomData.forEach((a: any) => {
-        if (a.inspection_id) {
-          if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
-          anomMap.get(a.inspection_id)!.push(a);
-        }
+      // Call high-performance backend API with enriched joins & pre-computed attachment counts
+      const params = new URLSearchParams({
+        jobpack_id: String(numJpId),
+        structure_id: String(numStrId || ""),
+        all: "true",
       });
+      if (activeReportNo && activeReportNo !== "N/A" && activeReportNo !== "Unknown Report") {
+        params.append("sow_report_no", activeReportNo);
+      }
 
-      const mappedAll = allData.map((r: any) => {
-        const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
-        const isAnomaly = matchedAnoms.length > 0 || r.has_anomaly || String(r.status || "").toLowerCase().includes("anomaly") || String(r.status || "").toLowerCase().includes("defect");
-        return {
-          ...r,
-          insp_anomalies: matchedAnoms,
-          has_anomaly: isAnomaly,
-          status: isAnomaly && (!r.status || r.status === "COMPLETED" || r.status === "INSPECTION") ? "ANOMALY" : r.status,
-          inspection_type: r.inspection_type
-            ? {
-                ...r.inspection_type,
-                name: formatInspectionTypeName(r.inspection_type.name),
-              }
-            : null,
-          attachment_count: attCountMap[r.insp_id] || 0,
-        };
-      });
-      setAllWorkspaceRecords(mappedAll);
+      const res = await fetch(`/api/inspection-records?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch workspace records: HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      const records = Array.isArray(json?.data) ? json.data : [];
+
+      const formatted = records.map((r: any) => ({
+        ...r,
+        inspection_type: r.inspection_type
+          ? {
+              ...r.inspection_type,
+              name: formatInspectionTypeName(r.inspection_type.name),
+            }
+          : null,
+      }));
+
+      setAllWorkspaceRecords(formatted);
+      setTotalRecords(formatted.length);
     } catch (err) {
       console.error("[Search] fetchFullWorkspaceRecords error:", err);
     } finally {
       setIsSearchingWorkspace(false);
     }
-  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam, supabase]);
+  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam]);
 
   // Pre-load all workspace records in the background so search is instant & complete
   useEffect(() => {
@@ -5123,19 +5012,23 @@ function V10PreviewLayout() {
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
-      let allInspsQuery = supabase
-        .from("insp_records")
-        .select(selectFields)
-        .eq("jobpack_id", parseInt(jobPackId || "0"))
-        .order("inspection_date", { ascending: false })
-        .order("inspection_time", { ascending: false });
+      let allInspsQuery = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+        ? Promise.resolve({ data: allWorkspaceRecords })
+        : supabase
+            .from("insp_records")
+            .select("insp_id, tape_id, status, has_anomaly, inspection_date, inspection_time, component_id, component_type, dive_job_id, rov_job_id, inspection_type_id, tape_count_no, sow_report_no, inspection_type:inspection_type_id!left(id, code, name), structure_components:component_id!left(id, q_id, id_no, code), insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, priority_code)")
+            .eq("jobpack_id", parseInt(jobPackId || "0"))
+            .order("inspection_date", { ascending: false })
+            .order("inspection_time", { ascending: false });
 
       // Standard browsing uses pagination for performance
       inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
-        allInspsQuery = allInspsQuery.eq("structure_id", Number(structureId));
+        if (typeof (allInspsQuery as any)?.eq === "function") {
+          allInspsQuery = (allInspsQuery as any).eq("structure_id", Number(structureId));
+        }
       }
       if (
         headerData.sowReportNo &&
@@ -5144,7 +5037,9 @@ function V10PreviewLayout() {
       ) {
         const sowOrFilter = `sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`;
         inspsQuery = inspsQuery.or(sowOrFilter);
-        allInspsQuery = allInspsQuery.or(sowOrFilter);
+        if (typeof (allInspsQuery as any)?.or === "function") {
+          allInspsQuery = (allInspsQuery as any).or(sowOrFilter);
+        }
       }
 
       // Fetch matching job IDs scoped strictly to current structure, jobpack, and SOW report
@@ -5487,7 +5382,9 @@ function V10PreviewLayout() {
       const insps = inspsRes.data;
       const count = inspsRes.count;
 
-      if (count !== null) setTotalRecords(count);
+      if (count !== null && (!allWorkspaceRecords || allWorkspaceRecords.length === 0)) {
+        setTotalRecords(count);
+      }
 
       if (logs) {
         allEv.push(
@@ -5562,20 +5459,21 @@ function V10PreviewLayout() {
 
       const finalInsps = inspsRes.data || insps;
       if (finalInsps) {
-        // Collect inspection IDs from both current page AND allInspsData so all events get attachment counts
-        const allTargetInspIds = Array.from(
-          new Set([
-            ...finalInsps.map((r: any) => Number(r.insp_id)),
-            ...(allInspsData || []).map((r: any) => Number(r.insp_id)),
-          ].filter(Boolean))
-        );
+        // Collect inspection IDs that still need attachment counts (only if not already pre-populated by view or API)
+        const visibleNeedsAtts = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+          ? []
+          : finalInsps
+              .filter((r: any) => r.attachment_count === undefined || r.attachment_count === null)
+              .slice(0, 50)
+              .map((r: any) => Number(r.insp_id))
+              .filter(Boolean);
 
         const countMap: Record<number, number> = {};
 
-        if (allTargetInspIds.length > 0) {
-          const chunkSize = 500;
-          for (let i = 0; i < allTargetInspIds.length; i += chunkSize) {
-            const chunk = allTargetInspIds.slice(i, i + chunkSize);
+        if (visibleNeedsAtts.length > 0) {
+          const chunkSize = 50;
+          for (let i = 0; i < visibleNeedsAtts.length; i += chunkSize) {
+            const chunk = visibleNeedsAtts.slice(i, i + chunkSize);
             const [attsRes, mediaRes] = await Promise.all([
               supabase
                 .from("attachment")
@@ -5627,21 +5525,19 @@ function V10PreviewLayout() {
         collectAnomalies(finalInsps);
         collectAnomalies(allInspsData);
 
-        // Also fetch any attachments attached directly to anomaly IDs
-        if (anomalyIds.length > 0) {
-          for (let i = 0; i < anomalyIds.length; i += 500) {
-            const chunk = anomalyIds.slice(i, i + 500);
-            const { data: anomAttsData } = await supabase
-              .from("attachment")
-              .select("source_id, source_type")
-              .in("source_id", chunk);
-            (anomAttsData || []).forEach((curr: any) => {
-              const parentInspId = anomToInspMap.get(Number(curr.source_id));
-              if (parentInspId) {
-                countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
-              }
-            });
-          }
+        // Also fetch any attachments attached directly to anomaly IDs (only if counts not pre-populated)
+        if (visibleNeedsAtts.length > 0 && anomalyIds.length > 0) {
+          const anomChunk = anomalyIds.slice(0, 50);
+          const { data: anomAttsData } = await supabase
+            .from("attachment")
+            .select("source_id, source_type")
+            .in("source_id", anomChunk);
+          (anomAttsData || []).forEach((curr: any) => {
+            const parentInspId = anomToInspMap.get(Number(curr.source_id));
+            if (parentInspId) {
+              countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
+            }
+          });
         }
 
         const inspsWithCounts = finalInsps.map((r: any) => {
@@ -5656,7 +5552,7 @@ function V10PreviewLayout() {
                   name: formatInspectionTypeName(r.inspection_type.name),
                 }
               : null,
-            attachment_count: countMap[r.insp_id] || 0,
+            attachment_count: r.attachment_count !== undefined && r.attachment_count !== null ? r.attachment_count : (countMap[r.insp_id] || 0),
           };
         });
 
@@ -5762,8 +5658,6 @@ function V10PreviewLayout() {
     parseDbDate,
     structureId,
     headerData.sowReportNo,
-    recordsOffset,
-    recordsLimit,
     jobPackId,
   ]);
 
@@ -6556,8 +6450,45 @@ function V10PreviewLayout() {
     }
 
     try {
-      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
       const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+
+      // Try fast dedicated workspace deployments endpoint
+      try {
+        const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
+          ? headerData.sowReportNo
+          : "";
+        const depParams = new URLSearchParams({
+          jobpack_id: String(queryJobPackId),
+          structure_id: String(structureId),
+          method: inspMethod,
+        });
+        if (activeReportNo) {
+          depParams.append("sow_report_no", activeReportNo);
+        }
+        const depRes = await fetch(`/api/workspace-deployments?${depParams.toString()}`);
+        if (depRes.ok) {
+          const depJson = await depRes.json();
+          if (Array.isArray(depJson?.deployments)) {
+            const mapped = depJson.deployments;
+            if (mapped.length > 0) {
+              setDeployments(mapped);
+              const session = loadUserSession();
+              const savedDepId = session?.lastActiveDepId;
+              let targetDep = mapped[0];
+              if (savedDepId) {
+                const matched = mapped.find((d: any) => String(d.id) === String(savedDepId));
+                if (matched) targetDep = matched;
+              }
+              setActiveDep(targetDep);
+              return;
+            }
+          }
+        }
+      } catch (depApiErr) {
+        console.warn("[fetchDeps] Deployments API warning, falling back to direct query:", depApiErr);
+      }
+
+      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
       console.log(
         `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
@@ -6697,381 +6628,38 @@ function V10PreviewLayout() {
 
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
-    queryKey: ["sow-data", structureId, sowId, inspMethod],
+    queryKey: ["sow-data", structureId, jobPackId, headerData.sowReportNo, sowId, inspMethod],
     enabled: !!(structureId && !isNaN(Number(structureId))),
     queryFn: async () => {
       if (!structureId) return { assigned: [], unassigned: [], all: [] };
 
-      // 1. Fetch ALL active components for this structure (Paginated to bypass 1000 hard limit)
-      let allCompsDataRaw: any[] = [];
-      let hasMore = true;
-      let offset = 0;
-      const pageSize = 1000;
-      let compErr: any = null;
+      const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
+        ? headerData.sowReportNo
+        : (targetReportNumber || sowParam);
 
-      while (hasMore) {
-        const { data: pageData, error: pageErr } = await supabase
-          .from("structure_components")
-          .select("id, structure_id, id_no, q_id, comp_id, code, metadata, is_deleted")
-          .eq("structure_id", parseInt(structureId))
-          .range(offset, offset + pageSize - 1);
-
-        if (pageErr) {
-          compErr = pageErr;
-          break;
-        }
-
-        if (pageData && pageData.length > 0) {
-          allCompsDataRaw = [...allCompsDataRaw, ...pageData];
-          offset += pageSize;
-          if (pageData.length < pageSize) {
-            hasMore = false;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      if (allCompsDataRaw.length === 0) {
-        try {
-          const apiRes = await fetch(`/api/structure-components?structure_id=${structureId}`);
-          if (apiRes.ok) {
-            const apiJson = await apiRes.json();
-            if (Array.isArray(apiJson.data) && apiJson.data.length > 0) {
-              allCompsDataRaw = apiJson.data;
-            }
-          }
-        } catch (apiErr) {
-          console.warn("[sowAndComps] Error fetching from structure-components API fallback:", apiErr);
-        }
-      }
-
-      if (!allCompsDataRaw || allCompsDataRaw.length === 0) return { assigned: [], unassigned: [], all: [] };
-
-      // Filter out deleted/archived components
-      const allCompsData = allCompsDataRaw.filter((c: any) => {
-        // 1. If is_deleted boolean column is explicitly set, it is the primary source of truth
-        if (c.is_deleted === true || c.is_deleted === 1) return false;
-        if (c.is_deleted === false || c.is_deleted === 0) return true;
-
-        // 2. Legacy fallback only if is_deleted is null / undefined
-        const md =
-          typeof c.metadata === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(c.metadata);
-                } catch {
-                  return {};
-                }
-              })()
-            : c.metadata;
-
-        if (
-          md &&
-          (md.del === 1 ||
-            md.del === "1" ||
-            md.del === true ||
-            md.is_deleted === true ||
-            md.is_deleted === "1" ||
-            md.status === "archived" ||
-            md.status === "deleted")
-        ) {
-          return false;
-        }
-
-        return true;
+      const params = new URLSearchParams({
+        jobpack_id: String(jobPackId || "0"),
+        structure_id: String(structureId),
       });
-
-      // 2. Fetch SOW items scoped strictly to this sowId AND report Number
-      let resolvedSowId = sowId;
-      if (!resolvedSowId && jobPackId && structureId) {
-        const { data: sowRec } = await supabase
-          .from("u_sow")
-          .select("id")
-          .eq("jobpack_id", parseInt(jobPackId))
-          .eq("structure_id", parseInt(structureId))
-          .maybeSingle();
-        if (sowRec?.id) {
-          resolvedSowId = String(sowRec.id);
-        }
+      if (activeReportNo && activeReportNo !== "N/A" && activeReportNo !== "Unknown Report") {
+        params.append("sow_report_no", activeReportNo);
       }
 
-      let allSowItems: any[] = [];
-      if (resolvedSowId) {
-        let hasMoreSow = true;
-        let offsetSow = 0;
-
-        while (hasMoreSow) {
-          let sowItemsQuery = supabase
-            .from("u_sow_items")
-            .select("*, inspection_type:inspection_type_id!left(id, code, name, metadata)")
-            .eq("sow_id", parseInt(resolvedSowId))
-            .range(offsetSow, offsetSow + pageSize - 1);
-
-          if (targetReportNumber) {
-            sowItemsQuery = sowItemsQuery.eq("report_number", targetReportNumber);
-          }
-
-          const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
-
-          if (sowItemsErr) {
-            console.error("Error fetching SOW items:", sowItemsErr);
-            break;
-          }
-
-          if (pageSowItems && pageSowItems.length > 0) {
-            allSowItems = [...allSowItems, ...pageSowItems];
-            offsetSow += pageSize;
-            if (pageSowItems.length < pageSize) {
-              hasMoreSow = false;
-            }
-          } else {
-            hasMoreSow = false;
+      try {
+        const res = await fetch(`/api/workspace-components?${params.toString()}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && Array.isArray(json.all)) {
+            return json;
           }
         }
+      } catch (err) {
+        console.warn("[sowAndComps] Fast API failed:", err);
       }
-
-      const sowItems = allSowItems;
-
-      // 2.5 Fetch actual records for true dynamic status correction and accurate task counts
-      let recsQuery = supabase
-        .from("insp_records")
-        .select("component_id, component_qid, inspection_type_code, inspection_type:inspection_type_id(code), status, has_anomaly, cr_date")
-        .eq("structure_id", Number(structureId));
-
-      if (jobPackId) {
-        recsQuery = recsQuery.eq("jobpack_id", Number(jobPackId));
-      }
-
-      // Fetch all records without 1000-row limit truncation
-      let actualRecords: any[] = [];
-      let fromA = 0;
-      while (true) {
-        const { data: pageA } = await recsQuery
-          .order("cr_date", { ascending: false })
-          .range(fromA, fromA + 999);
-        if (pageA && pageA.length > 0) {
-          actualRecords.push(...pageA);
-          if (pageA.length < 1000) break;
-          fromA += 1000;
-        } else {
-          break;
-        }
-      }
-
-      // Create truth-mask and record count map for component + task
-      const trueStatusMap = new Map<string, string>();
-      const recordCountMap = new Map<string, number>();
-
-      if (actualRecords) {
-        actualRecords.forEach((r: any) => {
-          const rCode = String(r.inspection_type_code || r.inspection_type?.code || "").trim().toUpperCase();
-          const compIdStr = r.component_id ? String(r.component_id) : "";
-          const compQidStr = r.component_qid ? String(r.component_qid).trim().toUpperCase() : "";
-
-          if (rCode) {
-            if (compIdStr) {
-              const kId = `${compIdStr}_${rCode}`;
-              recordCountMap.set(kId, (recordCountMap.get(kId) || 0) + 1);
-            }
-            if (compQidStr) {
-              const kQid = `${compQidStr}_${rCode}`;
-              recordCountMap.set(kQid, (recordCountMap.get(kQid) || 0) + 1);
-            }
-          }
-
-          if (r.component_id && rCode) {
-            const key = `${r.component_id}_${rCode}`;
-            // Array is newest first, so first encounter sets the final state
-            if (!trueStatusMap.has(key)) {
-              const hasAnom = r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY";
-              const isIncomp = String(r.status).toUpperCase() === "INCOMPLETE";
-              trueStatusMap.set(
-                key,
-                hasAnom ? "anomaly" : (isIncomp ? "incomplete" : "completed")
-              );
-            }
-          }
-          if (compQidStr && rCode) {
-            const keyQid = `${compQidStr}_${rCode}`;
-            if (!trueStatusMap.has(keyQid)) {
-              const hasAnom = r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY";
-              const isIncomp = String(r.status).toUpperCase() === "INCOMPLETE";
-              trueStatusMap.set(
-                keyQid,
-                hasAnom ? "anomaly" : (isIncomp ? "incomplete" : "completed")
-              );
-            }
-          }
-        });
-      }
-
-      const assignedCompsMap = new Map<number, { code: string; status: string; count?: number; recordCount?: number }[]>();
-
-      if (sowItems) {
-        (sowItems as any[]).forEach((item: any) => {
-          // Match component by qid, id, or type — no method filter here
-          // (ROV/DIVING filter applies to task display, not component scope)
-          let matchingComp: any = null;
-          if (item.component_id) {
-            matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
-          } else if (item.component_qid) {
-            matchingComp = (allCompsData || []).find((c: any) => c.q_id === item.component_qid);
-          } else if (item.component_type) {
-            matchingComp = (allCompsData || []).find(
-              (c: any) => c.code === item.component_type || c.name === item.component_type
-            );
-          }
-
-          if (matchingComp) {
-            if (!assignedCompsMap.has(matchingComp.id)) {
-              assignedCompsMap.set(matchingComp.id, []);
-            }
-            const taskToLog = item.inspection_code || item.inspection_name;
-            if (taskToLog) {
-              const dynKey1 = `${matchingComp.id}_${item.inspection_code}`;
-              const dynKey2 = `${matchingComp.id}_${item.inspection_name}`;
-              const tCodeUpper = String(taskToLog).trim().toUpperCase();
-              const cQidUpper = String(matchingComp.q_id || matchingComp.name || "").trim().toUpperCase();
-              const dynKey3 = cQidUpper ? `${cQidUpper}_${tCodeUpper}` : "";
-
-              const rawSowStatus = String(item.status || "").toLowerCase();
-              const realStatus =
-                trueStatusMap.get(dynKey1) || 
-                trueStatusMap.get(dynKey2) || 
-                (dynKey3 ? trueStatusMap.get(dynKey3) : undefined) || 
-                (rawSowStatus && rawSowStatus !== "pending" ? rawSowStatus : "pending");
-
-              const recCount = Math.max(
-                recordCountMap.get(`${matchingComp.id}_${tCodeUpper}`) || 0,
-                cQidUpper ? (recordCountMap.get(`${cQidUpper}_${tCodeUpper}`) || 0) : 0,
-                item.inspection_code ? (recordCountMap.get(`${matchingComp.id}_${String(item.inspection_code).trim().toUpperCase()}`) || 0) : 0,
-                item.inspection_name ? (recordCountMap.get(`${matchingComp.id}_${String(item.inspection_name).trim().toUpperCase()}`) || 0) : 0
-              );
-
-              const isCompletedOrAnom = realStatus !== "pending" && realStatus !== "" && realStatus !== "not_started";
-              const finalCount = recCount > 0 ? recCount : (isCompletedOrAnom ? 1 : 0);
-
-              assignedCompsMap.get(matchingComp.id)?.push({ 
-                code: taskToLog, 
-                status: realStatus,
-                count: finalCount,
-                recordCount: finalCount
-              });
-            }
-          } else {
-            console.log(
-              `[CompQuery] No match for SOW item: qid=${item.component_qid} cid=${item.component_id} ctype=${item.component_type}`
-            );
-          }
-        });
-      }
-
-      const assigned: any[] = [];
-      const unassigned: any[] = [];
-
-      (allCompsData || []).forEach((comp: any) => {
-        const isAssigned = assignedCompsMap.has(comp.id);
-        const md =
-          (typeof comp.metadata === "string" ? JSON.parse(comp.metadata) : comp.metadata) || {};
-        const startNode =
-          md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || "-";
-        const endNode =
-          md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || "-";
-        const startLeg =
-          md.f_leg ||
-          md.start_leg ||
-          md.s_leg ||
-          md.leg_1 ||
-          md.StartLeg ||
-          md.Leg_1 ||
-          comp.startLeg ||
-          comp.start_leg ||
-          "-";
-        const endLeg =
-          md.s_leg ||
-          md.end_leg ||
-          md.f_leg ||
-          md.leg_2 ||
-          md.EndLeg ||
-          md.Leg_2 ||
-          comp.endLeg ||
-          comp.end_leg ||
-          "-";
-        const startElev =
-          md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || "-";
-        const endElev =
-          md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || "-";
-        const nominalThk =
-          md.nominal_thickness ||
-          md.NominalThickness ||
-          md.nominal_thk ||
-          md.wall_thk ||
-          md.additionalInfo?.wall_thk ||
-          comp.nominal_thickness ||
-          "-";
-        const wallThickness = md.wall_thk || md.additionalInfo?.wall_thk || "-";
-        const taskItems = assignedCompsMap.get(comp.id) || [];
-
-        const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ""));
-        const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ""));
-        const hasElv1 = !isNaN(elv1Num);
-        const hasElv2 = !isNaN(elv2Num);
-        let displayDepth = comp.water_depth || "-0.0m";
-        let lowestElev = "-";
-        if (hasElv1 && hasElv2) {
-          lowestElev = String(Math.min(elv1Num, elv2Num));
-          displayDepth = `${lowestElev}m`;
-        } else if (hasElv1) {
-          lowestElev = String(elv1Num);
-          displayDepth = `${elv1Num}m`;
-        } else if (hasElv2) {
-          lowestElev = String(elv2Num);
-          displayDepth = `${elv2Num}m`;
-        }
-
-        const face =
-          md.face ||
-          md.face_name ||
-          md.face_code ||
-          md.Face ||
-          md.additionalInfo?.face ||
-          md.additionalInfo?.face_pos ||
-          comp.face ||
-          "";
-
-        const compQId = comp.q_id || comp.name || `Node ${comp.id}`;
-        const obj = {
-          id: comp.id,
-          name: compQId,
-          q_id: compQId,
-          code: comp.code || comp.type || "-",
-          type: comp.type || comp.code || "-",
-          face: face && face !== "-" && face !== "N/A" ? face : "",
-          depth: displayDepth,
-          lowestElev,
-          startNode,
-          endNode,
-          startLeg,
-          endLeg,
-          startElev,
-          endElev,
-          nominalThk,
-          wallThickness,
-          raw: comp,
-          tasks: Array.from(new Set(taskItems.map((t) => t.code))),
-          taskStatuses: Array.from(new Map(taskItems.map((item) => [item.code, item])).values()),
-        };
-
-        if (isAssigned) assigned.push(obj);
-        else unassigned.push(obj);
-      });
-
-      const combined = [...assigned, ...unassigned];
-      return { assigned, unassigned, all: combined };
+      return { assigned: [], unassigned: [], all: [] };
     },
-    staleTime: 5000, // 5 seconds cache to keep data fresh
-    refetchOnWindowFocus: true, // Automatically refetch when returning to the tab / window
+    staleTime: 10000,
+    refetchOnWindowFocus: false,
   });
 
   // Realtime subscription for structure_components to reflect unarchive / modifications immediately
@@ -10244,7 +9832,7 @@ function V10PreviewLayout() {
             setRecordSearchQuery={setRecordSearchQuery}
             searchMode={searchMode}
             setSearchMode={setSearchMode}
-            displayRecords={displayRecords}
+            displayRecords={pagedDisplayRecords}
             sortedRecords={sortedRecords}
             capturedEventsPipWindow={capturedEventsPipWindow}
             handlePopoutCapturedEvents={handlePopoutCapturedEvents}
@@ -10264,7 +9852,8 @@ function V10PreviewLayout() {
             setRecordsOffset={setRecordsOffset}
             recordsLimit={recordsLimit}
             setRecordsLimit={setRecordsLimit}
-            totalRecords={totalRecords}
+            totalRecords={allWorkspaceRecords.length > 0 ? allWorkspaceRecords.length : (totalRecords || sortedRecords.length)}
+            matchingCount={displayRecords.length}
             editingRecordId={editingRecordId}
             isPipe={isPipe}
             allComps={[...(componentsSow || []), ...(componentsNonSow || [])]}

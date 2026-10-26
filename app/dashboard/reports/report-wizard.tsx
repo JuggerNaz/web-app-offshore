@@ -64,6 +64,9 @@ import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anm
 import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
 import { generateDivingITMAINReport } from "@/utils/report-generators/diving-itmain-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
+import { generateInspectionSummaryReport } from "@/utils/report-generators/inspection-summary-report";
+import { generateInspectionSummaryGraphReport } from "@/utils/report-generators/inspection-summary-graph-report";
+import { generateDefectSummaryReport } from "@/utils/report-generators/defect-summary-report";
 
 // Types
 type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
@@ -1860,37 +1863,48 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         console.log(`[fetchStructureData] Fetching data for structure ID: ${cleanId}`);
         try {
             const res = await fetch(`/api/structures/${cleanId}`);
-            const data = await res.json();
-            if (!data.success && !data.data) {
-                console.warn("[fetchStructureData] API returned success=false");
-                return null;
-            }
+            if (res.ok) {
+                const data = await res.json();
+                const structureData = data.data || data;
+                if (structureData) {
+                    console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
 
-            const structureData = data.data || data;
-            console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
-
-            // Fetch discussion/comment records for this structure
-            try {
-                const strType = structureData.str_type?.toLowerCase() || "platform";
-                console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${cleanId}`);
-                const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
-                const commentText = await commentRes.text();
-                if (commentText.trim()) {
-                    const commentJson = JSON.parse(commentText);
-                    if (commentJson.data && Array.isArray(commentJson.data)) {
-                        structureData.discussions = commentJson.data;
-                        console.log(`[fetchStructureData] Loaded ${commentJson.data.length} comments`);
+                    // Fetch discussion/comment records for this structure
+                    try {
+                        const strType = structureData.str_type?.toLowerCase() || "platform";
+                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
+                        if (commentRes.ok) {
+                            const commentText = await commentRes.text();
+                            if (commentText.trim()) {
+                                const commentJson = JSON.parse(commentText);
+                                if (commentJson.data && Array.isArray(commentJson.data)) {
+                                    structureData.discussions = commentJson.data;
+                                }
+                            }
+                        }
+                    } catch (commentErr) {
+                        console.warn("Error fetching structure comments for report:", commentErr);
                     }
-                }
-            } catch (commentErr) {
-                console.error("Error fetching structure comments for report:", commentErr);
-            }
 
-            return structureData;
+                    return structureData;
+                }
+            }
         } catch (e) {
-            console.error("Error fetching structure:", e);
-            return null;
+            console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
         }
+
+        // Cache fallback: Check if structure exists in structures from useSWR
+        const found = (structures || []).find((s: any) =>
+            String(s.id) === String(cleanId) ||
+            String(s.str_id) === String(cleanId) ||
+            String(s.code || "").toLowerCase() === cleanId.toLowerCase()
+        );
+        if (found) {
+            console.log(`[fetchStructureData] Using cached structure: ${found.str_name || found.name}`);
+            return found;
+        }
+
+        return { id: cleanId, str_name: selections.structureName || "Structure " + cleanId };
     };
 
     const fetchJobPackData = async () => {
@@ -1901,17 +1915,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         console.log(`[fetchJobPackData] Fetching data for job pack ID: ${selections.jobPackId}`);
         try {
             const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
-            const data = await res.json();
-            if (data.data) {
-                console.log(`[fetchJobPackData] Success. Jobpack name: ${data.data.name || data.data.title}`);
-                return data.data;
+            if (res.ok) {
+                const data = await res.json();
+                if (data.data) {
+                    console.log(`[fetchJobPackData] Success. Jobpack name: ${data.data.name || data.data.title}`);
+                    return data.data;
+                }
+                return data;
             }
-            console.warn("[fetchJobPackData] No data field in API response");
-            return data;
         } catch (e) {
-            console.error("Error fetching jobpack:", e);
-            return null;
+            console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
         }
+
+        const found = (jobPacks || []).find((jp: any) => String(jp.id) === String(selections.jobPackId));
+        if (found) return found;
+        return { id: selections.jobPackId, name: "Jobpack " + selections.jobPackId };
     };
 
     const fetchComponentTypes = async () => {
@@ -2437,7 +2455,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
             }
 
-            const { generateInspectionSummaryReport } = await import("@/utils/report-generators/inspection-summary-report");
+            // Inspection Summary Report
             return await generateInspectionSummaryReport(
                 summaryData || jobPack || {},
                 {
@@ -2504,7 +2522,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
             }
 
-            const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
+            // Inspection Summary by Graph
             return await generateInspectionSummaryGraphReport(
                 summaryData || jobPack || {},
                 {

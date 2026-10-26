@@ -722,40 +722,9 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anodeTargetRecords = (isReportSpecific && records.length > 0 ? records : rawRecords).filter(isAnodeRecord);
         const anodeGviRecords = anodeTargetRecords.length > 0 ? anodeTargetRecords : rawRecords.filter(isAnodeRecord);
 
-        const anodeGviTotal = anodeGviRecords.length;
-        const anodeGviRov = anodeGviRecords.filter(isRovRecord).length;
-        const anodeGviDive = anodeGviRecords.filter(isDiveRecord).length;
-
-        // Collect distinct anode types from inspection records & structure components
-        const anodeTypesSet = new Set<string>();
-        anodeGviRecords.forEach((r: any) => {
-            const d = r.inspection_data || {};
-            const at = d.anode_type || d.anodeType || d.type;
-            if (at && String(at).trim() !== "" && String(at).toUpperCase() !== "N/A" && String(at).toUpperCase() !== "NULL") {
-                anodeTypesSet.add(String(at).trim());
-            }
-        });
-
-        if (anodeTypesSet.size === 0 && Array.isArray(compList)) {
-            compList.forEach((c: any) => {
-                const isAnComp = (c.code || "").toUpperCase() === "AN" || (c.q_id || "").toUpperCase().startsWith("BAN") || (c.q_id || "").toUpperCase().startsWith("AN");
-                if (isAnComp) {
-                    const m = c.metadata || {};
-                    const t = m.anode_type || m.type || m.thetype;
-                    if (t && String(t).trim() !== "" && String(t).toUpperCase() !== "N/A" && String(t).toUpperCase() !== "NULL") {
-                        anodeTypesSet.add(String(t).trim());
-                    }
-                }
-            });
-        }
-
-        const anodeTypesList = Array.from(anodeTypesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        const cleanAnodeTypesList = anodeTypesList.map(t => t.replace(/^ANODE\s+/i, ""));
-        const anodeTypeSummaryStr = cleanAnodeTypesList.join(", ");
-
         // Depletion bucketing helper
         const parseDepletionBucket = (raw: any): "0-25%" | "26-50%" | "50-75%" | "76-100%" | null => {
-            if (raw === undefined || raw === null || raw === "" || raw === "NONE") return null;
+            if (raw === undefined || raw === null || raw === "" || raw === "NONE" || raw === "N/A" || raw === "NULL") return null;
             if (typeof raw === "number") {
                 if (raw <= 25) return "0-25%";
                 if (raw <= 50) return "26-50%";
@@ -763,6 +732,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 return "76-100%";
             }
             const s = String(raw).toLowerCase().replace(/\s+/g, "");
+            if (s === "notevaluated" || s === "notrecorded" || s === "incomplete" || s === "cannotreach" || s === "unreachable") return null;
             const matches = s.match(/\d+(\.\d+)?/g);
             if (matches && matches.length >= 2) {
                 const low = parseFloat(matches[0]);
@@ -786,6 +756,183 @@ export const GET = withTenant(async (request, { companyId }) => {
             return null;
         };
 
+        // Helper to uniquely identify each physical anode
+        const getAnodeKey = (r: any): string => {
+            const qid = (r.structure_components?.q_id || r.inspection_data?.q_id || "").toString().trim().toUpperCase();
+            if (qid && qid !== "N/A" && qid !== "NONE" && qid !== "NULL" && qid !== "-") {
+                return `qid_${qid}`;
+            }
+            if (r.component_id !== undefined && r.component_id !== null && r.component_id !== "" && String(r.component_id) !== "0") {
+                return `comp_${String(r.component_id).trim()}`;
+            }
+            const compName = (r.structure_components?.name || r.inspection_data?.component_name || "").toString().trim().toUpperCase();
+            if (compName && compName !== "N/A" && compName !== "NONE" && compName !== "NULL" && compName !== "-") {
+                return `name_${compName}`;
+            }
+            return `insp_${r.insp_id || Math.random()}`;
+        };
+
+        // Timestamp helper for determining newest inspection
+        const getRecordTime = (r: any): number => {
+            let t = 0;
+            if (r.inspection_date) {
+                const dStr = r.inspection_time ? `${r.inspection_date}T${r.inspection_time}` : r.inspection_date;
+                const parsed = Date.parse(dStr);
+                if (!isNaN(parsed)) t = parsed;
+            }
+            if (!t && r.created_at) {
+                const parsed = Date.parse(r.created_at);
+                if (!isNaN(parsed)) t = parsed;
+            }
+            return t;
+        };
+
+        // Helper to check if a record indicates an incomplete inspection or inability to reach the component
+        const isRecordIncompleteOrCannotReach = (r: any): boolean => {
+            const status = String(r.status || "").toUpperCase();
+            if (status.includes("INCOMPL") || status === "CANNOT REACH" || status === "UNREACHABLE") {
+                return true;
+            }
+            const d = r.inspection_data || {};
+            const cond = String(d.anode_condition || d.anodeCondition || "").toUpperCase();
+            if (cond.includes("INCOMPL") || cond.includes("CANNOT REACH") || cond.includes("CAN'T REACH") || cond.includes("UNREACHABLE") || cond.includes("NOT EVAL")) {
+                return true;
+            }
+            const remarks = String(d.remarks || d.finding || d.findings || r.description || "").toUpperCase();
+            if (remarks.includes("CANNOT REACH") || remarks.includes("CAN'T REACH") || remarks.includes("UNABLE TO REACH") || remarks.includes("COULD NOT REACH") || remarks.includes("NOT EVALUATED")) {
+                return true;
+            }
+            return false;
+        };
+
+        // Extract raw depletion from a record
+        const extractRawDepletion = (r: any) => {
+            const d = r.inspection_data || {};
+            return d.anode_depletion ?? d.anode_depletion_percent ?? d.depletion ?? r.anode_depletion ?? r.anode_depletion_percent;
+        };
+
+        // Group anode records by unique anode key to avoid duplicate counts
+        const anodeGroups = new Map<string, any[]>();
+        anodeGviRecords.forEach((r: any) => {
+            const key = getAnodeKey(r);
+            if (!anodeGroups.has(key)) {
+                anodeGroups.set(key, []);
+            }
+            anodeGroups.get(key)!.push(r);
+        });
+
+        // Deduplicate anodes: if same anode was inspected more than once, take the latest depletion value
+        interface UniqueAnodeItem {
+            key: string;
+            primaryRecord: any;
+            latestRecord: any;
+            finalBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | "Not Evaluated";
+            anodeType: string;
+            condition: string;
+        }
+
+        const uniqueAnodes: UniqueAnodeItem[] = [];
+
+        anodeGroups.forEach((recs, key) => {
+            // Sort chronologically (oldest to newest)
+            recs.sort((a, b) => {
+                const diff = getRecordTime(a) - getRecordTime(b);
+                if (diff !== 0) return diff;
+                const idA = Number(a.insp_id || a.id || 0);
+                const idB = Number(b.insp_id || b.id || 0);
+                return idA - idB;
+            });
+
+            const latestRec = recs[recs.length - 1];
+            const latestIsIncomplete = isRecordIncompleteOrCannotReach(latestRec);
+
+            // Find the latest valid depletion value (searching newest to oldest)
+            let foundBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | null = null;
+            let primaryRecord = latestRec;
+
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const r = recs[i];
+                const raw = extractRawDepletion(r);
+                const b = parseDepletionBucket(raw);
+                if (b) {
+                    foundBucket = b;
+                    primaryRecord = r;
+                    break;
+                }
+            }
+
+            let finalBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | "Not Evaluated" = "Not Evaluated";
+            if (latestIsIncomplete && !extractRawDepletion(latestRec)) {
+                finalBucket = "Not Evaluated";
+                primaryRecord = latestRec;
+            } else if (foundBucket) {
+                finalBucket = foundBucket;
+            } else {
+                finalBucket = "Not Evaluated";
+            }
+
+            // Extract anode type from newest record that has it
+            let anodeType = "";
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const d = recs[i].inspection_data || {};
+                const at = d.anode_type || d.anodeType || d.type;
+                if (at && String(at).trim() !== "" && String(at).toUpperCase() !== "N/A" && String(at).toUpperCase() !== "NULL") {
+                    anodeType = String(at).trim();
+                    break;
+                }
+            }
+
+            // Extract condition
+            let condition = "";
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const d = recs[i].inspection_data || {};
+                const c = d.anode_condition || d.anodeCondition || "";
+                if (c && String(c).trim() !== "") {
+                    condition = String(c).trim();
+                    break;
+                }
+            }
+            if (!condition && finalBucket === "Not Evaluated") {
+                condition = "Not Evaluated";
+            }
+
+            uniqueAnodes.push({
+                key,
+                primaryRecord,
+                latestRecord: latestRec,
+                finalBucket,
+                anodeType,
+                condition,
+            });
+        });
+
+        const anodeGviTotal = uniqueAnodes.length;
+        const anodeGviRov = uniqueAnodes.filter(u => isRovRecord(u.primaryRecord) || isRovRecord(u.latestRecord)).length;
+        const anodeGviDive = uniqueAnodes.filter(u => isDiveRecord(u.primaryRecord) || isDiveRecord(u.latestRecord)).length;
+
+        // Collect distinct anode types from unique anodes & structure components
+        const anodeTypesSet = new Set<string>();
+        uniqueAnodes.forEach(u => {
+            if (u.anodeType) anodeTypesSet.add(u.anodeType);
+        });
+
+        if (anodeTypesSet.size === 0 && Array.isArray(compList)) {
+            compList.forEach((c: any) => {
+                const isAnComp = (c.code || "").toUpperCase() === "AN" || (c.q_id || "").toUpperCase().startsWith("BAN") || (c.q_id || "").toUpperCase().startsWith("AN");
+                if (isAnComp) {
+                    const m = c.metadata || {};
+                    const t = m.anode_type || m.type || m.thetype;
+                    if (t && String(t).trim() !== "" && String(t).toUpperCase() !== "N/A" && String(t).toUpperCase() !== "NULL") {
+                        anodeTypesSet.add(String(t).trim());
+                    }
+                }
+            });
+        }
+
+        const anodeTypesList = Array.from(anodeTypesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const cleanAnodeTypesList = anodeTypesList.map(t => t.replace(/^ANODE\s+/i, ""));
+        const anodeTypeSummaryStr = cleanAnodeTypesList.join(", ");
+
         const anodeDepletionBuckets: Record<string, number> = {
             "0-25%": 0,
             "26-50%": 0,
@@ -795,38 +942,31 @@ export const GET = withTenant(async (request, { companyId }) => {
             "25–50%": 0,
             "50–75%": 0,
             "75–100%": 0,
+            "Not Evaluated": 0,
             "Not Recorded": 0,
         };
         const anodeConditionCounts: Record<string, number> = {};
 
-        anodeGviRecords.forEach((r: any) => {
-            const d = r.inspection_data || {};
-            const rawDepletion = d.anode_depletion || d.anode_depletion_percent;
-            const bucket = parseDepletionBucket(rawDepletion);
-
-            if (!bucket) {
-                anodeDepletionBuckets["Not Recorded"]++;
+        uniqueAnodes.forEach(u => {
+            if (u.finalBucket === "0-25%") {
+                anodeDepletionBuckets["0-25%"]++;
+                anodeDepletionBuckets["0–25%"]++;
+            } else if (u.finalBucket === "26-50%") {
+                anodeDepletionBuckets["26-50%"]++;
+                anodeDepletionBuckets["25–50%"]++;
+            } else if (u.finalBucket === "50-75%") {
+                anodeDepletionBuckets["50-75%"]++;
+                anodeDepletionBuckets["50–75%"]++;
+            } else if (u.finalBucket === "76-100%") {
+                anodeDepletionBuckets["76-100%"]++;
+                anodeDepletionBuckets["75–100%"]++;
             } else {
-                if (bucket === "0-25%") {
-                    anodeDepletionBuckets["0-25%"]++;
-                    anodeDepletionBuckets["0–25%"]++;
-                } else if (bucket === "26-50%") {
-                    anodeDepletionBuckets["26-50%"]++;
-                    anodeDepletionBuckets["25–50%"]++;
-                } else if (bucket === "50-75%") {
-                    anodeDepletionBuckets["50-75%"]++;
-                    anodeDepletionBuckets["50–75%"]++;
-                } else if (bucket === "76-100%") {
-                    anodeDepletionBuckets["76-100%"]++;
-                    anodeDepletionBuckets["75–100%"]++;
-                }
+                anodeDepletionBuckets["Not Evaluated"]++;
+                anodeDepletionBuckets["Not Recorded"]++;
             }
 
-            // --- Condition ---
-            const condition = d.anode_condition || d.anodeCondition || "";
-            if (condition) {
-                const key = String(condition).trim();
-                anodeConditionCounts[key] = (anodeConditionCounts[key] || 0) + 1;
+            if (u.condition) {
+                anodeConditionCounts[u.condition] = (anodeConditionCounts[u.condition] || 0) + 1;
             }
         });
 

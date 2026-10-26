@@ -65,6 +65,7 @@ interface EventsTablePanelProps {
   recordsLimit: number;
   setRecordsLimit: (val: number) => void;
   totalRecords: number;
+  matchingCount?: number;
   isPipe?: boolean;
   allComps?: any[];
   jobTapes?: any[];
@@ -117,6 +118,7 @@ export function EventsTablePanel({
   recordsLimit,
   setRecordsLimit,
   totalRecords,
+  matchingCount,
   editingRecordId,
   isPipe = false,
   allComps = [],
@@ -395,7 +397,7 @@ export function EventsTablePanel({
         </span>
         <Badge className="bg-blue-600 text-white border-none text-[9px] h-4 leading-none font-bold uppercase tracking-wider flex items-center gap-1.5 shadow-sm">
           {syncLoading && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
-          {recordSearchQuery ? `${displayRecords.length} / ${totalRecords || sortedRecords.length}` : (totalRecords || sortedRecords.length)} Total
+          {recordSearchQuery ? `${matchingCount !== undefined ? matchingCount : displayRecords.length} / ${totalRecords || sortedRecords.length}` : (totalRecords || sortedRecords.length)} Total
         </Badge>
       </div>
 
@@ -509,14 +511,14 @@ export function EventsTablePanel({
             Prev
           </Button>
           <span className="text-[9px] font-mono text-slate-400 px-0.5">
-            {totalRecords > 0 ? `${recordsOffset + 1}-${Math.min(recordsOffset + recordsLimit, totalRecords)}` : '0-0'}
+            {(matchingCount !== undefined ? matchingCount : totalRecords) > 0 ? `${recordsOffset + 1}-${Math.min(recordsOffset + recordsLimit, (matchingCount !== undefined ? matchingCount : totalRecords))}` : '0-0'}
           </span>
           <Button 
             variant="ghost" 
             size="sm" 
             className="h-6 px-1.5 text-[9px] font-bold text-slate-400 hover:text-white hover:bg-slate-700 disabled:opacity-30"
             onClick={() => setRecordsOffset(recordsOffset + recordsLimit)}
-            disabled={recordsOffset + recordsLimit >= totalRecords || syncLoading}
+            disabled={recordsOffset + recordsLimit >= (matchingCount !== undefined ? matchingCount : totalRecords) || syncLoading}
             title="Next page"
           >
             Next
@@ -744,7 +746,20 @@ export function EventsTablePanel({
 
                   switch (col.id) {
 
-                    case "status":
+                    case "status": {
+                      const isAnom = r.record_classification === "ANOMALY" || r.has_anomaly;
+                      const isFinding = r.record_classification === "FINDING" || (!isAnom && (r.primary_record_category === "FINDING" || (r.insp_anomalies?.[0]?.anomaly_ref_no?.startsWith("F-"))));
+                      const isIncomplete = r.status === "INCOMPLETE" || r.record_classification === "INCOMPLETE";
+                      const isCompleted = r.status === "COMPLETED" || r.record_classification === "COMPLETED";
+                      const reasonText = r.incomplete_reason || r.inspection_data?.incomplete_reason || r.inspection_data?.reason;
+                      const statusTitle = isAnom 
+                        ? `Anomaly: ${r.primary_anomaly_ref_no || r.insp_anomalies?.[0]?.anomaly_ref_no || 'Identified'} (${r.primary_anomaly_status || r.insp_anomalies?.[0]?.status || 'Open'})`
+                        : isFinding
+                        ? `Finding: ${r.primary_anomaly_ref_no || r.insp_anomalies?.[0]?.anomaly_ref_no || 'Recorded'} (${r.primary_anomaly_status || r.insp_anomalies?.[0]?.status || 'Active'})`
+                        : isCompleted
+                        ? "Completed Inspection"
+                        : `Incomplete / Draft${reasonText ? `: ${reasonText}` : ''}`;
+
                       return (
                         <td key={col.id} style={cellStyle} className="px-2 py-2.5 align-top text-center overflow-hidden">
                           <div className="flex flex-col items-center gap-1.5 mt-0.5">
@@ -754,12 +769,14 @@ export function EventsTablePanel({
                               onClick={(e) => e.stopPropagation()}
                               className="h-3.5 w-3.5 data-[state=checked]:bg-blue-600 border-slate-400 dark:border-slate-600"
                             />
-                            {r.has_anomaly ? (
-                              <div title="Anomaly/Finding Found" className="flex items-center justify-center h-5 w-5 rounded-full bg-red-100 dark:bg-red-950/40"><AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" /></div>
-                            ) : r.status === "COMPLETED" ? (
-                              <div title="Completed Inspection" className="flex items-center justify-center h-5 w-5 rounded-full bg-green-100 dark:bg-green-950/40"><CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" /></div>
+                            {isAnom ? (
+                              <div title={statusTitle} className="flex items-center justify-center h-5 w-5 rounded-full bg-red-100 dark:bg-red-950/40"><AlertCircle className="w-3 h-3 text-red-600 dark:text-red-400" /></div>
+                            ) : isFinding ? (
+                              <div title={statusTitle} className="flex items-center justify-center h-5 w-5 rounded-full bg-purple-100 dark:bg-purple-950/40"><AlertCircle className="w-3 h-3 text-purple-600 dark:text-purple-400" /></div>
+                            ) : isCompleted ? (
+                              <div title={statusTitle} className="flex items-center justify-center h-5 w-5 rounded-full bg-green-100 dark:bg-green-950/40"><CheckCircle2 className="w-3 h-3 text-green-600 dark:text-green-400" /></div>
                             ) : (
-                              <div title="Incomplete / Draft" className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-950/40"><FileClock className="w-3 h-3 text-amber-600 dark:text-amber-400" /></div>
+                              <div title={statusTitle} className="flex items-center justify-center h-5 w-5 rounded-full bg-amber-100 dark:bg-amber-950/40"><FileClock className="w-3 h-3 text-amber-600 dark:text-amber-400" /></div>
                             )}
                             {Boolean(
                               (Number(r.attachment_count) || 0) > 0 ||
@@ -830,6 +847,7 @@ export function EventsTablePanel({
                           </div>
                         </td>
                       );
+                    }
                     case "inspection_date":
                       return (
                         <td key={col.id} style={cellStyle} className="px-3 py-3 text-slate-600 dark:text-slate-300 align-top overflow-hidden">
@@ -926,19 +944,58 @@ export function EventsTablePanel({
                         </td>
                       );
                     }
-                    case "anomaly_ref":
+                    case "anomaly_ref": {
+                      const anomObj = r.insp_anomalies?.[0] || (r.primary_anomaly_ref_no ? {
+                        anomaly_ref_no: r.primary_anomaly_ref_no,
+                        priority_code: r.primary_priority_code,
+                        status: r.primary_anomaly_status,
+                        record_category: r.primary_record_category,
+                        is_rectified: r.primary_is_rectified,
+                      } : null);
+                      const anomRef = anomObj?.anomaly_ref_no;
+                      const isFindingRef = anomObj?.record_category === "FINDING" || anomRef?.startsWith("F-");
+
                       return (
                         <td key={col.id} style={cellStyle} className="px-3 py-3 align-top text-slate-700 dark:text-slate-300 overflow-hidden">
-                          {r.insp_anomalies?.[0]?.anomaly_ref_no ? (
+                          {anomRef ? (
                             <div className="flex flex-col gap-1 overflow-hidden">
-                              <span className="text-xs font-bold text-red-600 bg-red-50 dark:bg-red-950/20 px-1.5 py-0.5 rounded border border-red-200 dark:border-red-900/50 w-fit truncate" title={r.insp_anomalies[0].anomaly_ref_no}>{r.insp_anomalies[0].anomaly_ref_no}</span>
-                              {r.insp_anomalies[0].priority_code && (
-                                <span className={`text-[10px] font-black text-white px-1.5 py-0.5 rounded shadow-sm w-fit uppercase tracking-wider truncate ${r.insp_anomalies[0].priority_code.includes("1") ? "bg-red-600" : r.insp_anomalies[0].priority_code.includes("2") ? "bg-orange-500" : r.insp_anomalies[0].priority_code.includes("3") ? "bg-yellow-500 text-black" : r.insp_anomalies[0].priority_code.includes("4") ? "bg-blue-500" : r.insp_anomalies[0].priority_code.includes("5") ? "bg-slate-500" : "bg-slate-900"}`}>{r.insp_anomalies[0].priority_code}</span>
-                              )}
+                              <span 
+                                className={`text-xs font-bold px-1.5 py-0.5 rounded border w-fit truncate ${
+                                  isFindingRef 
+                                    ? "text-purple-600 bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/50" 
+                                    : "text-red-600 bg-red-50 dark:bg-red-950/20 border-red-200 dark:border-red-900/50"
+                                }`} 
+                                title={`${isFindingRef ? "Finding" : "Anomaly"}: ${anomRef}${anomObj.status ? ` (${anomObj.status})` : ""}`}
+                              >
+                                {anomRef}
+                              </span>
+                              <div className="flex items-center gap-1 flex-wrap">
+                                {anomObj.priority_code && (
+                                  <span className={`text-[9px] font-black text-white px-1.5 py-0.2 rounded shadow-sm w-fit uppercase tracking-wider truncate ${
+                                    anomObj.priority_code.includes("1") ? "bg-red-600" :
+                                    anomObj.priority_code.includes("2") ? "bg-orange-500" :
+                                    anomObj.priority_code.includes("3") ? "bg-yellow-500 text-black" :
+                                    anomObj.priority_code.includes("4") ? "bg-blue-500" :
+                                    anomObj.priority_code.includes("5") ? "bg-slate-500" : "bg-slate-900"
+                                  }`}>
+                                    {anomObj.priority_code}
+                                  </span>
+                                )}
+                                {anomObj.status && (
+                                  <span className={`text-[8px] font-bold px-1 py-0.2 rounded border uppercase tracking-tight truncate ${
+                                    anomObj.is_rectified || anomObj.status === "RECTIFIED" || anomObj.status === "CLOSED"
+                                      ? "text-green-700 bg-green-50 border-green-200 dark:text-green-400 dark:bg-green-950/30 dark:border-green-800"
+                                      : "text-slate-600 bg-slate-100 border-slate-200 dark:text-slate-300 dark:bg-slate-800 dark:border-slate-700"
+                                  }`}>
+                                    {anomObj.status}
+                                  </span>
+                                )}
+                              </div>
                             </div>
                           ) : <span className="text-slate-300 dark:text-slate-600">-</span>}
                         </td>
                       );
+                    }
                     case "cp_reading":
                       return <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs truncate block">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>; })()}</td>;
                     case "dive_no": {

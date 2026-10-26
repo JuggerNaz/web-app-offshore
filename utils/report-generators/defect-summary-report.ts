@@ -519,13 +519,13 @@ export const generateDefectSummaryReport = async (
     }
 
     // ── Build table rows ──────────────────────────────────────────────────────
-    // Columns: # | Anomaly Ref | Tape No (Counter) | Defect Code | Defect Type | Priority | Inspection Findings
+    // Columns: No. | Anomaly Ref | Tape No (Counter) | Defect Code | Defect Type | Priority | Inspection Findings
     const refTitle = config.isFindingsReport ? "Findings Ref No." : "Anomaly Ref No.";
     const codeTitle = config.isFindingsReport ? "Findings Code" : "Defect Code";
 
     const tableHead = [
         [
-            "#",
+            "No.",
             refTitle,
             config.isFindingsReport ? "Tape / Counter" : "Recording\n(Counter)",
             codeTitle,
@@ -696,15 +696,15 @@ export const generateDefectSummaryReport = async (
     });
 
     // ── Column widths (landscape 297mm — 2×10mm margins = 277mm usable) ──────
-    // # | Ref | Tape | DefCode | DefType | Priority | Findings
+    // No. | Ref | Tape | DefCode | DefType | Priority | Findings
     const cw = {
-        no: 8,
+        no: 10,
         ref: 26,
         tape: 26,
         defCode: 20,
         defType: 42,
         priority: 28,
-        findings: contentWidth - 8 - 26 - 26 - 20 - 42 - 28, // 277 - 150 = 127mm
+        findings: contentWidth - 10 - 26 - 26 - 20 - 42 - 28, // 277 - 152 = 125mm
     };
 
     // First page: draw header and sub-header, then dashboard, then table
@@ -739,7 +739,7 @@ export const generateDefectSummaryReport = async (
             overflow: "linebreak",
         },
         columnStyles: {
-            0: { cellWidth: cw.no, halign: "center" },
+            0: { cellWidth: cw.no, halign: "center", cellPadding: 1 },
             1: { cellWidth: cw.ref },
             2: { cellWidth: cw.tape },
             3: { cellWidth: cw.defCode, halign: "center" },

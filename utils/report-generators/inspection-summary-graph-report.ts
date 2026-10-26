@@ -1716,44 +1716,49 @@ export const generateInspectionSummaryGraphReport = async (
                 if (typeStr.length < `Type: ${anodeTypeDisplay}`.length) typeStr = typeStr.trim() + "...";
                 doc.text(typeStr, bx + 3, graphY + 3.8);
 
-                const totalAnodes = anodeGvi?.total || 49;
+                const depletions = anodeGvi?.depletionBuckets || {};
+                const d0 = Number(depletions["0-25%"] ?? depletions["0–25%"] ?? 0);
+                const d25 = Number(depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 0);
+                const d50 = Number(depletions["50-75%"] ?? depletions["50–75%"] ?? 0);
+                const d75 = Number(depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 0);
+                const dNotEval = Number(depletions["Not Evaluated"] ?? depletions["not evaluated"] ?? depletions["Not Recorded"] ?? depletions["not recorded"] ?? 0);
+
+                const totAnodeCount = (d0 + d25 + d50 + d75 + dNotEval);
+                const totalAnodes = typeof anodeGvi?.total === "number" && anodeGvi.total > 0 ? anodeGvi.total : (totAnodeCount || 1);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
                 doc.text(`Total: ${totalAnodes}`, bx + bw - 3, graphY + 3.8, { align: "right" });
 
-                // 4 Depletion Bars
-                const depletions = anodeGvi?.depletionBuckets || {};
-                const d0 = Number(depletions["0-25%"] ?? depletions["0–25%"] ?? 0);
-                const d25 = Number(depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 28);
-                const d50 = Number(depletions["50-75%"] ?? depletions["50–75%"] ?? 15);
-                const d75 = Number(depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 6);
-
-                const totAnodeCount = (d0 + d25 + d50 + d75) || totalAnodes || 1;
-                const maxAnodeDep = Math.max(1, d0, d25, d50, d75);
+                // 5 Depletion Bars (including Not Evaluated)
+                const maxAnodeDep = Math.max(1, d0, d25, d50, d75, dNotEval);
                 const aRanges = [
                     { label: "0-25%", count: d0, color: colors.emerald },
                     { label: "26-50%", count: d25, color: colors.blue },
                     { label: "50-75%", count: d50, color: colors.amber },
                     { label: "76-100%", count: d75, color: colors.red },
+                    { label: "Not Evaluated", count: dNotEval, color: colors.textMuted },
                 ];
 
-                const aBarStartY = graphY + 6.0;
-                const aRowH = (graphH - 12) / 4;
+                const pillH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
+                const aBarStartY = graphY + 5.5;
+                const availableBarH = graphH - pillH - 7.5;
+                const aRowH = Math.max(3.6, availableBarH / aRanges.length);
 
                 aRanges.forEach((ar, aIdx) => {
                     const ay = aBarStartY + (aIdx * aRowH);
                     const rowMidY = ay + (aRowH / 2);
-                    const barH = Math.min(3.8, Math.max(2.8, aRowH * 0.38));
+                    const barH = Math.min(3.2, Math.max(2.0, aRowH * 0.40));
                     const barY = rowMidY - (barH / 2);
-                    const textY = rowMidY + 1.0;
+                    const textY = rowMidY + 0.8;
 
-                    doc.setFontSize(4.8);
+                    const isLongLabel = ar.label.length > 8;
+                    doc.setFontSize(isLongLabel ? 3.8 : 4.6);
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textDark);
                     doc.text(ar.label, bx + 3, textY);
 
-                    const barX = bx + 16;
-                    const barW = bw - 26;
+                    const barX = bx + 19;
+                    const barW = bw - 29;
                     const pct = (ar.count / maxAnodeDep) * 100;
 
                     doc.setFillColor(...colors.barTrack);
@@ -1764,7 +1769,7 @@ export const generateInspectionSummaryGraphReport = async (
                         doc.roundedRect(barX, dySafe(barY), fillW, barH, 0.8, 0.8, "F");
                     }
 
-                    doc.setFontSize(4.8);
+                    doc.setFontSize(4.6);
                     doc.setFont("helvetica", "bold");
                     doc.setTextColor(...colors.textDark);
                     doc.text(String(ar.count), bx + bw - 3, textY, { align: "right" });
@@ -1775,7 +1780,6 @@ export const generateInspectionSummaryGraphReport = async (
                 const healthPct = Math.round(((d0 + d25) / totAnodesForHealth) * 100);
 
                 doc.setFillColor(248, 250, 252);
-                const pillH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
                 doc.roundedRect(bx + 3, graphY + graphH - pillH - 1.2, bw - 6, pillH, 1, 1, "F");
 
                 const aHealthStr = `Anode Health: ${healthPct}% (<50% dep.)`;
