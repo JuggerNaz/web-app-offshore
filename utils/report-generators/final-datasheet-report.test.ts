@@ -11,15 +11,18 @@ import {
 } from "./final-datasheet-report";
 
 describe("final-datasheet-report", () => {
-    it("generates a valid Main Cover Page Blob with metadata", async () => {
+    it("generates a valid Main Cover Page Blob with metadata including revision and issued date", async () => {
         const coverBlob = await generateMainCoverPage({
             structureName: "BODP-A",
             fieldName: "BOKOR",
             jobPackName: "UIMC2026/SKA/PLAT01",
             sowReportNo: "AM26-016-01",
             contractorName: "NasQuest Resources Sdn Bhd",
-            inspectionModes: "ROV & Diving Inspection",
-            dateStr: "2026-10-22"
+            revision: "0",
+            issuedDate: "2026-10-27",
+            preparedBy: { name: "Ahmad Inspector", position: "ROV Senior Inspector", date: "2026-10-27" },
+            reviewedBy: { name: "Tan QA", position: "QA Engineer", date: "2026-10-27" },
+            approvedBy: { name: "Ali Manager", position: "Subsea Project Manager", date: "2026-10-27" },
         });
 
         expect(coverBlob).toBeInstanceOf(Blob);

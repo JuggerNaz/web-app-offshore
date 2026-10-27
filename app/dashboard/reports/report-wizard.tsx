@@ -2186,6 +2186,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         contractorLogoUrl: contractorLogoUrl || "",
                         inspectionModes: "ROV & Diving Consolidated",
                         dateStr: new Date().toISOString().split("T")[0],
+                        revision: (reportConfig as any)?.revision || "0",
+                        issuedDate: (reportConfig as any)?.issuedDate || (reportConfig as any)?.date || new Date().toISOString().split("T")[0],
                         isPipeline,
                         structureType: isPipeline ? ("pipeline" as const) : ("platform" as const),
                         preparedBy: reportConfig?.preparedBy?.name ? reportConfig.preparedBy : undefined,
@@ -7478,6 +7480,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
             let incompleteRecords: any[] = [];
+            let allRecords: any[] = [];
             if (!selections.printBlankReport) {
                 try {
                     const supabase = (await import("@/utils/supabase/client")).createClient();
@@ -7503,7 +7506,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         query = query.eq('sow_report_no', selections.sowReportNo);
                     }
 
-                    const allRecords: any[] = [];
                     let page = 0;
                     const PAGE_SIZE = 1000;
                     while (true) {
@@ -7549,14 +7551,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 sowReportNo: selections.sowReportNo || "N/A",
                 platformName: structure?.str_name || structure?.title || "N/A",
                 contractorLogoUrl,
-                vessel: resolveVessel(jobPack)
+                vessel: resolveVessel(jobPack),
+                allRecords,
+                structureId: structId,
+                jobPackId: jobPackIdNum,
+                jobPack,
+                structure
             };
 
             return await generateInspectionIncompleteFlaggedReport(
                 incompleteRecords,
                 headerData,
                 companySettings,
-                { ...reportConfig, returnBlob } as any
+                { ...reportConfig, returnBlob, allRecords, structureId: structId, jobPackId: jobPackIdNum } as any
             );
         }
 

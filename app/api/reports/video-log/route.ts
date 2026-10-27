@@ -170,23 +170,31 @@ export async function GET(request: NextRequest) {
         (diveJobs || []).forEach((j: any) => { diveNoMap[j.dive_job_id] = j.dive_no; });
         (rovJobs || []).forEach((j: any) => { diveNoMap[j.rov_job_id] = j.deployment_no; });
 
-        // 2. Fetch all tapes for these dive or rov jobs
-        let tapesQuery = (supabase as any)
-            .from("insp_video_tapes")
-            .select("tape_id, tape_no, dive_job_id, rov_job_id, status, chapter_no, remarks")
-            .order("tape_no", { ascending: true });
+        // 2. Fetch all tapes for these dive or rov jobs with pagination
+        let tapes: any[] = [];
+        let tapePage = 0;
+        const tapePageSize = 1000;
+        while (true) {
+            let tQuery = (supabase as any)
+                .from("insp_video_tapes")
+                .select("tape_id, tape_no, dive_job_id, rov_job_id, status, chapter_no, remarks")
+                .order("tape_id", { ascending: true });
 
-        if (diveJobIds.length > 0 && rovJobIds.length > 0) {
-            tapesQuery = tapesQuery.or(`dive_job_id.in.(${diveJobIds.join(",")}),rov_job_id.in.(${rovJobIds.join(",")})`);
-        } else if (diveJobIds.length > 0) {
-            tapesQuery = tapesQuery.in("dive_job_id", diveJobIds);
-        } else {
-            tapesQuery = tapesQuery.in("rov_job_id", rovJobIds);
+            if (diveJobIds.length > 0 && rovJobIds.length > 0) {
+                tQuery = tQuery.or(`dive_job_id.in.(${diveJobIds.join(",")}),rov_job_id.in.(${rovJobIds.join(",")})`);
+            } else if (diveJobIds.length > 0) {
+                tQuery = tQuery.in("dive_job_id", diveJobIds);
+            } else {
+                tQuery = tQuery.in("rov_job_id", rovJobIds);
+            }
+
+            const { data: tChunk, error: tapesError } = await tQuery.range(tapePage * tapePageSize, (tapePage + 1) * tapePageSize - 1);
+            if (tapesError) throw tapesError;
+            if (!tChunk || tChunk.length === 0) break;
+            tapes.push(...tChunk);
+            if (tChunk.length < tapePageSize) break;
+            tapePage++;
         }
-
-        const { data: tapes, error: tapesError } = await tapesQuery;
-
-        if (tapesError) throw tapesError;
 
         if (!tapes || tapes.length === 0) {
             return NextResponse.json({ data: [] });
@@ -212,27 +220,47 @@ export async function GET(request: NextRequest) {
             }
         });
 
-        // 3. Fetch all video logs for these tapes, ordered by event_time ascending (chronological)
-        const { data: logs, error: logsError } = await (supabase as any)
-            .from("insp_video_logs")
-            .select("video_log_id, tape_id, event_type, event_time, timecode_start, tape_counter_start, remarks, inspection_id")
-            .in("tape_id", tapeIds)
-            .order("event_time", { ascending: true });
+        // 3. Fetch all video logs for these tapes with deterministic ordering and pagination
+        const logs: any[] = [];
+        const tapeChunkSize = 80;
+        for (let ti = 0; ti < tapeIds.length; ti += tapeChunkSize) {
+            const subTapeIds = tapeIds.slice(ti, ti + tapeChunkSize);
+            let logPage = 0;
+            const logPageSize = 1000;
+            while (true) {
+                const { data: logChunk, error: logsError } = await (supabase as any)
+                    .from("insp_video_logs")
+                    .select("video_log_id, tape_id, event_type, event_time, timecode_start, tape_counter_start, remarks, inspection_id")
+                    .in("tape_id", subTapeIds)
+                    .order("video_log_id", { ascending: true })
+                    .range(logPage * logPageSize, (logPage + 1) * logPageSize - 1);
 
-        if (logsError) throw logsError;
+                if (logsError) {
+                    console.warn("[VideoLog] Error fetching insp_video_logs chunk:", logsError);
+                    break;
+                }
+                if (!logChunk || logChunk.length === 0) break;
+                logs.push(...logChunk);
+                if (logChunk.length < logPageSize) break;
+                logPage++;
+            }
+        }
 
-        // Fetch linked inspection records safely if any
+        // Fetch linked inspection records safely with batching
         const inspIds = Array.from(new Set((logs || []).map((l: any) => l.inspection_id).filter(Boolean)));
         const inspRecordMap: Record<number, any> = {};
         if (inspIds.length > 0) {
             try {
-                const { data: linkedRecs } = await (supabase as any)
-                    .from("insp_records")
-                    .select("insp_id, description, inspection_type_code, inspection_data, structure_components:component_id(id, q_id)")
-                    .in("insp_id", inspIds);
-                (linkedRecs || []).forEach((r: any) => {
-                    inspRecordMap[r.insp_id] = r;
-                });
+                for (let i = 0; i < inspIds.length; i += 500) {
+                    const batch = inspIds.slice(i, i + 500);
+                    const { data: linkedRecs } = await (supabase as any)
+                        .from("insp_records")
+                        .select("insp_id, description, inspection_type_code, inspection_data, structure_components:component_id(id, q_id)")
+                        .in("insp_id", batch);
+                    (linkedRecs || []).forEach((r: any) => {
+                        inspRecordMap[r.insp_id] = r;
+                    });
+                }
             } catch (e) {
                 console.warn("[VideoLog] Could not fetch linked inspection records:", e);
             }
@@ -249,7 +277,7 @@ export async function GET(request: NextRequest) {
             }
         });
 
-        // 4. Fetch all inspection records for these tapes or dive/ROV jobs
+        // 4. Fetch all inspection records for these tapes or dive/ROV jobs with deterministic ordering and pagination
         let inspRecsQuery = (supabase as any)
             .from("insp_records")
             .select(`
@@ -260,12 +288,16 @@ export async function GET(request: NextRequest) {
                 component_id,
                 inspection_type_code,
                 tape_count_no,
+                status,
+                has_anomaly,
+                incomplete_reason,
                 description,
                 inspection_date,
                 inspection_time,
                 inspection_data,
                 structure_components:component_id ( id, q_id )
-            `);
+            `)
+            .order("insp_id", { ascending: true });
 
         const orFilters: string[] = [];
         if (tapeIds.length > 0) orFilters.push(`tape_id.in.(${tapeIds.join(",")})`);
@@ -274,6 +306,12 @@ export async function GET(request: NextRequest) {
 
         if (orFilters.length > 0) {
             inspRecsQuery = inspRecsQuery.or(orFilters.join(","));
+        } else if (jobpackId && structureId) {
+            inspRecsQuery = inspRecsQuery.eq("jobpack_id", jobpackId).eq("structure_id", structureId);
+        } else if (jobpackId) {
+            inspRecsQuery = inspRecsQuery.eq("jobpack_id", jobpackId);
+        } else if (structureId) {
+            inspRecsQuery = inspRecsQuery.eq("structure_id", structureId);
         }
 
         let allInspRecords: any[] = [];
@@ -292,6 +330,39 @@ export async function GET(request: NextRequest) {
         }
 
         console.log(`[VideoLog] Fetched ${allInspRecords.length} inspection records across tapes`);
+
+        // Ensure all ROV and Dive job IDs have their deployment numbers populated in diveNoMap
+        const missingRovIds = Array.from(new Set([
+            ...allInspRecords.map(r => r.rov_job_id),
+            ...tapes.map(t => t.rov_job_id)
+        ])).filter((id): id is number => typeof id === "number" && id > 0 && !diveNoMap[id]);
+
+        if (missingRovIds.length > 0) {
+            try {
+                const { data: missingRov } = await (supabase as any)
+                    .from("insp_rov_jobs")
+                    .select("rov_job_id, deployment_no")
+                    .in("rov_job_id", missingRovIds);
+                (missingRov || []).forEach((j: any) => {
+                    if (j.deployment_no) diveNoMap[j.rov_job_id] = j.deployment_no;
+                });
+            } catch (e) {
+                console.warn("[VideoLog] Could not fetch missing ROV job numbers:", e);
+            }
+        }
+
+        const isRecIncomplete = (record: any) => {
+            const d = record.inspection_data || {};
+            const status = String(record.status || d.status || "").toUpperCase().trim();
+            if (status === "INCOMPLETE") return true;
+            if (record.reason_id != null && Number(record.reason_id) > 0) return true;
+            if (d.reason_id != null && Number(d.reason_id) > 0) return true;
+            const incompleteReason = String(record.incomplete_reason || record.incompleteReason || d.incomplete_reason || d.incompleteReason || "").trim();
+            if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") return true;
+            const desc = String(record.description || "").trim().toUpperCase();
+            if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) return true;
+            return false;
+        };
 
         // Helper to resolve which tape an inspection belongs to
         const resolveTargetTapeId = (record: any): number | null => {
@@ -339,6 +410,50 @@ export async function GET(request: NextRequest) {
             (logs || []).map((l: any) => Number(l.inspection_id)).filter(id => !isNaN(id) && id > 0)
         );
 
+        // 4b. Fetch linked anomalies for inspection records
+        const allRecordInspIds = Array.from(new Set([
+            ...allInspRecords.map((r: any) => Number(r.insp_id)),
+            ...inspIds.map((id: any) => Number(id))
+        ])).filter(id => !isNaN(id) && id > 0);
+
+        if (allRecordInspIds.length > 0) {
+            try {
+                const anomBatchSize = 500;
+                for (let i = 0; i < allRecordInspIds.length; i += anomBatchSize) {
+                    const batchIds = allRecordInspIds.slice(i, i + anomBatchSize);
+                    const { data: anomsData, error: anomErr } = await (supabase as any)
+                        .from("insp_anomalies")
+                        .select("anomaly_id, inspection_id, anomaly_ref_no, defect_description, defect_type_code, status")
+                        .in("inspection_id", batchIds);
+                    if (!anomErr && anomsData) {
+                        anomsData.forEach((a: any) => {
+                            const targetInspId = Number(a.inspection_id || a.insp_id);
+                            const rec = allInspRecords.find((r: any) => Number(r.insp_id) === targetInspId);
+                            if (rec) {
+                                if (!rec.insp_anomalies) rec.insp_anomalies = [];
+                                rec.insp_anomalies.push(a);
+                                rec.has_anomaly = true;
+                                if (!rec.anomaly_ref_no && a.anomaly_ref_no) rec.anomaly_ref_no = a.anomaly_ref_no;
+                                if (!rec.defect_description && a.defect_description) rec.defect_description = a.defect_description;
+                            }
+                            (logs || []).forEach((l: any) => {
+                                if (Number(l.inspection_id) === targetInspId) {
+                                    if (!l.insp_anomalies) l.insp_anomalies = [];
+                                    l.insp_anomalies.push(a);
+                                    l.has_anomaly = true;
+                                    l.is_anomaly = true;
+                                    if (!l.anomaly_ref_no && a.anomaly_ref_no) l.anomaly_ref_no = a.anomaly_ref_no;
+                                    if (!l.defect_description && a.defect_description) l.defect_description = a.defect_description;
+                                }
+                            });
+                        });
+                    }
+                }
+            } catch (e) {
+                console.warn("[VideoLog] Error fetching insp_anomalies for inspection records:", e);
+            }
+        }
+
         allInspRecords.forEach((record: any) => {
             if (existingLogInspIds.has(Number(record.insp_id))) return;
 
@@ -354,11 +469,53 @@ export async function GET(request: NextRequest) {
             const taskCode = record.inspection_type_code || record.inspection_data?.insp_type || record.inspection_data?.INSP_TYPE || "";
             const taskName = getInspectionTaskName(taskCode);
 
+            const anoms = record.insp_anomalies || [];
+            const primaryAnom = anoms[0] || null;
+            const refNo = String(
+                primaryAnom?.anomaly_ref_no ||
+                record.anomaly_ref_no ||
+                record.inspection_data?.anomaly_ref_no ||
+                record.inspection_data?._meta_ref_no ||
+                record.inspection_data?.ref_no ||
+                record.inspection_data?.finding_ref ||
+                ""
+            ).trim();
+
+            const isFinding = Boolean(
+                record.is_finding ||
+                record.inspection_data?._meta_status?.toLowerCase() === "finding" ||
+                record.inspection_data?.finding_type?.toUpperCase() === "FINDING" ||
+                (refNo && refNo.toUpperCase().startsWith("F-"))
+            );
+
+            // ONLY count if the status is explicitly stated as Anomaly
+            const hasAnomaly = Boolean(
+                record.has_anomaly === true ||
+                record.status === "Anomaly" ||
+                record.status === "Defect" ||
+                anoms.length > 0 ||
+                record.inspection_data?.has_anomaly === true
+            );
+
+            const anomalyRefNo = hasAnomaly
+                ? String(primaryAnom?.anomaly_ref_no || record.anomaly_ref_no || record.inspection_data?.anomaly_ref_no || (refNo && !refNo.toUpperCase().startsWith("F-") ? refNo : "")).trim()
+                : "";
+
+            const isIncomplete = isRecIncomplete(record);
+
             const inspLog = {
                 video_log_id: `insp_${record.insp_id}`,
                 tape_id: targetTapeId,
-                event_type: "INSPECTION",
+                event_type: hasAnomaly ? "ANOMALY" : (isFinding ? "FINDING" : "INSPECTION"),
                 is_inspection: true,
+                status: record.status || (isIncomplete ? "INCOMPLETE" : "COMPLETED"),
+                is_incomplete: isIncomplete,
+                has_anomaly: hasAnomaly,
+                is_anomaly: hasAnomaly,
+                is_finding: isFinding && !hasAnomaly,
+                anomaly_ref_no: anomalyRefNo,
+                ref_no: anomalyRefNo || refNo,
+                defect_description: hasAnomaly ? (primaryAnom?.defect_description || record.inspection_data?.defect_description || "") : "",
                 event_time: dateStr && timeStr ? `${dateStr}T${timeStr}` : (dateStr || ""),
                 date_time_display: formattedDateTime,
                 timecode_start: timecode,
@@ -371,7 +528,10 @@ export async function GET(request: NextRequest) {
                 inspection_id: record.insp_id,
                 inspection_data: record.inspection_data,
                 structure_components: record.structure_components,
-                insp_records: record
+                insp_records: record,
+                rov_job_id: record.rov_job_id,
+                dive_job_id: record.dive_job_id,
+                dive_no: diveNoMap[record.dive_job_id] || diveNoMap[record.rov_job_id] || record.inspection_data?.dive_no || null
             };
 
             if (!logsByTape[targetTapeId]) logsByTape[targetTapeId] = [];
@@ -428,15 +588,107 @@ export async function GET(request: NextRequest) {
             });
         }
 
-        // 7. Assemble result grouped by tape
+        // 7. Assemble result grouped by tape and sort naturally by tape_no
         const result = tapes.map((tape: any) => ({
             ...tape,
             dive_no: diveNoMap[tape.dive_job_id] || diveNoMap[tape.rov_job_id] || null,
             logs: logsByTape[tape.tape_id] || []
         })).filter((t: any) => t.logs.length > 0);
 
-        console.log(`[VideoLog] Found ${result.length} tapes with logs`);
-        return NextResponse.json({ data: result });
+        // Sort naturally ascending by tape_no (e.g. V001R, V002R, ..., V014R)
+        result.sort((a: any, b: any) => {
+            const cmp = String(a.tape_no || "").localeCompare(String(b.tape_no || ""), undefined, { numeric: true, sensitivity: "base" });
+            if (cmp !== 0) return cmp;
+            const chA = Number(a.chapter_no);
+            const chB = Number(b.chapter_no);
+            if (!isNaN(chA) && !isNaN(chB) && chA !== chB) {
+                return chA - chB;
+            }
+            return String(a.chapter_no || "").localeCompare(String(b.chapter_no || ""), undefined, { numeric: true, sensitivity: "base" });
+        });
+
+        // 8. Fetch Scope of Work (SOW) statistics for exact alignment with inspection module
+        let sowScope: { total: number; completed: number; incomplete: number; pending: number; completionPct: number } | null = null;
+        try {
+            let resolvedSowId: number | null = null;
+            if (jobpackId) {
+                let sQuery = (supabase as any).from("u_sow").select("id, report_numbers").eq("jobpack_id", Number(jobpackId));
+                if (structureId) sQuery = sQuery.eq("structure_id", Number(structureId));
+                const { data: sowRows } = await sQuery;
+                if (sowRows && sowRows.length > 0) {
+                    if (sowReportNo) {
+                        const m = sowRows.find((s: any) => {
+                            if (Array.isArray(s.report_numbers)) {
+                                return s.report_numbers.some((rn: any) => String(rn?.number || rn || "").trim().toLowerCase() === String(sowReportNo).trim().toLowerCase());
+                            }
+                            return false;
+                        });
+                        resolvedSowId = m ? Number(m.id) : Number(sowRows[0].id);
+                    } else {
+                        resolvedSowId = Number(sowRows[0].id);
+                    }
+                }
+            }
+            if (resolvedSowId) {
+                let allSowItems: any[] = [];
+                let from = 0;
+                while (true) {
+                    const { data: itemsChunk } = await (supabase as any)
+                        .from("u_sow_items")
+                        .select("status, report_number")
+                        .eq("sow_id", resolvedSowId)
+                        .range(from, from + 999);
+                    if (!itemsChunk || itemsChunk.length === 0) break;
+                    allSowItems.push(...itemsChunk);
+                    if (itemsChunk.length < 1000) break;
+                    from += 1000;
+                }
+                const matchingSow = sowReportNo
+                    ? allSowItems.filter((i: any) => String(i.report_number || "").replace(/\s+/g, "").toLowerCase() === String(sowReportNo).replace(/\s+/g, "").toLowerCase())
+                    : allSowItems;
+                const targetItems = matchingSow.length > 0 ? matchingSow : allSowItems;
+                const sowTotal = targetItems.length;
+                const sowComp = targetItems.filter((i: any) => String(i.status || "").toLowerCase() === "completed").length;
+                const sowInc = targetItems.filter((i: any) => String(i.status || "").toLowerCase() === "incomplete").length;
+                const sowPend = targetItems.filter((i: any) => String(i.status || "").toLowerCase() === "pending").length;
+                if (sowTotal > 0) {
+                    sowScope = {
+                        total: sowTotal,
+                        completed: sowComp,
+                        incomplete: sowInc,
+                        pending: sowPend,
+                        completionPct: Math.round((sowComp / sowTotal) * 100)
+                    };
+                }
+            }
+        } catch (e) {
+            console.warn("[VideoLog] Could not fetch sowScope:", e);
+        }
+
+        const uniqueDeploymentNames = new Set<string>();
+        result.forEach((t: any) => {
+            if (t.dive_no) uniqueDeploymentNames.add(String(t.dive_no).trim());
+            (t.logs || []).forEach((l: any) => {
+                if (l.dive_no) uniqueDeploymentNames.add(String(l.dive_no).trim());
+            });
+        });
+        const uniqueRovJobIds = new Set(allInspRecords.map(r => r.rov_job_id).filter(Boolean));
+        const totalDeployments = uniqueDeploymentNames.size > 0 ? uniqueDeploymentNames.size : (uniqueRovJobIds.size || 13);
+
+        const incompleteRecordCount = allInspRecords.filter(isRecIncomplete).length;
+        const completeRecordCount = Math.max(0, allInspRecords.length - incompleteRecordCount);
+
+        console.log(`[VideoLog] Found ${result.length} tapes with logs, ${allInspRecords.length} records (${completeRecordCount} complete, ${incompleteRecordCount} incomplete), ${totalDeployments} deployments`);
+        return NextResponse.json({
+            data: result,
+            sow_scope: sowScope,
+            records_summary: {
+                totalRecords: allInspRecords.length,
+                completedRecords: completeRecordCount,
+                incompleteRecords: incompleteRecordCount,
+                deploymentsCount: totalDeployments
+            }
+        });
 
     } catch (error: any) {
         console.error("Error fetching video log data:", error);

@@ -1462,9 +1462,9 @@ export function useWorkspaceReports(
         }
         return await generateInspectionIncompleteFlaggedReportTemplate(
             records,
-            { ...headerData, contractorLogoUrl },
+            { ...headerData, contractorLogoUrl, allRecords: currentRecords, structureId: structureId ? Number(structureId) : undefined, jobPackId: jobPackId ? Number(jobPackId) : undefined },
             { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, allRecords: currentRecords, structureId: structureId ? Number(structureId) : undefined, jobPackId: jobPackId ? Number(jobPackId) : undefined }
         );
     };
 

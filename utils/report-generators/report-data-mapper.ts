@@ -916,9 +916,9 @@ export const mapInspectionDataForDocx = async (
                 const incompleteRecs = records.filter(isStatusIncomplete);
                 pdfBlob = await generateInspectionIncompleteFlaggedReport(
                     incompleteRecs,
-                    sharedHeaderData,
+                    { ...sharedHeaderData, allRecords: records },
                     companySettings || {},
-                    sharedConfig as any
+                    { ...sharedConfig, allRecords: records } as any
                 );
             } else if (templateId === 'work-scope-report') {
                 const { generateWorkScopeReport } = await import("./work-scope-report");
