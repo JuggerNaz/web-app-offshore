@@ -1,5 +1,6 @@
 import { jsPDF } from "jspdf";
 import { PDFDocument, PDFName, PDFArray, PDFPage, StandardFonts, rgb } from "pdf-lib";
+import { loadLogoWithTransparency, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 
 export interface TOCReportItem {
     id: string;
@@ -32,15 +33,18 @@ export interface FinalDatasheetCoverOptions {
     fieldName?: string;
     jobPackName?: string;
     sowReportNo?: string;
+    clientName?: string;
     contractorName?: string;
     companyName?: string;
     logoUrl?: string;
     contractorLogoUrl?: string;
     inspectionModes?: string;
     dateStr?: string;
-    preparedBy?: { name?: string; date?: string };
-    reviewedBy?: { name?: string; date?: string };
-    approvedBy?: { name?: string; date?: string };
+    isPipeline?: boolean;
+    structureType?: "platform" | "pipeline";
+    preparedBy?: { name?: string; date?: string; position?: string };
+    reviewedBy?: { name?: string; date?: string; position?: string };
+    approvedBy?: { name?: string; date?: string; position?: string };
 }
 
 /**
@@ -51,16 +55,16 @@ export const generateMainCoverPage = async (options: FinalDatasheetCoverOptions 
     const pw = doc.internal.pageSize.getWidth(); // 210mm
     const ph = doc.internal.pageSize.getHeight(); // 297mm
 
-    // Background: Dark Slate Corporate Navy
-    doc.setFillColor(15, 23, 42); // slate-900
+    // Background: Crisp Executive White
+    doc.setFillColor(255, 255, 255);
     doc.rect(0, 0, pw, ph, "F");
 
-    // Decorative Borders
+    // Decorative Dual Borders
     doc.setDrawColor(37, 99, 235); // blue-600 accent
-    doc.setLineWidth(1.5);
+    doc.setLineWidth(1.6);
     doc.rect(10, 10, pw - 20, ph - 20);
 
-    doc.setDrawColor(51, 65, 85); // slate-700
+    doc.setDrawColor(203, 213, 225); // slate-300 hairline
     doc.setLineWidth(0.4);
     doc.rect(13, 13, pw - 26, ph - 26);
 
@@ -75,132 +79,226 @@ export const generateMainCoverPage = async (options: FinalDatasheetCoverOptions 
     doc.rect(pw - 24, ph - 12, 14, 2, "F");
     doc.rect(pw - 12, ph - 24, 2, 14, "F");
 
-    // Top Header Badge
-    doc.setFillColor(30, 41, 59);
-    doc.roundedRect(pw / 2 - 40, 22, 80, 7, 1.5, 1.5, "F");
+    // 1. Company Logo at Top and Centre of the Cover Page
+    let logoDrawn = false;
+    const logoTargetUrl = options.logoUrl || options.contractorLogoUrl || "";
+    if (logoTargetUrl) {
+        try {
+            const logoImg = await loadLogoWithTransparency(logoTargetUrl);
+            if (logoImg && logoImg.data && logoImg.width && logoImg.height) {
+                const maxLogoW = 54;
+                const maxLogoH = 20;
+                const scale = Math.min(maxLogoW / logoImg.width, maxLogoH / logoImg.height, 1);
+                const drawW = logoImg.width * scale;
+                const drawH = logoImg.height * scale;
+                const drawX = (pw - drawW) / 2;
+                const drawY = 20 + ((maxLogoH - drawH) / 2);
+                doc.addImage(logoImg.data, "PNG", drawX, drawY, drawW, drawH);
+                logoDrawn = true;
+            }
+        } catch (err) {
+            console.warn("Failed to render company logo on cover page:", err);
+        }
+    }
+
+    // Top Header Badge / Category
+    const badgeY = logoDrawn ? 44 : 24;
+    doc.setFillColor(241, 245, 249); // slate-100
+    doc.roundedRect(pw / 2 - 42, badgeY, 84, 6.5, 1.2, 1.2, "F");
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(148, 163, 184); // slate-400
-    doc.text("OFFSHORE INSPECTION DOSSIER", pw / 2, 26.8, { align: "center" });
+    doc.setTextColor(71, 85, 105); // slate-600
+    doc.text("OFFSHORE INSPECTION DOSSIER", pw / 2, badgeY + 4.5, { align: "center" });
 
     // Main Title
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(24);
+    const titleY = badgeY + 16;
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.setFontSize(23);
     doc.setFont("helvetica", "bold");
-    doc.text("FINAL INSPECTION DATASHEET", pw / 2, 65, { align: "center" });
+    doc.text("FINAL INSPECTION DATASHEET", pw / 2, titleY, { align: "center" });
 
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(148, 163, 184);
-    doc.text("Comprehensive Inspection Results & Structural Verification Records", pw / 2, 74, { align: "center" });
+    doc.setTextColor(100, 116, 139); // slate-500
+    doc.text("Comprehensive Inspection Results & Structural Verification Records", pw / 2, titleY + 7.5, { align: "center" });
 
-    // Divider Line
+    // Accent Divider Line
+    const divY = titleY + 13.5;
     doc.setDrawColor(37, 99, 235);
     doc.setLineWidth(1.0);
-    doc.line(pw / 2 - 35, 82, pw / 2 + 35, 82);
+    doc.line(pw / 2 - 35, divY, pw / 2 + 35, divY);
 
-    // Structure / Project Metadata Card
-    const cardX = 22;
-    const cardY = 96;
-    const cardW = pw - 44;
-    const cardH = 96;
+    // Structure / Project Metadata Card (Detail Box)
+    const cardX = 20;
+    const cardY = divY + 8;
+    const cardW = pw - 40; // 170mm
+    const cardH = 86;
 
-    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "F");
-    doc.setDrawColor(51, 65, 85);
+    doc.setDrawColor(203, 213, 225); // slate-300
     doc.setLineWidth(0.4);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "S");
 
-    // Card Header Pill
-    doc.setFillColor(15, 23, 42);
-    doc.rect(cardX, cardY, cardW, 10, "F");
+    // Card Header Bar
+    doc.setFillColor(15, 23, 42); // slate-900 corporate header
+    doc.rect(cardX, cardY, cardW, 9.5, "F");
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(226, 232, 240);
-    doc.text("PROJECT & ASSET SPECIFICATIONS", cardX + 8, cardY + 6.8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("PROJECT & ASSET SPECIFICATIONS", cardX + 8, cardY + 6.5);
+
+    // Detail Box rows:
+    // a. First the Client name : - Company name
+    // d. Contractor name : fetch from the Jobpack details, not the client name, place after the Client name
+    // b. if structure is Platform , then Platform Title otherwise Pipeline Title
+    //    Field / Location
+    // c. Just provide Jobpack: for the jobpack label
+    //    SOW Report Number
+    //    Inspection Modes
+    // e. Remove issue name / date
+    const isPlatform = !options.isPipeline && options.structureType !== "pipeline";
+    const structureLabel = isPlatform ? "PLATFORM TITLE:" : "PIPELINE TITLE:";
+    const clientVal = options.clientName || options.companyName || "Petronas Carigali Sdn Bhd (SKA)";
+    const contractorVal = options.contractorName || "NasQuest Resources Sdn Bhd";
 
     const metaFields = [
-        { label: "STRUCTURE / PLATFORM:", val: options.structureName || "Offshore Structure" },
-        { label: "FIELD / LOCATION:", val: options.fieldName || "Offshore Field" },
-        { label: "JOBPACK TITLE / ID:", val: options.jobPackName || "Inspection Scope" },
+        { label: "CLIENT:", val: clientVal },
+        { label: "CONTRACTOR:", val: contractorVal },
+        { label: structureLabel, val: options.structureName || "BODP-A" },
+        { label: "FIELD / LOCATION:", val: options.fieldName || "BOKOR FIELD" },
+        { label: "JOBPACK:", val: options.jobPackName || "UIMC2026/SKA/PLAT01" },
         { label: "SOW REPORT NUMBER:", val: options.sowReportNo || "N/A" },
-        { label: "INSPECTION MODES:", val: options.inspectionModes || "ROV & Diving Inspection" },
-        { label: "INSPECTION CONTRACTOR:", val: options.contractorName || options.companyName || "NasQuest Resources Sdn Bhd" },
-        { label: "ISSUE DATE:", val: options.dateStr || new Date().toISOString().split("T")[0] },
+        { label: "INSPECTION MODES:", val: options.inspectionModes || "ROV & Diving Consolidated" },
     ];
 
     metaFields.forEach((m, idx) => {
-        const my = cardY + 18 + (idx * 11);
+        const my = cardY + 16.5 + (idx * 10);
         doc.setFontSize(8.5);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(148, 163, 184); // slate-400
+        doc.setTextColor(71, 85, 105); // slate-600
         doc.text(m.label, cardX + 8, my);
 
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(255, 255, 255);
-        doc.text(m.val, cardX + 68, my);
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.text(m.val, cardX + 54, my);
 
         if (idx < metaFields.length - 1) {
-            doc.setDrawColor(51, 65, 85);
-            doc.setLineWidth(0.1);
+            doc.setDrawColor(241, 245, 249); // slate-100 hairline
+            doc.setLineWidth(0.15);
             doc.line(cardX + 6, my + 3.2, cardX + cardW - 6, my + 3.2);
         }
     });
 
-    // Verification & Approvals Card
-    const sigY = 206;
-    const sigH = 58;
-    doc.setFillColor(30, 41, 59);
+    // Document Control Section (4 columns)
+    // f. At Document Control Section add one entry. Report Produced By, NasQuest Resources Sdn Bhd, {Todays Date}
+    // g. Rest Prepared By, Reviewed By and Approved By leave it as it is
+    // h. But the designation Place just provide Position: and Date: as blank
+    const sigY = cardY + cardH + 7; // around 187
+    const sigH = 62;
+    doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, sigY, cardW, sigH, 2.5, 2.5, "F");
-    doc.setDrawColor(51, 65, 85);
+    doc.setDrawColor(203, 213, 225);
+    doc.setLineWidth(0.4);
     doc.roundedRect(cardX, sigY, cardW, sigH, 2.5, 2.5, "S");
 
-    doc.setFillColor(15, 23, 42);
+    doc.setFillColor(15, 23, 42); // slate-900
     doc.rect(cardX, sigY, cardW, 8.5, "F");
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(226, 232, 240);
-    doc.text("DOCUMENT VERIFICATION & ENDORSEMENTS", cardX + 8, sigY + 5.8);
+    doc.setTextColor(255, 255, 255);
+    doc.text("DOCUMENT CONTROL & ENDORSEMENTS", cardX + 8, sigY + 5.8);
+
+    const todayDateStr = options.dateStr || new Date().toISOString().split("T")[0];
 
     const sigCols = [
-        { title: "PREPARED BY", data: options.preparedBy },
-        { title: "REVIEWED BY", data: options.reviewedBy },
-        { title: "APPROVED BY", data: options.approvedBy },
+        {
+            isProducedBy: true,
+            title: "REPORT PRODUCED BY",
+            company: "NasQuest Resources Sdn Bhd",
+            date: todayDateStr,
+        },
+        {
+            isProducedBy: false,
+            title: "PREPARED BY",
+            data: options.preparedBy,
+        },
+        {
+            isProducedBy: false,
+            title: "REVIEWED BY",
+            data: options.reviewedBy,
+        },
+        {
+            isProducedBy: false,
+            title: "APPROVED BY",
+            data: options.approvedBy,
+        },
     ];
-    const colW = (cardW - 12) / 3;
+
+    const colW = (cardW - 8) / 4;
 
     sigCols.forEach((sc, cIdx) => {
-        const cx = cardX + 6 + (cIdx * colW);
+        const cx = cardX + 4 + (cIdx * colW);
         const cy = sigY + 14;
 
-        doc.setFontSize(7.5);
+        // Title
+        doc.setFontSize(7);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(148, 163, 184);
+        doc.setTextColor(71, 85, 105); // slate-600
         doc.text(sc.title, cx + 2, cy);
 
-        // Signature Line
-        doc.setDrawColor(71, 85, 105);
-        doc.setLineWidth(0.3);
-        doc.line(cx + 2, cy + 18, cx + colW - 6, cy + 18);
+        if (sc.isProducedBy) {
+            // Report Produced By content:
+            // Application Name & Version No. before company name
+            doc.setFontSize(7.2);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(37, 99, 235); // blue-600 accent
+            doc.text(REPORT_FOOTER_APP_TEXT, cx + 2, cy + 10);
 
-        doc.setFontSize(8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(241, 245, 249);
-        const nameStr = sc.data?.name || "Pending Signoff";
-        doc.text(nameStr, cx + 2, cy + 24);
+            doc.setFontSize(7.5);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(15, 23, 42); // slate-900
+            doc.text(sc.company || "NasQuest Resources Sdn Bhd", cx + 2, cy + 18);
 
-        doc.setFontSize(6.8);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(148, 163, 184);
-        const dateStr = sc.data?.date ? `Date: ${sc.data.date}` : "Date: ________________";
-        doc.text(dateStr, cx + 2, cy + 30);
+            doc.setFontSize(6.8);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(100, 116, 139);
+            doc.text(`Date: ${sc.date}`, cx + 2, cy + 26);
+        } else {
+            // Signature Line
+            doc.setDrawColor(203, 213, 225);
+            doc.setLineWidth(0.3);
+            doc.line(cx + 2, cy + 18, cx + colW - 6, cy + 18);
+
+            // Designation place: just provide Position: and Date: as blank
+            doc.setFontSize(7);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor(100, 116, 139);
+            doc.text("Position: ________________", cx + 2, cy + 26);
+            doc.text("Date:     ________________", cx + 2, cy + 34);
+        }
+
+        // Column separator
+        if (cIdx < sigCols.length - 1) {
+            doc.setDrawColor(226, 232, 240);
+            doc.setLineWidth(0.2);
+            doc.line(cx + colW, sigY + 11, cx + colW, sigY + sigH - 4);
+        }
     });
 
     // Bottom Branding Footer
-    doc.setFontSize(7.5);
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "italic");
+    doc.setTextColor(148, 163, 184);
+    doc.text("CONFIDENTIAL  •  OFFSHORE STRUCTURAL INTEGRITY ASSESSMENT REPORT  •  NASQUEST RESOURCES", pw / 2, ph - 16, { align: "center" });
+
+    // Application Name & Version Footer
+    doc.setFontSize(6.8);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139);
+    doc.setTextColor(148, 163, 184);
+    doc.text(REPORT_FOOTER_APP_TEXT, 14, ph - 6);
+
     const blob: any = doc.output("blob");
     if (!blob.arrayBuffer) {
         blob.arrayBuffer = async () => doc.output("arraybuffer");
@@ -286,12 +384,14 @@ export const generateTOCPages = async (
         const colHeaderY = 42;
         doc.setFillColor(15, 23, 42); // slate-900
         doc.rect(15, colHeaderY, pw - 30, 7.5, "F");
+        doc.setDrawColor(51, 65, 85);
+        doc.setLineWidth(0.15);
+        doc.rect(15, colHeaderY, pw - 30, 7.5, "S");
 
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(255, 255, 255);
         doc.text("SECTION / REPORT TEMPLATE", 20, colHeaderY + 5.0);
-        doc.text("MODE", pw - 50, colHeaderY + 5.0);
         doc.text("PAGE NO.", pw - 20, colHeaderY + 5.0, { align: "right" });
 
         // Render Entries
@@ -333,22 +433,10 @@ export const generateTOCPages = async (
                 doc.setTextColor(51, 65, 85);
                 doc.text(entry.title, 24, rowY);
 
-                // Mode Badge
-                const modeStr = entry.mode || "General";
-                const modeColor: [number, number, number] = modeStr === "ROV" 
-                    ? [217, 119, 6] 
-                    : modeStr === "Diving" 
-                        ? [79, 70, 229] 
-                        : [100, 116, 139];
-                doc.setFontSize(7.0);
-                doc.setFont("helvetica", "bold");
-                doc.setTextColor(...modeColor);
-                doc.text(`[${modeStr}]`, pw - 50, rowY);
-
-                // Dot Leader Line connecting title to page number
+                // Dot Leader Line connecting title to page number (extended now that MODE column is removed)
                 const titleW = doc.getTextWidth(entry.title);
                 const dotStartX = 26 + titleW;
-                const dotEndX = pw - 54;
+                const dotEndX = pw - 36;
                 if (dotEndX > dotStartX) {
                     doc.setFontSize(7);
                     doc.setFont("helvetica", "normal");
@@ -365,6 +453,11 @@ export const generateTOCPages = async (
                 doc.setFont("helvetica", "bold");
                 doc.setTextColor(15, 23, 42);
                 doc.text(`Page ${entry.pageNum}`, pw - 20, rowY, { align: "right" });
+
+                // Thin border line below the row
+                doc.setDrawColor(226, 232, 240);
+                doc.setLineWidth(0.12);
+                doc.line(18, rowY + 2.8, pw - 18, rowY + 2.8);
 
                 // Link bounds
                 linkTargets.push({
@@ -388,6 +481,13 @@ export const generateTOCPages = async (
         doc.setFont("helvetica", "italic");
         doc.setTextColor(71, 85, 105);
         doc.text("Interactive Document Navigation: Click on any section title, sub-report, or page number to jump directly to that page.", pw / 2, ph - 17, { align: "center" });
+
+        // Application Name & Version Footer
+        doc.setFontSize(6.8);
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(148, 163, 184);
+        doc.text(REPORT_FOOTER_APP_TEXT, 15, ph - 6);
+
         const blob: any = doc.output("blob");
         if (!blob.arrayBuffer) {
             blob.arrayBuffer = async () => doc.output("arraybuffer");
@@ -646,6 +746,12 @@ export const generateInspectionSummaryCoverPage = async (options: FinalDatasheet
     doc.setTextColor(148, 163, 184);
     doc.text("CONFIDENTIAL  •  OFFSHORE STRUCTURAL INTEGRITY ASSESSMENT REPORT  •  NASQUEST RESOURCES", pw / 2, ph - 18, { align: "center" });
 
+    // Application Name & Version Footer
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184);
+    doc.text(REPORT_FOOTER_APP_TEXT, 14, ph - 6);
+
     const blob: any = doc.output("blob");
     if (!blob.arrayBuffer) {
         blob.arrayBuffer = async () => doc.output("arraybuffer");
@@ -657,17 +763,12 @@ export const generateInspectionSummaryCoverPage = async (options: FinalDatasheet
  * Generates a clean Section Divider Cover Page
  */
 export const generateSectionDividerPage = async (sectionName: string, options: FinalDatasheetCoverOptions = {}): Promise<Blob> => {
-    // If this is the Inspection Summary section, generate the dedicated Inspection Summary cover page!
-    if (sectionName.toLowerCase().includes("inspection summary")) {
-        return generateInspectionSummaryCoverPage(options);
-    }
-
     const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
     const pw = doc.internal.pageSize.getWidth();
     const ph = doc.internal.pageSize.getHeight();
 
-    // Background
-    doc.setFillColor(248, 250, 252);
+    // Background: Clean Executive White
+    doc.setFillColor(255, 255, 255);
     doc.rect(0, 0, pw, ph, "F");
 
     // Decorative Borders
@@ -679,28 +780,29 @@ export const generateSectionDividerPage = async (sectionName: string, options: F
     doc.setLineWidth(0.3);
     doc.rect(18, 18, pw - 36, ph - 36);
 
-    // Section Category Pill
-    doc.setFillColor(224, 231, 255);
-    doc.roundedRect(pw / 2 - 35, 105, 70, 7.5, 1.5, 1.5, "F");
-    doc.setFontSize(8);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(37, 99, 235);
-    doc.text("FINAL DATASHEET SECTION", pw / 2, 110, { align: "center" });
+    // Corner decorative accents
+    doc.setFillColor(37, 99, 235);
+    doc.rect(15, 15, 12, 1.8, "F");
+    doc.rect(15, 15, 1.8, 12, "F");
+    doc.rect(pw - 27, 15, 12, 1.8, "F");
+    doc.rect(pw - 16.8, 15, 1.8, 12, "F");
+    doc.rect(15, ph - 16.8, 12, 1.8, "F");
+    doc.rect(15, ph - 27, 1.8, 12, "F");
+    doc.rect(pw - 27, ph - 16.8, 12, 1.8, "F");
+    doc.rect(pw - 16.8, ph - 27, 1.8, 12, "F");
 
-    // Section Title
-    doc.setTextColor(15, 23, 42);
-    doc.setFontSize(22);
+    // Main Section Title - Aligned to exact centre of the page vertically and horizontally!
+    // Subheaders above ("FINAL DATASHEET SECTION") and below ("Detailed Inspection Sheets...") are removed.
+    doc.setTextColor(15, 23, 42); // slate-900
+    doc.setFontSize(26);
     doc.setFont("helvetica", "bold");
     const splitTitle = doc.splitTextToSize(sectionName.toUpperCase(), pw - 60);
-    doc.text(splitTitle, pw / 2, 128, { align: "center" });
+    const lineHeight = 12; // mm
+    const totalH = splitTitle.length * lineHeight;
+    const centerY = (ph / 2) - (totalH / 2) + (lineHeight * 0.7);
+    doc.text(splitTitle, pw / 2, centerY, { align: "center", lineHeightFactor: 1.25 });
 
-    // Subtitle
-    doc.setFontSize(9.5);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(100, 116, 139);
-    doc.text("Detailed Inspection Sheets & Verification Records", pw / 2, 142, { align: "center" });
-
-    // Metadata Footer
+    // Metadata Footer at bottom
     if (options.structureName || options.jobPackName) {
         doc.setFontSize(8.5);
         doc.setFont("helvetica", "bold");
@@ -708,6 +810,12 @@ export const generateSectionDividerPage = async (sectionName: string, options: F
         const sub = [options.structureName, options.fieldName, options.jobPackName].filter(Boolean).join("  •  ");
         doc.text(sub, pw / 2, ph - 26, { align: "center" });
     }
+
+    // Application Name & Version Footer
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184);
+    doc.text(REPORT_FOOTER_APP_TEXT, 15, ph - 6);
 
     const blob: any = doc.output("blob");
     if (!blob.arrayBuffer) {
@@ -767,16 +875,16 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     const pw = doc.internal.pageSize.getWidth(); // 210mm
     const ph = doc.internal.pageSize.getHeight(); // 297mm
 
-    // Background: Dark Slate Corporate Navy matching Front Cover
-    doc.setFillColor(15, 23, 42); // slate-900
+    // Background: Crisp Executive White matching Front Cover
+    doc.setFillColor(255, 255, 255);
     doc.rect(0, 0, pw, ph, "F");
 
     // Dual Decorative Borders matching Front Cover
     doc.setDrawColor(37, 99, 235); // blue-600 accent
-    doc.setLineWidth(1.5);
+    doc.setLineWidth(1.6);
     doc.rect(10, 10, pw - 20, ph - 20);
 
-    doc.setDrawColor(51, 65, 85); // slate-700
+    doc.setDrawColor(203, 213, 225); // slate-300
     doc.setLineWidth(0.4);
     doc.rect(13, 13, pw - 26, ph - 26);
 
@@ -792,11 +900,11 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     doc.rect(pw - 12, ph - 24, 2, 14, "F");
 
     // Top Header Badge
-    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setFillColor(241, 245, 249); // slate-100
     doc.roundedRect(pw / 2 - 46, 22, 92, 7, 1.5, 1.5, "F");
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(148, 163, 184); // slate-400
+    doc.setTextColor(71, 85, 105); // slate-600
     doc.text("OFFSHORE INSPECTION DOSSIER  •  TECHNICAL CONCLUSION", pw / 2, 26.8, { align: "center" });
 
     // Center Decorative Concluded Seal
@@ -809,24 +917,24 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     doc.setLineWidth(0.5);
     doc.circle(pw / 2, sealY, 10.5, "S");
 
-    doc.setFillColor(30, 41, 59);
+    doc.setFillColor(241, 245, 249);
     doc.circle(pw / 2, sealY, 9.5, "F");
 
     // Checkmark icon inside seal
-    doc.setDrawColor(56, 189, 248);
+    doc.setDrawColor(37, 99, 235);
     doc.setLineWidth(1.5);
     doc.line(pw / 2 - 4.2, sealY - 0.2, pw / 2 - 1.0, sealY + 3.2);
     doc.line(pw / 2 - 1.0, sealY + 3.2, pw / 2 + 4.5, sealY - 3.5);
 
     // Main Title
-    doc.setTextColor(255, 255, 255);
+    doc.setTextColor(15, 23, 42); // slate-900
     doc.setFontSize(26);
     doc.setFont("helvetica", "bold");
     doc.text("END OF REPORT", pw / 2, 84, { align: "center" });
 
     doc.setFontSize(10);
     doc.setFont("helvetica", "normal");
-    doc.setTextColor(148, 163, 184);
+    doc.setTextColor(100, 116, 139);
     doc.text("Final Inspection Datasheet compilation package successfully concluded.", pw / 2, 92, { align: "center" });
 
     // Decorative Graphic Divider
@@ -838,14 +946,14 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     doc.circle(pw / 2, 98, 1.5, "F");
 
     // Dossier Parameters Card
-    const cardX = 22;
+    const cardX = 20;
     const cardY = 107;
-    const cardW = pw - 44;
+    const cardW = pw - 40;
     const cardH = 82;
 
-    doc.setFillColor(30, 41, 59); // slate-800
+    doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "F");
-    doc.setDrawColor(51, 65, 85);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.4);
     doc.roundedRect(cardX, cardY, cardW, cardH, 2.5, 2.5, "S");
 
@@ -854,16 +962,19 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     doc.rect(cardX, cardY, cardW, 9.5, "F");
     doc.setFontSize(8);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(226, 232, 240);
+    doc.setTextColor(255, 255, 255);
     doc.text("DOSSIER SUMMARY & ASSET SPECIFICATIONS", cardX + 8, cardY + 6.5);
 
+    const isPlatform = !options.isPipeline && options.structureType !== "pipeline";
+    const structureLabel = isPlatform ? "PLATFORM TITLE:" : "PIPELINE TITLE:";
+
     const metaFields = [
-        { label: "STRUCTURE / PLATFORM:", val: options.structureName || "BODP-A" },
+        { label: "CLIENT:", val: options.clientName || options.companyName || "Petronas Carigali Sdn Bhd (SKA)" },
+        { label: "CONTRACTOR:", val: options.contractorName || "NasQuest Resources Sdn Bhd" },
+        { label: structureLabel, val: options.structureName || "BODP-A" },
         { label: "FIELD / LOCATION:", val: options.fieldName || "BOKOR FIELD" },
-        { label: "JOBPACK REFERENCE:", val: options.jobPackName || "UIMC2026/SKA/PLAT01" },
+        { label: "JOBPACK:", val: options.jobPackName || "UIMC2026/SKA/PLAT01" },
         { label: "SOW REPORT NUMBER:", val: options.sowReportNo || "AM26-016-01" },
-        { label: "INSPECTION SCOPE / MODES:", val: options.inspectionModes || "ROV & Diving Consolidated" },
-        { label: "INSPECTION CONTRACTOR:", val: options.contractorName || options.companyName || "NasQuest Resources Sdn Bhd" },
         { label: "DATE OF CONCLUSION:", val: options.dateStr || new Date().toISOString().split("T")[0] },
     ];
 
@@ -871,17 +982,17 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
         const my = cardY + 18 + (idx * 9);
         doc.setFontSize(8);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(148, 163, 184); // slate-400
+        doc.setTextColor(71, 85, 105); // slate-600
         doc.text(m.label, cardX + 8, my);
 
         doc.setFontSize(8.5);
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(255, 255, 255);
-        doc.text(m.val, cardX + 66, my);
+        doc.setTextColor(15, 23, 42); // slate-900
+        doc.text(m.val, cardX + 54, my);
 
         if (idx < metaFields.length - 1) {
-            doc.setDrawColor(51, 65, 85);
-            doc.setLineWidth(0.1);
+            doc.setDrawColor(241, 245, 249);
+            doc.setLineWidth(0.15);
             doc.line(cardX + 6, my + 2.8, cardX + cardW - 6, my + 2.8);
         }
     });
@@ -890,9 +1001,9 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     const qaY = 196;
     const qaH = 46;
 
-    doc.setFillColor(30, 41, 59);
+    doc.setFillColor(255, 255, 255);
     doc.roundedRect(cardX, qaY, cardW, qaH, 2.5, 2.5, "F");
-    doc.setDrawColor(51, 65, 85);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.4);
     doc.roundedRect(cardX, qaY, cardW, qaH, 2.5, 2.5, "S");
 
@@ -901,7 +1012,7 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     doc.rect(cardX, qaY, cardW, 8.5, "F");
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(226, 232, 240);
+    doc.setTextColor(255, 255, 255);
     doc.text("QUALITY ASSURANCE & DIGITAL ARCHIVE VERIFICATION", cardX + 8, qaY + 5.8);
 
     const statementLines = [
@@ -914,28 +1025,34 @@ export const generateEndOfReportCoverPage = async (options: FinalDatasheetCoverO
     statementLines.forEach((line, idx) => {
         doc.setFontSize(7.2);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(203, 213, 225); // slate-300
+        doc.setTextColor(51, 65, 85); // slate-700
         doc.text(line, cardX + 8, qaY + 15 + (idx * 6.5));
     });
 
     // Bottom Branding Footer
     const footY = 249;
-    doc.setFillColor(30, 41, 59);
+    doc.setFillColor(248, 250, 252); // slate-50
     doc.roundedRect(cardX, footY, cardW, 16, 1.5, 1.5, "F");
-    doc.setDrawColor(51, 65, 85);
+    doc.setDrawColor(203, 213, 225);
     doc.setLineWidth(0.2);
     doc.roundedRect(cardX, footY, cardW, 16, 1.5, 1.5, "S");
 
     doc.setFontSize(7.5);
     doc.setFont("helvetica", "bold");
-    doc.setTextColor(241, 245, 249);
-    const contractorText = options.contractorName || options.companyName || "NasQuest Resources Sdn Bhd";
+    doc.setTextColor(15, 23, 42);
+    const contractorText = options.contractorName || "NasQuest Resources Sdn Bhd";
     doc.text(`${contractorText.toUpperCase()}  •  SUBSEA ASSET INTEGRITY DIVISION`, pw / 2, footY + 6.5, { align: "center" });
 
     doc.setFontSize(6.5);
     doc.setFont("helvetica", "italic");
-    doc.setTextColor(148, 163, 184);
+    doc.setTextColor(100, 116, 139);
     doc.text("CONFIDENTIAL & PROPRIETARY  •  OFFSHORE STRUCTURAL INTEGRITY RECORDS  •  ALL RIGHTS RESERVED", pw / 2, footY + 12, { align: "center" });
+
+    // Application Name & Version Footer
+    doc.setFontSize(6.8);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(148, 163, 184);
+    doc.text(REPORT_FOOTER_APP_TEXT, 14, ph - 6);
 
     const blob: any = doc.output("blob");
     if (!blob.arrayBuffer) {

@@ -2125,18 +2125,72 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     const selectedStructureObj = structures.find((s: any) => String(s.id) === String(cleanStructureId) || String(s.str_name) === String(cleanStructureId));
 
+                    let contractorName = "";
+                    let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+                    const contracId = jobPackData?.metadata?.contrac || 
+                                     selectedJobPack?.metadata?.contrac || 
+                                     (jobPackData as any)?.contractor_id || 
+                                     (selectedJobPack as any)?.contractor_id;
+
+                    if (contracId) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(contracId).toLowerCase().trim();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id || "").toLowerCase().trim() === cLow ||
+                                    String(c.id || "").toLowerCase().trim() === cLow ||
+                                    String(c.code || "").toLowerCase().trim() === cLow ||
+                                    String(c.lib_desc || "").toLowerCase().trim() === cLow
+                                );
+                                if (found) {
+                                    contractorName = found.lib_desc || found.name || "";
+                                    if (found.logo_url) contractorLogoUrl = found.logo_url;
+                                }
+                            }
+                        } catch (_) {}
+                    }
+
+                    if (!contractorName) {
+                        const cand = jobPackData?.metadata?.contractor || 
+                                     jobPackData?.metadata?.contractor_name || 
+                                     selectedJobPack?.metadata?.contractor || 
+                                     selectedJobPack?.metadata?.contractor_name ||
+                                     jobPackData?.contractor ||
+                                     selectedJobPack?.contractor;
+                        if (cand && typeof cand === "string" && !cand.toLowerCase().includes("petronas")) {
+                            contractorName = cand;
+                        } else if (contracId && isNaN(Number(contracId)) && !String(contracId).toLowerCase().includes("petronas")) {
+                            contractorName = String(contracId);
+                        } else {
+                            contractorName = "NasQuest Resources Sdn Bhd";
+                        }
+                    }
+
+                    const isPipeline = selections.structureId?.startsWith("pipeline-") || 
+                                       structureData?.type === "pipeline" || 
+                                       selectedStructureObj?.type === "pipeline" || 
+                                       activeCategory === "Pipeline";
+
                     const coverOptions = {
                         structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
                         fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
-                        jobPackName: jobPackData?.name || jobPackData?.title || "UIMC2026/SKA/PLAT01",
+                        jobPackName: jobPackData?.name || jobPackData?.title || selectedJobPack?.name || "UIMC2026/SKA/PLAT01",
                         sowReportNo: selections.sowReportNo || reportConfig?.sowReportNo || "AM26-016-01",
-                        contractorName: companySettings?.company_name || "NasQuest Resources Sdn Bhd",
-                        companyName: companySettings?.company_name || "NasQuest Resources Sdn Bhd",
+                        clientName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
+                        companyName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
+                        contractorName: contractorName || "NasQuest Resources Sdn Bhd",
+                        logoUrl: companySettings?.logo_url || "",
+                        contractorLogoUrl: contractorLogoUrl || "",
                         inspectionModes: "ROV & Diving Consolidated",
                         dateStr: new Date().toISOString().split("T")[0],
-                        preparedBy: reportConfig?.preparedBy?.name ? reportConfig.preparedBy : { name: "Inspection Lead", date: new Date().toISOString().split("T")[0] },
-                        reviewedBy: reportConfig?.reviewedBy?.name ? reportConfig.reviewedBy : { name: "Senior QA Engineer", date: new Date().toISOString().split("T")[0] },
-                        approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : { name: "Technical Director", date: new Date().toISOString().split("T")[0] },
+                        isPipeline,
+                        structureType: isPipeline ? ("pipeline" as const) : ("platform" as const),
+                        preparedBy: reportConfig?.preparedBy?.name ? reportConfig.preparedBy : undefined,
+                        reviewedBy: reportConfig?.reviewedBy?.name ? reportConfig.reviewedBy : undefined,
+                        approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : undefined,
                     };
 
                     const {
@@ -2311,16 +2365,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         const p = mergedPdf.getPage(idx);
                         const { width } = p.getSize();
                         const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
-                        const fontSize = 8;
+                        const fontSize = 7.5;
                         const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
-
-                        // Front Cover (idx === 0) and End of Report Cover (idx === totalPagesCount - 1) have dark navy backgrounds
-                        const isDarkCover = (idx === 0 || idx === totalPagesCount - 1);
-                        const textColor = isDarkCover ? rgb(0.58, 0.64, 0.72) : rgb(0.12, 0.16, 0.23);
+                        const textColor = rgb(0.45, 0.52, 0.62); // slate-500
 
                         p.drawText(pageStr, {
-                            x: width - 12 - textWidth,
-                            y: 6,
+                            x: width - 40 - textWidth,
+                            y: 17,
                             size: fontSize,
                             font,
                             color: textColor,

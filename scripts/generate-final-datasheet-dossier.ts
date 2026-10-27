@@ -653,15 +653,13 @@ async function main() {
         const p = mergedPdf.getPage(idx);
         const { width } = p.getSize();
         const pageStr = `Page ${idx + 1} of ${totalPages}`;
-        const fontSize = 8;
+        const fontSize = 7.5;
         const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
-
-        const isDarkCover = (idx === 0 || idx === totalPages - 1);
-        const textColor = isDarkCover ? rgb(0.58, 0.64, 0.72) : rgb(0.12, 0.16, 0.23);
+        const textColor = rgb(0.45, 0.52, 0.62);
 
         p.drawText(pageStr, {
-            x: width - 12 - textWidth,
-            y: 6,
+            x: width - 40 - textWidth,
+            y: 17,
             size: fontSize,
             font,
             color: textColor,

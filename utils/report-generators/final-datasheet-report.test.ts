@@ -149,7 +149,7 @@ describe("final-datasheet-report", () => {
         expect(pdfDoc.getPageCount()).toBe(1);
     });
 
-    it("delegates to generateInspectionSummaryCoverPage when generateSectionDividerPage is called for Inspection Summary", async () => {
+    it("generates a unified section cover page when generateSectionDividerPage is called for Inspection Summary", async () => {
         const dividerBlob = await generateSectionDividerPage("Inspection Summary", {
             structureName: "BODP-A",
             fieldName: "BOKOR FIELD",
