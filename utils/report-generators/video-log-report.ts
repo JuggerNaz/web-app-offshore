@@ -897,83 +897,7 @@ export const generateVideoLogReport = async (
         emerald: [16, 185, 129] as [number, number, number],
     };
 
-    // ── Vector Donut Chart Helper ───────────────────────────────────────────
-    const drawDonutChart = (
-        centerX: number,
-        centerY: number,
-        outerRadius: number,
-        innerRadius: number,
-        slices: Array<{ value: number; color: [number, number, number] }>,
-        centerTextLine1?: string,
-        centerTextLine2?: string,
-        centerTextColor?: [number, number, number]
-    ) => {
-        const total = slices.reduce((sum, s) => sum + s.value, 0);
-        if (total === 0) {
-            doc.setFillColor(241, 245, 249);
-            doc.circle(centerX, centerY, outerRadius, "F");
-            doc.setFillColor(255, 255, 255);
-            doc.circle(centerX, centerY, innerRadius, "F");
-            doc.setDrawColor(...colors.border);
-            doc.setLineWidth(0.15);
-            doc.circle(centerX, centerY, innerRadius, "S");
-            doc.circle(centerX, centerY, outerRadius, "S");
-            return;
-        }
 
-        const activeSlices = slices.filter(s => s.value > 0);
-        if (activeSlices.length === 1) {
-            const single = activeSlices[0];
-            doc.setFillColor(isPrintFriendly ? 245 : single.color[0], isPrintFriendly ? 245 : single.color[1], isPrintFriendly ? 245 : single.color[2]);
-            doc.circle(centerX, centerY, outerRadius, isPrintFriendly ? "S" : "FD");
-        } else {
-            let currentAngle = -Math.PI / 2; // 12 o'clock
-            slices.forEach(slice => {
-                if (slice.value <= 0) return;
-                const sliceAngle = (slice.value / total) * 2 * Math.PI;
-                const steps = Math.max(12, Math.floor(sliceAngle * 28));
-
-                doc.setFillColor(isPrintFriendly ? 245 : slice.color[0], isPrintFriendly ? 245 : slice.color[1], isPrintFriendly ? 245 : slice.color[2]);
-                doc.setDrawColor(255, 255, 255);
-                doc.setLineWidth(0.2);
-
-                for (let i = 0; i < steps; i++) {
-                    const a1 = currentAngle + (sliceAngle * i / steps);
-                    const a2 = currentAngle + (sliceAngle * (i + 1) / steps);
-                    const x1 = centerX + outerRadius * Math.cos(a1);
-                    const y1 = centerY + outerRadius * Math.sin(a1);
-                    const x2 = centerX + outerRadius * Math.cos(a2);
-                    const y2 = centerY + outerRadius * Math.sin(a2);
-                    doc.triangle(centerX, centerY, x1, y1, x2, y2, "F");
-                }
-                currentAngle += sliceAngle;
-            });
-        }
-
-        // Inner cutout circle
-        doc.setFillColor(255, 255, 255);
-        doc.circle(centerX, centerY, innerRadius, "F");
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.15);
-        doc.circle(centerX, centerY, innerRadius, "S");
-        doc.circle(centerX, centerY, outerRadius, "S");
-
-        // Center text
-        if (centerTextLine1) {
-            doc.setFontSize(7.5);
-            doc.setFont("helvetica", "bold");
-            const cColor = centerTextColor || colors.navy;
-            doc.setTextColor(...cColor);
-            doc.text(centerTextLine1, centerX, centerY - (centerTextLine2 ? 0.7 : -1.2), { align: "center" });
-        }
-        if (centerTextLine2) {
-            doc.setFontSize(4.8);
-            doc.setFont("helvetica", "bold");
-            const cColor = centerTextColor || colors.textMuted;
-            doc.setTextColor(...cColor);
-            doc.text(centerTextLine2, centerX, centerY + 2.5, { align: "center" });
-        }
-    };
 
     // ── First Page ───────────────────────────────────────────────────────────
     drawHeader(doc);
@@ -1119,156 +1043,16 @@ export const generateVideoLogReport = async (
             colors.purple
         );
 
-        currentY += cardH + 2.5;
+        currentY += cardH + 4.0;
 
-        // 3. Visual Analytics (Left: Video Activity Donut | Right: Operational Metrics Overview)
-        const chartBoxH = 34;
-        const leftBoxW = 95;
-        const rightBoxW = contentWidth - leftBoxW - 3; // 92mm
-        const leftBoxX = margin;
-        const rightBoxX = margin + leftBoxW + 3;
-
-        // --- 3A. LEFT BOX: Video Log Activity Distribution (Donut Chart) ---
-        doc.setFillColor(isPrintFriendly ? 255 : 248, isPrintFriendly ? 255 : 250, isPrintFriendly ? 255 : 252);
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.15);
-        doc.roundedRect(leftBoxX, currentY, leftBoxW, chartBoxH, 1, 1, "FD");
-
-        // Sub-title bar
-        doc.setFillColor(isPrintFriendly ? 255 : 241, isPrintFriendly ? 255 : 245, isPrintFriendly ? 255 : 249);
-        doc.roundedRect(leftBoxX, currentY, leftBoxW, 5.0, 1, 1, "F");
-        doc.setDrawColor(...colors.border);
-        doc.line(leftBoxX, currentY + 5.0, leftBoxX + leftBoxW, currentY + 5.0);
-
-        doc.setFontSize(6.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.navy);
-        doc.text("VIDEO ACTIVITY DISTRIBUTION", leftBoxX + 3, currentY + 3.5);
-
-        doc.setFontSize(5.0);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...colors.textMuted);
-        doc.text("Activity category share", leftBoxX + leftBoxW - 3, currentY + 3.5, { align: "right" });
-
-        // Donut Chart on Left Side of Left Box
-        const donutCenterX = leftBoxX + 17;
-        const donutCenterY = currentY + 19;
-        const donutOuterR = 10.5;
-        const donutInnerR = 5.5;
-
-        const donutSlices: Array<{ value: number; color: [number, number, number] }> = [];
-        if (summary.eventCategories.inspections > 0) {
-            donutSlices.push({ value: summary.eventCategories.inspections, color: colors.teal });
-        }
-        if (summary.eventCategories.operations > 0) {
-            donutSlices.push({ value: summary.eventCategories.operations, color: colors.navy });
-        }
-        if (summary.eventCategories.anomalies > 0) {
-            donutSlices.push({ value: summary.eventCategories.anomalies, color: colors.red });
-        }
-        if (summary.eventCategories.annotations > 0) {
-            donutSlices.push({ value: summary.eventCategories.annotations, color: colors.slate });
-        }
-
-        drawDonutChart(
-            donutCenterX,
-            donutCenterY,
-            donutOuterR,
-            donutInnerR,
-            donutSlices,
-            String(summary.totalLogsCount),
-            "LOGS",
-            colors.navy
-        );
-
-        // Legend on Right Side of Left Box
-        const legX = leftBoxX + 32;
-        let legY = currentY + 8.2;
-
-        const totalLogsForPct = Math.max(summary.totalLogsCount, 1);
-        const drawLegendItem = (label: string, count: number, color: [number, number, number]) => {
-            const pct = Math.round((count / totalLogsForPct) * 100);
-            doc.setFillColor(...color);
-            doc.rect(legX, legY - 1.8, 2.0, 2.0, "F");
-
-            doc.setFontSize(5.2);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.text);
-            doc.text(`${label}:`, legX + 3.2, legY);
-
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textMuted);
-            doc.text(`${count} (${pct}%)`, leftBoxX + leftBoxW - 3, legY, { align: "right" });
-            legY += 4.2;
-        };
-
-        drawLegendItem("Inspections", summary.eventCategories.inspections, colors.teal);
-        drawLegendItem("Tape Operations", summary.eventCategories.operations, colors.navy);
-        drawLegendItem("Anomalies", summary.eventCategories.anomalies, colors.red);
-        drawLegendItem("Notes / Obs", summary.eventCategories.annotations, colors.slate);
-
-        // --- 3B. RIGHT BOX: Operational & Quality Overview ---
-        doc.setFillColor(isPrintFriendly ? 255 : 248, isPrintFriendly ? 255 : 250, isPrintFriendly ? 255 : 252);
-        doc.setDrawColor(...colors.border);
-        doc.setLineWidth(0.15);
-        doc.roundedRect(rightBoxX, currentY, rightBoxW, chartBoxH, 1, 1, "FD");
-
-        // Sub-title bar
-        doc.setFillColor(isPrintFriendly ? 255 : 241, isPrintFriendly ? 255 : 245, isPrintFriendly ? 255 : 249);
-        doc.roundedRect(rightBoxX, currentY, rightBoxW, 5.0, 1, 1, "F");
-        doc.setDrawColor(...colors.border);
-        doc.line(rightBoxX, currentY + 5.0, rightBoxX + rightBoxW, currentY + 5.0);
-
-        doc.setFontSize(6.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.navy);
-        doc.text("OPERATIONAL & QUALITY OVERVIEW", rightBoxX + 3, currentY + 3.5);
-
-        doc.setFontSize(5.0);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(...colors.textMuted);
-        doc.text("Deployment & integrity metrics", rightBoxX + rightBoxW - 3, currentY + 3.5, { align: "right" });
-
-        let opsY = currentY + 8.5;
-        const drawMetricRow = (label: string, value: string, valColor: [number, number, number]) => {
-            doc.setFontSize(5.2);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...colors.text);
-            doc.text(label, rightBoxX + 4, opsY);
-
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...valColor);
-            doc.text(value, rightBoxX + rightBoxW - 4, opsY, { align: "right" });
-
-            doc.setDrawColor(...colors.cardBorder);
-            doc.setLineWidth(0.08);
-            doc.line(rightBoxX + 4, opsY + 1.2, rightBoxX + rightBoxW - 4, opsY + 1.2);
-            opsY += 4.8;
-        };
-
-        const sowVal = summary.sowScope
-            ? `${summary.sowScope.completed} / ${summary.sowScope.total} Tasks (${summary.sowScope.completionPct}%)`
-            : `${summary.completedInspectionsCount} / ${summary.totalInspectionsCount} Tasks (${Math.round((summary.completedInspectionsCount / Math.max(summary.totalInspectionsCount, 1)) * 100)}%)`;
-
-        drawMetricRow("SOW Scope Tasks:", sowVal, colors.lightNavy);
-        drawMetricRow("Inspection Records:", `${summary.completedInspectionsCount} Complete · ${summary.incompleteInspectionsCount} Incomplete (${summary.totalInspectionsCount} Total)`, colors.teal);
-        drawMetricRow("Deployment Operations:", `${summary.totalDivesCount} Deployments (ROV)`, colors.purple);
-        drawMetricRow("Chapter Volume Density:", `Avg ${summary.avgChaptersPerTape} Ch/Tape (${summary.totalChaptersCount} Total)`, colors.blue);
-        const anomRate = summary.totalInspectionsCount > 0 ? ((summary.totalAnomaliesCount / summary.totalInspectionsCount) * 100).toFixed(1) : "0";
-        drawMetricRow("Anomaly Detection Rate:", `${anomRate}% of Insps (${summary.totalAnomaliesCount} Flagged)`, summary.totalAnomaliesCount > 0 ? colors.red : colors.emerald);
-        drawMetricRow("Cumulative Video Runtime:", formatDurationHMS(summary.totalDurationSeconds), colors.navy);
-
-        currentY += chartBoxH + 3.5;
-
-        // 4. Full Width Table Chart: TAPE MEDIA & CHAPTER LOG SUMMARY (All Tapes & Progress)
-        const maxChapters = Math.max(...summary.tapesBreakdown.map(t => t.chapterCount), 1);
+        // 3. Full Width Table Chart: TAPE MEDIA & CHAPTER LOG SUMMARY (All Tapes & Progress)
         const summaryTableRows: any[][] = summary.tapesBreakdown.map(t => {
             const diveDisplay = t.diveNos.length > 0 ? t.diveNos.join(", ") : "—";
             const anomDisplay = t.anomalyCount > 0 ? `${t.anomalyCount} Flagged` : "—";
             return [
                 t.tapeNo,
                 diveDisplay,
-                `${t.chapterCount} Ch`,
+                `${t.chapterCount}`,
                 formatDurationSummary(t.durationSeconds),
                 `${t.totalLogsCount} Logs`,
                 `${t.inspectionCount} Insps`,
@@ -1280,7 +1064,7 @@ export const generateVideoLogReport = async (
         summaryTableRows.push([
             `Total (${summary.totalTapesCount} Tapes)`,
             `${summary.totalDivesCount} Deployments`,
-            `${summary.totalChaptersCount} Chapters`,
+            `${summary.totalChaptersCount}`,
             formatDurationHMS(summary.totalDurationSeconds),
             `${summary.totalLogsCount} Logs`,
             `${summary.totalInspectionsCount} Insps`,
@@ -1289,7 +1073,7 @@ export const generateVideoLogReport = async (
 
         autoTable(doc, {
             startY: currentY,
-            head: [["Tape No. (Full Media Details)", "Dive / ROV", "Chapters & Volume", "Duration", "Logged Events", "Inspections", "Anomalies"]],
+            head: [["Tape No. (Full Media Details)", "Dive / ROV", "Chapters", "Duration", "Logged Events", "Inspection Events", "Anomalies"]],
             body: summaryTableRows,
             theme: "grid",
             tableLineWidth: 0.1,
@@ -1305,13 +1089,13 @@ export const generateVideoLogReport = async (
             },
             styles: { fontSize: 7, cellPadding: 1.8, lineColor: [200, 200, 200], lineWidth: 0.1, textColor: [30, 41, 59] },
             columnStyles: {
-                0: { cellWidth: 52, fontStyle: "bold", textColor: isPrintFriendly ? [0, 0, 0] : [7, 78, 136] },
-                1: { cellWidth: 18, halign: "center" },
-                2: { cellWidth: 40, halign: "left" },
+                0: { cellWidth: 50, fontStyle: "bold", textColor: isPrintFriendly ? [0, 0, 0] : [7, 78, 136] },
+                1: { cellWidth: 20, halign: "center" },
+                2: { cellWidth: 20, halign: "center" },
                 3: { cellWidth: 24, halign: "center" },
-                4: { cellWidth: 18, halign: "center" },
-                5: { cellWidth: 20, halign: "center" },
-                6: { cellWidth: 18, halign: "center" }
+                4: { cellWidth: 24, halign: "center" },
+                5: { cellWidth: 28, halign: "center" },
+                6: { cellWidth: 24, halign: "center" }
             },
             margin: { left: margin, right: margin },
             didParseCell: (data: any) => {
@@ -1330,35 +1114,6 @@ export const generateVideoLogReport = async (
                             data.cell.styles.textColor = isPrintFriendly ? [185, 28, 28] : [220, 38, 38];
                             data.cell.styles.fontStyle = "bold";
                         }
-                    }
-                }
-            },
-            didDrawCell: (data: any) => {
-                if (data.section === "body" && data.column.index === 2) {
-                    const isTotalRow = data.row.index === summaryTableRows.length - 1;
-                    const cellX = data.cell.x;
-                    const cellY = data.cell.y;
-                    const cellW = data.cell.width;
-                    const cellH = data.cell.height;
-
-                    const textW = isTotalRow ? 18 : 12;
-                    const barX = cellX + textW + 1;
-                    const barW = cellW - textW - 3;
-                    const barH = 2.2;
-                    const barY = cellY + (cellH - barH) / 2;
-
-                    if (barW > 8) {
-                        // Track background
-                        doc.setFillColor(241, 245, 249);
-                        doc.roundedRect(barX, barY, barW, barH, 0.4, 0.4, "F");
-
-                        // Progress bar
-                        const tapeItem = isTotalRow ? null : summary.tapesBreakdown[data.row.index];
-                        const fillRatio = isTotalRow ? 1.0 : Math.min(1.0, Math.max(0.08, (tapeItem?.chapterCount || 1) / maxChapters));
-                        const fillW = barW * fillRatio;
-
-                        doc.setFillColor(isPrintFriendly ? 180 : 7, isPrintFriendly ? 180 : 78, isPrintFriendly ? 180 : 136);
-                        doc.roundedRect(barX, barY, fillW, barH, 0.4, 0.4, "F");
                     }
                 }
             }

@@ -20,6 +20,8 @@ describe("final-datasheet-report", () => {
             contractorName: "NasQuest Resources Sdn Bhd",
             revision: "0",
             issuedDate: "2026-10-27",
+            vessel: "MEO RESOLUTION",
+            inspectionDateRange: "24 Aug 2026 – 31 Aug 2026",
             preparedBy: { name: "Ahmad Inspector", position: "ROV Senior Inspector", date: "2026-10-27" },
             reviewedBy: { name: "Tan QA", position: "QA Engineer", date: "2026-10-27" },
             approvedBy: { name: "Ali Manager", position: "Subsea Project Manager", date: "2026-10-27" },

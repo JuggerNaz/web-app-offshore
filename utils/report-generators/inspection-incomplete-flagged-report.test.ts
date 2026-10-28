@@ -70,6 +70,50 @@ describe("Inspection Incomplete Flagged Report Generator", () => {
         });
     });
 
+    describe("getIncompleteReasonOrComments helper", () => {
+        it("returns ONLY the incomplete reason when substantive inspection findings exist", () => {
+            const record = {
+                status: "INCOMPLETE",
+                findings: "CP reading -950mV, cathodic protection adequate, weld seam 100% intact",
+                incomplete_reason: "Member fully buried in seabed"
+            };
+            const result = getIncompleteReasonOrComments(record);
+            expect(result).toBe("Member fully buried in seabed");
+            expect(result).not.toContain("CP reading");
+            expect(result).not.toContain("weld seam");
+        });
+
+        it("extracts incomplete finding from explicit prefix in description", () => {
+            const record = {
+                status: "INCOMPLETE",
+                description: "INCOMPLETE: Access obstructed by subsea pipeline frame",
+            };
+            const result = getIncompleteReasonOrComments(record);
+            expect(result).toBe("Access obstructed by subsea pipeline frame");
+        });
+
+        it("extracts from inspection_data.incomplete_findings directly", () => {
+            const record = {
+                status: "INCOMPLETE",
+                inspection_data: {
+                    incomplete_findings: "Turbid water and zero visibility below -30m"
+                }
+            };
+            const result = getIncompleteReasonOrComments(record);
+            expect(result).toBe("Turbid water and zero visibility below -30m");
+        });
+
+        it("falls back to standard message without outputting substantive inspection details if no incomplete reason is given", () => {
+            const record = {
+                status: "INCOMPLETE",
+                findings: "Anode 40% consumed, weld free of visible cracks",
+            };
+            const result = getIncompleteReasonOrComments(record);
+            expect(result).toBe("Incomplete — Task could not be fully executed");
+            expect(result).not.toContain("Anode 40%");
+        });
+    });
+
     describe("generateInspectionIncompleteFlaggedReport PDF generation", () => {
         const headerData = {
             platformName: "BODP-A",

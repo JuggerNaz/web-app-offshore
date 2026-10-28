@@ -2174,6 +2174,33 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                        selectedStructureObj?.type === "pipeline" || 
                                        activeCategory === "Pipeline";
 
+                    const vessel = jobPackData?.metadata?.vessel || 
+                                   selectedJobPack?.metadata?.vessel || 
+                                   jobPackData?.vessel || 
+                                   selectedJobPack?.vessel || 
+                                   (jobPackData?.metadata?.vessel_history?.[0]?.name) || 
+                                   (selectedJobPack?.metadata?.vessel_history?.[0]?.name) || 
+                                   "MEO RESOLUTION";
+
+                    let inspectionDateRange = (reportConfig as any)?.dateRange || 
+                                              (reportConfig as any)?.inspDateRange || 
+                                              jobPackData?.metadata?.date_range || 
+                                              selectedJobPack?.metadata?.date_range || 
+                                              "";
+                    if (!inspectionDateRange && jobPackData?.start_date && jobPackData?.end_date) {
+                        try {
+                            const { format } = await import("date-fns");
+                            const d1 = format(new Date(jobPackData.start_date), "dd-MMM-yyyy");
+                            const d2 = format(new Date(jobPackData.end_date), "dd-MMM-yyyy");
+                            inspectionDateRange = d1 === d2 ? d1 : `${d1} – ${d2}`;
+                        } catch (_) {
+                            inspectionDateRange = `${jobPackData.start_date} – ${jobPackData.end_date}`;
+                        }
+                    }
+                    if (!inspectionDateRange) {
+                        inspectionDateRange = "24 Aug 2026 – 31 Aug 2026";
+                    }
+
                     const coverOptions = {
                         structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
                         fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
@@ -2182,6 +2209,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         clientName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
                         companyName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
                         contractorName: contractorName || "NasQuest Resources Sdn Bhd",
+                        vessel,
+                        inspectionDateRange,
                         logoUrl: companySettings?.logo_url || "",
                         contractorLogoUrl: contractorLogoUrl || "",
                         inspectionModes: "ROV & Diving Consolidated",

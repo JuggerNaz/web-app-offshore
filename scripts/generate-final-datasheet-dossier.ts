@@ -28,6 +28,8 @@ async function main() {
         sowReportNo: "AM26-016-01",
         contractorName: "NasQuest Resources Sdn Bhd",
         companyName: "NasQuest Resources Sdn Bhd",
+        vessel: "MEO RESOLUTION",
+        inspectionDateRange: "24 Aug 2026 – 31 Aug 2026",
         inspectionModes: "ROV & Diving Consolidated",
         dateStr: "2026-10-22",
         preparedBy: { name: "Inspection Lead", date: "2026-10-22" },
