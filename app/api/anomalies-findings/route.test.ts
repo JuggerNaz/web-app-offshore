@@ -63,17 +63,6 @@ const FINDINGS = [
   { insp_id: 54, description: "metal loss" },
 ];
 
-// Filter the route applies to treat anomalies as "inspections whose
-// _meta_status is NOT a finding (case-insensitive; missing counts as anomaly)".
-const ANOMALY_NOT_FINDING_FILTER =
-  "inspection.inspection_data->_meta_status.is.null," +
-  "and(" +
-  "inspection.inspection_data->_meta_status.neq.finding," +
-  "inspection.inspection_data->_meta_status.neq.Finding)";
-
-const FINDING_FILTER =
-  "inspection_data->_meta_status.eq.finding,inspection_data->_meta_status.eq.Finding";
-
 describe("GET /api/anomalies-findings (items mode)", () => {
   it("returns a paged anomalies window with pagination meta the scroll-to-load hook consumes", async () => {
     const supabase = setupSupabase({
@@ -101,8 +90,10 @@ describe("GET /api/anomalies-findings (items mode)", () => {
     expect(query.select).toHaveBeenCalledWith(expect.stringContaining("insp_records"), {
       count: "exact",
     });
-    // Anomaly = inspection whose _meta_status is not "finding".
-    expect(query.or).toHaveBeenCalledWith(ANOMALY_NOT_FINDING_FILTER);
+    // Anomaly rows always join their inspection (inner join).
+    expect(query.select).toHaveBeenCalledWith(expect.stringContaining("insp_records!inner"), {
+      count: "exact",
+    });
     // Scoped to the selected structure (via the joined inspection).
     expect(query.eq).toHaveBeenCalledWith("inspection.structure_id", 7);
     // Deterministic ordering keeps the paged windows stable.
@@ -111,7 +102,7 @@ describe("GET /api/anomalies-findings (items mode)", () => {
     expect(query.range).toHaveBeenCalledWith(50, 99);
   });
 
-  it("filters findings to has_anomaly rows whose _meta_status is a finding", async () => {
+  it("filters findings to has_anomaly rows", async () => {
     const supabase = setupSupabase({
       insp_records: [{ data: FINDINGS, error: null, count: 60 }],
     });
@@ -133,7 +124,7 @@ describe("GET /api/anomalies-findings (items mode)", () => {
 
     const query = supabase.calls.find((c) => c.table === "insp_records")!.query;
     expect(query.eq).toHaveBeenCalledWith("has_anomaly", true);
-    expect(query.or).toHaveBeenCalledWith(FINDING_FILTER);
+    expect(query.or).not.toHaveBeenCalled();
     expect(query.eq).toHaveBeenCalledWith("structure_id", 7);
     expect(query.order).toHaveBeenCalledWith("insp_id", { ascending: false });
     expect(query.range).toHaveBeenCalledWith(0, 49);
@@ -149,16 +140,14 @@ describe("GET /api/anomalies-findings (items mode)", () => {
     });
 
     const query = supabase.calls.find((c) => c.table === "insp_anomalies")!.query;
-    // First .or() is the not-finding filter, second is the q search filter.
-    expect(query.or).toHaveBeenCalledTimes(2);
-    expect(query.or).toHaveBeenNthCalledWith(
-      2,
+    // The only .or() is the q search filter across the anomaly search columns.
+    expect(query.or).toHaveBeenCalledTimes(1);
+    expect(query.or).toHaveBeenCalledWith(
       [
         "anomaly_ref_no.ilike.%crack%",
         "defect_description.ilike.%crack%",
         "defect_type_code.ilike.%crack%",
         "defect_category_code.ilike.%crack%",
-        "inspection.structure_components.q_id.ilike.%crack%",
       ].join(",")
     );
   });
@@ -189,21 +178,17 @@ describe("GET /api/anomalies-findings (items mode)", () => {
 });
 
 describe("GET /api/anomalies-findings?mode=counts", () => {
-  it("aggregates per-structure anomaly/finding counts case-insensitively", async () => {
+  it("aggregates per-structure anomaly/finding counts", async () => {
     const supabase = setupSupabase({
       insp_anomalies: [
         {
           data: [
-            // GVI inspection -> counts as an anomaly for structure 7.
-            { insp_records: { structure_id: 7, inspection_data: { _meta_status: "GVI" } } },
-            // "finding" (lowercase) -> excluded from anomalies.
-            { insp_records: { structure_id: 7, inspection_data: { _meta_status: "finding" } } },
-            // No _meta_status -> still counts as an anomaly.
-            { insp_records: { structure_id: 9, inspection_data: {} } },
-            // "Finding" -> excluded from anomalies.
-            { insp_records: { structure_id: 9, inspection_data: { _meta_status: "Finding" } } },
+            // Every joined anomaly row counts for its structure.
+            { insp_records: { structure_id: 7 } },
+            { insp_records: { structure_id: 7 } },
+            { insp_records: { structure_id: 9 } },
             // Null structure -> ignored entirely.
-            { insp_records: { structure_id: null, inspection_data: {} } },
+            { insp_records: { structure_id: null } },
           ],
           error: null,
         },
@@ -211,10 +196,9 @@ describe("GET /api/anomalies-findings?mode=counts", () => {
       insp_records: [
         {
           data: [
-            { structure_id: 7, inspection_data: { _meta_status: "finding" } },
-            { structure_id: 7, inspection_data: { _meta_status: "FINDING" } },
-            // Not a finding record -> ignored.
-            { structure_id: 9, inspection_data: { _meta_status: "GVI" } },
+            { structure_id: 7 },
+            { structure_id: 7 },
+            { structure_id: 9 },
           ],
           error: null,
         },
@@ -228,8 +212,8 @@ describe("GET /api/anomalies-findings?mode=counts", () => {
 
     expect(json.success).toBe(true);
     expect(json.data).toEqual([
-      { structure_id: 7, anomalies: 1, findings: 2 },
-      { structure_id: 9, anomalies: 1, findings: 0 },
+      { structure_id: 7, anomalies: 2, findings: 2 },
+      { structure_id: 9, anomalies: 1, findings: 1 },
     ]);
 
     // Counts are two slim aggregate queries, no pagination/windowing.
