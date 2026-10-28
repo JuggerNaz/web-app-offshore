@@ -578,7 +578,6 @@ export const generateDefectCriteriaReport = async (
                 doc.setFontSize(6.5);
 
                 const labelX = x + 2.5;
-                const valueX = x + 15;
 
                 const lineSpacing = 2.6; // closer spacing with each other
                 const dateY = signatoryBottomY - 1.5; // moved lower, neatly placed near bottom border
@@ -586,16 +585,13 @@ export const generateDefectCriteriaReport = async (
                 const nameY = posY - lineSpacing; // signatoryBottomY - 6.7
 
                 // Name:
-                doc.text("Name:", labelX, nameY);
-                if (p.name) doc.text(p.name, valueX, nameY);
+                doc.text(p.name ? `Name: ${p.name}` : "Name:", labelX, nameY);
 
                 // Position:
-                doc.text("Position:", labelX, posY);
-                if (p.position) doc.text(p.position, valueX, posY);
+                doc.text(p.position ? `Position: ${p.position}` : "Position:", labelX, posY);
 
                 // Date:
-                doc.text("Date:", labelX, dateY);
-                if (p.date) doc.text(formatPdfDate(p.date), valueX, dateY);
+                doc.text(p.date ? `Date: ${formatPdfDate(p.date)}` : "Date:", labelX, dateY);
             });
         };
 

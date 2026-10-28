@@ -355,6 +355,7 @@ async function tryRetrieveWithStorageProvider({
   sourceId,
   id,
   supabase,
+  extraPaths,
 }: {
   provider: string;
   config: any;
@@ -364,6 +365,7 @@ async function tryRetrieveWithStorageProvider({
   sourceId?: string | number;
   id?: string | null;
   supabase: any;
+  extraPaths?: string[];
 }): Promise<{ buffer: Buffer | Uint8Array; contentType: string } | null> {
   const normProvider = (provider || "Supabase").trim();
   const isSupabase = normProvider.toLowerCase() === "supabase";
@@ -465,7 +467,7 @@ async function tryRetrieveWithStorageProvider({
   // --- MULTI-CLOUD STORAGE HANDLER (AWS S3, Backblaze B2, Google Drive, OneDrive, Cloudinary, Local) ---
   try {
     const handler = await getStorageHandler(normProvider, config || {});
-    const candidateKeys = Array.from(new Set([targetPath, fileName].filter(Boolean)));
+    const candidateKeys = Array.from(new Set([targetPath, fileName, ...(extraPaths || [])].filter(Boolean)));
 
     // 1. Direct server-side download (fastest, immune to CORS)
     if (typeof (handler as any).download === "function") {
@@ -545,6 +547,7 @@ export async function GET(request: NextRequest) {
   let fileName = "";
   let fileType = "";
   let originalTitle = "";
+  let altPaths: string[] = [];
 
   // 1. Fetch attachment record if ID provided
   if (id) {
@@ -569,14 +572,18 @@ export async function GET(request: NextRequest) {
         originalTitle = attachment.name || meta?.title || "";
         fileName = meta?.original_file_name || (attachment.name && attachment.name.includes(".") ? attachment.name : "");
         fileType = meta?.file_type || "";
-        filePath = meta?.file_path || attachment.path || filePath;
+        filePath = attachment.path || fallbackPath || meta?.file_path || filePath;
         fileUrl =
-          meta?.file_url ||
           (typeof attachment.path === "string" && (attachment.path.startsWith("http://") || attachment.path.startsWith("https://"))
             ? attachment.path
-            : null);
+            : null) ||
+          (typeof fallbackPath === "string" && (fallbackPath.startsWith("http://") || fallbackPath.startsWith("https://"))
+            ? fallbackPath
+            : null) ||
+          meta?.file_url;
         recordProvider = meta?.storage_provider || "Supabase";
         bucket = meta?.bucket || "attachments";
+        altPaths = [attachment.path, meta?.file_url, meta?.file_path].filter((p: any) => typeof p === "string" && p.trim());
       }
     }
 
@@ -671,6 +678,7 @@ export async function GET(request: NextRequest) {
       sourceId: attachmentRecord?.source_id,
       id,
       supabase,
+      extraPaths: altPaths,
     });
 
     if (primaryResult && primaryResult.buffer && primaryResult.buffer.length > 0) {
@@ -696,10 +704,20 @@ export async function GET(request: NextRequest) {
   }
 
   // 2b. Direct HTTP/HTTPS candidate URLs
+  const isBackblaze =
+    recordProvider?.toLowerCase() === "backblaze" ||
+    targetUrlOrPath.includes("backblazeb2.com") ||
+    Boolean(fallbackPath && fallbackPath.includes("backblazeb2.com"));
+
+  // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
+  // Note: Skip private cloud endpoints like backblazeb2.com that require signed auth headers and will 401
   const directHttpCandidates = Array.from(
     new Set(
       [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
-        (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://"))
+        (u): u is string =>
+          typeof u === "string" &&
+          (u.startsWith("http://") || u.startsWith("https://")) &&
+          !u.includes("backblazeb2.com")
       )
     )
   );
@@ -729,12 +747,38 @@ export async function GET(request: NextRequest) {
         sourceId: attachmentRecord?.source_id,
         id,
         supabase,
+        extraPaths: altPaths,
       });
 
       if (recordProviderResult && recordProviderResult.buffer && recordProviderResult.buffer.length > 0) {
         return buildFreshResponse(
           new Uint8Array(recordProviderResult.buffer),
           recordProviderResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+        );
+      }
+    } catch (_) {}
+  }
+
+  // 2c-bis. Backblaze B2 endpoints require signed auth headers; never fetch directly -
+  // route through the Backblaze storage handler (presigned URLs) when detected.
+  if (isBackblaze && recordProvider.toLowerCase() !== "backblaze") {
+    try {
+      const b2Result = await tryRetrieveWithStorageProvider({
+        provider: "Backblaze",
+        config: attachmentRecord?.meta?.storage_config || defaultStorageConfig,
+        targetPath: targetUrlOrPath,
+        fileName,
+        bucket,
+        sourceId: attachmentRecord?.source_id,
+        id,
+        supabase,
+        extraPaths: altPaths,
+      });
+
+      if (b2Result && b2Result.buffer && b2Result.buffer.length > 0) {
+        return buildFreshResponse(
+          new Uint8Array(b2Result.buffer),
+          b2Result.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
         );
       }
     } catch (_) {}

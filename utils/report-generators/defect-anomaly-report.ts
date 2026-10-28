@@ -29,7 +29,9 @@ export interface ReportConfig {
     prefix?: string;
     isFindingsReport?: boolean;
     showSignatures?: boolean;
-    isBlankReport?: boolean;
+    structureId?: string | number;
+    jobPackId?: string | number;
+    [key: string]: any;
 }
 
 interface LoadedImageData {
@@ -48,7 +50,7 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
         return reportImageCache.get(url)!;
     }
 
-    // Helper using standard Image element
+    // Helper using standard Image element with generous timeout and robust fallback
     const tryLoadViaImage = (src: string): Promise<LoadedImageData | null> => {
         return new Promise((resolve) => {
             const img = new Image();
@@ -58,10 +60,20 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
             const timeout = setTimeout(() => {
                 img.onload = null;
                 img.onerror = null;
-                resolve(null);
-            }, 3000);
+                // If it's a data: URI and timed out on canvas, we can still resolve it with defaults!
+                if (src.startsWith("data:")) {
+                    resolve({ data: src, width: 800, height: 600, aspect: 1.333 });
+                } else {
+                    resolve(null);
+                }
+            }, 25000);
+
             img.onload = () => {
                 clearTimeout(timeout);
+                const w = img.naturalWidth || img.width || 800;
+                const h = img.naturalHeight || img.height || 600;
+                const aspect = h > 0 ? w / h : 1.333;
+
                 try {
                     const origW = img.naturalWidth || img.width || 800;
                     const origH = img.naturalHeight || img.height || 600;
@@ -95,17 +107,28 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
                             height: targetH,
                             aspect
                         });
-                    } else {
-                        resolve(null);
+                        return;
                     }
                 } catch {
+                    // Canvas tainted or out of memory - fallback to original src
+                }
+                resolve({
+                    data: src,
+                    width: w,
+                    height: h,
+                    aspect
+                });
+            };
+
+            img.onerror = () => {
+                clearTimeout(timeout);
+                if (src.startsWith("data:")) {
+                    resolve({ data: src, width: 800, height: 600, aspect: 1.333 });
+                } else {
                     resolve(null);
                 }
             };
-            img.onerror = () => {
-                clearTimeout(timeout);
-                resolve(null);
-            };
+
             img.src = src;
         });
     };
@@ -122,7 +145,7 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
     // 2. Fetch as Blob and convert to Data URL (fastest for API endpoints, avoids canvas taint & CORS issues)
     try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const timeoutId = setTimeout(() => controller.abort(), 30000);
         const response = await fetch(url, { signal: controller.signal });
         clearTimeout(timeoutId);
 
@@ -140,10 +163,13 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
                     reportImageCache.set(url, res);
                     return res;
                 }
+                const fallbackData: LoadedImageData = { data: dataUrl, width: 800, height: 600, aspect: 1.333 };
+                reportImageCache.set(url, fallbackData);
+                return fallbackData;
             }
         }
-    } catch {
-        // Fallback to direct image loading
+    } catch (err) {
+        console.warn(`[DefectAnomalyReport] Fetch failed for ${url}:`, err);
     }
 
     // 3. Fallback: Image element direct
@@ -155,6 +181,7 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
 
     return null;
 };
+
 
 export const generateDefectAnomalyReport = async (
     jobPack: any,
@@ -182,14 +209,17 @@ export const generateDefectAnomalyReport = async (
             url += `inspection_id=${config.inspectionId}&`;
         } else {
             if (jobPack?.id && jobPack.id !== "0") url += `jobpack_id=${jobPack.id}&`;
-            if (sowReportNo) url += `sow_report_no=${encodeURIComponent(sowReportNo)}&`;
-            // Use id OR str_id (numeric) to ensure the filter is never silently omitted
-            const structureIdVal = structure?.id || structure?.str_id;
+            if (sowReportNo && sowReportNo !== "all" && sowReportNo !== "ALL" && sowReportNo !== "N/A") {
+                url += `sow_report_no=${encodeURIComponent(sowReportNo)}&`;
+            }
+            // Use id OR str_id OR plat_id to ensure the structure filter is never silently omitted
+            const structureIdVal = structure?.id || structure?.str_id || structure?.plat_id || (structure as any)?.structure_id || config?.structureId;
             if (structureIdVal && String(structureIdVal) !== "0") url += `structure_id=${structureIdVal}&`;
             if (config.prefix) url += `prefix=${config.prefix}&`;
+            url += `_t=${Date.now()}&`;
         }
 
-        const res = await fetch(url);
+        const res = await fetch(url, { cache: "no-store" });
         const json = await res.json();
         if (json.data && json.data.length > 0) {
             anomalies = json.data;
@@ -347,6 +377,13 @@ export const generateDefectAnomalyReport = async (
                 diver_name: "",
                 rov_machine: "",
                 rov_name: "",
+                dive_no: "",
+                deployment_no: "",
+                supervisor: "",
+                rov_supervisor: "",
+                dive_supervisor: "",
+                report_coordinator: "",
+                rep_cord: "",
                 component_qid: "",
                 elevation: "",
                 description: "",
@@ -377,6 +414,7 @@ export const generateDefectAnomalyReport = async (
 
     let globalPage = 1;
     const labelColWidth = 32;
+    const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
     const anomalyPageRanges: { start: number; end: number }[] = [];
     const pageNoCellCoordinates: { [anomalyIndex: number]: { x: number; y: number; w: number; h: number } } = {};
 
@@ -510,9 +548,48 @@ export const generateDefectAnomalyReport = async (
             elevVal = "N/A";
         }
 
+        const d = (typeof record.inspection_data === "string" ? JSON.parse(record.inspection_data) : record.inspection_data) || {};
+
+        // Dive no.
+        const diveNoVal = (
+            record.dive_no ||
+            record.deployment_no ||
+            record.insp_dive_jobs?.dive_no ||
+            record.insp_rov_jobs?.deployment_no ||
+            d.dive_no ||
+            d.DIVE_NO ||
+            d.deployment_no ||
+            ""
+        ).toString().trim() || "N/A";
+
+        // Supervisor: info from anomaly event log; supervisor is same name as rov pilot if not specified
+        const supervisorVal = (
+            record.supervisor ||
+            record.rov_supervisor ||
+            record.dive_supervisor ||
+            d.supervisor ||
+            d.SUPERVISOR ||
+            record.rov_name ||
+            record.diver_name ||
+            d.pilot ||
+            d.PILOT ||
+            ""
+        ).toString().trim() || "N/A";
+
+        // Rep. cord: coordinator name from anomaly event log / job setup
+        const repCordVal = (
+            record.report_coordinator ||
+            record.rep_cord ||
+            record.insp_rov_jobs?.report_coordinator ||
+            record.insp_dive_jobs?.report_coordinator ||
+            d.rep_cord ||
+            d.REP_CORD ||
+            d.report_coordinator ||
+            d.REPORT_COORDINATOR ||
+            ""
+        ).toString().trim() || "N/A";
+
         const isRectified = Boolean(record.rectified || anomalyDetails.rectified || anomalyDetails.rectified_remarks);
-        const labelColWidth = 32;
-        const valueColWidth = (contentWidth - (labelColWidth * 2)) / 2;
 
         autoTable(doc, {
             startY: margin + headerH + 2,
@@ -537,16 +614,21 @@ export const generateDefectAnomalyReport = async (
                     { content: rovDiverLabel, styles: headStylesString }, { content: rovDiverVal }
                 ],
                 [
+                    { content: "Dive no.:", styles: headStylesString }, { content: diveNoVal },
+                    { content: "Supervisor:", styles: headStylesString }, { content: supervisorVal }
+                ],
+                [
+                    { content: "Rep. cord:", styles: headStylesString }, { content: repCordVal },
+                    { content: "Status:", styles: headStylesString }, { content: isRectified ? "RECTIFIED" : "OPEN" }
+                ],
+                [
                     { content: "DVD/Recording No.:", styles: headStylesString }, { content: recording },
                     { content: compLabel, styles: headStylesString }, { content: compVal || "N/A" }
                 ],
                 [
                     { content: elevLabel, styles: headStylesString }, { content: elevVal },
-                    { content: "Status:", styles: headStylesString }, { content: isRectified ? "RECTIFIED" : "OPEN" }
-                ],
-                [
                     { content: "Page No.:", styles: headStylesString },
-                    { content: "", colSpan: 3 }
+                    { content: "" }
                 ]
             ] as any,
             theme: 'grid',
@@ -561,7 +643,7 @@ export const generateDefectAnomalyReport = async (
             },
             margin: { left: margin, right: margin, top: margin + headerH + 2 },
             didDrawCell: (data) => {
-                if (data.row.index === 6 && data.column.index >= 1 && !pageNoCellCoordinates[i]) {
+                if (data.row.index === 7 && data.column.index === 3 && !pageNoCellCoordinates[i]) {
                     pageNoCellCoordinates[i] = {
                         x: data.cell.x,
                         y: data.cell.y,
@@ -591,7 +673,6 @@ export const generateDefectAnomalyReport = async (
             : "";
 
         // 4. Primary CP & Additional CP readings
-        const d = (typeof record.inspection_data === "string" ? JSON.parse(record.inspection_data) : record.inspection_data) || {};
         const primaryCp = record.cp_reading ?? record.cp_rdg ?? record.cp_reading_mv ?? record.cp ?? d.cp_reading ?? d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? d.cp_val ?? "";
 
         const cpLines: string[] = [];
@@ -641,19 +722,50 @@ export const generateDefectAnomalyReport = async (
         const fullText = [findings, defectDesc, cpBlock, rectRemarks].filter(Boolean).join("\n\n");
 
         // Set font BEFORE splitTextToSize so width calculation matches rendering
-        const descFontSize = 8;
-        const descLineHeight = 3.5; // ~line height for 8pt font
+        let descFontSize = 8;
+        let descLineHeight = 3.5; // ~line height for 8pt font
         const textPadding = 3; // padding from box edge
         const textAreaWidth = contentWidth - (textPadding * 2); // full usable width inside box
 
         doc.setFontSize(descFontSize);
         doc.setFont("helvetica", "normal");
-        const descLines = doc.splitTextToSize(fullText || "No description provided.", textAreaWidth);
+        let descLines = doc.splitTextToSize(fullText || "No description provided.", textAreaWidth);
+
+        // Pre-check raw images to know if we need to reserve space for the 1st photo on Page 1
+        const rawImages = Array.isArray(record.attachments) && record.attachments.length > 0
+            ? record.attachments
+            : Array.isArray(record.photos) && record.photos.length > 0
+            ? record.photos
+            : Array.isArray(record.insp_attachments) && record.insp_attachments.length > 0
+            ? record.insp_attachments
+            : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
+            ? record.insp_photos
+            : [];
+        const hasPhotos = rawImages.length > 0;
+
+        // Define Footer Height for Signatories Box
+        const footerH = 22; // Compact signatory height (22mm)
+        const footerY = pageHeight - margin - footerH; // 260mm
+        const maxYForContent = footerY - 3; // 257mm max for content box before footer
 
         // Calculate Box Height
         const boxHeaderH = 7;
-        const boxContentH = (descLines.length * descLineHeight) + 6; // padding
-        const totalBoxH = boxHeaderH + boxContentH;
+        let boxContentH = (descLines.length * descLineHeight) + 6; // padding
+        let totalBoxH = boxHeaderH + boxContentH;
+
+        // If photos exist, ensure description box leaves at least 50mm on Page 1 for the 1st photo
+        if (hasPhotos) {
+            const minSpaceForPhoto = 84 + 7 + 6 + 4; // fixed photo frame + title bar + caption + padding
+            const maxDescBoxH = maxYForContent - lastY - minSpaceForPhoto - 5;
+            if (totalBoxH > maxDescBoxH && maxDescBoxH > 30) {
+                descFontSize = 7.5;
+                descLineHeight = 3.1;
+                doc.setFontSize(descFontSize);
+                descLines = doc.splitTextToSize(fullText || "No description provided.", textAreaWidth);
+                boxContentH = (descLines.length * descLineHeight) + 6;
+                totalBoxH = boxHeaderH + boxContentH;
+            }
+        }
 
         // Draw background for Anomaly Description sub-header row
         if (isPrintFriendly) {
@@ -684,26 +796,8 @@ export const generateDefectAnomalyReport = async (
 
         lastY += totalBoxH + 5;
 
-        // Removed redundant text as requested
-
-        const rawImages = Array.isArray(record.attachments) && record.attachments.length > 0
-            ? record.attachments
-            : Array.isArray(record.photos) && record.photos.length > 0
-            ? record.photos
-            : Array.isArray(record.insp_attachments) && record.insp_attachments.length > 0
-            ? record.insp_attachments
-            : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
-            ? record.insp_photos
-            : [];
-        const images = [...rawImages].sort((a: any, b: any) => {
-            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
-            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
-            if (orderA !== orderB) return orderA - orderB;
-            const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
-            const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
-            return dateA - dateB;
-        });
         // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
+        const images = rawImages;
         const loadedImages = await Promise.all(
             images.map(async (rawAtt: any) => {
                 const att = typeof rawAtt === 'string' ? { path: rawAtt, name: 'Photo' } : (rawAtt || {});
@@ -712,17 +806,20 @@ export const generateDefectAnomalyReport = async (
                 const bucket = att.bucket_id || att.bucket || "attachments";
 
                 const urlCandidates: string[] = [];
-                // 1. Server-side proxy with attachment ID (direct stream, bypasses CORS)
+                // 1. Server-side proxy with attachment ID (fastest, hits S3 SDK directly)
                 if (att.id) {
-                    urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}${rawPath ? `&path=${encodeURIComponent(rawPath)}` : ''}`);
+                    urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}`);
                 }
                 // 2. Server-side proxy with raw path / S3 URL
                 if (rawPath) {
                     urlCandidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
+                    if (att.id) {
+                        urlCandidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}&path=${encodeURIComponent(rawPath)}`);
+                    }
                     urlCandidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
                 }
-                // 3. Direct URL fallback
-                if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:'))) {
+                // 3. Direct URL fallback (only for public URLs, not private Backblaze that 401s)
+                if (typeof rawPath === 'string' && (rawPath.startsWith('http://') || rawPath.startsWith('https://') || rawPath.startsWith('data:')) && !rawPath.includes('backblazeb2.com')) {
                     urlCandidates.push(rawPath);
                 }
 
@@ -753,11 +850,34 @@ export const generateDefectAnomalyReport = async (
         );
         const processedImages = loadedImages.filter((img): img is NonNullable<typeof img> => img !== null);
 
-        // Standardized signatory box dimensions (uniform across all pages/records)
-        const signatoryH = 21; // Standard box height (21mm)
-        const signatoryBottomY = pageHeight - margin - 0.5; // 286.5mm (leaves clean breathing space above footer text)
-        const sigTopY = signatoryBottomY - signatoryH; // 265.5mm
-        const maxYForContent = sigTopY - 0.6; // 264.9mm max for photos before signatory box (0.6mm hairline margin)
+        // Order: Figures (drawings/sketches) first, then Photos. Within each group sort by the
+        // number in the description ("Figure 1", "Photo 2"), falling back to stored sort order.
+        const imgSortInfo = (p: any) => {
+            const m = p.att?.meta || {};
+            const label = `${m.description || ""} ${m.title || ""} ${p.att?.name || ""}`;
+            const desc = String(m.description || "").trim();
+            const isFigure = /^\s*(figure|fig\.?|drawing|sketch)\b/i.test(desc) || /\b(drawing|sketch)\b/i.test(String(m.type || ""));
+            const numMatch = desc.match(/^\s*(?:figure|fig\.?|photo|drawing|sketch)\s*(\d+)/i);
+            return {
+                group: isFigure ? 0 : 1,
+                num: numMatch ? parseInt(numMatch[1], 10) : Number.MAX_SAFE_INTEGER,
+                order: typeof m.sort_order === "number" ? m.sort_order : 999999,
+                label
+            };
+        };
+        const originalIdx = new Map<any, number>(processedImages.map((p, idx) => [p, idx]));
+        processedImages.sort((a, b) => {
+            const ia = imgSortInfo(a);
+            const ib = imgSortInfo(b);
+            if (ia.group !== ib.group) return ia.group - ib.group;
+            if (ia.num !== ib.num) return ia.num - ib.num;
+            if (ia.order !== ib.order) return ia.order - ib.order;
+            return (originalIdx.get(a) || 0) - (originalIdx.get(b) || 0);
+        });
+
+        // Standard fixed frame for every figure / photo
+        const FIXED_PHOTO_W = 135;
+        const FIXED_PHOTO_H = 84;
 
         if (processedImages.length > 0) {
             for (let j = 0; j < processedImages.length; j++) {
@@ -776,10 +896,8 @@ export const generateDefectAnomalyReport = async (
 
                 const aspect = imgAspect && imgAspect > 0 ? imgAspect : (4 / 3);
 
-                // Minimum height threshold for a legible inspection photo (40mm):
-                // If remaining space on current page is too small (maxPhotoSpace < 40mm),
-                // cleanly add a page break so photos render at balanced size on the next page!
-                if (maxPhotoSpace < 40) {
+                // Fixed-size frame: if the remaining space cannot hold the full frame, start a new page
+                if (maxPhotoSpace < FIXED_PHOTO_H) {
                     doc.addPage();
                     globalPage++;
                     drawHeader(doc);
@@ -808,30 +926,17 @@ export const generateDefectAnomalyReport = async (
                     maxPhotoSpace = availableH - boxOverhead;
                 }
 
-                // Check remaining photos in queue to optimize multi-photo page density
-                const remainingPhotos = processedImages.length - j;
-                
-                // Dynamically calculate target max height:
-                // If this is the final photo, allow it to utilize the full available height down to maxYForContent
-                // If multiple photos remain, calculate fair share so 2 photos fit on this page if space allows
-                let targetMaxH = maxPhotoSpace;
-                if (remainingPhotos >= 2) {
-                    const spaceForTwo = Math.floor((availableH - (boxOverhead * 2) - 2) / 2);
-                    if (spaceForTwo >= 40) {
-                        targetMaxH = spaceForTwo;
-                    }
+                // Fixed frame dimensions (identical for every image); image is fitted inside, preserving aspect
+                const frameW = FIXED_PHOTO_W;
+                const frameH = FIXED_PHOTO_H;
+                let photoW = frameW;
+                let photoH = photoW / aspect;
+                if (photoH > frameH) {
+                    photoH = frameH;
+                    photoW = photoH * aspect;
                 }
 
-                let photoH = Math.max(35, Math.min(targetMaxH, maxPhotoSpace));
-                let photoW = photoH * aspect;
-
-                // Ensure photo width doesn't exceed container width
-                if (photoW > contentWidth - 8) {
-                    photoW = contentWidth - 8;
-                    photoH = photoW / aspect;
-                }
-
-                const totalBlockH = headerH_box + photoH + footerH_box + 4; // Total container box height
+                const totalBlockH = headerH_box + frameH + footerH_box + 4; // Total container box height
 
                 // 1. Draw Container Box (Full width)
                 doc.setDrawColor(200, 200, 200);
@@ -852,13 +957,15 @@ export const generateDefectAnomalyReport = async (
                 doc.setFont("helvetica", "bold");
                 doc.text(title.toUpperCase(), pageWidth / 2, lastY + 5, { align: "center" });
 
-                // 3. Draw Image (Centered horizontally within container box)
+                // 3. Draw Image (Centered horizontally and vertically within the fixed frame)
                 const imgX = margin + (contentWidth - photoW) / 2;
-                const imgY = lastY + headerH_box + 2;
-                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH, undefined, "FAST");
+                const imgY = lastY + headerH_box + 2 + (frameH - photoH) / 2;
+                const isPng = imgData.startsWith("data:image/png") || (attObj.meta?.file_type || "").includes("png") || (attObj.name || "").toLowerCase().endsWith(".png");
+                const imgFormat = isPng ? "PNG" : "JPEG";
+                doc.addImage(imgData, imgFormat, imgX, imgY, photoW, photoH, undefined, "FAST");
 
                 // 4. Draw Footer for Description (Centered)
-                const footerY_pos = lastY + headerH_box + photoH + 2;
+                const footerY_pos = lastY + headerH_box + frameH + 2;
                 doc.setFontSize(7.5);
                 doc.setTextColor(60, 60, 60);
 
@@ -870,8 +977,8 @@ export const generateDefectAnomalyReport = async (
                     doc.text(`Photo ${j + 1}`, pageWidth / 2, footerY_pos + 3.5, { align: "center" });
                 }
 
-                // Update Y for next photo (clean 1.5mm spacing)
-                lastY += totalBlockH + 1.5;
+                // Update Y for next photo
+                lastY += totalBlockH + 3;
             }
         }
         // Draw Signatories at the bottom of the current page (or new page if no space)
@@ -881,6 +988,10 @@ export const generateDefectAnomalyReport = async (
         // Define Signatory Footer function to be called on each page or just the last?
         // User requested "footer part". Usually implies on the report page.
         // Let's add it to the LAST page of the anomaly (where photos end).
+
+        // Check if we need a new page for footer if content overlapped?
+        // Photos logic uses availableH. We should reduce availableH to reserve space for footer.
+        // But for now, let's just draw it at the bottom.
 
         const drawSignatories = () => {
             const gap = 2;
@@ -892,8 +1003,8 @@ export const generateDefectAnomalyReport = async (
             ];
 
             const headerBarH = 4.5;
-            const boxH = signatoryH; // 21mm uniform box size across all pages in this report
-            const y = sigTopY;
+            const boxH = footerH;
+            const y = footerY;
 
             names.forEach((p, idx) => {
                 const x = margin + idx * (colW + gap);
@@ -903,7 +1014,7 @@ export const generateDefectAnomalyReport = async (
                 doc.setLineWidth(0.1);
                 doc.rect(x, y, colW, boxH);
 
-                // 2. Blue Column Header Bar (like in Pic 1)
+                // 2. Blue Column Header Bar (like in Pic 2)
                 if (!isPrintFriendly) {
                     doc.setFillColor(7, 78, 136);
                     doc.rect(x, y, colW, headerBarH, "F");
@@ -927,24 +1038,20 @@ export const generateDefectAnomalyReport = async (
                 doc.setFontSize(6.5);
 
                 const labelX = x + 2.5;
-                const valueX = x + 15;
 
-                const lineSpacing = 2.6; // closer spacing with each other
-                const dateY = signatoryBottomY - 1.5; // moved lower, neatly placed near bottom border
-                const posY = dateY - lineSpacing; // signatoryBottomY - 4.1
-                const nameY = posY - lineSpacing; // signatoryBottomY - 6.7
+                const lineSpacing = 2.6;
+                const dateY = y + boxH - 1.5;
+                const posY = dateY - lineSpacing;
+                const nameY = posY - lineSpacing;
 
                 // Name:
-                doc.text("Name:", labelX, nameY);
-                if (p.name) doc.text(p.name, valueX, nameY);
+                doc.text(p.name ? `Name: ${p.name}` : "Name:", labelX, nameY);
 
                 // Position:
-                doc.text("Position:", labelX, posY);
-                if (p.position) doc.text(p.position, valueX, posY);
+                doc.text(p.position ? `Position: ${p.position}` : "Position:", labelX, posY);
 
                 // Date:
-                doc.text("Date:", labelX, dateY);
-                if (p.date) doc.text(formatPdfDate(p.date), valueX, dateY);
+                doc.text(p.date ? `Date: ${formatPdfDate(p.date)}` : "Date:", labelX, dateY);
             });
         };
 
@@ -978,7 +1085,7 @@ export const generateDefectAnomalyReport = async (
             // If on Page 1 of this anomaly, draw inside the dedicated Page No. table cell!
             if (i === range.start) {
                 const cell = pageNoCellCoordinates[rangeIdx];
-                const cellX = cell ? cell.x + 2 : (margin + labelColWidth + 2);
+                const cellX = cell ? cell.x + 2 : (margin + (labelColWidth * 2) + valueColWidth + 2);
                 const cellY = cell ? (cell.y + 4.8) : 82;
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "normal");

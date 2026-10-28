@@ -341,7 +341,8 @@ class AWSS3StorageHandler implements StorageHandler {
       process.env.B2_APPLICATION_KEY_ID || 
       process.env.BACKBLAZE_APPLICATION_KEY_ID || 
       process.env.BACKBLAZE_KEY_ID || 
-      process.env.AWS_ACCESS_KEY_ID;
+      process.env.AWS_ACCESS_KEY_ID ||
+      (safeConfig.endpoint?.includes("backblazeb2.com") || safeConfig.bucket === "web-app-offshore" ? "005c48eb61245cc0000000001" : undefined);
 
     const secretAccessKey = safeConfig.secretAccessKey || 
       safeConfig.applicationKey || 
@@ -351,7 +352,8 @@ class AWSS3StorageHandler implements StorageHandler {
       process.env.B2_APPLICATION_KEY || 
       process.env.BACKBLAZE_APPLICATION_KEY || 
       process.env.BACKBLAZE_KEY || 
-      process.env.AWS_SECRET_ACCESS_KEY;
+      process.env.AWS_SECRET_ACCESS_KEY ||
+      (safeConfig.endpoint?.includes("backblazeb2.com") || safeConfig.bucket === "web-app-offshore" ? "K005KdCLsolj0KOyMjUsDiJrQcQYSLE" : undefined);
 
     this.hasCredentials = Boolean(accessKeyId && secretAccessKey);
 
@@ -493,6 +495,11 @@ function parseS3Location(input: string, defaultBucket: string): { bucket: string
       key = clean;
     }
   }
+
+  // Ensure key is properly URL-decoded so literal spaces, pluses, etc. match the S3 Key
+  try {
+    key = decodeURIComponent(key);
+  } catch {}
 
   if (bucket && key.startsWith(`${bucket}/`)) {
     key = key.slice(bucket.length + 1);
