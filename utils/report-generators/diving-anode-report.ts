@@ -190,7 +190,7 @@ export const generateDivingAnodeReport = async (
 
         // ── Header definitions (2-tier) ─────────────────────────────────────────
         const topHeader = [
-            { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "No.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Comp QID", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Elev\n(m)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Dive No.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
@@ -235,7 +235,7 @@ export const generateDivingAnodeReport = async (
                 lineColor: colors.border,
                 overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
-                0:  { cellWidth: 8,   halign: "center" }, // Item No
+                0:  { cellWidth: 8,   halign: "center" }, // No.
                 1:  { cellWidth: 16 },                    // Comp QID
                 2:  { cellWidth: 10,  halign: "center" }, // Elev
                 3:  { cellWidth: 12,  halign: "center" }, // Dive No

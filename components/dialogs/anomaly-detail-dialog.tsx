@@ -22,11 +22,13 @@ import {
   ExternalLink,
   Save,
   RotateCcw,
-  Loader2
+  Loader2,
+  Printer
 } from "lucide-react";
 import { toast } from "sonner";
 import { AttachmentSection } from "@/components/component/attachment-section";
 import { ComponentSpecDialog } from "@/components/dialogs/component-spec-dialog";
+import { ReportPreviewDialog } from "@/components/ReportPreviewDialog";
 import inspectionTypesData from "@/utils/types/inspection-types.json";
 
 interface AnomalyDetailDialogProps {
@@ -69,6 +71,70 @@ export function AnomalyDetailDialog({
   // Spec Dialog State
   const [isSpecOpen, setIsSpecOpen] = useState(false);
   const [componentForSpec, setComponentForSpec] = useState<any>(null);
+
+  // Report Preview State
+  const [previewOpen, setPreviewOpen] = useState(false);
+
+  const generateReportBlob = async (printFriendly: boolean, showSignatures: boolean): Promise<Blob | void> => {
+    if (!currentAnomaly) return;
+
+    try {
+      const { getReportHeaderData } = await import("@/utils/company-settings");
+      const { generateDefectAnomalyReport } = await import("@/utils/report-generators/defect-anomaly-report");
+
+      const settings = await getReportHeaderData();
+
+      const insp = currentAnomaly.inspection || {};
+      const jp = insp.jobpack || {};
+      const strId = insp.structure_id || currentAnomaly.structure_id || "0";
+      const sowNo = insp.sow_report_no || currentAnomaly.sow_report_no || "";
+
+      const isFinding = currentAnomaly.record_category === "FINDING" || currentAnomaly.status === "Finding";
+      const anomalyId = !isFinding ? (currentAnomaly.anomaly_id || currentAnomaly.id) : null;
+      const inspId = insp.insp_id || currentAnomaly.inspection_id || currentAnomaly.insp_id;
+
+      const config: any = {
+        reportNoPrefix: sowNo || (isFinding ? "FINDING" : "ANOMALY"),
+        reportYear: new Date().getFullYear().toString(),
+        preparedBy: { name: "Inspector", date: "" },
+        reviewedBy: { name: currentAnomaly.reviewed_by || "", date: "" },
+        approvedBy: { name: currentAnomaly.approved_by || "", date: currentAnomaly.approved_date || "" },
+        watermark: { enabled: false, text: "", transparency: 0.1 },
+        showContractorLogo: true,
+        showPageNumbers: true,
+        returnBlob: true,
+        printFriendly: printFriendly ?? false,
+        showSignatures: showSignatures ?? true,
+        isFindingsReport: isFinding,
+      };
+
+      if (anomalyId) {
+        config.anomalyId = anomalyId;
+      }
+      if (inspId) {
+        config.inspectionId = inspId;
+      }
+
+      const result = await generateDefectAnomalyReport(
+        { id: jp.id || "0", name: jp.name || currentAnomaly.jobpack_name || "Project Reference" },
+        { id: strId, str_name: currentAnomaly.structure_name || "Structure" },
+        sowNo,
+        {
+          company_name: settings.companyName,
+          logo_url: settings.companyLogo || undefined,
+          department_name: settings.departmentName,
+          departmentName: settings.departmentName,
+        } as any,
+        config
+      );
+
+      return result as Blob;
+    } catch (error) {
+      console.error("Error generating report blob:", error);
+      toast.error("Failed to generate report");
+      return;
+    }
+  };
 
   const priorityColors = useMemo(() => {
     const map: Record<string, string> = {};
@@ -374,13 +440,28 @@ export function AnomalyDetailDialog({
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="bg-card text-foreground border-border max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-xl font-bold">
-              <AlertTriangle className="h-5 w-5 text-destructive" />
-              Anomaly Details
-            </DialogTitle>
-            <DialogDescription className="text-muted-foreground">
-              Review information and rectify.
-            </DialogDescription>
+            <div className="flex items-center justify-between pr-8">
+              <div>
+                <DialogTitle className="flex items-center gap-2 text-xl font-bold">
+                  <AlertTriangle className="h-5 w-5 text-destructive" />
+                  Anomaly Details
+                </DialogTitle>
+                <DialogDescription className="text-muted-foreground mt-0.5">
+                  Review information and rectify.
+                </DialogDescription>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setPreviewOpen(true)}
+                className="gap-1.5 text-xs font-semibold h-8 border-border bg-background hover:bg-muted"
+                title="Print Anomaly Report"
+              >
+                <Printer className="h-3.5 w-3.5 text-primary" />
+                <span>Print Report</span>
+              </Button>
+            </div>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
@@ -470,7 +551,18 @@ export function AnomalyDetailDialog({
                         className="bg-background border-border h-9"
                       />
                     </div>
-                    <div className="flex justify-end pt-2">
+                    <div className="flex justify-between items-center pt-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setPreviewOpen(true)}
+                        className="font-semibold text-xs h-8 gap-1.5 border-border bg-background hover:bg-muted"
+                        title="Print Anomaly Report"
+                      >
+                        <Printer className="h-3.5 w-3.5 text-primary" />
+                        <span>Print Report</span>
+                      </Button>
                       <Button 
                         size="sm"
                         onClick={handleSaveChanges}
@@ -658,6 +750,17 @@ export function AnomalyDetailDialog({
         onOpenChange={setIsSpecOpen}
         component={componentForSpec}
         mode="view"
+      />
+
+      {/* Report Preview Dialog */}
+      <ReportPreviewDialog
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={currentAnomaly?.record_category === "FINDING" ? "Findings Report Preview" : "Anomaly Report Preview"}
+        fileName={`${currentAnomaly?.record_category === "FINDING" ? 'Finding' : 'Anomaly'}_Report_${
+          currentAnomaly ? (currentAnomaly.anomaly_ref_no || currentAnomaly.display_ref_no || `REC-${currentAnomaly.anomaly_id || 'Draft'}`) : 'Draft'
+        }`}
+        generateReport={generateReportBlob}
       />
     </>
   );

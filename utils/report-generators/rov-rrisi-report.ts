@@ -594,7 +594,7 @@ export const generateROVRRISIReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
-                head: [['Item No.', 'Loc / Elev', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                head: [['No.', 'Loc / Elev', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};

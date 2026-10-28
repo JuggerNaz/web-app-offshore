@@ -184,7 +184,7 @@ export const generateDivingANMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [[
-                { content: "Item No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component QID",  styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation",      styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",       styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
@@ -219,7 +219,7 @@ export const generateDivingANMAINReport = async (
                 valign: "middle" as const
             },
             columnStyles: {
-                0: { cellWidth: 15 },  // Item No.
+                0: { cellWidth: 15 },  // No.
                 1: { cellWidth: 32 },  // QID
                 2: { cellWidth: 20 },  // Elev
                 3: { cellWidth: 18 },  // Dive No.

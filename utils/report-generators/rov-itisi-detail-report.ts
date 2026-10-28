@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV I-Tube Inspection Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
+ * Columns: No. | QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  *
  * Data is grouped by I-Tube parent (RS). Each I-Tube group starts on a new page.
  * Associated components are clubbed under their parent I-Tube QID.
@@ -369,7 +369,7 @@ export const generateROVRRISIITubeDetailReport = async (
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 6 },
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                        { content: "No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "QID" },
                         { content: "Elevation", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                         { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
@@ -383,7 +383,7 @@ export const generateROVRRISIITubeDetailReport = async (
                 headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                 styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
                 columnStyles: {
-                    0: { cellWidth: 12 }, // Item No.
+                    0: { cellWidth: 12 }, // No.
                     1: { cellWidth: 16 }, // QID
                     2: { cellWidth: 18 }, // Elevation
                     3: { cellWidth: 18 }, // Dive No.

@@ -310,6 +310,7 @@ export const POST = withTenant(async (request, { companyId }) => {
     const source_id_str = formData.get("source_id") as string;
     const title = (formData.get("title") as string) || "";
     const description = (formData.get("description") as string) || "";
+    const sort_order = formData.get("sort_order") as string;
 
     const file = formData.get("file") as File;
 
@@ -404,6 +405,7 @@ export const POST = withTenant(async (request, { companyId }) => {
           meta: {
             title: title || name,
             description: description,
+            sort_order: sort_order !== null && sort_order !== undefined && sort_order !== "" ? Number(sort_order) : 0,
             file_label: name,
             original_file_name: file.name,
             file_url: publicUrl,
@@ -564,26 +566,35 @@ export const PATCH = withTenant(async (request, { companyId }) => {
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   const body = await request.json();
-  const { id, title, description, name } = body;
+  const { id, title, description, name, sort_order } = body;
 
   if (!id) {
     return NextResponse.json({ error: "No ID provided" }, { status: 400 });
   }
 
-  // insp_media (workspace captured) items: only the file name is stored, so title/name -> file_name
+  // insp_media (workspace captured) items
   const patchMediaId = parseMediaId(id);
   if (patchMediaId !== null) {
     const { admin, media } = await loadAuthorizedMedia(patchMediaId, companyId);
     if (!media) return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
 
     const newName = String(name ?? title ?? "").trim();
-    if (newName) {
-      const { error: mediaErr } = await admin
-        .from("insp_media")
-        .update({ file_name: newName })
-        .eq("media_id", patchMediaId);
-      if (mediaErr) return handleSupabaseError(mediaErr, "Failed to update media");
-    }
+    const currentMeta = media.meta && typeof media.meta === "object" ? media.meta : {};
+    const updatedMeta = {
+      ...currentMeta,
+      ...(title !== undefined ? { title } : {}),
+      ...(description !== undefined ? { description } : {}),
+      ...(sort_order !== undefined ? { sort_order: Number(sort_order) } : {}),
+    };
+
+    const updatePayload: any = { meta: updatedMeta };
+    if (newName) updatePayload.name = newName;
+
+    const { error: mediaErr } = await admin
+      .from("insp_media")
+      .update(updatePayload)
+      .eq("media_id", patchMediaId);
+    if (mediaErr) return handleSupabaseError(mediaErr, "Failed to update media");
     return NextResponse.json({ success: true });
   }
 
@@ -618,6 +629,7 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     ...currentMeta,
     title: title !== undefined ? title : currentMeta.title,
     description: description !== undefined ? description : currentMeta.description,
+    sort_order: sort_order !== undefined ? Number(sort_order) : currentMeta.sort_order,
   };
 
   const { data, error } = await (supabase as any)
@@ -676,20 +688,36 @@ export const PUT = withTenant(async (request, { companyId }) => {
         });
       if (upErr) return NextResponse.json({ error: upErr.message }, { status: 500 });
 
-      // Touch the row so realtime subscribers (Captured Events) refresh
-      await admin.from("insp_media").update({ file_name: media.file_name }).eq("media_id", putMediaId);
+      // Touch the row so realtime subscribers (Captured Events) refresh, updating file_name if new file
+      const updateData: any = {};
+      if (file.name) updateData.file_name = file.name;
+      await admin.from("insp_media").update(updateData).eq("media_id", putMediaId);
       return NextResponse.json({ success: true, url: media.file_path });
     }
 
-    if (!id || !filePath || !file) {
-      return NextResponse.json({ error: "Missing id, filePath, or file" }, { status: 400 });
+    if (!id || !file) {
+      return NextResponse.json({ error: "Missing id or file" }, { status: 400 });
     }
 
     const attachmentId = Number(id);
+    if (isNaN(attachmentId)) {
+      return NextResponse.json({ error: "Invalid attachment id" }, { status: 400 });
+    }
 
-    let relativePath = filePath;
-    if (filePath.startsWith("http")) {
-      const parts = filePath.split("/");
+    const { data: currentAttachment } = await (supabase as any)
+      .from("attachment")
+      .select("id, meta, path, name, company_id")
+      .eq("id", attachmentId)
+      .maybeSingle();
+
+    if (!currentAttachment) {
+      return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
+    }
+
+    const rawOldPath = filePath || currentAttachment.meta?.file_path || currentAttachment.path;
+    let relativePath = rawOldPath;
+    if (rawOldPath && typeof rawOldPath === "string" && rawOldPath.startsWith("http")) {
+      const parts = rawOldPath.split("/");
       const bucketIndex = parts.indexOf("attachments");
       if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
         relativePath = parts.slice(bucketIndex + 1).join("/");
@@ -705,11 +733,13 @@ export const PUT = withTenant(async (request, { companyId }) => {
 
     const handler = await getStorageHandler(settings?.storage_provider || "Supabase", settings?.storage_config);
 
-    try {
-      console.log(`[PUT /api/attachment] Deleting old file: ${relativePath}`);
-      await handler.delete(relativePath);
-    } catch (err) {
-      console.warn(`[PUT /api/attachment] Deletion failed (may be expected):`, err);
+    if (relativePath) {
+      try {
+        console.log(`[PUT /api/attachment] Deleting old file: ${relativePath}`);
+        await handler.delete(relativePath);
+      } catch (err) {
+        console.warn(`[PUT /api/attachment] Deletion failed (may be expected):`, err);
+      }
     }
 
     const originalFileExt = file.name.includes(".") ? file.name.split(".").pop() : "bin";
@@ -753,12 +783,9 @@ export const PUT = withTenant(async (request, { companyId }) => {
     
     const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, newFileName, finalContentType);
 
-    const { data: currentAttachment } = await (supabase as any)
-      .from("attachment")
-      .select("meta")
-      .eq("id", attachmentId)
-      .eq("company_id", companyId)
-      .single();
+    const title = formData.get("title") as string | null;
+    const description = formData.get("description") as string | null;
+    const sort_order = formData.get("sort_order") as string | null;
 
     const updatedMeta = {
       ...((currentAttachment as any)?.meta as object || {}),
@@ -766,17 +793,25 @@ export const PUT = withTenant(async (request, { companyId }) => {
       file_url: publicUrl,
       file_type: finalContentType,
       mime: finalContentType,
+      original_file_name: file.name || (currentAttachment as any)?.meta?.original_file_name,
+      file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
+      size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
       type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
+      ...(title !== null && title !== undefined ? { title } : {}),
+      ...(description !== null && description !== undefined ? { description } : {}),
+      ...(sort_order !== null && sort_order !== undefined && sort_order !== "" ? { sort_order: Number(sort_order) } : {}),
     };
+
+    const updatePayload: any = {
+      path: publicUrl,
+      meta: updatedMeta
+    };
+    if (title) updatePayload.name = title;
 
     const { error: dbError } = await (supabase as any)
       .from("attachment")
-      .update({
-        path: publicUrl,
-        meta: updatedMeta
-      })
-      .eq("id", attachmentId)
-      .eq("company_id", companyId);
+      .update(updatePayload)
+      .eq("id", attachmentId);
 
     if (dbError) {
       console.error("Failed to update database record after upload:", dbError);

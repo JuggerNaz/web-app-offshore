@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Card, CardContent } from "@/components/ui/card";
 import { ImageMarkupEditor } from "./image-markup-editor";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 
 interface Attachment {
   id: number;
@@ -83,22 +84,20 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
       // 1. Fetch direct sourceType attachments
       const res1 = await fetch(`/api/attachment/${sourceType}/${sourceId}`);
       const json1 = await res1.json();
-      if (json1.data) {
-        allData = [...json1.data];
-      }
+      const list1: Attachment[] = Array.isArray(json1) ? json1 : (json1?.data || []);
+      allData = [...list1];
 
       // 2. Fetch inspection attachments if it's an anomaly & we have inspectionId
       if (sourceType === "anomaly" && inspectionId) {
         const res2 = await fetch(`/api/attachment/inspection/${inspectionId}`);
         const json2 = await res2.json();
-        if (json2.data) {
-          const existingIds = new Set(allData.map(a => a.id));
-          json2.data.forEach((att: Attachment) => {
-            if (!existingIds.has(att.id)) {
-              allData.push(att);
-            }
-          });
-        }
+        const list2: Attachment[] = Array.isArray(json2) ? json2 : (json2?.data || []);
+        const existingIds = new Set(allData.map(a => a.id));
+        list2.forEach((att: Attachment) => {
+          if (!existingIds.has(att.id)) {
+            allData.push(att);
+          }
+        });
       }
 
       setAttachments(allData);
@@ -208,19 +207,20 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     }
   };
 
-  // Stable, re-render-safe public image URL. The version param is derived
-  // from the attachment row (timestamp/id), NOT Date.now(), which previously
-  // forced a full image re-download on every render.
+  // Stable, re-render-safe public image URL.
   const buildImageUrl = (att: Attachment) => {
-    let url = att.meta?.file_url || att.path;
-    if (url && !url.startsWith("http")) {
-      const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
-      const bucket = (att.meta as any)?.bucket || "attachments";
-      url = `${baseUrl}/storage/v1/object/public/${bucket}/${url}`;
+    let url = getAttachmentUrl(att);
+    if (!url) {
+      url = att.meta?.file_url || att.path;
+      if (url && !url.startsWith("http")) {
+        const baseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "https://zpsmxtdqlpbdwfzctqzd.supabase.co";
+        const bucket = (att.meta as any)?.bucket || "attachments";
+        url = `${baseUrl}/storage/v1/object/public/${bucket}/${url}`;
+      }
     }
     const version = att.cr_date || att.updated_at || att.id;
     const bust = bustCounters[String(att.id)] || 0;
-    const sep = url.includes("?") ? "&" : "?";
+    const sep = url && url.includes("?") ? "&" : "?";
     return bust > 0 ? `${url}${sep}v=${version}&bust=${bust}` : `${url}${sep}v=${version}`;
   };
 
@@ -229,15 +229,15 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     const lowerPath = path?.toLowerCase() || "";
     
     if (lowerType.startsWith("image/") || lowerPath.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-      return <ImageIcon className="h-12 w-12 text-indigo-400" />;
+      return <ImageIcon className="h-10 w-10 text-indigo-400" />;
     }
     if (lowerType.startsWith("video/") || lowerPath.match(/\.(mp4|webm|ogg|mov)$/)) {
-      return <Video className="h-12 w-12 text-rose-400" />;
+      return <Video className="h-10 w-10 text-rose-400" />;
     }
     if (lowerType.includes("pdf") || lowerPath.match(/\.pdf$/)) {
-      return <FileText className="h-12 w-12 text-red-400" />;
+      return <FileText className="h-10 w-10 text-red-400" />;
     }
-    return <File className="h-12 w-12 text-blue-400" />;
+    return <File className="h-10 w-10 text-blue-400" />;
   };
 
   const getFileIconSmall = (type?: string, path?: string) => {
@@ -245,35 +245,35 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     const lowerPath = path?.toLowerCase() || "";
     
     if (lowerType.startsWith("image/") || lowerPath.match(/\.(jpg|jpeg|png|gif|webp)$/)) {
-      return <ImageIcon className="h-5 w-5 text-indigo-400" />;
+      return <ImageIcon className="h-4 w-4 text-indigo-400" />;
     }
     if (lowerType.startsWith("video/") || lowerPath.match(/\.(mp4|webm|ogg|mov)$/)) {
-      return <Video className="h-5 w-5 text-rose-400" />;
+      return <Video className="h-4 w-4 text-rose-400" />;
     }
     if (lowerType.includes("pdf") || lowerPath.match(/\.pdf$/)) {
-      return <FileText className="h-5 w-5 text-red-400" />;
+      return <FileText className="h-4 w-4 text-red-400" />;
     }
-    return <File className="h-5 w-5 text-blue-400" />;
+    return <File className="h-4 w-4 text-blue-400" />;
   };
 
-  const renderIconWithHover = (att: Attachment, small: boolean = false) => {
+  const renderThumbnailOrIcon = (att: Attachment, small: boolean = false) => {
     const icon = small ? getFileIconSmall(att.meta?.file_type, att.path) : getFileIcon(att.meta?.file_type, att.path);
     const type = att.meta?.file_type?.toLowerCase() || "";
     const path = att.path?.toLowerCase() || "";
-    
     const isImage = type.startsWith("image/") || path.match(/\.(jpg|jpeg|png|gif|webp)$/);
     
     if (isImage) {
-      const cacheBustedUrl = buildImageUrl(att);
-      
+      const url = buildImageUrl(att);
       return (
-        <div className={`relative group flex items-center justify-center ${small ? "w-5 h-5" : "w-12 h-12"}`}>
-          <div className="absolute inset-0 transition-opacity duration-200 opacity-100 group-hover:opacity-0 flex items-center justify-center">
-            {icon}
-          </div>
-          <div className="absolute inset-0 transition-opacity duration-200 opacity-0 group-hover:opacity-100 flex items-center justify-center">
-            <img src={cacheBustedUrl} alt="Thumbnail" className={`object-cover ${small ? "w-5 h-5 rounded-sm" : "w-12 h-12 rounded-md shadow-sm"}`} />
-          </div>
+        <div className={`relative overflow-hidden rounded border border-border bg-muted/30 flex items-center justify-center flex-shrink-0 ${small ? "w-8 h-8" : "w-12 h-12"}`}>
+          <img 
+            src={url} 
+            alt="Thumb" 
+            className="w-full h-full object-cover" 
+            onError={(e) => {
+              (e.currentTarget as HTMLElement).style.display = "none";
+            }} 
+          />
         </div>
       );
     }
@@ -347,36 +347,61 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
             return (
               <Card 
                 key={att.id} 
-                className="group relative bg-card border-border hover:border-primary/30 transition-all cursor-pointer shadow-sm hover:shadow-md overflow-hidden min-h-[140px]"
+                className="group relative bg-card border-border hover:border-primary/50 transition-all cursor-pointer shadow-sm hover:shadow-md overflow-hidden flex flex-col"
                 onClick={() => {
                   setSelectedAttachment(att);
                   setIsPreviewOpen(true);
                 }}
               >
-                {/* Full Card Image Background on Hover */}
-                {isImage && (
-                  <div className="absolute inset-0 z-0 transition-opacity duration-300 opacity-0 group-hover:opacity-100">
-                    <img src={url} alt="Thumbnail" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" /> {/* Gradient overlay for text readability */}
-                  </div>
-                )}
-
-                <CardContent className="relative z-10 p-4 flex flex-col items-center justify-center text-center space-y-2 h-full">
-                  {/* Graphic Icon Only initially - fade out on hover if it's an image */}
-                  <div className={`p-4 bg-muted/30 rounded-full flex items-center justify-center transition-opacity duration-300 ${isImage ? 'group-hover:opacity-0' : ''}`}>
-                    {getFileIcon(att.meta?.file_type, att.path)}
-                  </div>
-                  <div className="w-full mt-auto">
-                    <span className={`font-medium text-xs block truncate transition-colors duration-300 ${isImage ? 'text-foreground group-hover:text-white' : 'text-foreground'}`}>
-                      {att.meta?.title || att.name}
-                    </span>
-                    {att.meta?.description && (
-                      <span className={`text-[10px] block truncate transition-colors duration-300 ${isImage ? 'text-muted-foreground group-hover:text-gray-300' : 'text-muted-foreground'}`}>
-                        {att.meta.description}
+                {/* Visual Thumbnail Area */}
+                <div className="w-full aspect-[16/10] bg-muted/30 relative overflow-hidden flex items-center justify-center border-b border-border">
+                  {isImage ? (
+                    <AttachmentThumbnail
+                      url={url}
+                      title={att.meta?.title || att.name}
+                      fallbackIcon={getFileIcon(att.meta?.file_type, att.path)}
+                    />
+                  ) : (
+                    <div className="p-4 flex flex-col items-center justify-center gap-1.5 text-muted-foreground">
+                      {getFileIcon(att.meta?.file_type, att.path)}
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">
+                        {type.split("/")[1] || path.split(".").pop() || "FILE"}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Hover action overlay */}
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-1.5 text-white text-xs font-semibold backdrop-blur-[1px]">
+                    <Eye className="w-4 h-4" />
+                    <span>Preview & Edit</span>
+                  </div>
+                </div>
+
+                {/* Card Content */}
+                <div className="p-3 flex flex-col gap-1 flex-1 bg-card">
+                  <span 
+                    className="font-medium text-xs text-foreground block truncate" 
+                    title={att.meta?.title || att.name}
+                  >
+                    {att.meta?.title || att.name}
+                  </span>
+                  {att.meta?.description && (
+                    <span 
+                      className="text-[11px] text-muted-foreground block line-clamp-2 leading-relaxed" 
+                      title={att.meta.description}
+                    >
+                      {att.meta.description}
+                    </span>
+                  )}
+                  <div className="mt-auto pt-2 flex items-center justify-between text-[10px] text-muted-foreground/70 border-t border-border/50">
+                    <span className="truncate uppercase font-medium">
+                      {(att as any).source_type || (att.meta?.file_type?.split("/")[1] || "Attachment")}
+                    </span>
+                    {att.cr_date && (
+                      <span>{new Date(att.cr_date).toLocaleDateString()}</span>
                     )}
                   </div>
-                </CardContent>
+                </div>
               </Card>
             );
           })}
@@ -400,7 +425,7 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
                   className="border-b border-border hover:bg-muted/50 transition-colors"
                 >
                   <td className="px-3 py-2">
-                    {renderIconWithHover(att, true)}
+                    {renderThumbnailOrIcon(att, true)}
                   </td>
                   <td className="px-3 py-2 font-medium text-foreground">
                     {att.meta?.title || att.name}
@@ -538,3 +563,37 @@ export function AttachmentSection({ sourceId, sourceType, inspectionId }: Attach
     </div>
   );
 }
+
+function AttachmentThumbnail({
+  url,
+  title,
+  fallbackIcon,
+}: {
+  url: string;
+  title?: string;
+  fallbackIcon: React.ReactNode;
+}) {
+  const [hasError, setHasError] = useState(false);
+
+  if (hasError || !url) {
+    return (
+      <div className="flex flex-col items-center justify-center p-3 text-muted-foreground">
+        {fallbackIcon}
+        <span className="text-[10px] text-muted-foreground/60 mt-1 font-medium">Preview unavailable</span>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full relative overflow-hidden bg-slate-950 flex items-center justify-center p-1">
+      <img
+        src={url}
+        alt={title || "Thumbnail"}
+        className="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105"
+        loading="lazy"
+        onError={() => setHasError(true)}
+      />
+    </div>
+  );
+}
+

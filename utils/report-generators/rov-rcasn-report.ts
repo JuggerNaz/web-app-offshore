@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV Caisson Survey Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
+ * Columns: No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
  *
  * Data is grouped by Caisson (CS). Each CS group starts on a new page.
  * Associated components are clubbed with their parent CS QID.
@@ -126,58 +126,67 @@ export const generateROVCasnReport = async (
             qidRegistry.set(c.q_id.toUpperCase(), c);
         });
 
+        const isSubPartQid = (q: string): boolean => {
+            const uq = (q || "").toUpperCase();
+            return uq.includes("-TERM") || uq.includes("-SUPP") || uq.includes("-GUIDE") || 
+                   uq.includes("-FLG") || uq.includes("-INTAKE") || uq.includes("-DISCH") || 
+                   uq.includes("-CAN") || uq.includes("-SCB") || uq.includes("-STUB") ||
+                   uq.includes("-TOP") || uq.includes("-BTM") || uq.includes("-BELL") ||
+                   uq.includes("TERMINAT") || uq.includes("SUPPORT");
+        };
+
         const getGroupKey = (r: any): string => {
             const comp = r.structure_components || r.component || {};
             const metadata = comp.metadata || {};
-            const qid = (comp.q_id || "Unknown").toUpperCase();
+            const qid = (comp.q_id || r.qid || r.q_id || "Unknown").toUpperCase().trim();
             
-            // 1. Check explicit association in record metadata
-            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
-            const parentQid  = metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id;
-
-            // Helper to find the ultimate "CS" parent in the hierarchy
-            const findUltimateCSParent = (cid: number | null, depth = 0): string | null => {
-                if (!cid || depth > 5) return null;
-                const c = compRegistry.get(cid);
-                if (!c) return null;
-                
-                const meta = c.metadata || {};
-                const pId = meta.associated_comp_id || meta.parent_id || meta.comp_id_parent || meta.parent_comp_id || meta.associated_id;
-                const typeCode = (c.code || "").toUpperCase();
-                
-                // If it's a CS and has no parent, it's our ultimate group key
-                if (typeCode === "CS" && !pId) return c.q_id;
-                
-                // Otherwise keep climbing
-                return findUltimateCSParent(pId, depth + 1) || (typeCode === "CS" ? c.q_id : null);
-            };
-
-            // 2. Try climbing the registry hierarchy
-            const ultimateParent = findUltimateCSParent(parentId || comp.id);
-            if (ultimateParent) return ultimateParent;
-
-            // 3. Fallback to explicit parent QID string
-            if (parentQid) return parentQid;
-
-            // 4. Fallback to prefix matching against all top-level CS components
-            if (qid.startsWith("CS")) {
-                let bestMatch = "";
-                allComps?.forEach(c => {
-                    const cCode = (c.code || "").toUpperCase();
-                    const cQid  = (c.q_id || "").toUpperCase();
-                    const cMeta = c.metadata || {};
-                    const cpId  = cMeta.associated_comp_id || cMeta.parent_id || cMeta.comp_id_parent || cMeta.parent_comp_id || cMeta.associated_id;
-                    
-                    if (cCode === "CS" && !cpId && qid.startsWith(cQid) && cQid.length > bestMatch.length) {
-                        bestMatch = c.q_id;
-                    }
-                });
-                if (bestMatch) return bestMatch;
+            // 1. Check explicit association in record or component metadata
+            const parentQid = (metadata.associated_comp_qid || metadata.parent_qid || metadata.parent_q_id || "").toUpperCase().trim();
+            if (parentQid && parentQid !== "N/A" && parentQid !== qid) {
+                const pm = parentQid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+                if (pm) return pm[1].toUpperCase();
+                return parentQid;
             }
 
-            // 5. Fallback to regex for CS-XX pattern
-            const match = qid.match(/^(CS-[^-_ ]+)/i);
-            if (match) return match[1];
+            const parentId = metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id;
+            if (parentId) {
+                const parentComp = compRegistry.get(parentId);
+                if (parentComp && parentComp.q_id) {
+                    const pQid = parentComp.q_id.toUpperCase().trim();
+                    const pm = pQid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+                    if (pm) return pm[1].toUpperCase();
+                    return pQid;
+                }
+            }
+
+            // 2. Look for registered root caisson components in allComps
+            let matchedRootQid: string | null = null;
+            let longestRootLen = 0;
+            if (allComps) {
+                allComps.forEach((c: any) => {
+                    const cQid = (c.q_id || "").toUpperCase().trim();
+                    const cCode = (c.code || "").toUpperCase().trim();
+                    if ((cCode === "CS" || cCode === "CASN" || cQid.startsWith("CS-") || cQid.startsWith("CAS-")) && !isSubPartQid(cQid)) {
+                        if (qid === cQid || qid.startsWith(cQid + "-") || qid.startsWith(cQid + "_")) {
+                            if (cQid.length > longestRootLen) {
+                                matchedRootQid = c.q_id.toUpperCase().trim();
+                                longestRootLen = cQid.length;
+                            }
+                        }
+                    }
+                });
+            }
+            if (matchedRootQid) return matchedRootQid;
+
+            // 3. Regex extraction for base caisson pattern: CS-S1, CS-01, CS-1, CAS-1, etc.
+            const match = qid.match(/^((?:CS|CASN?)[-_]?[A-Z0-9]+)/i);
+            if (match) {
+                const extractedBase = match[1].toUpperCase();
+                if (qidRegistry.has(extractedBase)) {
+                    return qidRegistry.get(extractedBase).q_id.toUpperCase().trim();
+                }
+                return extractedBase;
+            }
 
             return (comp.code || "").toUpperCase() === "CS" ? qid : "General";
         };
@@ -278,7 +287,7 @@ export const generateROVCasnReport = async (
                 startY: (doc as any)._tableStartY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
                 head: [[
-                    { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

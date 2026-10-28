@@ -937,11 +937,14 @@ function V10PreviewLayout() {
   };
 
   const sortedRecords = useMemo(() => {
-    if (!currentRecords || currentRecords.length === 0) return [];
+    const baseSource = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+      ? allWorkspaceRecords
+      : currentRecords;
+    if (!baseSource || baseSource.length === 0) return [];
 
     // Filter out calibration/test records as requested
     const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
-    const filtered = currentRecords.filter((r: any) => {
+    const filtered = baseSource.filter((r: any) => {
       const code = r.inspection_type_code || r.inspection_type?.code;
       return !excludedCodes.includes(code);
     });
@@ -1022,7 +1025,7 @@ function V10PreviewLayout() {
     });
 
     return sortableRecords;
-  }, [currentRecords, sortConfig]);
+  }, [allWorkspaceRecords, currentRecords, sortConfig]);
 
   // Search Matching Mode ("ANY" | "ALL" | "EXACT")
   const [searchMode, setSearchMode] = useState<"ANY" | "ALL" | "EXACT">("ALL");
@@ -1387,6 +1390,11 @@ function V10PreviewLayout() {
     return scoredRecords.map((item) => item.record);
   }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
 
+  // Paginated window for silky smooth 60 FPS table rendering (0ms in-memory page flips)
+  const pagedDisplayRecords = useMemo(() => {
+    return displayRecords.slice(recordsOffset, recordsOffset + recordsLimit);
+  }, [displayRecords, recordsOffset, recordsLimit]);
+
   const [isSearchingWorkspace, setIsSearchingWorkspace] = useState(false);
 
   const fetchFullWorkspaceRecords = useCallback(async () => {
@@ -1397,119 +1405,45 @@ function V10PreviewLayout() {
       const numStrId = rawStructureId && !isNaN(Number(rawStructureId)) ? Number(rawStructureId) : null;
       const numJpId = parseInt(jobPackId);
 
-      const selectFields = `
-        *,
-        inspection_type:inspection_type_id!left(id, code, name),
-        structure_components:component_id!left(id, q_id, code, metadata),
-        insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
-        insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
-        insp_video_tapes:tape_id!left(tape_no, chapter_no)
-      `;
-
       const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
         ? headerData.sowReportNo
         : (targetReportNumber || sowParam);
 
-      // 1. Get exact total count for parallel batching
-      let countQuery = supabase
-        .from("insp_records")
-        .select("insp_id", { count: "exact", head: true })
-        .eq("jobpack_id", numJpId);
-
-      if (numStrId) {
-        countQuery = countQuery.eq("structure_id", numStrId);
-      }
-      if (activeReportNo) {
-        countQuery = countQuery.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
-      }
-
-      const { count: totalCount } = await countQuery;
-      const total = totalCount || 0;
-      const batchSize = 1000;
-      const numBatches = Math.max(1, Math.ceil(total / batchSize));
-
-      // 2. Fetch all pages in parallel to avoid Supabase 1000-row cap
-      const batchPromises: any[] = [];
-      for (let i = 0; i < numBatches; i++) {
-        const offset = i * batchSize;
-        let query = supabase
-          .from("insp_records")
-          .select(selectFields)
-          .eq("jobpack_id", numJpId)
-          .order("inspection_date", { ascending: false })
-          .order("inspection_time", { ascending: false })
-          .range(offset, offset + batchSize - 1);
-
-        if (numStrId) {
-          query = query.eq("structure_id", numStrId);
-        }
-        if (activeReportNo) {
-          query = query.or(`sow_report_no.eq."${activeReportNo}",sow_report_no.is.null`);
-        }
-        batchPromises.push(query);
-      }
-
-      const batchResults = await Promise.all(batchPromises);
-      const allData: any[] = [];
-      for (const res of batchResults) {
-        if (res.data && res.data.length > 0) {
-          allData.push(...res.data);
-        }
-      }
-
-      if (allData.length === 0) {
-        setAllWorkspaceRecords([]);
-        return;
-      }
-
-      // 3. Fetch anomalies for all retrieved records
-      const allInspIds = allData.map((r: any) => r.insp_id).filter(Boolean);
-      const anomData: any[] = [];
-      if (allInspIds.length > 0) {
-        const chunkSize = 500;
-        for (let i = 0; i < allInspIds.length; i += chunkSize) {
-          const chunk = allInspIds.slice(i, i + chunkSize);
-          const { data: anoms } = await supabase
-            .from("insp_anomalies")
-            .select("anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, record_category, defect_description, follow_up_notes, is_rectified, inspection_id")
-            .in("inspection_id", chunk);
-          if (anoms && anoms.length > 0) {
-            anomData.push(...anoms);
-          }
-        }
-      }
-
-      const anomMap = new Map<number, any[]>();
-      anomData.forEach((a: any) => {
-        if (a.inspection_id) {
-          if (!anomMap.has(a.inspection_id)) anomMap.set(a.inspection_id, []);
-          anomMap.get(a.inspection_id)!.push(a);
-        }
+      // Call high-performance backend API with enriched joins & pre-computed attachment counts
+      const params = new URLSearchParams({
+        jobpack_id: String(numJpId),
+        structure_id: String(numStrId || ""),
+        all: "true",
       });
+      if (activeReportNo && activeReportNo !== "N/A" && activeReportNo !== "Unknown Report") {
+        params.append("sow_report_no", activeReportNo);
+      }
 
-      const mappedAll = allData.map((r: any) => {
-        const matchedAnoms = anomMap.get(r.insp_id) || r.insp_anomalies || [];
-        const isAnomaly = matchedAnoms.length > 0 || r.has_anomaly || String(r.status || "").toLowerCase().includes("anomaly") || String(r.status || "").toLowerCase().includes("defect");
-        return {
-          ...r,
-          insp_anomalies: matchedAnoms,
-          has_anomaly: isAnomaly,
-          status: isAnomaly && (!r.status || r.status === "COMPLETED" || r.status === "INSPECTION") ? "ANOMALY" : r.status,
-          inspection_type: r.inspection_type
-            ? {
-                ...r.inspection_type,
-                name: formatInspectionTypeName(r.inspection_type.name),
-              }
-            : null,
-        };
-      });
-      setAllWorkspaceRecords(mappedAll);
+      const res = await fetch(`/api/inspection-records?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error(`Failed to fetch workspace records: HTTP ${res.status}`);
+      }
+      const json = await res.json();
+      const records = Array.isArray(json?.data) ? json.data : [];
+
+      const formatted = records.map((r: any) => ({
+        ...r,
+        inspection_type: r.inspection_type
+          ? {
+              ...r.inspection_type,
+              name: formatInspectionTypeName(r.inspection_type.name),
+            }
+          : null,
+      }));
+
+      setAllWorkspaceRecords(formatted);
+      setTotalRecords(formatted.length);
     } catch (err) {
       console.error("[Search] fetchFullWorkspaceRecords error:", err);
     } finally {
       setIsSearchingWorkspace(false);
     }
-  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam, supabase]);
+  }, [jobPackId, structureId, headerData.sowReportNo, targetReportNumber, sowParam]);
 
   // Pre-load all workspace records in the background so search is instant & complete
   useEffect(() => {
@@ -1729,6 +1663,8 @@ function V10PreviewLayout() {
       previewUrl?: string;
       isFromRecording?: boolean;
       isExisting?: boolean;
+      isEdited?: boolean;
+      isReplaced?: boolean;
       path?: string;
       meta?: any;
     }>
@@ -1805,6 +1741,12 @@ function V10PreviewLayout() {
   const [editingRecordId, setEditingRecordId] = useState<number | null>(null);
   const [originalRecordContext, setOriginalRecordContext] = useState<any>(null);
   const [archivedData, setArchivedData] = useState<Record<string, any>>({});
+  const [elevationSuggestion, setElevationSuggestion] = useState<{
+    newComponent: any;
+    currentElevation: number;
+    suggestedElevation: number;
+    elevationRangeText?: string;
+  } | null>(null);
   const [showTaskSelector, setShowTaskSelector] = useState(false);
   const [showCompSelector, setShowCompSelector] = useState(false);
   const [compSelectorSearch, setCompSelectorSearch] = useState("");
@@ -2961,6 +2903,10 @@ function V10PreviewLayout() {
     rovRwdiPreviewOpen,
     setRovRwdiPreviewOpen,
     generateROVRWDIReportBlob,
+    incompleteFlaggedPreviewOpen,
+    setIncompleteFlaggedPreviewOpen,
+    generateIncompleteFlaggedReport,
+    generateIncompleteFlaggedReportBlob,
 
     divingDcasnUwPreviewOpen,
     setDivingDcasnUwPreviewOpen,
@@ -3123,20 +3069,39 @@ function V10PreviewLayout() {
       const userName = user?.user_metadata?.full_name || user?.email || user?.id || "system";
 
       if (existing) {
+        // Query actual remaining/existing records in database
+        let countQuery = supabase
+          .from("insp_records")
+          .select("insp_id, status, has_anomaly, inspection_date", { count: "exact" })
+          .eq("component_id", compId)
+          .eq("inspection_type_code", taskCode);
+
+        if (structureId) {
+          countQuery = countQuery.eq("structure_id", Number(structureId));
+        }
+
+        const { data: matchedRecords, count: exactCount } = await countQuery.order("inspection_date", { ascending: false });
+        const actualCount = exactCount !== null && exactCount !== undefined ? exactCount : (matchedRecords ? matchedRecords.length : 0);
+        const latestDate = matchedRecords && matchedRecords.length > 0 ? matchedRecords[0].inspection_date : null;
+
         const updatedFields: any = {
           updated_at: new Date().toISOString(),
           updated_by: userName,
-          last_inspection_date: format(new Date(), "yyyy-MM-dd"),
-          inspection_count: (existing.inspection_count || 0) + 1,
+          last_inspection_date: actualCount > 0 ? (latestDate || format(new Date(), "yyyy-MM-dd")) : null,
+          inspection_count: actualCount,
         };
 
         // Helper to get status from remaining records
         const getEffectiveStatus = async (elevStart?: number, elevEnd?: number) => {
           let query = supabase
             .from("insp_records")
-            .select("status")
+            .select("status, has_anomaly")
             .eq("component_id", compId)
             .eq("inspection_type_code", taskCode);
+
+          if (structureId) {
+            query = query.eq("structure_id", Number(structureId));
+          }
 
           if (elevStart !== undefined && elevEnd !== undefined) {
             query = query
@@ -3146,7 +3111,9 @@ function V10PreviewLayout() {
 
           const { data } = await query;
           if (!data || data.length === 0) return "pending";
-          const hasIncomplete = (data as any[]).some((r: any) => r.status === "INCOMPLETE");
+          const hasAnomaly = (data as any[]).some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY");
+          if (hasAnomaly) return "anomaly";
+          const hasIncomplete = (data as any[]).some((r: any) => String(r.status).toUpperCase() === "INCOMPLETE");
           return hasIncomplete ? "incomplete" : "completed";
         };
 
@@ -3158,6 +3125,9 @@ function V10PreviewLayout() {
         ) {
           const updatedElevationData = await Promise.all(
             existing.elevation_data.map(async (elev: any) => {
+              if (actualCount === 0) {
+                return { ...elev, status: "pending" };
+              }
               const start = parseFloat(elev.start);
               const end = parseFloat(elev.end);
               const isInRange =
@@ -3180,16 +3150,19 @@ function V10PreviewLayout() {
           // Recalculate overall status
           const allDone = updatedElevationData.every((e: any) => e.status === "completed");
           const anyIncomplete = updatedElevationData.some((e: any) => e.status === "incomplete");
+          const anyAnomaly = updatedElevationData.some((e: any) => e.status === "anomaly");
           const allPending = updatedElevationData.every((e: any) => e.status === "pending");
 
-          if (allDone) updatedFields.status = "completed";
+          if (anyAnomaly) updatedFields.status = "anomaly";
+          else if (anyIncomplete) updatedFields.status = "incomplete";
+          else if (allDone) updatedFields.status = "completed";
           else if (allPending) updatedFields.status = "pending";
           else updatedFields.status = "incomplete";
         } else {
           // 3b. Handle Standard SOW Item
-          updatedFields.status = currentStatus
-            ? currentStatus.toLowerCase()
-            : await getEffectiveStatus();
+          updatedFields.status = actualCount === 0
+            ? "pending"
+            : (currentStatus ? currentStatus.toLowerCase() : await getEffectiveStatus());
         }
 
         const { error: updateErr } = await supabase
@@ -3223,6 +3196,30 @@ function V10PreviewLayout() {
               })
               .eq("id", activeSowId);
           }
+
+          // Immediately update componentsSow and selectedComp in local React state
+          setComponentsSow((prev) =>
+            (prev || []).map((comp: any) => {
+              if (comp.id !== compId) return comp;
+              const updatedTaskStatuses = (comp.taskStatuses || []).map((ts: any) => {
+                if (ts.code === taskCode || String(ts.code).toUpperCase() === String(taskCode).toUpperCase()) {
+                  return { ...ts, status: updatedFields.status };
+                }
+                return ts;
+              });
+              return { ...comp, taskStatuses: updatedTaskStatuses };
+            })
+          );
+          setSelectedComp((prev: any) => {
+            if (!prev || prev.id !== compId) return prev;
+            const updatedTaskStatuses = (prev.taskStatuses || []).map((ts: any) => {
+              if (ts.code === taskCode || String(ts.code).toUpperCase() === String(taskCode).toUpperCase()) {
+                return { ...ts, status: updatedFields.status };
+              }
+              return ts;
+            });
+            return { ...prev, taskStatuses: updatedTaskStatuses };
+          });
         }
       } else {
         // 4. Auto-add to SOW if missing (Standard fallback)
@@ -3866,7 +3863,7 @@ function V10PreviewLayout() {
     }
   };
 
-  const handleDeleteRecord = async (id: number) => {
+  const handleDeleteRecord = async (id: number, skipConfirm: boolean = false) => {
     // Fetch record to check for latest anomaly/finding rule
     const { data: record } = await supabase
       .from("insp_records")
@@ -3897,60 +3894,131 @@ function V10PreviewLayout() {
       }
     }
 
-    if (
-      !confirm(
-        "Are you sure you want to permanently delete this inspection record and all its associated attachments?"
+    if (!skipConfirm) {
+      if (
+        !confirm(
+          "Are you sure you want to permanently delete this inspection record and all its associated attachments?"
+        )
       )
-    )
-      return;
+        return;
+    }
 
     try {
-      // 1. Fetch attachments to delete from Storage and DB
-      const { data: attachments } = await supabase
+      // 1. Collect all linked anomaly IDs
+      const anomalyIds: number[] = (record?.insp_anomalies || [])
+        .map((a: any) => Number(a.anomaly_id))
+        .filter((aid: number) => !isNaN(aid) && aid > 0);
+
+      const { data: extraAnoms } = await supabase
+        .from("insp_anomalies")
+        .select("anomaly_id")
+        .eq("inspection_id", id);
+      (extraAnoms || []).forEach((ea: any) => {
+        const aid = Number(ea.anomaly_id);
+        if (aid && !anomalyIds.includes(aid)) anomalyIds.push(aid);
+      });
+
+      // 2. Fetch and remove all attachments (inspection AND anomaly level) from Storage and DB
+      let attQuery = supabase
         .from("attachment")
-        .select("path, id")
-        .eq("source_id", id)
-        .in("source_type", ["inspection", "INSPECTION"]);
+        .select("path, id, source_id, source_type")
+        .or(`source_id.eq.${id}${anomalyIds.length > 0 ? `,source_id.in.(${anomalyIds.join(",")})` : ""}`);
+
+      const { data: attachments } = await attQuery;
 
       if (attachments && attachments.length > 0) {
-        const paths = (attachments as any[]).map((a: any) => a.path).filter(Boolean);
+        const paths = attachments.map((a: any) => a.path).filter(Boolean);
         if (paths.length > 0) {
           const { error: storageErr } = await supabase.storage.from("attachments").remove(paths);
-          if (storageErr) console.warn("Storage deletion error:", storageErr);
+          if (storageErr) console.warn("Storage deletion error (attachments):", storageErr);
         }
 
-        // Explicitly delete attachments from DB
-        await supabase
-          .from("attachment")
-          .delete()
-          .eq("source_id", id)
-          .in("source_type", ["inspection", "INSPECTION"]);
+        const attIds = attachments.map((a: any) => a.id).filter(Boolean);
+        if (attIds.length > 0) {
+          await supabase.from("attachment").delete().in("id", attIds);
+        }
+      }
+      await supabase.from("attachment").delete().eq("source_id", id);
+      if (anomalyIds.length > 0) {
+        await supabase.from("attachment").delete().in("source_id", anomalyIds);
       }
 
-      // 2. Delete anomalies
+      // 3. Fetch and remove insp_media rows and files from Storage ("inspection-media" & "attachments")
+      let mediaQuery = supabase
+        .from("insp_media")
+        .select("media_id, file_path, thumbnail_path")
+        .or(`inspection_id.eq.${id}${anomalyIds.length > 0 ? `,anomaly_id.in.(${anomalyIds.join(",")})` : ""}`);
+
+      const { data: mediaRows } = await mediaQuery;
+
+      if (mediaRows && mediaRows.length > 0) {
+        const mediaPaths: string[] = [];
+        mediaRows.forEach((m: any) => {
+          if (m.file_path) mediaPaths.push(m.file_path);
+          if (m.thumbnail_path) mediaPaths.push(m.thumbnail_path);
+        });
+
+        if (mediaPaths.length > 0) {
+          await supabase.storage.from("inspection-media").remove(mediaPaths);
+          await supabase.storage.from("attachments").remove(mediaPaths);
+        }
+
+        const mediaIds = mediaRows.map((m: any) => m.media_id).filter(Boolean);
+        if (mediaIds.length > 0) {
+          await supabase.from("insp_ai_training_data").delete().in("media_id", mediaIds);
+          await supabase.from("insp_media").delete().in("media_id", mediaIds);
+        }
+      }
+      await supabase.from("insp_media").delete().eq("inspection_id", id);
+      if (anomalyIds.length > 0) {
+        await supabase.from("insp_media").delete().in("anomaly_id", anomalyIds);
+      }
+
+      // 4. Delete AI queues and image analysis
+      await supabase.from("insp_ai_analysis_queue").delete().eq("inspection_id", id);
+      await supabase.from("insp_ai_image_analysis").delete().eq("inspection_id", id);
+
+      // 5. Delete anomalies
       await supabase.from("insp_anomalies").delete().eq("inspection_id", id);
 
-      // 3. Delete from Database
+      // 6. Delete video logs
       await supabase.from("insp_video_logs").delete().eq("inspection_id", id);
+
+      // 7. Delete insp_records row
       const { error: delErr } = await supabase.from("insp_records").delete().eq("insp_id", id);
       if (delErr) {
         toast.error("Failed to delete record: " + delErr.message);
         return;
       }
 
+      // 8. Re-evaluate and sync SOW status and counts
       if (record && record.component_id && record.inspection_type_code) {
         await syncSowStatus(record.component_id, record.inspection_type_code, record.elevation);
       }
 
+      // 9. Immediately filter local state records and event timeline
+      setCurrentRecords((prev) => (prev || []).filter((r: any) => Number(r.insp_id) !== Number(id)));
+      setCurrentCompRecords((prev) => (prev || []).filter((r: any) => Number(r.insp_id) !== Number(id)));
+      setAllWorkspaceRecords((prev) => (prev || []).filter((r: any) => Number(r.insp_id) !== Number(id)));
+      setVideoEvents((prev) => (prev || []).filter((ev: any) => 
+        Number(ev.realId) !== Number(id) && 
+        Number(ev.inspectionId) !== Number(id) && 
+        ev.id !== `insp_${id}`
+      ));
+      setTotalRecords((prev) => Math.max(0, prev - 1));
+
       toast.success("Record deleted");
       queryClient.invalidateQueries({ queryKey: ["sow-data"] });
       queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace-records"] });
+      queryClient.invalidateQueries({ queryKey: ["component-records"] });
 
       if (editingRecordId !== null && Number(id) === Number(editingRecordId)) {
         resetForm();
       }
 
-      syncDeploymentState();
+      fetchHistory();
+      await syncDeploymentState();
     } catch (error) {
       console.error("Error deleting record:", error);
       toast.error("Failed to delete record");
@@ -4005,56 +4073,202 @@ function V10PreviewLayout() {
     setPhotoLinked(false);
     setPendingAttachments([]);
     setDeletedAttachmentIds([]);
+    setElevationSuggestion(null);
+    setPendingReclass(null);
     setIsFormModified(false);
   };
 
-  // Re-classification Logic
-  const diffSpecifications = (newComp: any, newTaskCode: string) => {
-    const newIt = allInspectionTypes.find((t) => t.code === newTaskCode || t.name === newTaskCode);
-    const specProps = newIt?.default_properties || [];
-    let newPropsList: any[] = [];
-    if (typeof specProps === "string") {
+  // Common inspection fields that must NEVER be altered, wiped, or reset when changing Component/QID or Task
+  const COMMON_INSPECTION_FIELDS = useMemo(
+    () =>
+      new Set([
+        // Elevation & Depth
+        "verification_depth",
+        "verification_depth_unit",
+        "elevation",
+        "depth",
+        "verified_depth",
+        // Coordinates & Navigation
+        "northing",
+        "easting",
+        "rov_heading",
+        "heading",
+        "cp_fg",
+        "cp_fg_rdg",
+        "cp_fg_unit",
+        "cp_fg_rdg_unit",
+        "kp",
+        "fp_kp",
+        "fp_kp_unit",
+        // Timing & Live Event Log Context
+        "inspection_date",
+        "inspection_time",
+        "tape_count_no",
+        "counter",
+        "tape_id",
+        "tape_no",
+        "chapter_no",
+        "chapter",
+        "dive_id",
+        "dive_no",
+        "dive_job_id",
+        "deployment_no",
+        "rov_job_id",
+        // Component Location & Geometry
+        "platform_face",
+        "face",
+        "orientation",
+        "clock_position",
+        "member_position",
+        "clock_pos",
+        "clock_from",
+        "clock_to",
+        "structure_group",
+        "level",
+        "nominal_thickness",
+        "nominal_wall_thickness",
+        "wall_thickness",
+        "nom_wt",
+        "nominal_diameter",
+        "diameter",
+        "nominal_dia",
+        "nominalThk",
+        "wallThickness",
+        // Findings / Status / General Technical Fields
+        "incomplete_reason",
+        "has_anomaly",
+        "record_category",
+        "flow_direction",
+        "insp_mode",
+        "inspection_direction",
+        "inspection_location",
+        "avg_reading",
+        "min_reading",
+        "max_reading",
+        "nom_wt_12_percent",
+        "nom_wt_25_percent",
+        "wall_thickness_loss",
+        "%_wall_thickness_loss",
+        "effective_thickness",
+        "effectiveThickness",
+        "mgi_profile",
+        "max_allowable_thickness",
+        "ut_readings_additional",
+        "cp_rdg_additional",
+        "cp_readings_additional",
+      ]),
+    []
+  );
+
+  // Helper to extract resolved field definitions for any inspection specification
+  const getFieldsForSpec = useCallback(
+    (taskCode: string, comp?: any) => {
+      if (!taskCode) return [];
+      const codeClean = taskCode.trim();
+      const it = allInspectionTypes.find(
+        (t: any) => (t.code || "").trim() === codeClean || (t.name || "").trim() === codeClean
+      );
+      if (!it?.default_properties) return [];
+
+      let parsed: any = null;
       try {
-        const parsed = JSON.parse(specProps);
-        newPropsList = Array.isArray(parsed) ? parsed : parsed.properties || [];
-      } catch (e) {}
-    } else if (Array.isArray(specProps)) {
-      newPropsList = [...specProps];
-    }
-
-    if (newComp?.type?.toUpperCase() === "ANODE") {
-      newPropsList = newPropsList.filter(
-        (p) => !["length", "width", "height", "diameter", "coating", "weld_number"].includes(p.name)
-      );
-      newPropsList.unshift(
-        {
-          name: "anode_type",
-          label: "Anode Type",
-          type: "select",
-          options: ["Stand-off", "Flush", "Bracelet", "Sled"],
-        },
-        {
-          name: "depletion",
-          label: "Depletion (%)",
-          type: "number",
-          validation: { min: 0, max: 100 },
-        }
-      );
-    } else if (newComp?.type?.toUpperCase() === "PIPELINE") {
-      newPropsList.unshift({ name: "kp", label: "Kilometer Post (KP)", type: "text" });
-    }
-
-    const newFieldNames = new Set(newPropsList.map((p) => p.name));
-    const orphaned: string[] = [];
-
-    Object.keys(dynamicProps).forEach((key) => {
-      if (key.startsWith("_")) return; // ignore metadata
-      if (!newFieldNames.has(key)) {
-        orphaned.push(key);
+        parsed =
+          typeof it.default_properties === "string"
+            ? JSON.parse(it.default_properties)
+            : it.default_properties;
+      } catch (e) {
+        return [];
       }
-    });
+      if (!parsed) return [];
 
-    return orphaned;
+      const raw = comp?.raw || {};
+      const compTypeStr = String(
+        raw.type || raw.code || raw.component_type || comp?.type || ""
+      ).toUpperCase().trim();
+
+      let props: any[] = [];
+      const matchingOverrides =
+        parsed.component_overrides?.filter(
+          (ov: any) =>
+            ov.component_types &&
+            Array.isArray(ov.component_types) &&
+            ov.component_types.includes(compTypeStr)
+        ) || [];
+
+      if (matchingOverrides.length > 0) {
+        const lastMatch = matchingOverrides[matchingOverrides.length - 1];
+        if (lastMatch.fields && Array.isArray(lastMatch.fields)) {
+          props = [...lastMatch.fields];
+        } else {
+          props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+        }
+      } else {
+        props = parsed.fields || (Array.isArray(parsed) ? parsed : []);
+      }
+
+      const shared = (inspectionRegistry as any)?.sharedFields || {};
+      props = props.map((f: any) => {
+        if (f.$ref && shared[f.$ref]) {
+          return { ...shared[f.$ref], ...f, $ref: undefined };
+        }
+        return f;
+      });
+
+      return props;
+    },
+    [allInspectionTypes]
+  );
+
+  // Apply component change cleanly without altering or wiping inspection data
+  const applyComponentChange = (
+    newComp: any,
+    updateElevation: boolean = false,
+    newElevValue?: number
+  ) => {
+    setSelectedComp(newComp);
+    setIsFormModified(true);
+
+    if (updateElevation && newElevValue !== undefined && newElevValue !== null) {
+      setDynamicProps((prev: any) => ({
+        ...prev,
+        verification_depth: String(newElevValue),
+        elevation: newElevValue,
+        depth: String(newElevValue),
+      }));
+      setDebouncedProps((prev: any) => ({
+        ...prev,
+        verification_depth: String(newElevValue),
+        elevation: newElevValue,
+        depth: String(newElevValue),
+      }));
+    }
+
+    // Assign component face if available and not yet set
+    const compMd =
+      (typeof newComp.raw?.metadata === "string" ? JSON.parse(newComp.raw.metadata) : newComp.raw?.metadata) || {};
+    const compFace =
+      newComp.face ||
+      compMd.face ||
+      compMd.face_name ||
+      compMd.face_code ||
+      compMd.Face ||
+      compMd.additionalInfo?.face ||
+      compMd.additionalInfo?.face_pos ||
+      newComp.raw?.face ||
+      "";
+
+    if (compFace && compFace !== "-" && compFace !== "N/A") {
+      setDynamicProps((prev: any) => {
+        if (prev.platform_face) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+      setDebouncedProps((prev: any) => {
+        if (prev.platform_face) return prev;
+        return { ...prev, platform_face: compFace };
+      });
+    }
+
+    toast.success(`Component changed to ${newComp.name || newComp.q_id || "selected component"}`);
   };
 
   const handleComponentSelection = (c: any) => {
@@ -4067,21 +4281,67 @@ function V10PreviewLayout() {
     // 1. If user explicitly clicked the "CHANGE" button next to QID in the inspection form (showCompSelector === true)
     if (showCompSelector) {
       setShowCompSelector(false);
-      if (editingRecordId && selectedComp && !isSameComp) {
-        const orphaned = diffSpecifications(c, activeSpec || "");
-        setPendingReclass({
-          type: "COMPONENT",
-          newComponent: c,
-          newTask: activeSpec,
-          componentTaskStatuses: c.taskStatuses || [],
-          orphanedFields: orphaned,
-        });
-        return;
-      } else {
-        setSelectedComp(c);
-        toast.success(`Component changed to ${c.name || c.q_id || 'selected component'}`);
+      if (isSameComp) {
         return;
       }
+
+      // Check elevation difference between current inspection record and the selected component
+      const currElevStr =
+        dynamicProps?.verification_depth ?? dynamicProps?.elevation ?? originalRecordContext?.elevation;
+      const parseNum = (v: any) => {
+        if (v === undefined || v === null || v === "" || v === "-") return null;
+        const n = parseFloat(String(v).replace(/[^\d.-]/g, ""));
+        return isNaN(n) ? null : n;
+      };
+
+      const currElev = parseNum(currElevStr);
+      const newStart = parseNum(c.startElev || c.elv_1 || c.start_elevation);
+      const newEnd = parseNum(c.endElev || c.elv_2 || c.end_elevation);
+      const newLowest = parseNum(c.lowestElev);
+      const newDepth = parseNum(c.depth || c.water_depth);
+
+      let isBigDiff = false;
+      let suggestedElev: number | null = null;
+      let rangeText = "";
+
+      if (newStart !== null && newEnd !== null) {
+        const minE = Math.min(newStart, newEnd);
+        const maxE = Math.max(newStart, newEnd);
+        rangeText = `${minE}m to ${maxE}m`;
+        suggestedElev = newLowest !== null ? newLowest : minE;
+
+        if (currElev !== null) {
+          // If currElev is outside the component's range by more than 2m
+          if (currElev < minE - 2 || currElev > maxE + 2) {
+            isBigDiff = true;
+          }
+        }
+      } else if (newLowest !== null || newDepth !== null) {
+        const target = newLowest ?? newDepth!;
+        rangeText = `${target}m`;
+        suggestedElev = target;
+
+        if (currElev !== null) {
+          if (Math.abs(currElev - target) >= 3) {
+            isBigDiff = true;
+          }
+        }
+      }
+
+      // If there is a big elevation difference, suggest updating elevation while preserving all inspection data
+      if (isBigDiff && currElev !== null && suggestedElev !== null) {
+        setElevationSuggestion({
+          newComponent: c,
+          currentElevation: currElev,
+          suggestedElevation: suggestedElev,
+          elevationRangeText: rangeText,
+        });
+        return;
+      }
+
+      // Otherwise, immediately switch component and maintain all inspection data
+      applyComponentChange(c, false);
+      return;
     }
 
     // 2. If clicking the currently selected component
@@ -4093,7 +4353,11 @@ function V10PreviewLayout() {
     // 3. User clicked another component without clicking the CHANGE button
     // If the form has unsaved/modified data, alert the user to confirm before switching
     if (isFormModified) {
-      if (!confirm("The inspection form has unsaved data. Are you sure you want to discard unsaved changes and switch to another component?")) {
+      if (
+        !confirm(
+          "The inspection form has unsaved data. Are you sure you want to discard unsaved changes and switch to another component?"
+        )
+      ) {
         return;
       }
     }
@@ -4132,9 +4396,17 @@ function V10PreviewLayout() {
           (type: any) => type.code === ts.code || type.name === ts.code
         );
         if (!it) return true;
-        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
-        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
-        
+        const isRov =
+          it.metadata?.rov === 1 ||
+          it.metadata?.rov === "1" ||
+          it.metadata?.rov === true ||
+          (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+        const isDiving =
+          it.metadata?.diving === 1 ||
+          it.metadata?.diving === "1" ||
+          it.metadata?.diving === true ||
+          (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+
         if (inspMethod === "DIVING" && !isDiving) return false;
         if (inspMethod === "ROV" && !isRov) return false;
         return true;
@@ -4152,72 +4424,14 @@ function V10PreviewLayout() {
 
   const confirmReclassification = async () => {
     if (!pendingReclass || !editingRecordId) return;
-    const { newComponent, newTask, orphanedFields } = pendingReclass;
+    const { newComponent, newTask } = pendingReclass;
 
     try {
       setIsCommitting(true);
-      const userRes = await supabase.auth.getUser();
-      const user = userRes.data.user;
-
-      // 1. Prepare updated record data
-      const updatedData = { ...dynamicProps };
-      const updatedArchive = { ...archivedData };
-      SYSTEM_RECORD_KEYS.forEach(k => delete updatedArchive[k]);
-
-      // Archive orphaned fields
-      if (orphanedFields && orphanedFields.length > 0) {
-        orphanedFields.forEach((f) => {
-          if (updatedData[f] !== undefined) {
-            updatedArchive[f] = updatedData[f];
-            delete updatedData[f];
-          }
-        });
-      }
-
-      // 2. Perform Database Update
-      const payload: any = {
-        component_id: newComponent?.id,
-        inspection_type_id: allInspectionTypes.find((t) => t.code === newTask)?.id,
-        inspection_type_code: newTask,
-        inspection_data: updatedData,
-        archived_data: updatedArchive,
-        md_user: user?.id || "system",
-      };
-
-      const { error: updateErr } = await supabase
-        .from("insp_records")
-        .update(payload)
-        .eq("insp_id", editingRecordId);
-
-      if (updateErr) throw updateErr;
-
-      // 3. SOW Status Synchronization (Rollback Old & Commit New)
-      if ((sowId || (jobPackId && structureId)) && originalRecordContext) {
-        // Rollback original component/task
-        await syncSowStatus(
-          originalRecordContext.component_id,
-          originalRecordContext.inspection_type_code
-        );
-
-        // Commit new component/task
-        if (newComponent && newTask) {
-          await syncSowStatus(newComponent.id, newTask);
-        }
-      }
-
-      // 4. Update local state and cleanup
       if (newComponent) setSelectedComp(newComponent);
       if (newTask) setActiveSpec(newTask);
-      setDynamicProps(updatedData);
-      setArchivedData(updatedArchive);
       setPendingReclass(null);
-
-      // Invalidate queries
-      queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
-      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
-
-      toast.success("Record re-classified successfully");
-      syncDeploymentState(); // Refresh history/events
+      toast.success("Record updated successfully");
     } catch (err: any) {
       console.error("Re-classification failed:", err);
       toast.error(`Failed to move record: ${err.message}`);
@@ -4232,20 +4446,59 @@ function V10PreviewLayout() {
       return;
     }
 
+    setShowTaskSelector(false);
+    if (!newTask || newTask === activeSpec) return;
+
+    setIsFormModified(true);
+
     if (!selectedComp || !editingRecordId) {
       setActiveSpec(newTask);
-      setShowTaskSelector(false);
+      toast.info(`Inspection type set to ${newTask}`);
       return;
     }
 
-    setPendingReclass({
-      type: "TASK",
-      newComponent: selectedComp,
-      newTask: newTask,
-      componentTaskStatuses: selectedComp.taskStatuses || [],
-      orphanedFields: [],
+    // Editing existing record:
+    // 1. Get new field definitions for newTask
+    const newSpecFields = getFieldsForSpec(newTask, selectedComp);
+    const newFieldNames = new Set(newSpecFields.map((f: any) => f.name).filter(Boolean));
+
+    // 2. Prepare updated record data and updated archive pool
+    const updatedProps: Record<string, any> = { ...dynamicProps };
+    const updatedArchive: Record<string, any> = { ...archivedData };
+    SYSTEM_RECORD_KEYS.forEach((k) => delete updatedArchive[k]);
+
+    // 3. Move old task-specific fields that are NOT in the new task and NOT common to archivedData
+    Object.keys(updatedProps).forEach((key) => {
+      if (key.startsWith("_")) return; // Keep metadata intact
+      if (key.endsWith("_unit")) return; // Keep unit fields
+      if (COMMON_INSPECTION_FIELDS.has(key)) return; // Keep common fields unaltered
+
+      // If field is NOT in the new task's fields, archive it so it isn't lost
+      if (!newFieldNames.has(key)) {
+        if (updatedProps[key] !== undefined && updatedProps[key] !== null && updatedProps[key] !== "") {
+          updatedArchive[key] = updatedProps[key];
+        }
+        delete updatedProps[key];
+      }
     });
-    setShowTaskSelector(false);
+
+    // 4. Restore any fields in newTask that were previously in archivedData
+    newFieldNames.forEach((name: string) => {
+      if (updatedArchive[name] !== undefined) {
+        if (updatedProps[name] === undefined || updatedProps[name] === "" || updatedProps[name] === null) {
+          updatedProps[name] = updatedArchive[name];
+        }
+        delete updatedArchive[name];
+      }
+    });
+
+    // 5. Update local state
+    setActiveSpec(newTask);
+    setDynamicProps(updatedProps);
+    setDebouncedProps(updatedProps);
+    setArchivedData(updatedArchive);
+
+    toast.info(`Task switched to ${newTask}. Common field data maintained.`);
   };
 
   const handleDeleteTaskFromScope = async (taskCode: string, compId: number) => {
@@ -4759,19 +5012,23 @@ function V10PreviewLayout() {
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
-      let allInspsQuery = supabase
-        .from("insp_records")
-        .select(selectFields)
-        .eq("jobpack_id", parseInt(jobPackId || "0"))
-        .order("inspection_date", { ascending: false })
-        .order("inspection_time", { ascending: false });
+      let allInspsQuery = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+        ? Promise.resolve({ data: allWorkspaceRecords })
+        : supabase
+            .from("insp_records")
+            .select("insp_id, tape_id, status, has_anomaly, inspection_date, inspection_time, component_id, component_type, dive_job_id, rov_job_id, inspection_type_id, tape_count_no, sow_report_no, inspection_type:inspection_type_id!left(id, code, name), structure_components:component_id!left(id, q_id, id_no, code), insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, priority_code)")
+            .eq("jobpack_id", parseInt(jobPackId || "0"))
+            .order("inspection_date", { ascending: false })
+            .order("inspection_time", { ascending: false });
 
       // Standard browsing uses pagination for performance
       inspsQuery = inspsQuery.range(recordsOffset, recordsOffset + recordsLimit - 1);
 
       if (structureId && !isNaN(Number(structureId))) {
         inspsQuery = inspsQuery.eq("structure_id", Number(structureId));
-        allInspsQuery = allInspsQuery.eq("structure_id", Number(structureId));
+        if (typeof (allInspsQuery as any)?.eq === "function") {
+          allInspsQuery = (allInspsQuery as any).eq("structure_id", Number(structureId));
+        }
       }
       if (
         headerData.sowReportNo &&
@@ -4780,7 +5037,9 @@ function V10PreviewLayout() {
       ) {
         const sowOrFilter = `sow_report_no.eq.${headerData.sowReportNo},sow_report_no.is.null`;
         inspsQuery = inspsQuery.or(sowOrFilter);
-        allInspsQuery = allInspsQuery.or(sowOrFilter);
+        if (typeof (allInspsQuery as any)?.or === "function") {
+          allInspsQuery = (allInspsQuery as any).or(sowOrFilter);
+        }
       }
 
       // Fetch matching job IDs scoped strictly to current structure, jobpack, and SOW report
@@ -5123,7 +5382,9 @@ function V10PreviewLayout() {
       const insps = inspsRes.data;
       const count = inspsRes.count;
 
-      if (count !== null) setTotalRecords(count);
+      if (count !== null && (!allWorkspaceRecords || allWorkspaceRecords.length === 0)) {
+        setTotalRecords(count);
+      }
 
       if (logs) {
         allEv.push(
@@ -5198,24 +5459,44 @@ function V10PreviewLayout() {
 
       const finalInsps = inspsRes.data || insps;
       if (finalInsps) {
-        const pageInspIds = finalInsps.map((r: any) => r.insp_id).filter(Boolean);
+        // Collect inspection IDs that still need attachment counts (only if not already pre-populated by view or API)
+        const visibleNeedsAtts = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+          ? []
+          : finalInsps
+              .filter((r: any) => r.attachment_count === undefined || r.attachment_count === null)
+              .slice(0, 50)
+              .map((r: any) => Number(r.insp_id))
+              .filter(Boolean);
 
-        // Fetch attachment counts and media in parallel strictly scoped to current page inspection IDs
-        const [attsRes, mediaRes] = await Promise.all([
-          pageInspIds.length > 0
-            ? supabase
+        const countMap: Record<number, number> = {};
+
+        if (visibleNeedsAtts.length > 0) {
+          const chunkSize = 50;
+          for (let i = 0; i < visibleNeedsAtts.length; i += chunkSize) {
+            const chunk = visibleNeedsAtts.slice(i, i + chunkSize);
+            const [attsRes, mediaRes] = await Promise.all([
+              supabase
                 .from("attachment")
                 .select("source_id, source_type")
-                .in("source_id", pageInspIds)
-                .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"])
-            : Promise.resolve({ data: [] }),
-          pageInspIds.length > 0
-            ? (supabase as any)
+                .in("source_id", chunk)
+                .in("source_type", ["inspection", "INSPECTION", "insp_record", "INSP_RECORD", "defect", "DEFECT", "anomaly", "ANOMALY"]),
+              (supabase as any)
                 .from("insp_media")
                 .select("inspection_id, media_id")
-                .in("inspection_id", pageInspIds)
-            : Promise.resolve({ data: [] }),
-        ]);
+                .in("inspection_id", chunk),
+            ]);
+
+            (attsRes.data || []).forEach((curr: any) => {
+              const sid = Number(curr.source_id);
+              if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+            });
+
+            (mediaRes.data || []).forEach((curr: any) => {
+              const sid = Number(curr.inspection_id);
+              if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
+            });
+          }
+        }
 
         // Anomalies come embedded on the insp_records rows (see selectFields FK
         // embed) instead of a separate scoped query — one less round trip, and
@@ -5244,37 +5525,20 @@ function V10PreviewLayout() {
         collectAnomalies(finalInsps);
         collectAnomalies(allInspsData);
 
-        // Also fetch any attachments attached directly to anomaly IDs
-        let anomAtts: any[] = [];
-        if (anomalyIds.length > 0) {
+        // Also fetch any attachments attached directly to anomaly IDs (only if counts not pre-populated)
+        if (visibleNeedsAtts.length > 0 && anomalyIds.length > 0) {
+          const anomChunk = anomalyIds.slice(0, 50);
           const { data: anomAttsData } = await supabase
             .from("attachment")
             .select("source_id, source_type")
-            .in("source_id", anomalyIds);
-          anomAtts = anomAttsData || [];
+            .in("source_id", anomChunk);
+          (anomAttsData || []).forEach((curr: any) => {
+            const parentInspId = anomToInspMap.get(Number(curr.source_id));
+            if (parentInspId) {
+              countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
+            }
+          });
         }
-
-        const countMap: Record<number, number> = {};
-
-        // Direct inspection attachments
-        (attsRes.data || []).forEach((curr: any) => {
-          const sid = Number(curr.source_id);
-          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
-        });
-
-        // Media captures
-        (mediaRes.data || []).forEach((curr: any) => {
-          const sid = Number(curr.inspection_id);
-          if (sid) countMap[sid] = (countMap[sid] || 0) + 1;
-        });
-
-        // Anomaly attachments mapped to parent inspection
-        anomAtts.forEach((curr: any) => {
-          const parentInspId = anomToInspMap.get(Number(curr.source_id));
-          if (parentInspId) {
-            countMap[parentInspId] = (countMap[parentInspId] || 0) + 1;
-          }
-        });
 
         const inspsWithCounts = finalInsps.map((r: any) => {
           const matchedAnoms = anomMap.get(r.insp_id) || [];
@@ -5288,7 +5552,7 @@ function V10PreviewLayout() {
                   name: formatInspectionTypeName(r.inspection_type.name),
                 }
               : null,
-            attachment_count: countMap[r.insp_id] || 0,
+            attachment_count: r.attachment_count !== undefined && r.attachment_count !== null ? r.attachment_count : (countMap[r.insp_id] || 0),
           };
         });
 
@@ -5298,7 +5562,9 @@ function V10PreviewLayout() {
         const logInspectionIds = new Set((allEv as any[]).map((ev: any) => ev.inspectionId).filter(Boolean));
 
         // Use allInspsData (all records for this jobpack/structure/deployment) for complete video timeline events
-        const recordsForTimeline = (allInspsData && allInspsData.length > 0) ? allInspsData : (inspsWithCounts || []);
+        const recordsForTimeline = (allInspsData && allInspsData.length > 0)
+          ? allInspsData.map((r: any) => ({ ...r, attachment_count: countMap[r.insp_id] || r.attachment_count || 0 }))
+          : (inspsWithCounts || []);
 
         (recordsForTimeline as any[]).forEach((r: any) => {
           if (!logInspectionIds.has(r.insp_id)) {
@@ -5392,8 +5658,6 @@ function V10PreviewLayout() {
     parseDbDate,
     structureId,
     headerData.sowReportNo,
-    recordsOffset,
-    recordsLimit,
     jobPackId,
   ]);
 
@@ -5856,7 +6120,7 @@ function V10PreviewLayout() {
         syncDeploymentState();
       }
     } else if (logType === "insp") {
-      await handleDeleteRecord(realId);
+      await handleDeleteRecord(realId, true);
     }
   };
 
@@ -6186,8 +6450,45 @@ function V10PreviewLayout() {
     }
 
     try {
-      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
       const queryJobPackId = isNaN(Number(jobPackId)) ? jobPackId : Number(jobPackId);
+
+      // Try fast dedicated workspace deployments endpoint
+      try {
+        const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
+          ? headerData.sowReportNo
+          : "";
+        const depParams = new URLSearchParams({
+          jobpack_id: String(queryJobPackId),
+          structure_id: String(structureId),
+          method: inspMethod,
+        });
+        if (activeReportNo) {
+          depParams.append("sow_report_no", activeReportNo);
+        }
+        const depRes = await fetch(`/api/workspace-deployments?${depParams.toString()}`);
+        if (depRes.ok) {
+          const depJson = await depRes.json();
+          if (Array.isArray(depJson?.deployments)) {
+            const mapped = depJson.deployments;
+            if (mapped.length > 0) {
+              setDeployments(mapped);
+              const session = loadUserSession();
+              const savedDepId = session?.lastActiveDepId;
+              let targetDep = mapped[0];
+              if (savedDepId) {
+                const matched = mapped.find((d: any) => String(d.id) === String(savedDepId));
+                if (matched) targetDep = matched;
+              }
+              setActiveDep(targetDep);
+              return;
+            }
+          }
+        }
+      } catch (depApiErr) {
+        console.warn("[fetchDeps] Deployments API warning, falling back to direct query:", depApiErr);
+      }
+
+      const table = inspMethod === "DIVING" ? "insp_dive_jobs" : "insp_rov_jobs";
 
       console.log(
         `[fetchDeps] Starting fetch from ${table} | jobpack: ${queryJobPackId} | structure: ${structureId}`
@@ -6327,329 +6628,38 @@ function V10PreviewLayout() {
 
   // Replacement: useQuery for SOW and Component Data
   const { data: sowAndComps, isLoading: isSowLoading } = useQuery({
-    queryKey: ["sow-data", structureId, sowId, inspMethod],
+    queryKey: ["sow-data", structureId, jobPackId, headerData.sowReportNo, sowId, inspMethod],
     enabled: !!(structureId && !isNaN(Number(structureId))),
     queryFn: async () => {
       if (!structureId) return { assigned: [], unassigned: [], all: [] };
 
-      // 1. Fetch ALL active components for this structure (Paginated to bypass 1000 hard limit)
-      let allCompsDataRaw: any[] = [];
-      let hasMore = true;
-      let offset = 0;
-      const pageSize = 1000;
-      let compErr: any = null;
+      const activeReportNo = (headerData.sowReportNo && headerData.sowReportNo !== "N/A" && headerData.sowReportNo !== "Unknown Report")
+        ? headerData.sowReportNo
+        : (targetReportNumber || sowParam);
 
-      while (hasMore) {
-        const { data: pageData, error: pageErr } = await supabase
-          .from("structure_components")
-          .select("id, structure_id, id_no, q_id, comp_id, code, metadata, is_deleted")
-          .eq("structure_id", parseInt(structureId))
-          .range(offset, offset + pageSize - 1);
-
-        if (pageErr) {
-          compErr = pageErr;
-          break;
-        }
-
-        if (pageData && pageData.length > 0) {
-          allCompsDataRaw = [...allCompsDataRaw, ...pageData];
-          offset += pageSize;
-          if (pageData.length < pageSize) {
-            hasMore = false;
-          }
-        } else {
-          hasMore = false;
-        }
-      }
-
-      if (allCompsDataRaw.length === 0) {
-        try {
-          const apiRes = await fetch(`/api/structure-components?structure_id=${structureId}`);
-          if (apiRes.ok) {
-            const apiJson = await apiRes.json();
-            if (Array.isArray(apiJson.data) && apiJson.data.length > 0) {
-              allCompsDataRaw = apiJson.data;
-            }
-          }
-        } catch (apiErr) {
-          console.warn("[sowAndComps] Error fetching from structure-components API fallback:", apiErr);
-        }
-      }
-
-      if (!allCompsDataRaw || allCompsDataRaw.length === 0) return { assigned: [], unassigned: [], all: [] };
-
-      // Filter out deleted/archived components
-      const allCompsData = allCompsDataRaw.filter((c: any) => {
-        // 1. If is_deleted boolean column is explicitly set, it is the primary source of truth
-        if (c.is_deleted === true || c.is_deleted === 1) return false;
-        if (c.is_deleted === false || c.is_deleted === 0) return true;
-
-        // 2. Legacy fallback only if is_deleted is null / undefined
-        const md =
-          typeof c.metadata === "string"
-            ? (() => {
-                try {
-                  return JSON.parse(c.metadata);
-                } catch {
-                  return {};
-                }
-              })()
-            : c.metadata;
-
-        if (
-          md &&
-          (md.del === 1 ||
-            md.del === "1" ||
-            md.del === true ||
-            md.is_deleted === true ||
-            md.is_deleted === "1" ||
-            md.status === "archived" ||
-            md.status === "deleted")
-        ) {
-          return false;
-        }
-
-        return true;
+      const params = new URLSearchParams({
+        jobpack_id: String(jobPackId || "0"),
+        structure_id: String(structureId),
       });
-
-      // 2. Fetch SOW items scoped strictly to this sowId AND report Number
-      let resolvedSowId = sowId;
-      if (!resolvedSowId && jobPackId && structureId) {
-        const { data: sowRec } = await supabase
-          .from("u_sow")
-          .select("id")
-          .eq("jobpack_id", parseInt(jobPackId))
-          .eq("structure_id", parseInt(structureId))
-          .maybeSingle();
-        if (sowRec?.id) {
-          resolvedSowId = String(sowRec.id);
-        }
+      if (activeReportNo && activeReportNo !== "N/A" && activeReportNo !== "Unknown Report") {
+        params.append("sow_report_no", activeReportNo);
       }
 
-      let allSowItems: any[] = [];
-      if (resolvedSowId) {
-        let hasMoreSow = true;
-        let offsetSow = 0;
-
-        while (hasMoreSow) {
-          let sowItemsQuery = supabase
-            .from("u_sow_items")
-            .select("*, inspection_type:inspection_type_id!left(id, code, name, metadata)")
-            .eq("sow_id", parseInt(resolvedSowId))
-            .range(offsetSow, offsetSow + pageSize - 1);
-
-          if (targetReportNumber) {
-            sowItemsQuery = sowItemsQuery.eq("report_number", targetReportNumber);
-          }
-
-          const { data: pageSowItems, error: sowItemsErr } = await sowItemsQuery;
-
-          if (sowItemsErr) {
-            console.error("Error fetching SOW items:", sowItemsErr);
-            break;
-          }
-
-          if (pageSowItems && pageSowItems.length > 0) {
-            allSowItems = [...allSowItems, ...pageSowItems];
-            offsetSow += pageSize;
-            if (pageSowItems.length < pageSize) {
-              hasMoreSow = false;
-            }
-          } else {
-            hasMoreSow = false;
+      try {
+        const res = await fetch(`/api/workspace-components?${params.toString()}`);
+        if (res.ok) {
+          const json = await res.json();
+          if (json && Array.isArray(json.all)) {
+            return json;
           }
         }
+      } catch (err) {
+        console.warn("[sowAndComps] Fast API failed:", err);
       }
-
-      const sowItems = allSowItems;
-
-      // 2.5 Fetch actual records for true dynamic status correction
-      let recsQuery = supabase
-        .from("insp_records")
-        .select("component_id, inspection_type_code, status, has_anomaly, cr_date")
-        .eq("structure_id", Number(structureId));
-
-      if (jobPackId) {
-        recsQuery = recsQuery.eq("jobpack_id", Number(jobPackId));
-      }
-
-      // Fetch all records without 1000-row limit truncation
-      let actualRecords: any[] = [];
-      let fromA = 0;
-      while (true) {
-        const { data: pageA } = await recsQuery
-          .order("cr_date", { ascending: false })
-          .range(fromA, fromA + 999);
-        if (pageA && pageA.length > 0) {
-          actualRecords.push(...pageA);
-          if (pageA.length < 1000) break;
-          fromA += 1000;
-        } else {
-          break;
-        }
-      }
-
-      // Create truth-mask for component + task
-      const trueStatusMap = new Map<string, string>();
-      if (actualRecords) {
-        actualRecords.forEach((r: any) => {
-          if (!r.component_id || !r.inspection_type_code) return;
-          const key = `${r.component_id}_${r.inspection_type_code}`;
-          // Array is newest first, so first encounter sets the final state
-          if (!trueStatusMap.has(key)) {
-            const hasAnom = r.has_anomaly || String(r.status).toUpperCase() === "ANOMALY";
-            const isIncomp = String(r.status).toUpperCase() === "INCOMPLETE";
-            trueStatusMap.set(
-              key,
-              hasAnom ? "anomaly" : (isIncomp ? "incomplete" : "completed")
-            );
-          }
-        });
-      }
-
-      const assignedCompsMap = new Map<number, { code: string; status: string }[]>();
-
-      if (sowItems) {
-        (sowItems as any[]).forEach((item: any) => {
-          // Match component by qid, id, or type — no method filter here
-          // (ROV/DIVING filter applies to task display, not component scope)
-          let matchingComp: any = null;
-          if (item.component_id) {
-            matchingComp = (allCompsData || []).find((c: any) => c.id === item.component_id);
-          } else if (item.component_qid) {
-            matchingComp = (allCompsData || []).find((c: any) => c.q_id === item.component_qid);
-          } else if (item.component_type) {
-            matchingComp = (allCompsData || []).find(
-              (c: any) => c.code === item.component_type || c.name === item.component_type
-            );
-          }
-
-          if (matchingComp) {
-            if (!assignedCompsMap.has(matchingComp.id)) {
-              assignedCompsMap.set(matchingComp.id, []);
-            }
-            const taskToLog = item.inspection_code || item.inspection_name;
-            if (taskToLog) {
-              const dynKey1 = `${matchingComp.id}_${item.inspection_code}`;
-              const dynKey2 = `${matchingComp.id}_${item.inspection_name}`;
-              const rawSowStatus = String(item.status || "").toLowerCase();
-              const realStatus =
-                trueStatusMap.get(dynKey1) || trueStatusMap.get(dynKey2) || (rawSowStatus && rawSowStatus !== "pending" ? rawSowStatus : "pending");
-              assignedCompsMap.get(matchingComp.id)?.push({ code: taskToLog, status: realStatus });
-            }
-          } else {
-            console.log(
-              `[CompQuery] No match for SOW item: qid=${item.component_qid} cid=${item.component_id} ctype=${item.component_type}`
-            );
-          }
-        });
-      }
-
-      const assigned: any[] = [];
-      const unassigned: any[] = [];
-
-      (allCompsData || []).forEach((comp: any) => {
-        const isAssigned = assignedCompsMap.has(comp.id);
-        const md =
-          (typeof comp.metadata === "string" ? JSON.parse(comp.metadata) : comp.metadata) || {};
-        const startNode =
-          md.start_node || md.f_node || md.Node_1 || comp.startNode || comp.start_node || "-";
-        const endNode =
-          md.end_node || md.s_node || md.Node_2 || comp.endNode || comp.end_node || "-";
-        const startLeg =
-          md.f_leg ||
-          md.start_leg ||
-          md.s_leg ||
-          md.leg_1 ||
-          md.StartLeg ||
-          md.Leg_1 ||
-          comp.startLeg ||
-          comp.start_leg ||
-          "-";
-        const endLeg =
-          md.s_leg ||
-          md.end_leg ||
-          md.f_leg ||
-          md.leg_2 ||
-          md.EndLeg ||
-          md.Leg_2 ||
-          comp.endLeg ||
-          comp.end_leg ||
-          "-";
-        const startElev =
-          md.start_elevation || md.elv_1 || comp.elevation1 || comp.start_elevation || "-";
-        const endElev =
-          md.end_elevation || md.elv_2 || comp.elevation2 || comp.end_elevation || "-";
-        const nominalThk =
-          md.nominal_thickness ||
-          md.NominalThickness ||
-          md.nominal_thk ||
-          md.wall_thk ||
-          md.additionalInfo?.wall_thk ||
-          comp.nominal_thickness ||
-          "-";
-        const wallThickness = md.wall_thk || md.additionalInfo?.wall_thk || "-";
-        const taskItems = assignedCompsMap.get(comp.id) || [];
-
-        const elv1Num = parseFloat(String(startElev).replace(/[^\d.-]/g, ""));
-        const elv2Num = parseFloat(String(endElev).replace(/[^\d.-]/g, ""));
-        const hasElv1 = !isNaN(elv1Num);
-        const hasElv2 = !isNaN(elv2Num);
-        let displayDepth = comp.water_depth || "-0.0m";
-        let lowestElev = "-";
-        if (hasElv1 && hasElv2) {
-          lowestElev = String(Math.min(elv1Num, elv2Num));
-          displayDepth = `${lowestElev}m`;
-        } else if (hasElv1) {
-          lowestElev = String(elv1Num);
-          displayDepth = `${elv1Num}m`;
-        } else if (hasElv2) {
-          lowestElev = String(elv2Num);
-          displayDepth = `${elv2Num}m`;
-        }
-
-        const face =
-          md.face ||
-          md.face_name ||
-          md.face_code ||
-          md.Face ||
-          md.additionalInfo?.face ||
-          md.additionalInfo?.face_pos ||
-          comp.face ||
-          "";
-
-        const compQId = comp.q_id || comp.name || `Node ${comp.id}`;
-        const obj = {
-          id: comp.id,
-          name: compQId,
-          q_id: compQId,
-          code: comp.code || comp.type || "-",
-          type: comp.type || comp.code || "-",
-          face: face && face !== "-" && face !== "N/A" ? face : "",
-          depth: displayDepth,
-          lowestElev,
-          startNode,
-          endNode,
-          startLeg,
-          endLeg,
-          startElev,
-          endElev,
-          nominalThk,
-          wallThickness,
-          raw: comp,
-          tasks: Array.from(new Set(taskItems.map((t) => t.code))),
-          taskStatuses: Array.from(new Map(taskItems.map((item) => [item.code, item])).values()),
-        };
-
-        if (isAssigned) assigned.push(obj);
-        else unassigned.push(obj);
-      });
-
-      const combined = [...assigned, ...unassigned];
-      return { assigned, unassigned, all: combined };
+      return { assigned: [], unassigned: [], all: [] };
     },
-    staleTime: 5000, // 5 seconds cache to keep data fresh
-    refetchOnWindowFocus: true, // Automatically refetch when returning to the tab / window
+    staleTime: 10000,
+    refetchOnWindowFocus: false,
   });
 
   // Realtime subscription for structure_components to reflect unarchive / modifications immediately
@@ -6900,15 +6910,20 @@ function V10PreviewLayout() {
       // If it is legacy, only show if we are in modification mode (editingRecordId set)
       // AND any historical record for this component has data for it.
       if (editingRecordId) {
-        const hasDataInHistory = currentRecords.some((r: any) => {
-          if (r.component_id !== selectedComp?.id) return false;
-          const recordData =
-            typeof r.inspection_data === "string"
-              ? JSON.parse(r.inspection_data)
-              : r.inspection_data;
-          const val = recordData?.[p.name] || recordData?.[p.label];
-          return val !== undefined && val !== null && String(val).trim() !== "" && val !== "--";
-        });
+        const hasDataInHistory =
+          currentRecords.some((r: any) => {
+            if (r.insp_id !== editingRecordId && r.component_id !== selectedComp?.id) return false;
+            const recordData =
+              typeof r.inspection_data === "string"
+                ? JSON.parse(r.inspection_data)
+                : r.inspection_data;
+            const val = recordData?.[p.name] || recordData?.[p.label];
+            return val !== undefined && val !== null && String(val).trim() !== "" && val !== "--";
+          }) ||
+          (dynamicProps?.[p.name] !== undefined &&
+            dynamicProps?.[p.name] !== null &&
+            String(dynamicProps?.[p.name]).trim() !== "" &&
+            dynamicProps?.[p.name] !== "--");
         return hasDataInHistory;
       }
       return false;
@@ -8321,9 +8336,36 @@ function V10PreviewLayout() {
           // 2. Process Pending Attachments
           if (attachmentsToProcess.length > 0) {
             console.log("[BG] Processing attachments for insp_id:", finalInspId);
-            for (const att of attachmentsToProcess) {
+            for (let i = 0; i < attachmentsToProcess.length; i++) {
+              const att = attachmentsToProcess[i];
+              const sortOrder = (att as any).sort_order !== undefined ? Number((att as any).sort_order) : (att.meta?.sort_order !== undefined ? Number(att.meta.sort_order) : i);
               try {
                 if (att.isExisting) {
+                  // If the attachment file itself was visually edited or replaced, upload the updated file
+                  if ((att.isEdited || att.isReplaced) && att.file) {
+                    try {
+                      const putFormData = new FormData();
+                      putFormData.append("id", String(att.id));
+                      putFormData.append("file", att.file);
+                      if (att.path) putFormData.append("filePath", att.path);
+                      putFormData.append("title", att.title || att.name);
+                      putFormData.append("description", att.description || "");
+                      putFormData.append("sort_order", String(sortOrder));
+
+                      const putRes = await fetch("/api/attachment", {
+                        method: "PUT",
+                        body: putFormData,
+                      });
+                      if (!putRes.ok) {
+                        const errData = await putRes.json().catch(() => ({}));
+                        console.error(`[BG] Failed to update file for attachment ${att.id}:`, errData.error);
+                      }
+                    } catch (putErr) {
+                      console.error(`[BG] PUT /api/attachment exception for ${att.id}:`, putErr);
+                    }
+                  }
+
+                  // Metadata update (title, description, sort order) - never re-uploads files
                   await fetch("/api/attachment", {
                     method: "PATCH",
                     headers: { "Content-Type": "application/json" },
@@ -8332,6 +8374,7 @@ function V10PreviewLayout() {
                       title: att.title || att.name,
                       name: att.title || att.name,
                       description: att.description,
+                      sort_order: sortOrder,
                     }),
                   });
                   continue;
@@ -8358,7 +8401,8 @@ function V10PreviewLayout() {
                 formData.append("source_type", "INSPECTION");
                 formData.append("source_id", finalInspId.toString());
                 formData.append("title", finalTitle);
-                formData.append("description", att.description);
+                formData.append("description", att.description || "");
+                formData.append("sort_order", String(sortOrder));
 
                 const response = await fetch("/api/attachment", {
                   method: "POST",
@@ -8381,6 +8425,8 @@ function V10PreviewLayout() {
           // Final refresh to show new attachments
           queryClient.invalidateQueries({ queryKey: ["inspection-events"] });
           fetchHistory();
+          await syncDeploymentState();
+          fetchFullWorkspaceRecords();
         } catch (err) {
           console.error("[BG] Global background processing error:", err);
           toast.error("Background attachment processing encountered an error", { id: bgToastId });
@@ -8808,11 +8854,20 @@ function V10PreviewLayout() {
         }
 
         if (combinedList.length > 0) {
-          const mapped = combinedList.map((a: any) => {
+          // Sort attachments by sort_order if present, fallback to creation/capture time
+          combinedList.sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            return new Date(a.created_at || a.captured_at || 0).getTime() - new Date(b.created_at || b.captured_at || 0).getTime();
+          });
+
+          const mapped = combinedList.map((a: any, idx: number) => {
             const publicUrl = getAttachmentUrl(a, supabase);
             const fileType = a.meta?.file_type || "";
             const isVideo = fileType.startsWith("video/") || a.meta?.type === "VIDEO" || a.type === "video";
             const isDoc = fileType.includes("pdf") || fileType.includes("document") || a.meta?.type === "DOCUMENT";
+            const assignedOrder = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : idx);
             return {
               id: String(a.id),
               name: a.name,
@@ -8822,7 +8877,11 @@ function V10PreviewLayout() {
               source: a.source_type,
               previewUrl: publicUrl,
               path: a.path,
-              meta: a.meta || {},
+              sort_order: assignedOrder,
+              meta: {
+                ...(a.meta || {}),
+                sort_order: assignedOrder,
+              },
               isExisting: true,
             };
           });
@@ -8945,8 +9004,85 @@ function V10PreviewLayout() {
     }
   };
 
-  const handlePrintAnomaly = async (record: any) => {
-    setPreviewRecord(record);
+  const handlePrintAnomaly = async (recordOrId?: any) => {
+    let targetRecord: any = null;
+    let targetId: number | null = null;
+
+    if (recordOrId && typeof recordOrId === "object") {
+      targetRecord = recordOrId;
+      targetId = Number(recordOrId.insp_id || recordOrId.id || recordOrId.inspection_id || 0) || null;
+    } else if (recordOrId && !isNaN(Number(recordOrId))) {
+      targetId = Number(recordOrId);
+    } else if (editingRecordId && !isNaN(Number(editingRecordId))) {
+      targetId = Number(editingRecordId);
+    }
+
+    if (!targetId && !targetRecord) {
+      toast.warning("Please save this inspection record first before generating or printing the report.");
+      return;
+    }
+
+    // Try finding the record in currentRecords or allWorkspaceRecords if not provided or incomplete
+    if (targetId) {
+      if (!targetRecord) {
+        targetRecord = (currentRecords || []).find((rec: any) => Number(rec.insp_id) === targetId) ||
+          (allWorkspaceRecords || []).find((rec: any) => Number(rec.insp_id) === targetId);
+      }
+    }
+
+    // If still not found or doesn't have insp_anomalies, query supabase directly
+    if (!targetRecord || (!targetRecord.insp_anomalies && !targetRecord.anomaly_id)) {
+      if (targetId) {
+        try {
+          const { data: fetched } = await supabase
+            .from("insp_records")
+            .select("*, inspection_type(id, code, name), insp_anomalies(*), structure_components(*)")
+            .eq("insp_id", targetId)
+            .maybeSingle();
+          if (fetched) {
+            targetRecord = {
+              ...fetched,
+              has_anomaly: (fetched.insp_anomalies && fetched.insp_anomalies.length > 0) || fetched.has_anomaly,
+            };
+          }
+        } catch (err) {
+          console.error("Error fetching full record for anomaly print:", err);
+        }
+      }
+    }
+
+    if (!targetRecord && targetId) {
+      targetRecord = { insp_id: targetId };
+    }
+
+    if (!targetRecord) {
+      toast.error("Inspection record not found.");
+      return;
+    }
+
+    // Ensure category/findingType is attached so report knows whether it is Anomaly or Finding
+    if (!targetRecord.record_category) {
+      const anomCat = targetRecord.insp_anomalies?.[0]?.record_category;
+      if (anomCat) {
+        targetRecord.record_category = anomCat;
+      } else if (findingType === "Finding") {
+        targetRecord.record_category = "FINDING";
+      } else if (findingType === "Anomaly") {
+        targetRecord.record_category = "ANOMALY";
+      }
+    }
+
+    if (!targetRecord.anomaly_ref_no && targetRecord.insp_anomalies?.[0]?.anomaly_ref_no) {
+      targetRecord.anomaly_ref_no = targetRecord.insp_anomalies[0].anomaly_ref_no;
+    } else if (!targetRecord.anomaly_ref_no && anomalyData?.referenceNo) {
+      targetRecord.anomaly_ref_no = anomalyData.referenceNo;
+    }
+
+    if (!targetRecord.anomaly_id && targetRecord.insp_anomalies?.[0]?.anomaly_id) {
+      targetRecord.anomaly_id = targetRecord.insp_anomalies[0].anomaly_id;
+    }
+
+    setPreviewRecord(targetRecord);
     setPreviewOpen(true);
   };
 
@@ -9696,7 +9832,7 @@ function V10PreviewLayout() {
             setRecordSearchQuery={setRecordSearchQuery}
             searchMode={searchMode}
             setSearchMode={setSearchMode}
-            displayRecords={displayRecords}
+            displayRecords={pagedDisplayRecords}
             sortedRecords={sortedRecords}
             capturedEventsPipWindow={capturedEventsPipWindow}
             handlePopoutCapturedEvents={handlePopoutCapturedEvents}
@@ -9716,7 +9852,8 @@ function V10PreviewLayout() {
             setRecordsOffset={setRecordsOffset}
             recordsLimit={recordsLimit}
             setRecordsLimit={setRecordsLimit}
-            totalRecords={totalRecords}
+            totalRecords={allWorkspaceRecords.length > 0 ? allWorkspaceRecords.length : (totalRecords || sortedRecords.length)}
+            matchingCount={displayRecords.length}
             editingRecordId={editingRecordId}
             isPipe={isPipe}
             allComps={[...(componentsSow || []), ...(componentsNonSow || [])]}
@@ -9757,7 +9894,7 @@ function V10PreviewLayout() {
               selectedComp={selectedComp}
               handleComponentSelection={handleComponentSelection}
               setCompSpecDialogOpen={setCompSpecDialogOpen}
-              currentRecords={currentRecords}
+              currentRecords={allWorkspaceRecords && allWorkspaceRecords.length > 0 ? allWorkspaceRecords : currentRecords}
               currentCompRecords={currentCompRecords}
               historicalRecords={historicalRecords}
               historyLoading={historyLoading}
@@ -9971,6 +10108,7 @@ function V10PreviewLayout() {
         generateDivingACFMCReport={() => setDivingAcfmcPreviewOpen(true)}
         generateDivingPLCOReport={() => setDivingPlcoPreviewOpen(true)}
         generateROVRWDIReport={() => setRovRwdiPreviewOpen(true)}
+        generateIncompleteFlaggedReport={() => setIncompleteFlaggedPreviewOpen(true)}
         generateRCASNReport={() => setRcasnPreviewOpen(true)}
         generateRCASNSketchReport={() => setRcasnSketchPreviewOpen(true)}
         generateRCONDReport={() => setRcondPreviewOpen(true)}
@@ -10573,6 +10711,7 @@ function V10PreviewLayout() {
           showRemovalConfirm,
           editingRecordId,
           pendingReclass,
+          elevationSuggestion,
           showTaskSelector,
           activeSpec,
           allInspectionTypes,
@@ -10625,6 +10764,7 @@ function V10PreviewLayout() {
           divingAcfmcPreviewOpen,
           divingPlcoPreviewOpen,
           rovRwdiPreviewOpen,
+          incompleteFlaggedPreviewOpen,
           divingDcasnUwPreviewOpen,
           divingDcasnTsPreviewOpen,
           divingDcondUwPreviewOpen,
@@ -10692,6 +10832,7 @@ function V10PreviewLayout() {
           setRcondSketchPreviewOpen,
           setShowRemovalConfirm,
           setPendingReclass,
+          setElevationSuggestion,
           setShowTaskSelector,
           setAddTaskSearch,
           setShowCompSelector,
@@ -10736,6 +10877,7 @@ function V10PreviewLayout() {
           setDivingAcfmcPreviewOpen,
           setDivingPlcoPreviewOpen,
           setRovRwdiPreviewOpen,
+          setIncompleteFlaggedPreviewOpen,
           setDivingDcasnUwPreviewOpen,
           setDivingDcasnTsPreviewOpen,
           setDivingDcondUwPreviewOpen,
@@ -10749,6 +10891,7 @@ function V10PreviewLayout() {
           handleRegisterAnomaly,
           handleConfirmRemoval,
           confirmReclassification,
+          applyComponentChange,
           handleTaskChange,
           handleComponentSelection,
           handleExternalFileUpload,
@@ -10849,6 +10992,8 @@ function V10PreviewLayout() {
           generateDivingACFMCReportBlob,
           generateDivingPLCOReportBlob,
           generateROVRWDIReportBlob,
+          generateIncompleteFlaggedReport,
+          generateIncompleteFlaggedReportBlob,
           generateDivingDCASNUWReport,
           generateDivingDCASNUWReportBlob,
           generateDivingDCASNTSReport,

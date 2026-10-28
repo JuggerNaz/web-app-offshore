@@ -25,17 +25,31 @@ export const GET = withTenant(async (request, { companyId }) => {
                 return NextResponse.json({ data: null });
             }
 
-            const { data: items, error: itemsError } = await (supabase as any)
-                .from("u_sow_items")
-                .select("*")
-                .eq("sow_id", sowId)
-                .order("component_qid", { ascending: true });
+            const allItems: any[] = [];
+            let from = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                const { data: pageItems, error: itemsError } = await (supabase as any)
+                    .from("u_sow_items")
+                    .select("*")
+                    .eq("sow_id", sowId)
+                    .order("id", { ascending: true })
+                    .range(from, from + PAGE_SIZE - 1);
 
-            if (itemsError) {
-                return NextResponse.json({ error: itemsError.message }, { status: 400 });
+                if (itemsError) {
+                    return NextResponse.json({ error: itemsError.message }, { status: 400 });
+                }
+
+                if (pageItems && pageItems.length > 0) {
+                    allItems.push(...pageItems);
+                    if (pageItems.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
 
-            return NextResponse.json({ data: { ...sow, items } });
+            return NextResponse.json({ data: { ...sow, items: allItems } });
         }
 
         if (jobpackId && structureId) {
@@ -83,17 +97,31 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             const sow = sows[0];
 
-            const { data: items, error: itemsError } = await (supabase as any)
-                .from("u_sow_items")
-                .select("*")
-                .eq("sow_id", sow.id)
-                .order("component_qid", { ascending: true });
+            const allItems: any[] = [];
+            let from = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                const { data: pageItems, error: itemsError } = await (supabase as any)
+                    .from("u_sow_items")
+                    .select("*")
+                    .eq("sow_id", sow.id)
+                    .order("id", { ascending: true })
+                    .range(from, from + PAGE_SIZE - 1);
 
-            if (itemsError) {
-                return NextResponse.json({ error: itemsError.message }, { status: 400 });
+                if (itemsError) {
+                    return NextResponse.json({ error: itemsError.message }, { status: 400 });
+                }
+
+                if (pageItems && pageItems.length > 0) {
+                    allItems.push(...pageItems);
+                    if (pageItems.length < PAGE_SIZE) break;
+                    from += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
 
-            return NextResponse.json({ data: { ...sow, items } });
+            return NextResponse.json({ data: { ...sow, items: allItems } });
         }
 
         if (jobpackId) {

@@ -1,7 +1,8 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, sortScourFaceRecords, buildScourFaceTopology, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { matchesLeg, cleanLegName, isPile } from "./scour-sorting-utils";
 
 interface CompanySettings {
     company_name?: string;
@@ -271,112 +272,11 @@ export const generateROVRSCORReport = async (
             });
             const qidsInFace = Array.from(qidSet);
 
-            // Separate horizontal framing members vs pile records
-            const homRecords = faceRecords.filter(r => {
-                const comp = r.structure_components || r.component || {};
-                const code = (comp.code || comp.component_type || "").toUpperCase();
-                const q = (comp.q_id || r.qid || "").toUpperCase();
-                return code !== "PL" && code !== "PILE" && !q.startsWith("PL");
-            });
-
-            const pileRecords = faceRecords.filter(r => {
-                const comp = r.structure_components || r.component || {};
-                const code = (comp.code || comp.component_type || "").toUpperCase();
-                const q = (comp.q_id || r.qid || "").toUpperCase();
-                return code === "PL" || code === "PILE" || q.startsWith("PL");
-            });
-
-            // Determine legs for this face
-            const foundLegNames: string[] = [];
-            faceRecords.forEach(r => {
-                const loc = (r.inspection_data?.scour_location || '').toLowerCase();
-                if (loc.includes('leg') && loc.includes(':')) {
-                    const parts = loc.split(':');
-                    const name = parts[1].trim();
-                    if (name && !foundLegNames.includes(name)) foundLegNames.push(name);
-                } else if (loc.includes('leg')) {
-                    const match = loc.match(/leg\s+([a-zA-Z0-9]+)/);
-                    if (match && !foundLegNames.includes(match[1])) foundLegNames.push(match[1]);
-                }
-            });
-
-            // Primary framing component for geometry
-            const primaryComp = homRecords[0]?.structure_components || homRecords[0]?.component || faceRecords[0]?.structure_components || {};
-            const pMd = (typeof primaryComp.metadata === "string" ? JSON.parse(primaryComp.metadata) : primaryComp.metadata) || {};
-
-            let leg1 = (primaryComp.startLeg || pMd.start_leg || pMd.s_leg || pMd.leg_1 || (foundLegNames[0] || '')).toUpperCase().replace(/^LEG\s*/i, '');
-            let leg2 = (primaryComp.endLeg || pMd.end_leg || pMd.f_leg || pMd.leg_2 || (foundLegNames[1] || '')).toUpperCase().replace(/^LEG\s*/i, '');
-
-            if (!leg1 && !leg2 && faceName.includes('-')) {
-                const fMatch = faceName.match(/([A-Z0-9]+)\s*-\s*([A-Z0-9]+)/i);
-                if (fMatch) {
-                    leg1 = fMatch[1].replace(/^LEG\s*/i, '');
-                    leg2 = fMatch[2].replace(/^LEG\s*/i, '');
-                }
-            }
-
-            if (!leg1) leg1 = foundLegNames[0] ? foundLegNames[0].toUpperCase().replace(/^LEG\s*/i, '') : 'A1';
-            if (!leg2) leg2 = foundLegNames[1] ? foundLegNames[1].toUpperCase().replace(/^LEG\s*/i, '') : (leg1 !== 'B1' ? 'B1' : 'A2');
-
-            let startNode = primaryComp.startNode || pMd.start_node || pMd.s_node || 'N/A';
-            let endNode = primaryComp.endNode || pMd.end_node || pMd.f_node || 'N/A';
-            const primaryQid = primaryComp.q_id || qidsInFace[0] || '';
-            if (primaryQid.includes('-')) {
-                const match = primaryQid.match(/([A-Z0-9]+)-([A-Z0-9]+)/);
-                if (match) { startNode = match[1]; endNode = match[2]; }
-            }
-
-            // Find piles belonging to leg1 and leg2
-            const findPileForLeg = (legName: string) => {
-                if (!legName) return null;
-                const lUpper = legName.toUpperCase();
-                return pileRecords.find(pr => {
-                    const comp = pr.structure_components || pr.component || {};
-                    const q = (comp.q_id || pr.qid || "").toUpperCase();
-                    const md = (typeof comp.metadata === "string" ? JSON.parse(comp.metadata) : comp.metadata) || {};
-                    const loc = (pr.inspection_data?.scour_location || "").toUpperCase();
-                    const compLeg = (md.leg_no || md.leg || md.leg_name || comp.leg_no || comp.start_leg || "").toUpperCase();
-                    return q.includes(lUpper) || compLeg.includes(lUpper) || loc.includes(lUpper);
-                });
-            };
-
-            const pileLeft = findPileForLeg(leg1);
-            const pileRight = findPileForLeg(leg2);
-
-            // --- CONSOLIDATE DATA BY 3 SPATIAL LOCATIONS: LEFT LEG, MIDPOINT, RIGHT LEG ---
-            const leftRecords: any[] = [];
-            const midRecords: any[] = [];
-            const rightRecords: any[] = [];
-
-            faceRecords.forEach(r => {
-                const rd = r.inspection_data || r.inspection_dat || {};
-                const locTag = (rd.scour_location || '').toLowerCase();
-                const comp = r.structure_components || r.component || {};
-                const q = (comp.q_id || r.qid || "").toUpperCase();
-                const isPl = (comp.code || comp.component_type || "").toUpperCase() === "PL" || q.startsWith("PL");
-                const l1 = leg1.toLowerCase();
-                const l2 = leg2.toLowerCase();
-
-                if (locTag.includes('mid') || locTag.includes('middle') || locTag.includes('center')) {
-                    midRecords.push(r);
-                } else if (isPl) {
-                    if (q.includes(leg1.toUpperCase()) || locTag.includes(l1)) {
-                        leftRecords.push(r);
-                    } else if (q.includes(leg2.toUpperCase()) || locTag.includes(l2)) {
-                        rightRecords.push(r);
-                    } else {
-                        leftRecords.push(r);
-                    }
-                } else if (locTag.includes('start') || (l1 && locTag.includes(l1))) {
-                    leftRecords.push(r);
-                } else if (locTag.includes('end') || (l2 && locTag.includes(l2))) {
-                    rightRecords.push(r);
-                } else {
-                    if (q.includes(leg1.toUpperCase())) leftRecords.push(r);
-                    else if (q.includes(leg2.toUpperCase())) rightRecords.push(r);
-                    else midRecords.push(r);
-                }
-            });
+            // Build dynamic topology of legs, nodes, and member spans for this face
+            const topology = buildScourFaceTopology(faceRecords, faceName);
+            const { legs, spans } = topology;
+            const numLegs = legs.length;
+            const numSpans = spans.length;
 
             if (pageIdx > 0) doc.addPage();
             drawHeader(doc);
@@ -394,17 +294,25 @@ export const generateROVRSCORReport = async (
 
             const drawGraphics = (d: jsPDF, gy: number) => {
                 const da = d as any;
-                const innerMargin = 60;
+                const innerMargin = numLegs === 2 ? 60 : (numLegs === 3 ? 42 : 28);
                 const homY = gy + 25.5;
                 const legRadius = 5.5;
-                const homX1_center = margin + innerMargin;
-                const homX2_center = margin + panelW - innerMargin;
                 const redDashed = [239, 68, 68] as [number, number, number];
 
-                const depths = faceRecords.map(r => parseFloat(r.inspection_data?.scour_depth || '0')).filter(v => !isNaN(v));
-                const maxD = depths.length > 0 ? Math.max(...depths, 300) : 500;
-                const maxVisualDepth = 10;
-                const depthScale = maxD > 0 ? maxVisualDepth / maxD : 0.02;
+                const xStart = margin + innerMargin;
+                const xEnd = margin + panelW - innerMargin;
+                const legSpacing = numLegs > 1 ? (xEnd - xStart) / (numLegs - 1) : 0;
+                const legX = legs.map((_, i) => xStart + i * legSpacing);
+
+                const getLegSlant = (i: number) => {
+                    if (i === 0) return -3.0;
+                    if (i === numLegs - 1) return 3.0;
+                    return 0; // intermediate legs are vertical
+                };
+
+                const topY = gy + 7.5;
+                const pOffsetBot = gy + panelH - 9;
+                const refTotalH = pOffsetBot - topY;
 
                 // Consolidate location records taking maximum depth / severity
                 const consolidateLocation = (recs: any[], posX: number) => {
@@ -413,6 +321,7 @@ export const generateROVRSCORReport = async (
                     let hasExposed = false;
                     let hasAnom = false;
                     let hasRect = false;
+                    const hasData = recs.length > 0;
 
                     recs.forEach(r => {
                         const rd = r.inspection_data || r.inspection_dat || {};
@@ -437,13 +346,69 @@ export const generateROVRSCORReport = async (
                         burial: maxBurial,
                         exposed: hasExposed,
                         isAnom: hasAnom,
-                        isRect: hasRect
+                        isRect: hasRect,
+                        hasData
                     };
                 };
 
-                const pointLeft  = consolidateLocation(leftRecords, homX1_center);
-                const pointMid   = consolidateLocation(midRecords, homX1_center + ((homX2_center - homX1_center) * 0.5));
-                const pointRight = consolidateLocation(rightRecords, homX2_center);
+                // Consolidate data for each span at its 3 locations: Left (Leg-side), Midpoint, Right (Leg-side)
+                const spanData = spans.map((s, j) => {
+                    const slantL = getLegSlant(j);
+                    const slantR = getLegSlant(j + 1);
+                    const homX_j = legX[j] + (slantL * ((homY - topY) / refTotalH) * 1.5);
+                    const homX_j1 = legX[j + 1] + (slantR * ((homY - topY) / refTotalH) * 1.5);
+
+                    const homActualX1 = homX_j + legRadius - 0.5;
+                    const homActualX2 = homX_j1 - legRadius + 0.5;
+                    const spanW = homActualX2 - homActualX1;
+
+                    // Leg-side readings are positioned ON the member just inside each leg
+                    const x_left = homActualX1 + Math.min(11, spanW * 0.17);
+                    const x_mid = (homActualX1 + homActualX2) / 2;
+                    const x_right = homActualX2 - Math.min(11, spanW * 0.17);
+
+                    const memberRecs = faceRecords.filter(r => {
+                        const comp = r.structure_components || r.component || {};
+                        const q = String(comp.q_id || r.qid || "").toUpperCase();
+                        return q === s.memberQid.toUpperCase();
+                    });
+
+                    const leftRecs = memberRecs.filter(r => {
+                        const loc = String(r.inspection_data?.scour_location || "").toUpperCase();
+                        const isMid = loc.includes("MID") || loc.includes("MIDDLE") || loc.includes("CENTER");
+                        if (isMid) return false;
+                        const locMatch = loc.match(/LEG\s*[:\- ]*\s*([A-Z0-9]+)/i);
+                        const locLeg = locMatch ? cleanLegName(locMatch[1]) : "";
+                        return locLeg === s.fromLeg || loc.includes(s.fromLeg);
+                    });
+
+                    const midRecs = memberRecs.filter(r => {
+                        const loc = String(r.inspection_data?.scour_location || "").toUpperCase();
+                        return loc.includes("MID") || loc.includes("MIDDLE") || loc.includes("CENTER");
+                    });
+
+                    const rightRecs = memberRecs.filter(r => {
+                        const loc = String(r.inspection_data?.scour_location || "").toUpperCase();
+                        const isMid = loc.includes("MID") || loc.includes("MIDDLE") || loc.includes("CENTER");
+                        if (isMid) return false;
+                        const locMatch = loc.match(/LEG\s*[:\- ]*\s*([A-Z0-9]+)/i);
+                        const locLeg = locMatch ? cleanLegName(locMatch[1]) : "";
+                        return locLeg === s.toLeg || loc.includes(s.toLeg);
+                    });
+
+                    return {
+                        homActualX1,
+                        homActualX2,
+                        left: consolidateLocation(leftRecs, x_left),
+                        mid: consolidateLocation(midRecs, x_mid),
+                        right: consolidateLocation(rightRecs, x_right)
+                    };
+                });
+
+                const depths = faceRecords.map(r => parseFloat(r.inspection_data?.scour_depth || '0')).filter(v => !isNaN(v));
+                const maxD = depths.length > 0 ? Math.max(...depths, 300) : 500;
+                const maxVisualDepth = 10;
+                const depthScale = maxD > 0 ? maxVisualDepth / maxD : 0.02;
 
                 const mudBaseline = homY + 3.5;
                 const getMudY = (p: { depth: number; burial: number }) => {
@@ -454,39 +419,48 @@ export const generateROVRSCORReport = async (
                     }
                 };
 
-                const leftY  = getMudY(pointLeft);
-                const midY   = getMudY(pointMid);
-                const rightY = getMudY(pointRight);
+                // Compute mudline elevation at each leg center (interpolating between adjacent member sides)
+                const legMudY = legs.map((l, i) => {
+                    const pileRecs = faceRecords.filter(r => isPile(r) && matchesLeg(r, l.name));
+                    const pData = pileRecs.find(r => {
+                        const rd = r.inspection_data || {};
+                        return (rd.scour_depth && parseFloat(rd.scour_depth) > 0) || (rd.Burial_percent && parseFloat(rd.Burial_percent) > 0);
+                    });
 
-                let homActualX1 = homX1_center;
-                let homActualX2 = homX2_center;
+                    if (pData) {
+                        return getMudY(consolidateLocation([pData], legX[i]));
+                    }
 
-                // Uniform structural dimensions for both sides (symmetric leg + pile length)
-                const topY = gy + 7.5;
-                const jacketLegBotY = homY + 6.5;
-                const pOffsetBot = gy + panelH - 9;
-                const refTotalH = pOffsetBot - topY;
+                    if (i === 0 && spanData.length > 0) {
+                        return getMudY(spanData[0].left);
+                    } else if (i === numLegs - 1 && spanData.length > 0) {
+                        return getMudY(spanData[spanData.length - 1].right);
+                    } else if (i > 0 && i - 1 < spanData.length && i < spanData.length) {
+                        const yL = getMudY(spanData[i - 1].right);
+                        const yR = getMudY(spanData[i].left);
+                        return (yL + yR) / 2;
+                    }
+                    return mudBaseline;
+                });
 
-                // Draw leg and pile connection with uniform structural length on both sides
-                const drawSlantedConnection = (
-                    lx: number, 
-                    name: string, 
-                    node: string, 
-                    side: 'left' | 'right', 
-                    pileRec: any,
-                    mudY: number,
-                    hasExposedPile: boolean
-                ) => {
-                    const slant = side === 'left' ? -3.5 : 3.5;
-                    const dy = homY - topY;
-                    const homX_at_junction = lx + (slant * (dy / refTotalH) * 1.5);
-                    if (side === 'left') homActualX1 = homX_at_junction + legRadius - 0.5;
-                    else homActualX2 = homX_at_junction - legRadius + 0.5;
-
+                // --- 1. DRAW ALL LEGS & PILES ---
+                for (let i = 0; i < numLegs; i++) {
+                    const lx = legX[i];
+                    const slant = getLegSlant(i);
                     const pSlantB = slant * ((pOffsetBot - topY) / refTotalH);
+                    const homX_at_junction = lx + (slant * ((homY - topY) / refTotalH) * 1.5);
+                    const mudY = legMudY[i];
+                    const pileRec = legs[i].pileRec;
+
+                    const hasExposedPile = !!(
+                        pileRec?.inspection_data?.Exposed_pile === 'Yes' || 
+                        pileRec?.inspection_data?.Exposed_pile === true ||
+                        (i === 0 && spanData[0]?.left.exposed) || 
+                        (i === numLegs - 1 && spanData[numSpans - 1]?.right.exposed) || 
+                        (i > 0 && (spanData[i - 1]?.right.exposed || spanData[i]?.left.exposed))
+                    );
 
                     if (hasExposedPile) {
-                        // EXPOSED PILE CASE: Jacket sleeve stops above mudline revealing the pile cylinder in water
                         const sleeveBotY = homY + 3;
                         const slantSleeveB = slant * ((sleeveBotY - topY) / refTotalH);
 
@@ -496,38 +470,32 @@ export const generateROVRSCORReport = async (
                         da.ellipse(lx, topY, legRadius, 1.3, 'S');
                         da.ellipse(lx + slantSleeveB, sleeveBotY, legRadius, 1.2, 'S');
 
-                        // Exposed inner pile cylinder extending through water into seabed
                         const pR = legRadius * 0.75;
-                        const pSlantT = slantSleeveB;
                         da.setDrawColor(40, 60, 80); da.setLineWidth(0.8);
-                        da.line(lx - pR + pSlantT, sleeveBotY, lx - pR + pSlantB, pOffsetBot);
-                        da.line(lx + pR + pSlantT, sleeveBotY, lx + pR + pSlantB, pOffsetBot);
+                        da.line(lx - pR + slantSleeveB, sleeveBotY, lx - pR + pSlantB, pOffsetBot);
+                        da.line(lx + pR + slantSleeveB, sleeveBotY, lx + pR + pSlantB, pOffsetBot);
                         da.ellipse(lx + pSlantB, pOffsetBot, pR, 1.1, 'S');
 
-                        // Hatching on pile
                         da.setDrawColor(160, 175, 195); da.setLineWidth(0.4);
                         for (let hY = sleeveBotY + 2; hY < pOffsetBot; hY += 2.2) {
                             const hSlant = slant * ((hY - topY) / refTotalH);
                             da.line(lx - pR + hSlant, hY, lx + pR + hSlant, hY);
                         }
 
-                        // Exposed marker badge
                         const expBadgeY = (sleeveBotY + mudY) / 2;
-                        const expBadgeX = side === 'left' ? lx - 14 : lx + 14;
+                        const expBadgeX = i === 0 ? lx - 14 : lx + 14;
                         da.setFillColor(254, 242, 242); da.setDrawColor(220, 38, 38); da.setLineWidth(0.3);
                         da.rect(expBadgeX - 11, expBadgeY - 2.2, 22, 4.4, 'FD');
                         da.setFontSize(4.5); da.setTextColor(220, 38, 38); da.setFont("helvetica", "bold");
                         da.text("EXPOSED PILE", expBadgeX, expBadgeY + 0.8, { align: 'center' });
                     } else {
-                        // NON-EXPOSED PILE CASE: Main jacket leg continues all the way into the seabed
-                        // No pile is visible in the water column above mudline
                         da.setDrawColor(70, 80, 95); da.setLineWidth(0.8);
                         da.line(lx - legRadius, topY, lx - legRadius + pSlantB, pOffsetBot);
                         da.line(lx + legRadius, topY, lx + legRadius + pSlantB, pOffsetBot);
                         da.ellipse(lx, topY, legRadius, 1.3, 'S');
                         da.ellipse(lx + pSlantB, pOffsetBot, legRadius, 1.1, 'S');
 
-                        // Subsea foundation hatching (strictly BELOW the mudline)
+                        // Subsea foundation hatching strictly below the mudline
                         da.setDrawColor(160, 175, 195); da.setLineWidth(0.4);
                         for (let hY = mudY + 1.8; hY < pOffsetBot; hY += 2.2) {
                             const hSlant = slant * ((hY - topY) / refTotalH);
@@ -535,23 +503,30 @@ export const generateROVRSCORReport = async (
                         }
                     }
 
-                    // Centerline
+                    // Red dashed centerline
                     da.setDrawColor(...redDashed); da.setLineDash([2, 1], 0); da.setLineWidth(0.3);
                     da.line(lx, topY - 2, lx + pSlantB, pOffsetBot + 2); da.setLineDash([], 0);
 
                     // Leg node badge at top
-                    const circleY = gy + 3.5; const circleX = lx - (slant * 0.2);
+                    const circleY = gy + 3.5;
+                    const circleX = lx - (slant * 0.2);
                     da.setDrawColor(...redDashed); da.setLineDash([1.5, 1], 0);
                     da.line(lx, topY, circleX, circleY + 4.5); da.setLineDash([], 0);
                     da.setDrawColor(100); da.setFillColor(255); da.circle(circleX, circleY, 4.5, 'FD');
                     da.setFontSize(5.5); da.setTextColor(0); da.setFont("helvetica", "bold");
-                    da.text(`LEG ${name}`.toUpperCase(), circleX, circleY + 0.7, { align: 'center' }); da.setFont("helvetica", "normal");
+                    da.text(`LEG ${legs[i].name}`.toUpperCase(), circleX, circleY + 0.7, { align: 'center' });
 
-                    // Node label
-                    da.setFontSize(5.5); const nodeX = side === 'left' ? lx - 10 : lx + 10;
-                    da.text(node, nodeX, homY, { align: side === 'left' ? 'right' : 'left' });
+                    // Node label at horizontal member junction
+                    da.setFontSize(5.5); da.setTextColor(0); da.setFont("helvetica", "bold");
+                    if (i === 0) {
+                        da.text(legs[i].node, homX_at_junction - 8, homY + 0.8, { align: 'right' });
+                    } else if (i === numLegs - 1) {
+                        da.text(legs[i].node, homX_at_junction + 8, homY + 0.8, { align: 'left' });
+                    } else {
+                        da.text(legs[i].node, homX_at_junction, homY - 4.2, { align: 'center' });
+                    }
 
-                    // Only label pile if the pile was actually listed or inspected in the scope
+                    // Pile badge below foundation if pile was inspected/listed in face records
                     const isPileInspected = !!pileRec && faceRecords.some(r => r === pileRec || (r.qid && (r.qid === pileRec.qid || r.qid === pileRec.structure_components?.q_id)));
                     const pileQid = pileRec?.structure_components?.q_id || pileRec?.component?.q_id || pileRec?.qid;
                     if (isPileInspected && pileQid && String(pileQid).trim()) {
@@ -562,34 +537,44 @@ export const generateROVRSCORReport = async (
                         da.setFontSize(5); da.setTextColor(7, 78, 136); da.setFont("helvetica", "bold");
                         da.text(pileText, lx + pSlantB, pOffsetBot + 3.7, { align: 'center' });
                     }
-                };
+                }
 
-                drawSlantedConnection(homX1_center, leg1, startNode, 'left', pileLeft, leftY, pointLeft.exposed);
-                drawSlantedConnection(homX2_center, leg2, endNode, 'right', pileRight, rightY, pointRight.exposed);
+                // --- 2. DRAW ALL HORIZONTAL FRAMING MEMBERS ---
+                for (let j = 0; j < numSpans; j++) {
+                    const sp = spanData[j];
 
-                // Horizontal framing member
-                da.setDrawColor(40); da.setLineWidth(1.2);
-                da.line(homActualX1, homY - 3, homActualX2, homY - 3);
-                da.line(homActualX1, homY + 3, homActualX2, homY + 3);
-                da.setDrawColor(...redDashed); da.setLineDash([2, 1], 0); da.setLineWidth(0.3);
-                da.line(homActualX1 - 3, homY, homActualX2 + 3, homY); da.setLineDash([], 0);
+                    // Double lines
+                    da.setDrawColor(40); da.setLineWidth(1.2);
+                    da.line(sp.homActualX1, homY - 3, sp.homActualX2, homY - 3);
+                    da.line(sp.homActualX1, homY + 3, sp.homActualX2, homY + 3);
 
-                // Position measurement points at the true structural locations
-                pointLeft.x = homX1_center;
-                pointRight.x = homX2_center;
-                pointMid.x = homX1_center + ((homX2_center - homX1_center) * 0.5);
+                    // Red dashed centerline
+                    da.setDrawColor(...redDashed); da.setLineDash([2, 1], 0); da.setLineWidth(0.3);
+                    da.line(sp.homActualX1 - 3, homY, sp.homActualX2 + 3, homY); da.setLineDash([], 0);
 
-                // --- DRAW SINGLE CONTINUOUS NATURAL SMOOTH MUDLINE (PCHIP MONOTONIC SPLINE) ---
+                    // Member QID label above member span
+                    const midSpanX = (sp.homActualX1 + sp.homActualX2) / 2;
+                    da.setFontSize(5.5); da.setFont("helvetica", "bold"); da.setTextColor(60, 70, 85);
+                    da.text(spans[j].memberQid, midSpanX, homY - 4.5, { align: 'center' });
+                }
+
+                // --- 3. DRAW CONTINUOUS SMOOTH MUDLINE (PCHIP MONOTONIC SPLINE) ---
                 const startMarginX = margin + 5;
                 const endMarginX = margin + panelW - 5;
+                const pts: { x: number; y: number }[] = [];
 
-                const pts = [
-                    { x: startMarginX, y: leftY },
-                    { x: pointLeft.x,  y: leftY },
-                    { x: pointMid.x,   y: midY },
-                    { x: pointRight.x, y: rightY },
-                    { x: endMarginX,   y: rightY }
-                ];
+                pts.push({ x: startMarginX, y: legMudY[0] });
+                pts.push({ x: legX[0], y: legMudY[0] });
+
+                for (let j = 0; j < numSpans; j++) {
+                    const sp = spanData[j];
+                    pts.push({ x: sp.left.x, y: getMudY(sp.left) });
+                    pts.push({ x: sp.mid.x, y: getMudY(sp.mid) });
+                    pts.push({ x: sp.right.x, y: getMudY(sp.right) });
+                    pts.push({ x: legX[j + 1], y: legMudY[j + 1] });
+                }
+
+                pts.push({ x: endMarginX, y: legMudY[numLegs - 1] });
 
                 const n = pts.length;
                 const deltas: number[] = [];
@@ -651,37 +636,36 @@ export const generateROVRSCORReport = async (
                 da.setFontSize(7); da.setTextColor(...colors.mud); da.setFont("helvetica", "bold");
                 da.text("Mudline", startMarginX + 3, mudBaseline - 6);
 
-                // --- DRAW EXACTLY 3 NON-OVERLAPPING MEASUREMENT BUBBLES ---
-                [pointLeft, pointMid, pointRight].forEach(p => {
-                    const py = getMudY(p);
-                    da.setDrawColor(120); da.setLineWidth(0.4); da.line(p.x, homY + 3, p.x, py); 
-                    const r = 5; 
-                    const my = (homY + 3 + py) / 2;
+                // --- 4. DRAW MEASUREMENT BUBBLES ON MEMBER SIDES (NEVER ON LEGS) ---
+                spanData.forEach(sp => {
+                    const locs = [sp.left, sp.mid, sp.right];
+                    locs.forEach(p => {
+                        if (!p.hasData) return;
+                        const py = getMudY(p);
+                        da.setDrawColor(120); da.setLineWidth(0.35); da.line(p.x, homY + 3, p.x, py);
+                        const r = numLegs >= 4 ? 3.8 : 4.5;
+                        const my = (homY + 3 + py) / 2;
 
-                    let bubbleColor = [255, 255, 255];
-                    let borderCol = [120, 120, 120];
-                    if (p.isAnom) { bubbleColor = [254, 226, 226]; borderCol = colors.anomaly; }
-                    else if (p.isRect) { bubbleColor = [220, 252, 231]; borderCol = colors.rectified; }
+                        let bubbleColor = [255, 255, 255];
+                        let borderCol = [120, 120, 120];
+                        if (p.isAnom) { bubbleColor = [254, 226, 226]; borderCol = colors.anomaly; }
+                        else if (p.isRect) { bubbleColor = [220, 252, 231]; borderCol = colors.rectified; }
 
-                    da.setFillColor(...bubbleColor); da.setDrawColor(...borderCol); da.circle(p.x, my, r, 'FD');
-                    da.setFontSize(5); da.setTextColor(0); da.setFont("helvetica", "normal");
-                    const val = p.burial > 0 ? `${p.burial}%` : `${p.depth} mm`;
-                    da.text(val, p.x, my + 1, { align: 'center' });
-                    if (p.exposed) {
-                        da.setDrawColor(...colors.mud); da.setLineWidth(0.8); da.circle(p.x, my, r + 1, 'S');
-                    }
+                        da.setFillColor(...bubbleColor); da.setDrawColor(...borderCol); da.circle(p.x, my, r, 'FD');
+                        da.setFontSize(numLegs >= 4 ? 4.2 : 5); da.setTextColor(0); da.setFont("helvetica", "normal");
+                        const val = p.burial > 0 ? `${p.burial}%` : `${p.depth} mm`;
+                        da.text(val, p.x, my + 0.8, { align: 'center' });
+                        if (p.exposed) {
+                            da.setDrawColor(...colors.mud); da.setLineWidth(0.8); da.circle(p.x, my, r + 0.8, 'S');
+                        }
+                    });
                 });
             };
 
             drawGraphics(doc, currentY);
             currentY += panelH + 4;
 
-            // Sort face records by spatial order:
-            // 1. Start Leg Pile (at first)
-            // 2. Start Leg Member
-            // 3. Midpoint Member (always at the centre)
-            // 4. End Leg Member
-            // 5. End Leg Pile (at last)
+            // Sort face records by physical spatial order along the row:
             const sortedTableRecords = sortScourFaceRecords(faceRecords, faceName);
 
             autoTable(doc, {
@@ -697,16 +681,14 @@ export const generateROVRSCORReport = async (
                     const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
                     const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
 
-                    const isLeft = leftRecords.includes(r);
-                    const isRight = rightRecords.includes(r);
-                    const isMid = midRecords.includes(r);
-
                     let locationStr = rd.scour_location || '';
                     if (!locationStr || locationStr === 'N/A') {
-                        if (isLeft) locationStr = `Leg : ${leg1}`;
-                        else if (isRight) locationStr = `Leg : ${leg2}`;
-                        else if (isMid) locationStr = 'At Midpoint';
-                        else locationStr = 'N/A';
+                        const matchingLeg = legs.find(l => matchesLeg(r, l.name));
+                        if (matchingLeg) {
+                            locationStr = `Leg : ${matchingLeg.name}`;
+                        } else {
+                            locationStr = 'At Midpoint';
+                        }
                     }
 
                     const baseFinding = [
@@ -715,11 +697,30 @@ export const generateROVRSCORReport = async (
                     ].filter(Boolean).join('\n');
                     const findings = formatReportFindingText(r, baseFinding);
 
+                    const rawBurial = rd.Burial_percent ?? rd.burial_percent ?? rd.burial;
+                    const burialNum = parseFloat(String(rawBurial ?? '').replace(/[^0-9.-]/g, ''));
+                    const hasBurial = !isNaN(burialNum) && burialNum > 0;
+
+                    const rawDepth = rd.scour_depth ?? rd.scourDepth ?? rd.depth;
+                    const hasDepth = rawDepth !== undefined && rawDepth !== null && String(rawDepth).trim() !== '' && String(rawDepth).trim() !== '-' && String(rawDepth).trim() !== '—';
+
+                    let depthDisplay = '—';
+                    if (hasDepth) {
+                        const s = String(rawDepth).trim();
+                        depthDisplay = s.toLowerCase().includes('mm') || s.toLowerCase().includes('m') ? s : `${s} mm`;
+                    } else if (hasBurial) {
+                        depthDisplay = '0 mm';
+                    }
+
+                    const burialDisplay = rawBurial !== undefined && rawBurial !== null && String(rawBurial).trim() !== '' && String(rawBurial).trim() !== '-' && String(rawBurial).trim() !== '—'
+                        ? (String(rawBurial).includes('%') ? String(rawBurial).trim() : `${rawBurial}%`)
+                        : '—';
+
                     return [
                         qid,
                         locationStr,
-                        rd.scour_depth !== undefined && rd.scour_depth !== null && String(rd.scour_depth).trim() !== '' ? `${rd.scour_depth} mm` : '—',
-                        rd.Burial_percent !== undefined && rd.Burial_percent !== null && String(rd.Burial_percent).trim() !== '' ? `${rd.Burial_percent}%` : '—',
+                        depthDisplay,
+                        burialDisplay,
                         rd.Exposed_pile === 'Yes' || rd.Exposed_pile === true || rd.Exposed_pile === 1 ? 'Yes' : 'No',
                         findings
                     ];

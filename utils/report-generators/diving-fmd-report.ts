@@ -111,7 +111,7 @@ export const generateDivingFMDReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
-                ['Item No.', 'QID', 'Elevation (m)', 'Dive No.', 'Flooded', 'Grouted', 'Findings']
+                ['No.', 'QID', 'Elevation (m)', 'Dive No.', 'Flooded', 'Grouted', 'Findings']
             ],
             body: sortedRecords.map((r, idx) => {
                 const itemNo = idx + 1;

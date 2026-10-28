@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV Riser Guard Inspection Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
+ * Columns: No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
  * Data is grouped by Riser Guard (RG). Each RG group starts on a new page.
  * Associated components (like anodes, clamps attached to RG) are clubbed with their parent RG QID.
@@ -289,14 +289,26 @@ export const generateROVRiserGuardReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
-            const baseFinding = [
-                r.description?.trim(),
-                d.findings?.trim(),
-                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
-                (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
-                d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
-                d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
-            ].filter(Boolean).join('\n');
+            const findingParts: string[] = [];
+            const rDesc = r.description?.trim();
+            const dFindings = d.findings?.trim();
+            const dDesc = d.description?.trim();
+            if (rDesc) findingParts.push(rDesc);
+            if (dFindings && !findingParts.includes(dFindings)) findingParts.push(dFindings);
+            if (dDesc && !findingParts.includes(dDesc)) findingParts.push(dDesc);
+            if (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) {
+                findingParts.push(`Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}`);
+            }
+            if (d.component_condition || d.general_condition) {
+                findingParts.push(`Component Condition: ${d.component_condition || d.general_condition}`);
+            }
+            if (d.coating_condition) {
+                findingParts.push(`Coating Condition: ${d.coating_condition}`);
+            }
+            if (d.debris) {
+                findingParts.push(`Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}`);
+            }
+            const baseFinding = findingParts.join('\n');
             const findings = formatReportFindingText(r, baseFinding);
 
             return [
@@ -346,7 +358,7 @@ export const generateROVRiserGuardReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
-                    { content: "Item No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID",             styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)",  styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },

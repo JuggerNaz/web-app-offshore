@@ -27,7 +27,7 @@ interface ReportConfig {
 /**
  * Diving Coating Damage Inspection Report (PL_CO) — Landscape
  *
- * Columns: Item No. | QID | Elevation (m) | Dive No. | Surface Condition | CP Reading (mV) | Length (mm) | Width (mm) | Assessment | Findings
+ * Columns: No. | QID | Elevation (m) | Dive No. | Surface Condition | CP Reading (mV) | Length (mm) | Width (mm) | Assessment | Findings
  */
 export const generateDivingPLCOReport = async (
     records: any[],
@@ -148,7 +148,7 @@ export const generateDivingPLCOReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "QID",                   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",              styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

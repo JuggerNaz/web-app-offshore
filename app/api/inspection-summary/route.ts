@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 import { createClient } from "@/utils/supabase/server";
 import { withTenant } from "@/utils/tenant-auth";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
+import { getMGIProfileForJobpack, calculateInterpolatedMgiThreshold } from "@/utils/mgi-profile-helper";
 
 const ATTACHMENT_GROUPS: Record<string, string[]> = {
     "Riser":        ["RS", "RIS", "RISER"],
@@ -176,34 +177,65 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         }
 
+        if (!jobpackInfo && resolvedSowId) {
+            try {
+                const { data: sRow } = await (supabase as any)
+                    .from("u_sow")
+                    .select("jobpack_id")
+                    .eq("id", Number(resolvedSowId))
+                    .maybeSingle();
+                if (sRow?.jobpack_id) {
+                    const { data: jpRow } = await (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", sRow.jobpack_id)
+                        .maybeSingle();
+                    if (jpRow) jobpackInfo = jpRow;
+                }
+            } catch (_) {}
+        }
+
         // ─── 2. SOW ITEMS ─────────────────────────────────────────────────────
         let allSowItems: any[] = [];
         let itemsErr: any = null;
         if (resolvedSowId) {
-            let sowItemsQuery = (supabase as any)
-                .from("u_sow_items")
-                .select(`
-                    status, 
-                    component_id, 
-                    component_qid,
-                    component_type, 
-                    inspection_code,
-                    inspection_name,
-                    elevation_required,
-                    elevation_data,
-                    notes,
-                    report_number
-                `)
-                .eq("sow_id", Number(resolvedSowId));
-            if (companyId) {
-                sowItemsQuery = sowItemsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            let fromSow = 0;
+            const PAGE_SIZE = 1000;
+            while (true) {
+                let sowItemsQuery = (supabase as any)
+                    .from("u_sow_items")
+                    .select(`
+                        status, 
+                        component_id, 
+                        component_qid,
+                        component_type, 
+                        inspection_code,
+                        inspection_name,
+                        elevation_required,
+                        elevation_data,
+                        notes,
+                        report_number
+                    `)
+                    .eq("sow_id", Number(resolvedSowId))
+                    .range(fromSow, fromSow + PAGE_SIZE - 1);
+
+                if (companyId) {
+                    sowItemsQuery = sowItemsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+                }
+                const { data: itemsData, error: err } = await sowItemsQuery;
+                if (err) {
+                    console.error("[Summary API] SOW Items fetch error:", err);
+                    itemsErr = err;
+                    break;
+                }
+                if (itemsData && itemsData.length > 0) {
+                    allSowItems.push(...itemsData);
+                    if (itemsData.length < PAGE_SIZE) break;
+                    fromSow += PAGE_SIZE;
+                } else {
+                    break;
+                }
             }
-            const { data: itemsData, error: err } = await sowItemsQuery;
-            itemsErr = err;
-            if (itemsErr) {
-                console.error("[Summary API] SOW Items fetch error:", itemsErr);
-            }
-            allSowItems = itemsData || [];
         }
 
         const isReportSpecific = sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "null" && sowReportNo !== "all" && sowReportNo !== "undefined" && String(sowReportNo).trim() !== "";
@@ -308,6 +340,20 @@ export const GET = withTenant(async (request, { companyId }) => {
                     inspPage++;
                 }
             }
+        }
+
+        if (!jobpackInfo && allRecordsData.length > 0) {
+            try {
+                const recWithJp = allRecordsData.find((r: any) => r.jobpack_id != null);
+                if (recWithJp?.jobpack_id) {
+                    const { data: jpRow } = await (supabase as any)
+                        .from("jobpack")
+                        .select("id, name, metadata, status")
+                        .eq("id", recWithJp.jobpack_id)
+                        .maybeSingle();
+                    if (jpRow) jobpackInfo = jpRow;
+                }
+            } catch (_) {}
         }
 
         // Fetch anomalies in a fast targeted query scoped strictly to matching inspection records
@@ -491,8 +537,8 @@ export const GET = withTenant(async (request, { companyId }) => {
         const incompleteSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const pendingSow = resolvedSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
 
-        const completionPct = totalSow > 0 ? Math.round(((completedSow + incompleteSow) / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
         const completedPct = totalSow > 0 ? Math.round((completedSow / totalSow) * 100) : (targetRecords.length > 0 ? 100 : 0);
+        const completionPct = completedPct;
         const incompletePct = totalSow > 0 ? Math.round((incompleteSow / totalSow) * 100) : 0;
         const pendingPct = totalSow > 0 ? Math.round((pendingSow / totalSow) * 100) : 0;
 
@@ -502,7 +548,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const rovSowCompleted = rovSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
         const rovSowIncomplete = rovSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const rovSowPending = rovSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
-        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round(((rovSowCompleted + rovSowIncomplete) / rovSowTotal) * 100) : 0;
+        const rovSowCompletionPct = rovSowTotal > 0 ? Math.round((rovSowCompleted / rovSowTotal) * 100) : 0;
 
         // Diving SOW Breakdown
         const diveSowItems = resolvedSowItems.filter(isDivingSowItem);
@@ -510,7 +556,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const diveSowCompleted = diveSowItems.filter((i: any) => i.effectiveStatus === "completed").length;
         const diveSowIncomplete = diveSowItems.filter((i: any) => i.effectiveStatus === "incomplete").length;
         const diveSowPending = diveSowItems.filter((i: any) => i.effectiveStatus === "pending").length;
-        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round(((diveSowCompleted + diveSowIncomplete) / diveSowTotal) * 100) : 0;
+        const diveSowCompletionPct = diveSowTotal > 0 ? Math.round((diveSowCompleted / diveSowTotal) * 100) : 0;
 
         const outstandingTasks: any[] = [];
         resolvedSowItems.forEach((item: any) => {
@@ -676,40 +722,9 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anodeTargetRecords = (isReportSpecific && records.length > 0 ? records : rawRecords).filter(isAnodeRecord);
         const anodeGviRecords = anodeTargetRecords.length > 0 ? anodeTargetRecords : rawRecords.filter(isAnodeRecord);
 
-        const anodeGviTotal = anodeGviRecords.length;
-        const anodeGviRov = anodeGviRecords.filter(isRovRecord).length;
-        const anodeGviDive = anodeGviRecords.filter(isDiveRecord).length;
-
-        // Collect distinct anode types from inspection records & structure components
-        const anodeTypesSet = new Set<string>();
-        anodeGviRecords.forEach((r: any) => {
-            const d = r.inspection_data || {};
-            const at = d.anode_type || d.anodeType || d.type;
-            if (at && String(at).trim() !== "" && String(at).toUpperCase() !== "N/A" && String(at).toUpperCase() !== "NULL") {
-                anodeTypesSet.add(String(at).trim());
-            }
-        });
-
-        if (anodeTypesSet.size === 0 && Array.isArray(compList)) {
-            compList.forEach((c: any) => {
-                const isAnComp = (c.code || "").toUpperCase() === "AN" || (c.q_id || "").toUpperCase().startsWith("BAN") || (c.q_id || "").toUpperCase().startsWith("AN");
-                if (isAnComp) {
-                    const m = c.metadata || {};
-                    const t = m.anode_type || m.type || m.thetype;
-                    if (t && String(t).trim() !== "" && String(t).toUpperCase() !== "N/A" && String(t).toUpperCase() !== "NULL") {
-                        anodeTypesSet.add(String(t).trim());
-                    }
-                }
-            });
-        }
-
-        const anodeTypesList = Array.from(anodeTypesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
-        const cleanAnodeTypesList = anodeTypesList.map(t => t.replace(/^ANODE\s+/i, ""));
-        const anodeTypeSummaryStr = cleanAnodeTypesList.join(", ");
-
         // Depletion bucketing helper
         const parseDepletionBucket = (raw: any): "0-25%" | "26-50%" | "50-75%" | "76-100%" | null => {
-            if (raw === undefined || raw === null || raw === "" || raw === "NONE") return null;
+            if (raw === undefined || raw === null || raw === "" || raw === "NONE" || raw === "N/A" || raw === "NULL") return null;
             if (typeof raw === "number") {
                 if (raw <= 25) return "0-25%";
                 if (raw <= 50) return "26-50%";
@@ -717,6 +732,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                 return "76-100%";
             }
             const s = String(raw).toLowerCase().replace(/\s+/g, "");
+            if (s === "notevaluated" || s === "notrecorded" || s === "incomplete" || s === "cannotreach" || s === "unreachable") return null;
             const matches = s.match(/\d+(\.\d+)?/g);
             if (matches && matches.length >= 2) {
                 const low = parseFloat(matches[0]);
@@ -740,6 +756,183 @@ export const GET = withTenant(async (request, { companyId }) => {
             return null;
         };
 
+        // Helper to uniquely identify each physical anode
+        const getAnodeKey = (r: any): string => {
+            const qid = (r.structure_components?.q_id || r.inspection_data?.q_id || "").toString().trim().toUpperCase();
+            if (qid && qid !== "N/A" && qid !== "NONE" && qid !== "NULL" && qid !== "-") {
+                return `qid_${qid}`;
+            }
+            if (r.component_id !== undefined && r.component_id !== null && r.component_id !== "" && String(r.component_id) !== "0") {
+                return `comp_${String(r.component_id).trim()}`;
+            }
+            const compName = (r.structure_components?.name || r.inspection_data?.component_name || "").toString().trim().toUpperCase();
+            if (compName && compName !== "N/A" && compName !== "NONE" && compName !== "NULL" && compName !== "-") {
+                return `name_${compName}`;
+            }
+            return `insp_${r.insp_id || Math.random()}`;
+        };
+
+        // Timestamp helper for determining newest inspection
+        const getRecordTime = (r: any): number => {
+            let t = 0;
+            if (r.inspection_date) {
+                const dStr = r.inspection_time ? `${r.inspection_date}T${r.inspection_time}` : r.inspection_date;
+                const parsed = Date.parse(dStr);
+                if (!isNaN(parsed)) t = parsed;
+            }
+            if (!t && r.created_at) {
+                const parsed = Date.parse(r.created_at);
+                if (!isNaN(parsed)) t = parsed;
+            }
+            return t;
+        };
+
+        // Helper to check if a record indicates an incomplete inspection or inability to reach the component
+        const isRecordIncompleteOrCannotReach = (r: any): boolean => {
+            const status = String(r.status || "").toUpperCase();
+            if (status.includes("INCOMPL") || status === "CANNOT REACH" || status === "UNREACHABLE") {
+                return true;
+            }
+            const d = r.inspection_data || {};
+            const cond = String(d.anode_condition || d.anodeCondition || "").toUpperCase();
+            if (cond.includes("INCOMPL") || cond.includes("CANNOT REACH") || cond.includes("CAN'T REACH") || cond.includes("UNREACHABLE") || cond.includes("NOT EVAL")) {
+                return true;
+            }
+            const remarks = String(d.remarks || d.finding || d.findings || r.description || "").toUpperCase();
+            if (remarks.includes("CANNOT REACH") || remarks.includes("CAN'T REACH") || remarks.includes("UNABLE TO REACH") || remarks.includes("COULD NOT REACH") || remarks.includes("NOT EVALUATED")) {
+                return true;
+            }
+            return false;
+        };
+
+        // Extract raw depletion from a record
+        const extractRawDepletion = (r: any) => {
+            const d = r.inspection_data || {};
+            return d.anode_depletion ?? d.anode_depletion_percent ?? d.depletion ?? r.anode_depletion ?? r.anode_depletion_percent;
+        };
+
+        // Group anode records by unique anode key to avoid duplicate counts
+        const anodeGroups = new Map<string, any[]>();
+        anodeGviRecords.forEach((r: any) => {
+            const key = getAnodeKey(r);
+            if (!anodeGroups.has(key)) {
+                anodeGroups.set(key, []);
+            }
+            anodeGroups.get(key)!.push(r);
+        });
+
+        // Deduplicate anodes: if same anode was inspected more than once, take the latest depletion value
+        interface UniqueAnodeItem {
+            key: string;
+            primaryRecord: any;
+            latestRecord: any;
+            finalBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | "Not Evaluated";
+            anodeType: string;
+            condition: string;
+        }
+
+        const uniqueAnodes: UniqueAnodeItem[] = [];
+
+        anodeGroups.forEach((recs, key) => {
+            // Sort chronologically (oldest to newest)
+            recs.sort((a, b) => {
+                const diff = getRecordTime(a) - getRecordTime(b);
+                if (diff !== 0) return diff;
+                const idA = Number(a.insp_id || a.id || 0);
+                const idB = Number(b.insp_id || b.id || 0);
+                return idA - idB;
+            });
+
+            const latestRec = recs[recs.length - 1];
+            const latestIsIncomplete = isRecordIncompleteOrCannotReach(latestRec);
+
+            // Find the latest valid depletion value (searching newest to oldest)
+            let foundBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | null = null;
+            let primaryRecord = latestRec;
+
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const r = recs[i];
+                const raw = extractRawDepletion(r);
+                const b = parseDepletionBucket(raw);
+                if (b) {
+                    foundBucket = b;
+                    primaryRecord = r;
+                    break;
+                }
+            }
+
+            let finalBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | "Not Evaluated" = "Not Evaluated";
+            if (latestIsIncomplete && !extractRawDepletion(latestRec)) {
+                finalBucket = "Not Evaluated";
+                primaryRecord = latestRec;
+            } else if (foundBucket) {
+                finalBucket = foundBucket;
+            } else {
+                finalBucket = "Not Evaluated";
+            }
+
+            // Extract anode type from newest record that has it
+            let anodeType = "";
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const d = recs[i].inspection_data || {};
+                const at = d.anode_type || d.anodeType || d.type;
+                if (at && String(at).trim() !== "" && String(at).toUpperCase() !== "N/A" && String(at).toUpperCase() !== "NULL") {
+                    anodeType = String(at).trim();
+                    break;
+                }
+            }
+
+            // Extract condition
+            let condition = "";
+            for (let i = recs.length - 1; i >= 0; i--) {
+                const d = recs[i].inspection_data || {};
+                const c = d.anode_condition || d.anodeCondition || "";
+                if (c && String(c).trim() !== "") {
+                    condition = String(c).trim();
+                    break;
+                }
+            }
+            if (!condition && finalBucket === "Not Evaluated") {
+                condition = "Not Evaluated";
+            }
+
+            uniqueAnodes.push({
+                key,
+                primaryRecord,
+                latestRecord: latestRec,
+                finalBucket,
+                anodeType,
+                condition,
+            });
+        });
+
+        const anodeGviTotal = uniqueAnodes.length;
+        const anodeGviRov = uniqueAnodes.filter(u => isRovRecord(u.primaryRecord) || isRovRecord(u.latestRecord)).length;
+        const anodeGviDive = uniqueAnodes.filter(u => isDiveRecord(u.primaryRecord) || isDiveRecord(u.latestRecord)).length;
+
+        // Collect distinct anode types from unique anodes & structure components
+        const anodeTypesSet = new Set<string>();
+        uniqueAnodes.forEach(u => {
+            if (u.anodeType) anodeTypesSet.add(u.anodeType);
+        });
+
+        if (anodeTypesSet.size === 0 && Array.isArray(compList)) {
+            compList.forEach((c: any) => {
+                const isAnComp = (c.code || "").toUpperCase() === "AN" || (c.q_id || "").toUpperCase().startsWith("BAN") || (c.q_id || "").toUpperCase().startsWith("AN");
+                if (isAnComp) {
+                    const m = c.metadata || {};
+                    const t = m.anode_type || m.type || m.thetype;
+                    if (t && String(t).trim() !== "" && String(t).toUpperCase() !== "N/A" && String(t).toUpperCase() !== "NULL") {
+                        anodeTypesSet.add(String(t).trim());
+                    }
+                }
+            });
+        }
+
+        const anodeTypesList = Array.from(anodeTypesSet).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+        const cleanAnodeTypesList = anodeTypesList.map(t => t.replace(/^ANODE\s+/i, ""));
+        const anodeTypeSummaryStr = cleanAnodeTypesList.join(", ");
+
         const anodeDepletionBuckets: Record<string, number> = {
             "0-25%": 0,
             "26-50%": 0,
@@ -749,38 +942,31 @@ export const GET = withTenant(async (request, { companyId }) => {
             "25–50%": 0,
             "50–75%": 0,
             "75–100%": 0,
+            "Not Evaluated": 0,
             "Not Recorded": 0,
         };
         const anodeConditionCounts: Record<string, number> = {};
 
-        anodeGviRecords.forEach((r: any) => {
-            const d = r.inspection_data || {};
-            const rawDepletion = d.anode_depletion || d.anode_depletion_percent;
-            const bucket = parseDepletionBucket(rawDepletion);
-
-            if (!bucket) {
-                anodeDepletionBuckets["Not Recorded"]++;
+        uniqueAnodes.forEach(u => {
+            if (u.finalBucket === "0-25%") {
+                anodeDepletionBuckets["0-25%"]++;
+                anodeDepletionBuckets["0–25%"]++;
+            } else if (u.finalBucket === "26-50%") {
+                anodeDepletionBuckets["26-50%"]++;
+                anodeDepletionBuckets["25–50%"]++;
+            } else if (u.finalBucket === "50-75%") {
+                anodeDepletionBuckets["50-75%"]++;
+                anodeDepletionBuckets["50–75%"]++;
+            } else if (u.finalBucket === "76-100%") {
+                anodeDepletionBuckets["76-100%"]++;
+                anodeDepletionBuckets["75–100%"]++;
             } else {
-                if (bucket === "0-25%") {
-                    anodeDepletionBuckets["0-25%"]++;
-                    anodeDepletionBuckets["0–25%"]++;
-                } else if (bucket === "26-50%") {
-                    anodeDepletionBuckets["26-50%"]++;
-                    anodeDepletionBuckets["25–50%"]++;
-                } else if (bucket === "50-75%") {
-                    anodeDepletionBuckets["50-75%"]++;
-                    anodeDepletionBuckets["50–75%"]++;
-                } else if (bucket === "76-100%") {
-                    anodeDepletionBuckets["76-100%"]++;
-                    anodeDepletionBuckets["75–100%"]++;
-                }
+                anodeDepletionBuckets["Not Evaluated"]++;
+                anodeDepletionBuckets["Not Recorded"]++;
             }
 
-            // --- Condition ---
-            const condition = d.anode_condition || d.anodeCondition || "";
-            if (condition) {
-                const key = String(condition).trim();
-                anodeConditionCounts[key] = (anodeConditionCounts[key] || 0) + 1;
+            if (u.condition) {
+                anodeConditionCounts[u.condition] = (anodeConditionCounts[u.condition] || 0) + 1;
             }
         });
 
@@ -1161,6 +1347,193 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
         });
 
+        // ─── 8B. MGI EFFECTIVE THICKNESS & ELEVATION PROFILE RESOLUTION ───────
+        let recordMgiProfId: any = null;
+        for (const r of mgiRecords) {
+            const d = r.inspection_data || {};
+            if (d._mgi_profile_id || d.mgi_profile_id || d.profile_id) {
+                recordMgiProfId = d._mgi_profile_id || d.mgi_profile_id || d.profile_id;
+                break;
+            }
+        }
+
+        let resolvedMgiProfile: any = null;
+        try {
+            resolvedMgiProfile = await getMGIProfileForJobpack(
+                supabase,
+                jpNum || jobpackId,
+                recordMgiProfId
+            );
+        } catch (err) {
+            console.warn("[Summary API] Failed to resolve MGI Profile:", err);
+        }
+
+        const mgiWaterDepth = Math.abs(parseFloat(String(structureInfo?.depth ?? structureInfo?.waterDepth ?? 50)) || 50);
+
+        // Standard profile thresholds fallback if profile not configured in DB
+        const profileThresholds = (resolvedMgiProfile?.thresholds && resolvedMgiProfile.thresholds.length > 0)
+            ? resolvedMgiProfile.thresholds
+            : [
+                { from_elevation: "MSL", max_thickness: 127 },
+                { from_elevation: "1/4 WD", max_thickness: 100 },
+                { from_elevation: "1/2 WD", max_thickness: 75 },
+                { from_elevation: "Mudline", max_thickness: 25 },
+            ];
+
+        const mgiProfilePoints = profileThresholds.map((t: any) => {
+            const fromStr = String(t.from_elevation || "").toUpperCase().trim();
+            let elev = 0;
+            if (fromStr === "MSL" || fromStr === "0") {
+                elev = 0;
+            } else if (fromStr === "MUDLINE") {
+                elev = -mgiWaterDepth;
+            } else if (fromStr.includes("WD")) {
+                const m = fromStr.match(/(\d+)\/(\d+)\s*WD/i);
+                if (m && parseInt(m[2], 10) !== 0) {
+                    elev = -(parseInt(m[1], 10) / parseInt(m[2], 10)) * mgiWaterDepth;
+                } else {
+                    elev = -mgiWaterDepth;
+                }
+            } else {
+                const val = parseFloat(fromStr.replace(/[^\d.-]/g, ""));
+                elev = isNaN(val) ? 0 : (val <= 0 ? val : -val);
+            }
+            return {
+                elevation: Math.round(elev * 10) / 10,
+                maxThickness: Number(t.max_thickness) || 0,
+                label: String(t.from_elevation)
+            };
+        }).sort((a: any, b: any) => b.elevation - a.elevation);
+
+        const mgiByQid: Record<string, Array<{
+            elevation: number;
+            effectiveThickness: number;
+            limit: number;
+            mode: "ROV" | "Diving";
+            isAnomaly: boolean;
+            clockReadings?: { hard: number[]; soft: number[] };
+        }>> = {};
+
+        const isRovInspection = (r: any) => {
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+            if (code === "RMGI" || code === "ROV" || code.startsWith("R")) return true;
+            if (code === "MGROW" || code === "DMGI" || code === "DIVE" || code.startsWith("D")) return false;
+            return Boolean(r.rov_job_id || r.insp_rov_jobs);
+        };
+
+        mgiRecords.forEach((r: any) => {
+            const d = r.inspection_data || {};
+            const comp = r.structure_components || {};
+            const qid = (comp.q_id || d.q_id || `ID: ${r.component_id || "MGI-MEMBER"}`).trim().toUpperCase();
+
+            // Resolve Elevation
+            const rawElev = d.elevation ?? d.depth ?? r.elevation ?? comp.metadata?.elv_1 ?? comp.metadata?.elevation;
+            let elev = 0;
+            if (rawElev !== undefined && rawElev !== null && String(rawElev).trim() !== "" && String(rawElev) !== "-") {
+                const str = String(rawElev).toUpperCase().trim();
+                if (str === "MSL" || str === "0") {
+                    elev = 0;
+                } else if (str === "MUDLINE") {
+                    elev = -mgiWaterDepth;
+                } else {
+                    const num = parseFloat(str.replace(/[^\d.-]/g, ""));
+                    if (!isNaN(num)) {
+                        elev = num <= 0 ? num : -num;
+                    }
+                }
+            }
+
+            const isRov = isRovInspection(r);
+            let et = 0;
+            let hReadings: number[] = [];
+            let sReadings: number[] = [];
+
+            if (isRov) {
+                // ROV: Effective thickness is the Max thickness observed at the same elevation across different clock positions
+                const clockPositions = ['12', '3', '6', '9'];
+                clockPositions.forEach(pos => {
+                    const h = parseFloat(d[`mgi_hard_thickness_at_${pos}`] ?? d[`hard_thickness_at_${pos}`] ?? d[`hard_thk${pos}`]);
+                    if (!isNaN(h) && h > 0) hReadings.push(h);
+                    const s = parseFloat(d[`mgi_soft_thickness_at_${pos}`] ?? d[`soft_thickness_at_${pos}`] ?? d[`soft_thk${pos}`]);
+                    if (!isNaN(s) && s > 0) sReadings.push(s);
+                });
+                if (d.mgi_hard_thickness) {
+                    const h = parseFloat(d.mgi_hard_thickness);
+                    if (!isNaN(h) && h > 0) hReadings.push(h);
+                }
+                if (d.mgi_soft_thickness) {
+                    const s = parseFloat(d.mgi_soft_thickness);
+                    if (!isNaN(s) && s > 0) sReadings.push(s);
+                }
+
+                const allClockReadings = [...hReadings, ...sReadings];
+                if (allClockReadings.length > 0) {
+                    et = Math.max(...allClockReadings);
+                } else {
+                    et = parseFloat(d.effective_thickness ?? d.max_thickness ?? d.avg_thickness ?? d.thickness ?? 0) || 0;
+                }
+            } else {
+                // Diving job: directly get value from the effective thickness value
+                if (d.effective_thickness !== undefined && d.effective_thickness !== null && String(d.effective_thickness).trim() !== "") {
+                    et = parseFloat(String(d.effective_thickness)) || 0;
+                } else if (d.effective_thk !== undefined && d.effective_thk !== null && String(d.effective_thk).trim() !== "") {
+                    et = parseFloat(String(d.effective_thk)) || 0;
+                } else if (d.eff_thickness !== undefined && d.eff_thickness !== null && String(d.eff_thickness).trim() !== "") {
+                    et = parseFloat(String(d.eff_thickness)) || 0;
+                } else {
+                    // Fallback to circumference measurement if effective_thickness not explicitly filled
+                    const cAbove = parseFloat(d.circumferential_measurement_5m_above) || 0;
+                    const c0m = parseFloat(d.circumferential_measurement_0m) || 0;
+                    const cBelow = parseFloat(d.circumferential_measurement_5m_below) || 0;
+                    const circs = [cAbove, c0m, cBelow].filter(v => v > 0);
+                    const nomDia = parseFloat(d.nominal_diameter) || 0;
+                    if (circs.length > 0 && nomDia > 0) {
+                        const cAvg = circs.reduce((a, b) => a + b, 0) / circs.length;
+                        et = Math.max(0, 0.5 * ((cAvg / Math.PI) - nomDia));
+                    } else {
+                        et = parseFloat(d.thickness ?? d.avg_thickness ?? 0) || 0;
+                    }
+                }
+            }
+
+            // Allowable Limit from MGI Profile
+            let limit = 0;
+            if (profileThresholds.length > 0) {
+                const interpolated = calculateInterpolatedMgiThreshold(Math.abs(elev), mgiWaterDepth, profileThresholds);
+                if (interpolated !== null) limit = Math.round(interpolated * 10) / 10;
+            }
+            if (limit === 0) {
+                const rawLimit = d.max_allowable_thickness ?? d.max_allow ?? d.mgi_max_allowable_thickness ?? d.allowable_thickness;
+                if (rawLimit != null) limit = parseFloat(String(rawLimit).replace(/[^\d.]/g, "")) || 0;
+            }
+
+            const roundedElev = Math.round(elev * 10) / 10;
+            const roundedEt = Math.round(et * 10) / 10;
+
+            if (!mgiByQid[qid]) mgiByQid[qid] = [];
+            const existingEntry = mgiByQid[qid].find(p => p.elevation === roundedElev);
+            if (existingEntry) {
+                // If already has reading at this elevation, take the max thickness observed at this elevation
+                existingEntry.effectiveThickness = Math.max(existingEntry.effectiveThickness, roundedEt);
+                if ((limit > 0 && existingEntry.effectiveThickness > limit) || !!r.has_anomaly) {
+                    existingEntry.isAnomaly = true;
+                }
+            } else {
+                mgiByQid[qid].push({
+                    elevation: roundedElev,
+                    effectiveThickness: roundedEt,
+                    limit,
+                    mode: isRov ? "ROV" : "Diving",
+                    isAnomaly: (limit > 0 && et > limit) || !!r.has_anomaly,
+                    clockReadings: (hReadings.length > 0 || sReadings.length > 0) ? { hard: hReadings, soft: sReadings } : undefined
+                });
+            }
+        });
+
+        Object.keys(mgiByQid).forEach(qid => {
+            mgiByQid[qid].sort((a, b) => b.elevation - a.elevation);
+        });
+
         // --- 9. SCOUR ANALYSIS ---
         const isScourRecord = (r: any) => {
             const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
@@ -1196,6 +1569,29 @@ export const GET = withTenant(async (request, { companyId }) => {
         let maxScourFace = "N/A";
         let maxScourQid = "N/A";
 
+        let minScourDepth = Infinity;
+        let minScourDepthMm = Infinity;
+        let minScourLocation = "N/A";
+        let minScourFace = "N/A";
+        let minScourQid = "N/A";
+
+        let fallbackMinDepth = Infinity;
+        let fallbackMinDepthMm = Infinity;
+        let fallbackMinLocation = "N/A";
+        let fallbackMinFace = "N/A";
+        let fallbackMinQid = "N/A";
+
+        const scourQidMap = new Map<string, {
+            qid: string;
+            location: string;
+            face: string;
+            depthMm: number;
+            depthM: number;
+            burialPct?: number;
+            isBuried?: boolean;
+            isExposed?: boolean;
+        }>();
+
         scourRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const face = d.platform_face || d.face || r.structure_components?.metadata?.face || "";
@@ -1216,43 +1612,92 @@ export const GET = withTenant(async (request, { companyId }) => {
             }
 
             const rawDepth = parseFloat(String(d.scour_depth || '0'));
-            if (!isNaN(rawDepth) && rawDepth > 0) {
-                if (rawDepth > maxScourDepth) {
-                    maxScourDepth = rawDepth;
-                    maxScourQid = r.structure_components?.q_id || d.q_id || "N/A";
-                    maxScourLocation = loc || "N/A";
+            const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
+            const inMm = (!isNaN(rawDepth) && rawDepth > 0)
+                ? ((unit === 'm' || (rawDepth <= 10 && unit !== 'mm')) ? rawDepth * 1000 : rawDepth)
+                : 0;
+            const inM = (!isNaN(rawDepth) && rawDepth > 0)
+                ? ((unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth)
+                : 0;
 
-                    const meta = r.structure_components?.metadata || {};
-                    const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
-                    const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
-                    const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
-                    const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
+            if (!isNaN(rawDepth)) {
+                const meta = r.structure_components?.metadata || {};
+                const sNode = meta.start_node || meta.f_node || meta.Node_1 || meta.startNode || meta.StNode || d.start_node || d.f_node || "";
+                const eNode = meta.end_node || meta.s_node || meta.Node_2 || meta.endNode || meta.EndNode || d.end_node || d.s_node || "";
+                const sLeg = meta.start_leg || meta.startLeg || meta.s_leg || d.start_leg || "";
+                const eLeg = meta.end_leg || meta.endLeg || meta.f_leg || d.end_leg || "";
 
-                    let nodesOrLegs = "";
-                    if (sLeg && eLeg) {
-                        nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
-                    } else if (sNode && eNode) {
-                        nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
-                    } else if (sNode) {
-                        nodesOrLegs = `Node: ${sNode}`;
-                    } else if (sLeg) {
-                        nodesOrLegs = `Leg: ${sLeg}`;
-                    }
-
-                    if (face && nodesOrLegs) {
-                        maxScourFace = `${face} (${nodesOrLegs})`;
-                    } else if (nodesOrLegs) {
-                        maxScourFace = nodesOrLegs;
-                    } else {
-                        maxScourFace = face || "N/A";
-                    }
+                let nodesOrLegs = "";
+                if (sLeg && eLeg) {
+                    nodesOrLegs = `Legs: ${sLeg} - ${eLeg}`;
+                } else if (sNode && eNode) {
+                    nodesOrLegs = `Nodes: ${sNode} - ${eNode}`;
+                } else if (sNode) {
+                    nodesOrLegs = `Node: ${sNode}`;
+                } else if (sLeg) {
+                    nodesOrLegs = `Leg: ${sLeg}`;
                 }
 
-                const unit = String(d.scour_depth_unit || 'mm').toLowerCase();
-                const inMm = (unit === 'm' || (rawDepth <= 10 && unit !== 'mm')) ? rawDepth * 1000 : rawDepth;
-                const inM = (unit === 'mm' || rawDepth > 10) ? rawDepth / 1000 : rawDepth;
+                let effectiveFace = face;
+                if (face && nodesOrLegs) {
+                    effectiveFace = `${face} (${nodesOrLegs})`;
+                } else if (nodesOrLegs) {
+                    effectiveFace = nodesOrLegs;
+                } else {
+                    effectiveFace = face || "N/A";
+                }
+
+                const compQid = r.structure_components?.q_id || d.q_id || (loc ? `QID-${loc}` : "N/A");
+
+                if (rawDepth > maxScourDepth || (rawDepth === 0 && maxScourDepth === 0 && maxScourQid === "N/A")) {
+                    maxScourDepth = rawDepth;
+                    maxScourQid = compQid;
+                    maxScourLocation = loc || "N/A";
+                    maxScourFace = effectiveFace;
+                }
+
                 if (inMm > maxScourDepthMm) maxScourDepthMm = inMm;
                 if (inM > maxScourDepthMeters) maxScourDepthMeters = inM;
+
+                const rawBurial = d.Burial_percent ?? d.burial_percent ?? d.burial ?? '0';
+                const burialPct = parseFloat(String(rawBurial).replace(/[^0-9.-]/g, '')) || 0;
+                const isBuried = burialPct > 0 || String(d.status || "").toLowerCase().includes("buried") || d.buried === true || d.buried === "Yes";
+                const isZeroOrNegative = inMm <= 0 || rawDepth <= 0;
+                const isBuriedOrZero = isBuried || isZeroOrNegative;
+
+                // For the minimum scour depth reading: filter out the buried or 0 depth readings
+                if (!isBuriedOrZero && inMm < minScourDepthMm) {
+                    minScourDepthMm = inMm;
+                    minScourDepth = rawDepth;
+                    minScourLocation = loc || "N/A";
+                    minScourQid = compQid;
+                    minScourFace = effectiveFace;
+                }
+
+                // Fallback tracker in case all readings are 0 or buried
+                if (inMm < fallbackMinDepthMm) {
+                    fallbackMinDepthMm = inMm;
+                    fallbackMinDepth = rawDepth;
+                    fallbackMinLocation = loc || "N/A";
+                    fallbackMinQid = compQid;
+                    fallbackMinFace = effectiveFace;
+                }
+
+                if (compQid && compQid !== "N/A") {
+                    const existing = scourQidMap.get(compQid);
+                    if (!existing || inMm > existing.depthMm) {
+                        scourQidMap.set(compQid, {
+                            qid: compQid,
+                            location: loc && loc !== "N/A" ? loc : (effectiveFace || "N/A"),
+                            face: effectiveFace || face || "N/A",
+                            depthMm: inMm,
+                            depthM: inM,
+                            burialPct: burialPct,
+                            isBuried: isBuried,
+                            isExposed: d.Exposed_pile === "Yes" || d.Exposed_pile === true
+                        });
+                    }
+                }
             }
 
             const isExposed = d.Exposed_pile === "Yes" || d.Exposed_pile === true;
@@ -1265,6 +1710,18 @@ export const GET = withTenant(async (request, { companyId }) => {
                 }
             }
         });
+
+        if (minScourDepthMm === Infinity) {
+            minScourDepthMm = fallbackMinDepthMm !== Infinity ? fallbackMinDepthMm : 0;
+            minScourDepth = fallbackMinDepth !== Infinity ? fallbackMinDepth : 0;
+            minScourLocation = fallbackMinLocation;
+            minScourQid = fallbackMinQid;
+            minScourFace = fallbackMinFace;
+        }
+
+        const allScourQids = Array.from(scourQidMap.values()).sort((a, b) => b.depthMm - a.depthMm);
+        const nonZeroScourQids = allScourQids.filter(r => r.depthMm > 0 && !r.isBuried && (r.burialPct === undefined || r.burialPct === 0));
+        const finalScourQidReadings = nonZeroScourQids.length > 0 ? nonZeroScourQids : allScourQids;
 
         // ─── 10. ANOMALIES ─────────────────────────────────────────────────────
         // Anomaly = (has_anomaly=true OR has insp_anomalies) AND _meta_status != "Finding"
@@ -2158,23 +2615,162 @@ export const GET = withTenant(async (request, { companyId }) => {
                 };
             });
 
+        // Task-level statistics (covering all tasks/records, even when multiple tasks or records exist on same QID)
+        const isRecIncomplete = (r: any): boolean => {
+            if (!r) return false;
+            const d = r.inspection_data || r.inspection_dat || {};
+            const st = String(r.status || "").trim().toUpperCase();
+            const dataStatus = String(d.status || "").trim().toUpperCase();
+            const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
+            const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+
+            // 1. Explicit COMPLETED/CLOSED/APPROVED check:
+            if (st === "COMPLETED" || dataStatus === "COMPLETED" || st === "CLOSED" || dataStatus === "CLOSED" || st === "APPROVED" || dataStatus === "APPROVED") {
+                if (st !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
+                    return false;
+                }
+            }
+
+            // 2. Explicit INCOMPLETE status / finding type
+            if (st === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") return true;
+
+            // 3. Boolean flag
+            if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
+                return true;
+            }
+
+            // 4. Incomplete reason provided
+            const incompleteReason = String(r.incomplete_reason || r.incompleteReason || d.incomplete_reason || d.incompleteReason || "").trim();
+            if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") return true;
+
+            // 5. Explicit prefix in description
+            const desc = String(r.description || "").trim().toUpperCase();
+            if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) return true;
+
+            return false;
+        };
+
+        const totalRecordTasks = rawRecords.length;
+        const incompleteRecordTasks = rawRecords.filter(isRecIncomplete).length;
+        const completedRecordTasks = Math.max(0, totalRecordTasks - incompleteRecordTasks);
+        const taskCompletedPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+        const taskIncompletePct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
         // Mode breakdown for record statuses
-        const completedRov = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isRovRecord(r)).length;
-        const completedDive = rawRecords.filter((r: any) => r.status === 'COMPLETED' && isDiveRecord(r)).length;
-        const incompleteRov = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isRovRecord(r)).length;
-        const incompleteDive = rawRecords.filter((r: any) => (r.status || "").toUpperCase() === 'INCOMPLETE' && isDiveRecord(r)).length;
+        const completedRov = rawRecords.filter((r: any) => !isRecIncomplete(r) && isRovRecord(r)).length;
+        const completedDive = rawRecords.filter((r: any) => !isRecIncomplete(r) && isDiveRecord(r)).length;
+        const incompleteRov = rawRecords.filter((r: any) => isRecIncomplete(r) && isRovRecord(r)).length;
+        const incompleteDive = rawRecords.filter((r: any) => isRecIncomplete(r) && isDiveRecord(r)).length;
 
         const anomalyRov = anomalyRecords.filter(isRovRecord).length;
         const anomalyDive = anomalyRecords.filter(isDiveRecord).length;
         const findingRov = findingRecords.filter(isRovRecord).length;
         const findingDive = findingRecords.filter(isDiveRecord).length;
 
+        // ─── DEFECT CRITERIA MODULE RULES RESOLUTION ──────────────────────────
+        let scourMaxAllowableMm = 800; // default safe fallback
+        let cpMinAllowableMv = -1150;  // default over-protection bound (more negative = over-protected)
+        let cpMaxAllowableMv = -800;   // default under-protection bound (less negative = under-protected)
+        let cpNominalMaxMv = -800;     // nominal under-protection threshold (P2)
+        let cpCriticalMaxMv = -650;    // critical under-protection threshold (P1)
+
+        try {
+            let procQuery = (supabase as any)
+                .from("defect_criteria_procedures")
+                .select("id, status, procedure_name");
+            if (companyId) {
+                procQuery = procQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: procs } = await procQuery;
+            const activeProcs = (procs || []).filter((p: any) => p.status === "active");
+            const targetProcIds = activeProcs.length > 0 
+                ? activeProcs.map((p: any) => p.id) 
+                : (procs || []).map((p: any) => p.id);
+
+            let rulesQuery = (supabase as any)
+                .from("defect_criteria_rules")
+                .select("*");
+            if (targetProcIds.length > 0) {
+                rulesQuery = rulesQuery.in("procedure_id", targetProcIds);
+            } else if (companyId) {
+                rulesQuery = rulesQuery.or(`company_id.eq.${companyId},company_id.is.null`);
+            }
+            const { data: rulesData } = await rulesQuery;
+            const rules = rulesData || [];
+
+            // 1. Scour rule
+            const scourRule = rules.find((r: any) => 
+                (String(r.defect_code_id || "").toUpperCase() === "SC" || 
+                 String(r.field_name || "").toLowerCase().includes("scour")) &&
+                r.threshold_value != null && 
+                Number(r.threshold_value) > 0
+            );
+            if (scourRule && !isNaN(Number(scourRule.threshold_value))) {
+                scourMaxAllowableMm = Number(scourRule.threshold_value);
+            }
+
+            // 2. CP rules
+            const cpRules = rules.filter((r: any) => 
+                String(r.defect_code_id || "").toUpperCase() === "CP" || 
+                String(r.field_name || "").toLowerCase().includes("cp")
+            );
+
+            // Over-protection limit (more negative than -900 mV, e.g. -1150 mV)
+            const overRule = cpRules.find((r: any) => 
+                (r.threshold_operator === "<" || String(r.defect_type_id || "").toUpperCase().includes("CPOP")) && 
+                r.threshold_value != null && Number(r.threshold_value) <= -900
+            ) || cpRules.find((r: any) => r.threshold_value != null && Number(r.threshold_value) <= -1000);
+            if (overRule && !isNaN(Number(overRule.threshold_value))) {
+                cpMinAllowableMv = Number(overRule.threshold_value);
+            }
+
+            // Nominal Max allowable limit (P2 / warning, around -800 mV or -799 mV)
+            cpNominalMaxMv = -800;
+            const nominalRule = cpRules.find((r: any) => 
+                (r.threshold_operator === ">" || String(r.defect_type_id || "").toUpperCase().includes("CPUP")) && 
+                r.threshold_value != null && 
+                Number(r.threshold_value) >= -900 && 
+                Number(r.threshold_value) <= -750
+            );
+            if (nominalRule && !isNaN(Number(nominalRule.threshold_value))) {
+                const tv = Number(nominalRule.threshold_value);
+                cpNominalMaxMv = tv === -799 ? -800 : tv;
+            }
+
+            // Critical Max limit (P1 / severe defect, around -650 mV or -649 mV)
+            cpCriticalMaxMv = -650;
+            const critRule = cpRules.find((r: any) => 
+                (r.threshold_operator === ">" || String(r.defect_type_id || "").toUpperCase().includes("CPOP")) && 
+                r.threshold_value != null && 
+                Number(r.threshold_value) > -750 && 
+                Number(r.threshold_value) <= -600
+            );
+            if (critRule && !isNaN(Number(critRule.threshold_value))) {
+                const tv = Number(critRule.threshold_value);
+                cpCriticalMaxMv = tv === -649 ? -650 : tv;
+            }
+            cpMaxAllowableMv = cpNominalMaxMv;
+        } catch (err) {
+            console.warn("[Summary API] Failed to fetch defect criteria rules:", err);
+        }
+
         return NextResponse.json({
             data: {
                 structureInfo,
+                jobpack: jobpackInfo,
+                jobpackName: jobpackInfo?.name || "",
+                jobpackInfo,
                 componentSummary,
                 inspectionTypeSummary,
                 sow_summary: sowSummary,
+                tasks: {
+                    total: totalSow > 0 ? totalSow : totalRecordTasks,
+                    completed: totalSow > 0 ? completedSow : completedRecordTasks,
+                    incomplete: totalSow > 0 ? incompleteSow : incompleteRecordTasks,
+                    completedPct: totalSow > 0 ? completedPct : taskCompletedPct,
+                    incompletePct: totalSow > 0 ? incompletePct : taskIncompletePct,
+                    completionPct: totalSow > 0 ? completedPct : taskCompletedPct,
+                },
                 sow: {
                     total: totalSow,
                     completed: completedSow,
@@ -2200,13 +2796,15 @@ export const GET = withTenant(async (request, { companyId }) => {
                     },
                 },
                 records: { 
-                    total: rawRecords.length, 
-                    completed: rawRecords.filter((r: any) => r.status === 'COMPLETED').length,
+                    total: totalRecordTasks, 
+                    completed: completedRecordTasks,
                     completedRov,
                     completedDive,
-                    incomplete: rawRecords.filter((r: any) => r.status === 'INCOMPLETE').length,
+                    incomplete: incompleteRecordTasks,
                     incompleteRov,
                     incompleteDive,
+                    completionPct: taskCompletedPct,
+                    incompletePct: taskIncompletePct,
                     anomaly: anomalyValidTotal, 
                     anomalyRov,
                     anomalyDive,
@@ -2257,6 +2855,10 @@ export const GET = withTenant(async (request, { companyId }) => {
                     totalCount: cpPrimaryCount + cpAdditionalCount,
                     minVal: cpMinVal,
                     maxVal: cpMaxVal,
+                    minAllowableMv: cpMinAllowableMv,
+                    maxAllowableMv: cpNominalMaxMv,
+                    nominalMaxMv: cpNominalMaxMv,
+                    criticalMaxMv: cpCriticalMaxMv,
                     cpDetails: cpDetails,
                 },
                 anomalies: {
@@ -2480,7 +3082,15 @@ export const GET = withTenant(async (request, { companyId }) => {
 
                     // Readings exceeding effective thickness reported as anomalies
                     exceeded: mgiExceeded,
-                    anomaliesCount: mgiAnomaliesCount 
+                    anomaliesCount: mgiAnomaliesCount,
+
+                    // MGI Elevation & Effective Thickness Profile data
+                    profileName: resolvedMgiProfile?.name || "Standard MGI Profile",
+                    profileThresholds: profileThresholds,
+                    profilePoints: mgiProfilePoints,
+                    byQid: mgiByQid,
+                    waterDepth: mgiWaterDepth,
+                    hasProfileGraphData: Object.keys(mgiByQid).length > 0
                 },
                 scour: { 
                     total: scourRecords.length, 
@@ -2501,7 +3111,27 @@ export const GET = withTenant(async (request, { companyId }) => {
                     maxDepthQid: maxScourQid,
                     maxDepthLeg: maxScourLocation, // alias
                     maxDepthLocation: maxScourLocation,
-                    maxDepthFace: maxScourFace
+                    maxDepthFace: maxScourFace,
+                    minDepth: minScourDepth !== Infinity ? minScourDepth : 0,
+                    minDepthMm: minScourDepthMm !== Infinity ? minScourDepthMm : 0,
+                    minDepthLocation: minScourLocation,
+                    minDepthFace: minScourFace,
+                    minDepthQid: minScourQid,
+                    maxAllowableMm: scourMaxAllowableMm,
+                    maxAllowableLimit: scourMaxAllowableMm,
+                    qidReadings: finalScourQidReadings,
+                },
+                defectCriteria: {
+                    scour: {
+                        maxAllowableMm: scourMaxAllowableMm,
+                        operator: ">"
+                    },
+                    cp: {
+                        minAllowableMv: cpMinAllowableMv,
+                        maxAllowableMv: cpNominalMaxMv,
+                        nominalMaxMv: cpNominalMaxMv,
+                        criticalMaxMv: cpCriticalMaxMv,
+                    }
                 },
                 attachmentGroups: attachmentGroupBreakdown,
 

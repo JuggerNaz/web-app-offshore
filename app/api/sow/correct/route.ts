@@ -184,7 +184,11 @@ export const POST = withTenant(async (request, { companyId }) => {
                     let rangeStatus = "pending";
                     if (rangeRecords.length > 0) {
                         const hasAnom = rangeRecords.some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === 'ANOMALY');
-                        const hasIncomplete = rangeRecords.some((r: any) => String(r.status).toUpperCase() === 'INCOMPLETE');
+                        const hasIncomplete = rangeRecords.some((r: any) => 
+                            String(r.status).toUpperCase() === 'INCOMPLETE' || 
+                            Boolean(r.inspection_data?.incomplete_reason) || 
+                            String(r.inspection_data?._meta_status).toUpperCase() === 'INCOMPLETE'
+                        );
                         rangeStatus = hasAnom ? 'anomaly' : (hasIncomplete ? 'incomplete' : 'completed');
                     } else if (itemAnomalies.length > 0) {
                         rangeStatus = 'anomaly';
@@ -204,11 +208,14 @@ export const POST = withTenant(async (request, { companyId }) => {
                 if (hasAnom) newStatus = 'anomaly';
                 else if (allDone && hasComp) newStatus = 'completed';
                 else if (allPending) newStatus = 'pending';
-                else newStatus = 'incomplete';
             } else {
                 if (itemRecords.length > 0) {
                     const hasAnom = itemRecords.some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === 'ANOMALY') || itemAnomalies.length > 0;
-                    const hasIncomplete = itemRecords.some((r: any) => String(r.status).toUpperCase() === 'INCOMPLETE');
+                    const hasIncomplete = itemRecords.some((r: any) => 
+                        String(r.status).toUpperCase() === 'INCOMPLETE' || 
+                        Boolean(r.inspection_data?.incomplete_reason) || 
+                        String(r.inspection_data?._meta_status).toUpperCase() === 'INCOMPLETE'
+                    );
                     newStatus = hasAnom ? 'anomaly' : (hasIncomplete ? 'incomplete' : 'completed');
                 } else if (itemAnomalies.length > 0) {
                     newStatus = 'anomaly';

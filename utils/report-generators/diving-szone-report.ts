@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * Diving Splash Zone Inspection Summary Report (Landscape)
- * Columns: Item No. | QID | CP Reading (-mV) | Wall Thickness 3, 6, 9, 12 | Nominal Thk | Dive No. | Findings
+ * Columns: No. | QID | CP Reading (-mV) | Wall Thickness 3, 6, 9, 12 | Nominal Thk | Dive No. | Findings
  */
 export const generateDivingSZONEReport = async (
     records: any[],
@@ -167,7 +167,7 @@ export const generateDivingSZONEReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10, bottom: config.showSignatures !== false ? 35 : 15 },
             head: [
                 [
-                    { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "CP Reading\n(mV)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

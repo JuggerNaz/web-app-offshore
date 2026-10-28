@@ -2107,6 +2107,12 @@
                     "label": "Anode Secured to Structure",
                     "type": "boolean",
                     "required": false
+                },
+                {
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 }
             ]
         },
@@ -2776,6 +2782,12 @@
                     "label": "Anode Depletion",
                     "type": "combo",
                     "lib_code": "ADA"
+                },
+                {
+                    "$ref": "marine_growth_soft"
+                },
+                {
+                    "$ref": "marine_growth_hard"
                 },
                 {
                     "$ref": "cp_rdg_additional"

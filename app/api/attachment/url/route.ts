@@ -1,56 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { getStorageHandler } from "@/utils/storage-factory";
+import { getCurrentUser } from "@/utils/with-auth";
 import fs from "fs";
 import path from "path";
 
 export const dynamic = "force-dynamic";
-
-interface CachedAttachment {
-  buffer: Uint8Array;
-  contentType: string;
-  timestamp: number;
-}
-
-const attachmentMemoryCache = new Map<string, CachedAttachment>();
-const inFlightRequests = new Map<string, Promise<{ buffer: Uint8Array; contentType: string } | null>>();
-const MAX_CACHE_ENTRIES = 200;
-const CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+export const revalidate = 0;
+export const fetchCache = "force-no-store";
 
 function cleanKey(val: string): string {
   return val.replace(/([?&])_t=\d+/g, "").replace(/[?&]$/, "").trim();
 }
 
-function getFromCache(key: string): CachedAttachment | null {
-  const item = attachmentMemoryCache.get(key);
-  if (!item) return null;
-  if (Date.now() - item.timestamp > CACHE_TTL_MS) {
-    attachmentMemoryCache.delete(key);
-    return null;
-  }
-  return item;
-}
-
-function setToCache(keys: (string | null | undefined)[], buffer: Uint8Array | ArrayBuffer | Buffer, contentType: string) {
-  if (attachmentMemoryCache.size >= MAX_CACHE_ENTRIES) {
-    const firstKey = attachmentMemoryCache.keys().next().value;
-    if (firstKey) attachmentMemoryCache.delete(firstKey);
-  }
-  const uint8 = buffer instanceof Uint8Array ? buffer : new Uint8Array(buffer);
-  const entry: CachedAttachment = { buffer: uint8, contentType, timestamp: Date.now() };
-  for (const k of keys) {
-    if (k) {
-      const cleaned = cleanKey(k);
-      if (cleaned) attachmentMemoryCache.set(cleaned, entry);
-    }
-  }
-}
-
-function buildCachedResponse(buffer: Uint8Array, contentType: string) {
+/**
+ * Builds an HTTP response that forces browsers, proxies, and all CDNs (including Netlify Edge CDN)
+ * to never cache or reuse the attachment binary.
+ */
+function buildFreshResponse(buffer: Uint8Array, contentType: string) {
   const headers = new Headers();
   headers.set("Content-Type", contentType || "image/jpeg");
   headers.set("Content-Length", buffer.byteLength.toString());
-  headers.set("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
+  headers.set("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+  headers.set("Pragma", "no-cache");
+  headers.set("Expires", "0");
+  headers.set("Surrogate-Control", "no-store");
+  headers.set("CDN-Cache-Control", "no-store");
+  headers.set("Netlify-CDN-Cache-Control", "no-store");
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   return new Response(buffer, { status: 200, headers });
@@ -325,7 +301,7 @@ function renderLegacyFileNotFoundHtml({
     </div>
     <h1>Attachment File Not Accessible</h1>
     <p class="lead">
-      This attachment was migrated from a legacy desktop system and points to a local or network file path that is not currently mounted or accessible on the server.
+      This attachment points to a path that is not currently accessible on the server or configured cloud storage bucket.
     </p>
 
     <div class="details">
@@ -340,7 +316,7 @@ function renderLegacyFileNotFoundHtml({
       </div>
       ` : ""}
       <div class="detail-row">
-        <span class="detail-label">Referenced Legacy Path</span>
+        <span class="detail-label">Referenced Path</span>
         <span class="detail-val">${fullPathDisplay || "N/A"}</span>
       </div>
       ${sourceType ? `
@@ -354,8 +330,8 @@ function renderLegacyFileNotFoundHtml({
     <div class="steps">
       <h2>How to make this file accessible:</h2>
       <ul>
-        <li><strong>Option 1 (Upload File):</strong> In the Attachment Module, find this item, click <strong>Actions → Edit</strong>, and use <strong>Replace File</strong> to upload the document.</li>
-        <li><strong>Option 2 (Network Mount):</strong> Ensure the referenced network drive (e.g. <code>${(legacyPath.match(/^[A-Za-z]:/)?.[0] || "V:")}</code>) is mounted and accessible on the server host.</li>
+        <li><strong>Option 1 (Upload File):</strong> In the Attachment Module, find this item and click <strong>Replace File</strong> to upload the document.</li>
+        <li><strong>Option 2 (Cloud Storage):</strong> Verify the default storage credentials in <strong>Company Settings &gt; Preferences &gt; Storage Provider</strong>.</li>
       </ul>
     </div>
 
@@ -369,10 +345,188 @@ function renderLegacyFileNotFoundHtml({
 }
 
 /**
+ * Attempts to retrieve an attachment binary using a specified storage provider and credentials.
+ */
+async function tryRetrieveWithStorageProvider({
+  provider,
+  config,
+  targetPath,
+  fileName,
+  bucket,
+  sourceId,
+  id,
+  supabase,
+  extraPaths,
+}: {
+  provider: string;
+  config: any;
+  targetPath: string;
+  fileName: string;
+  bucket: string;
+  sourceId?: string | number;
+  id?: string | null;
+  supabase: any;
+  extraPaths?: string[];
+}): Promise<{ buffer: Buffer | Uint8Array; contentType: string } | null> {
+  const normProvider = (provider || "Supabase").trim();
+  const isSupabase = normProvider.toLowerCase() === "supabase";
+
+  // --- SUPABASE STORAGE ---
+  if (isSupabase) {
+    let relativePath = (targetPath || "").trim();
+    if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
+      const parts = relativePath.split("/");
+      const bucketIndex = parts.indexOf(bucket);
+      if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
+        relativePath = parts.slice(bucketIndex + 1).join("/");
+      } else {
+        const attIndex = parts.indexOf("attachments");
+        if (attIndex !== -1 && attIndex < parts.length - 1) {
+          relativePath = parts.slice(attIndex + 1).join("/");
+          bucket = "attachments";
+        } else {
+          const inspIndex = parts.indexOf("inspection-media");
+          if (inspIndex !== -1 && inspIndex < parts.length - 1) {
+            relativePath = parts.slice(inspIndex + 1).join("/");
+            bucket = "inspection-media";
+          }
+        }
+      }
+    }
+
+    relativePath = relativePath
+      .replace(/^[A-Za-z]:[\\\/]/, "")
+      .replace(/\\/g, "/")
+      .replace(/^\/+/, "")
+      .replace(/\/+$/, "")
+      .trim();
+
+    if (relativePath.startsWith(`${bucket}/`)) {
+      relativePath = relativePath.slice(bucket.length + 1);
+    } else if (relativePath.startsWith("attachments/")) {
+      relativePath = relativePath.replace(/^attachments\//, "");
+    } else if (relativePath.startsWith("inspection-media/")) {
+      relativePath = relativePath.replace(/^inspection-media\//, "");
+    }
+    relativePath = decodeURIComponent(relativePath).replace(/^\/+/, "");
+
+    const pathVariations: string[] = [];
+    if (fileName) {
+      if (relativePath && !relativePath.endsWith(fileName)) {
+        pathVariations.push(`${relativePath}/${fileName}`);
+      }
+      pathVariations.push(fileName);
+      pathVariations.push(`uploads/${fileName}`);
+      if (sourceId) pathVariations.push(`${sourceId}/${fileName}`);
+      if (id) pathVariations.push(`${id}/${fileName}`);
+    }
+    if (relativePath) {
+      pathVariations.push(relativePath);
+      pathVariations.push(relativePath.startsWith("uploads/") ? relativePath.replace(/^uploads\//, "") : `uploads/${relativePath}`);
+    }
+
+    const cleanPathVariations = Array.from(new Set(pathVariations.filter(Boolean)));
+    const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
+
+    for (const b of bucketVariations) {
+      for (const p of cleanPathVariations) {
+        if (p.includes("\\") || p.includes(":")) continue;
+        try {
+          const { data, error } = await supabase.storage.from(b).download(p);
+          if (!error && data) {
+            const arrayBuffer = await data.arrayBuffer();
+            return {
+              buffer: Buffer.from(arrayBuffer),
+              contentType: data.type || getMimeType(p) || "image/jpeg",
+            };
+          }
+        } catch {}
+      }
+    }
+
+    // Try signed or public URL via Supabase Storage
+    if (relativePath && path.extname(relativePath) && !relativePath.includes("\\") && !relativePath.includes(":")) {
+      try {
+        const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(relativePath, 3600);
+        const urlToFetch = signedData?.signedUrl || supabase.storage.from(bucket).getPublicUrl(relativePath)?.data?.publicUrl;
+        if (urlToFetch) {
+          const fetchResp = await fetch(urlToFetch);
+          if (fetchResp.ok) {
+            const arrayBuffer = await fetchResp.arrayBuffer();
+            return {
+              buffer: Buffer.from(arrayBuffer),
+              contentType: fetchResp.headers.get("Content-Type") || "image/jpeg",
+            };
+          }
+        }
+      } catch {}
+    }
+
+    return null;
+  }
+
+  // --- MULTI-CLOUD STORAGE HANDLER (AWS S3, Backblaze B2, Google Drive, OneDrive, Cloudinary, Local) ---
+  try {
+    const handler = await getStorageHandler(normProvider, config || {});
+    const candidateKeys = Array.from(new Set([targetPath, fileName, ...(extraPaths || [])].filter(Boolean)));
+
+    // 1. Direct server-side download (fastest, immune to CORS)
+    if (typeof (handler as any).download === "function") {
+      for (const k of candidateKeys) {
+        try {
+          const dlResult = await (handler as any).download(k);
+          if (dlResult && dlResult.buffer && dlResult.buffer.length > 0) {
+            return {
+              buffer: dlResult.buffer,
+              contentType: dlResult.contentType || getMimeType(k) || "image/jpeg",
+            };
+          }
+        } catch (dlErr) {
+          console.warn(`[tryRetrieve] Handler download error for "${k}":`, dlErr);
+        }
+      }
+    }
+
+    // 2. Presigned URL + server proxy
+    for (const k of candidateKeys) {
+      try {
+        const signedUrl = await handler.getSignedUrl(k, 3600);
+        if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
+          const response = await fetch(signedUrl);
+          if (response.ok) {
+            const arrayBuffer = await response.arrayBuffer();
+            return {
+              buffer: Buffer.from(arrayBuffer),
+              contentType: response.headers.get("Content-Type") || getMimeType(k) || "image/jpeg",
+            };
+          }
+        }
+      } catch (streamErr) {
+        console.warn(`[tryRetrieve] Presigned URL fetch error for "${k}":`, streamErr);
+      }
+    }
+  } catch (err: any) {
+    console.warn(`[tryRetrieve] Storage provider "${normProvider}" error:`, err?.message || err);
+  }
+
+  return null;
+}
+
+/**
  * GET /api/attachment/url?id=[id]&path=[path]
- * Generates/streams attachment binary or redirects to a temporary signed URL.
+ *
+ * Rules:
+ * 1. FIRST CHOICE: Use the default Credentials configured at company_settings to retrieve the image.
+ * 2. SECOND CHOICE (FALLBACK): If cannot retrieve via default company settings, fetch from the path specified
+ *    in the attachment table/record (direct URL, Supabase Storage, or local disk).
+ * 3. NO CACHING: Always fetch each attachment fresh without storing or reusing in-memory/CDN cache.
  */
 export async function GET(request: NextRequest) {
+  const authUser = await getCurrentUser();
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const rawId = searchParams.get("id");
   const rawPath = searchParams.get("path");
@@ -383,428 +537,343 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Missing attachment ID or path" }, { status: 400 });
   }
 
-  // 1. Fast-path in-memory cache check
-  const lookupKeys: string[] = [];
-  if (id) lookupKeys.push(`id:${id}`);
-  if (fallbackPath) lookupKeys.push(`path:${fallbackPath}`);
+  let supabase: any;
+  try {
+    supabase = await createClient();
+  } catch {
+    supabase = createAdminClient();
+  }
 
-  for (const k of lookupKeys) {
-    const cached = getFromCache(k);
-    if (cached) {
-      return buildCachedResponse(cached.buffer, cached.contentType);
+  let filePath = fallbackPath || "";
+  let fileUrl: string | null = null;
+  let recordProvider = "Supabase";
+  let bucket = "attachments";
+  let companyId: string | null = null;
+  let attachmentRecord: any = null;
+  let fileName = "";
+  let fileType = "";
+  let originalTitle = "";
+  let altPaths: string[] = [];
+
+  // 1. Fetch attachment record if ID provided
+  if (id) {
+    const isMediaPrefix = id.startsWith("media-");
+    const cleanId = isMediaPrefix ? id.replace("media-", "") : id;
+
+    if (!isMediaPrefix) {
+      let attQuery = (supabase as any)
+        .from("attachment")
+        .select("id, name, meta, path, company_id, source_id, source_type");
+      if (!isNaN(Number(id))) {
+        attQuery = attQuery.eq("id", Number(id));
+      } else {
+        attQuery = attQuery.eq("id", id);
+      }
+      const { data: attachment } = await attQuery.maybeSingle();
+
+      if (attachment) {
+        attachmentRecord = attachment;
+        companyId = attachment.company_id || companyId;
+        const meta = (attachment.meta || {}) as any;
+        originalTitle = attachment.name || meta?.title || "";
+        fileName = meta?.original_file_name || (attachment.name && attachment.name.includes(".") ? attachment.name : "");
+        fileType = meta?.file_type || "";
+        filePath = attachment.path || fallbackPath || meta?.file_path || filePath;
+        fileUrl =
+          (typeof attachment.path === "string" && (attachment.path.startsWith("http://") || attachment.path.startsWith("https://"))
+            ? attachment.path
+            : null) ||
+          (typeof fallbackPath === "string" && (fallbackPath.startsWith("http://") || fallbackPath.startsWith("https://"))
+            ? fallbackPath
+            : null) ||
+          meta?.file_url;
+        recordProvider = meta?.storage_provider || "Supabase";
+        bucket = meta?.bucket || "attachments";
+        altPaths = [attachment.path, meta?.file_url, meta?.file_path].filter((p: any) => typeof p === "string" && p.trim());
+      }
+    }
+
+    // Check insp_media if not found in attachment table
+    if (!filePath && !fileUrl) {
+      let mediaQuery = (supabase as any)
+        .from("insp_media")
+        .select("media_id, name, file_name, file_path, file_url, meta, company_id, inspection_id");
+      if (!isNaN(Number(cleanId))) {
+        mediaQuery = mediaQuery.eq("media_id", Number(cleanId));
+      } else {
+        mediaQuery = mediaQuery.eq("media_id", cleanId);
+      }
+      const { data: media } = await mediaQuery.maybeSingle();
+
+      if (media) {
+        attachmentRecord = media;
+        companyId = media.company_id || companyId;
+        const meta = (media.meta || {}) as any;
+        originalTitle = media.name || media.file_name || "";
+        fileName = media.file_name || meta?.original_file_name || "";
+        fileType = meta?.file_type || "";
+        filePath = media.file_path || meta?.file_path || filePath;
+        fileUrl =
+          media.file_url ||
+          meta?.file_url ||
+          (typeof media.file_path === "string" && (media.file_path.startsWith("http://") || media.file_path.startsWith("https://"))
+            ? media.file_path
+            : null);
+        recordProvider = meta?.storage_provider || "Supabase";
+        bucket = meta?.bucket || "inspection-media";
+      }
     }
   }
 
-  // 2. In-flight request deduplication
-  const primaryDedupKey = lookupKeys.join("|");
-  if (inFlightRequests.has(primaryDedupKey)) {
+  const targetUrlOrPath = filePath || fileUrl || fallbackPath || "";
+
+  if (!targetUrlOrPath) {
+    console.warn(`[AttachmentURL] Record not found for id: ${id}, path: ${fallbackPath}`);
+    return NextResponse.json(
+      { error: "Attachment record not found", code: "NOT_FOUND" },
+      {
+        status: 404,
+        headers: {
+          "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+          "Pragma": "no-cache",
+          "Expires": "0",
+        },
+      }
+    );
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // STEP 1: FIRST CHOICE - Use default Credentials configured at company_settings
+  // -----------------------------------------------------------------------------------------
+  const targetCompanyId =
+    companyId ||
+    request.headers.get("x-company-id") ||
+    request.cookies.get("active_company_id")?.value;
+
+  let settings: any = null;
+  if (targetCompanyId) {
+    const { data: compSettings } = await (supabase as any)
+      .from("company_settings")
+      .select("storage_provider, storage_config")
+      .eq("company_id", targetCompanyId)
+      .maybeSingle();
+    if (compSettings) settings = compSettings;
+  }
+
+  if (!settings?.storage_provider) {
+    const { data: fallbackSettings } = await (supabase as any)
+      .from("company_settings")
+      .select("storage_provider, storage_config")
+      .not("storage_config", "is", null)
+      .filter("storage_config", "neq", "{}")
+      .limit(1)
+      .maybeSingle();
+    if (fallbackSettings) settings = fallbackSettings;
+  }
+
+  const defaultProvider = settings?.storage_provider || "Supabase";
+  const defaultStorageConfig = settings?.storage_config || {};
+
+  try {
+    const primaryResult = await tryRetrieveWithStorageProvider({
+      provider: defaultProvider,
+      config: defaultStorageConfig,
+      targetPath: targetUrlOrPath,
+      fileName,
+      bucket,
+      sourceId: attachmentRecord?.source_id,
+      id,
+      supabase,
+      extraPaths: altPaths,
+    });
+
+    if (primaryResult && primaryResult.buffer && primaryResult.buffer.length > 0) {
+      return buildFreshResponse(
+        new Uint8Array(primaryResult.buffer),
+        primaryResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+      );
+    }
+  } catch (primaryErr) {
+    console.warn("[AttachmentURL] Priority 1 (company_settings) retrieval failed:", primaryErr);
+  }
+
+  // -----------------------------------------------------------------------------------------
+  // STEP 2: SECOND CHOICE (FALLBACK) - Fetch the file specified in the path of the attachment
+  // -----------------------------------------------------------------------------------------
+
+  // 2a. Direct data URI
+  if (targetUrlOrPath.startsWith("data:")) {
+    const parts = targetUrlOrPath.split(",");
+    const mime = parts[0].match(/:(.*?);/)?.[1] || "image/jpeg";
+    const buffer = Buffer.from(parts[1], "base64");
+    return buildFreshResponse(new Uint8Array(buffer), mime);
+  }
+
+  // 2b. Direct HTTP/HTTPS candidate URLs
+  const isBackblaze =
+    recordProvider?.toLowerCase() === "backblaze" ||
+    targetUrlOrPath.includes("backblazeb2.com") ||
+    Boolean(fallbackPath && fallbackPath.includes("backblazeb2.com"));
+
+  // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
+  // Note: Skip private cloud endpoints like backblazeb2.com that require signed auth headers and will 401
+  const directHttpCandidates = Array.from(
+    new Set(
+      [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
+        (u): u is string =>
+          typeof u === "string" &&
+          (u.startsWith("http://") || u.startsWith("https://")) &&
+          !u.includes("backblazeb2.com")
+      )
+    )
+  );
+
+  for (const remoteHttpUrl of directHttpCandidates) {
     try {
-      const inFlightResult = await inFlightRequests.get(primaryDedupKey);
-      if (inFlightResult) {
-        return buildCachedResponse(inFlightResult.buffer, inFlightResult.contentType);
+      const directResp = await fetch(remoteHttpUrl);
+      if (directResp.ok) {
+        const buffer = await directResp.arrayBuffer();
+        const contentType = directResp.headers.get("Content-Type") || fileType || "image/jpeg";
+        return buildFreshResponse(new Uint8Array(buffer), contentType);
+      }
+    } catch (httpErr) {
+      console.warn(`[AttachmentURL] Direct HTTP fetch failed for ${remoteHttpUrl}:`, httpErr);
+    }
+  }
+
+  // 2c. If the record had a custom storage provider in metadata different from company_settings default
+  if (recordProvider && recordProvider.toLowerCase() !== defaultProvider.toLowerCase()) {
+    try {
+      const recordProviderResult = await tryRetrieveWithStorageProvider({
+        provider: recordProvider,
+        config: attachmentRecord?.meta?.storage_config || defaultStorageConfig,
+        targetPath: targetUrlOrPath,
+        fileName,
+        bucket,
+        sourceId: attachmentRecord?.source_id,
+        id,
+        supabase,
+        extraPaths: altPaths,
+      });
+
+      if (recordProviderResult && recordProviderResult.buffer && recordProviderResult.buffer.length > 0) {
+        return buildFreshResponse(
+          new Uint8Array(recordProviderResult.buffer),
+          recordProviderResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+        );
       }
     } catch (_) {}
   }
 
-  // Worker-owned context captured so the outer handler can build a rich 404
-  // (friendly HTML page for browser navigations, structured JSON otherwise).
-  type NotFoundInfo = {
-    originalTitle: string;
-    fileName: string;
-    legacyPath: string;
-    isLegacyPath: boolean;
-    sourceType?: string;
-    sourceId?: string | number;
-  };
-  // Read through explicit casts below: TypeScript's control-flow analysis cannot
-  // see the assignments made inside the worker IIFE, which would otherwise narrow
-  // these variables to `null` at the read sites.
-  let lastNotFoundInfo: NotFoundInfo | null = null;
-  let lastSignedUrlFallback: string | null = null;
-
-  const workerPromise = (async (): Promise<{ buffer: Uint8Array; contentType: string } | null> => {
-    let supabase: any;
+  // 2c-bis. Backblaze B2 endpoints require signed auth headers; never fetch directly -
+  // route through the Backblaze storage handler (presigned URLs) when detected.
+  if (isBackblaze && recordProvider.toLowerCase() !== "backblaze") {
     try {
-      supabase = await createClient();
-    } catch {
-      supabase = createAdminClient();
-    }
-    
-    let filePath = fallbackPath || "";
-    let fileUrl: string | null = null;
-    let provider = "Supabase";
-    let bucket = "attachments";
-    let companyId: string | null = null;
-    let attachmentRecord: any = null;
-    let fileName = "";
-    let fileType = "";
-    let originalTitle = "";
-
-    // 1. Fetch attachment record if ID provided
-    if (id) {
-      const isMediaPrefix = id.startsWith("media-");
-      const cleanId = isMediaPrefix ? id.replace("media-", "") : id;
-
-      if (!isMediaPrefix) {
-        let attQuery = (supabase as any).from("attachment").select("id, name, meta, path, company_id, source_id, source_type");
-        if (!isNaN(Number(id))) {
-          attQuery = attQuery.eq("id", Number(id));
-        } else {
-          attQuery = attQuery.eq("id", id);
-        }
-        const { data: attachment } = await attQuery.maybeSingle();
-
-        if (attachment) {
-          attachmentRecord = attachment;
-          companyId = attachment.company_id || companyId;
-          const meta = (attachment.meta || {}) as any;
-          originalTitle = attachment.name || meta?.title || "";
-          fileName = meta?.original_file_name || (attachment.name && attachment.name.includes(".") ? attachment.name : "");
-          fileType = meta?.file_type || "";
-          filePath = meta?.file_path || attachment.path || filePath;
-          fileUrl = meta?.file_url || (typeof attachment.path === "string" && (attachment.path.startsWith("http://") || attachment.path.startsWith("https://")) ? attachment.path : null);
-          provider = meta?.storage_provider || "Supabase";
-          bucket = meta?.bucket || "attachments";
-        }
-      }
-
-      // Check insp_media if not found yet
-      if (!filePath && !fileUrl) {
-        let mediaQuery = (supabase as any).from("insp_media").select("media_id, name, file_name, file_path, file_url, meta, company_id, inspection_id");
-        if (!isNaN(Number(cleanId))) {
-          mediaQuery = mediaQuery.eq("media_id", Number(cleanId));
-        } else {
-          mediaQuery = mediaQuery.eq("media_id", cleanId);
-        }
-        const { data: media } = await mediaQuery.maybeSingle();
-
-        if (media) {
-          attachmentRecord = media;
-          companyId = media.company_id || companyId;
-          const meta = (media.meta || {}) as any;
-          originalTitle = media.name || media.file_name || "";
-          fileName = media.file_name || meta?.original_file_name || "";
-          fileType = meta?.file_type || "";
-          filePath = media.file_path || meta?.file_path || filePath;
-          fileUrl = media.file_url || meta?.file_url || (typeof media.file_path === "string" && (media.file_path.startsWith("http://") || media.file_path.startsWith("https://")) ? media.file_path : null);
-          provider = meta?.storage_provider || "Supabase";
-          bucket = meta?.bucket || "inspection-media";
-        }
-      }
-    }
-
-    if (!filePath && !fileUrl) {
-      console.warn(`[AttachmentURL] Record not found for id: ${id}, path: ${fallbackPath}`);
-      lastNotFoundInfo = {
-        originalTitle,
+      const b2Result = await tryRetrieveWithStorageProvider({
+        provider: "Backblaze",
+        config: attachmentRecord?.meta?.storage_config || defaultStorageConfig,
+        targetPath: targetUrlOrPath,
         fileName,
-        legacyPath: fallbackPath || id || "",
-        isLegacyPath: Boolean(fallbackPath && /^[A-Za-z]:[\\/]/.test(fallbackPath)),
-      };
-      return null;
-    }
+        bucket,
+        sourceId: attachmentRecord?.source_id,
+        id,
+        supabase,
+        extraPaths: altPaths,
+      });
 
-    const targetUrlOrPath = filePath || fileUrl || "";
-
-    // 2. Direct data URI
-    if (targetUrlOrPath.startsWith("data:")) {
-      const parts = targetUrlOrPath.split(",");
-      const mime = parts[0].match(/:(.*?);/)?.[1] || "image/jpeg";
-      const buffer = Buffer.from(parts[1], "base64");
-      const uint8 = new Uint8Array(buffer);
-      setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, mime);
-      return { buffer: uint8, contentType: mime };
-    }
-
-    // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
-    const directHttpCandidates = Array.from(
-      new Set(
-        [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
-          (u): u is string => typeof u === "string" && (u.startsWith("http://") || u.startsWith("https://"))
-        )
-      )
-    );
-
-    for (const remoteHttpUrl of directHttpCandidates) {
-      try {
-        const directResp = await fetch(remoteHttpUrl);
-        if (directResp.ok) {
-          const buffer = await directResp.arrayBuffer();
-          const contentType = directResp.headers.get("Content-Type") || "image/jpeg";
-          const uint8 = new Uint8Array(buffer);
-          setToCache([...lookupKeys, `path:${targetUrlOrPath}`, `path:${remoteHttpUrl}`], uint8, contentType);
-          return { buffer: uint8, contentType };
-        }
-      } catch (httpErr) {
-        console.warn(`[AttachmentURL] Direct HTTP fetch failed for ${remoteHttpUrl}:`, httpErr);
+      if (b2Result && b2Result.buffer && b2Result.buffer.length > 0) {
+        return buildFreshResponse(
+          new Uint8Array(b2Result.buffer),
+          b2Result.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+        );
       }
-    }
+    } catch (_) {}
+  }
 
-    const isWindowsOrLocalPath =
-      /^[A-Za-z]:[\\\/]/.test(targetUrlOrPath) ||
-      targetUrlOrPath.startsWith("\\\\") ||
-      targetUrlOrPath.includes("\\") ||
-      provider?.toLowerCase() === "legacy";
-
-    // 4. Resolve via Local Server & Mapped Network Filesystem (e.g. Y:\, C:\, W:\)
-    if (isWindowsOrLocalPath) {
-      const resolvedLocal = resolveLocalPath(targetUrlOrPath, fileName);
-      if (resolvedLocal) {
-        try {
-          const buffer = await fs.promises.readFile(resolvedLocal);
-          const mime = getMimeType(resolvedLocal) || fileType || "application/octet-stream";
-          const uint8 = new Uint8Array(buffer);
-          setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, mime);
-          return { buffer: uint8, contentType: mime };
-        } catch (readErr) {
-          console.warn("[AttachmentURL] Local file read error:", readErr);
-        }
-      }
-    }
-
-    // 5. Direct Supabase Storage Download (with sanitized key)
-    if (provider === "Supabase" || !provider || isWindowsOrLocalPath) {
-      let relativePath = targetUrlOrPath.trim();
-      if (relativePath.startsWith("http://") || relativePath.startsWith("https://")) {
-        const parts = relativePath.split("/");
-        const bucketIndex = parts.indexOf(bucket);
-        if (bucketIndex !== -1 && bucketIndex < parts.length - 1) {
-          relativePath = parts.slice(bucketIndex + 1).join("/");
-        } else {
-          const attIndex = parts.indexOf("attachments");
-          if (attIndex !== -1 && attIndex < parts.length - 1) {
-            relativePath = parts.slice(attIndex + 1).join("/");
-            bucket = "attachments";
-          } else {
-            const inspIndex = parts.indexOf("inspection-media");
-            if (inspIndex !== -1 && inspIndex < parts.length - 1) {
-              relativePath = parts.slice(inspIndex + 1).join("/");
-              bucket = "inspection-media";
-            }
-          }
-        }
-      }
-
-      // Sanitize Windows drive letters & backslashes for Supabase S3 storage keys
-      relativePath = relativePath
-        .replace(/^[A-Za-z]:[\\\/]/, "")
-        .replace(/\\/g, "/")
-        .replace(/^\/+/, "")
-        .replace(/\/+$/, "")
-        .trim();
-
-      if (relativePath.startsWith(`${bucket}/`)) {
-        relativePath = relativePath.slice(bucket.length + 1);
-      } else if (relativePath.startsWith("attachments/")) {
-        relativePath = relativePath.replace(/^attachments\//, "");
-      } else if (relativePath.startsWith("inspection-media/")) {
-        relativePath = relativePath.replace(/^inspection-media\//, "");
-      }
-      relativePath = decodeURIComponent(relativePath).replace(/^\/+/, "");
-
-      const pathVariations: string[] = [];
-      if (fileName) {
-        if (relativePath && !relativePath.endsWith(fileName)) {
-          pathVariations.push(`${relativePath}/${fileName}`);
-        }
-        pathVariations.push(fileName);
-        pathVariations.push(`uploads/${fileName}`);
-        if (attachmentRecord?.source_id) {
-          pathVariations.push(`${attachmentRecord.source_id}/${fileName}`);
-        }
-        if (id) {
-          pathVariations.push(`${id}/${fileName}`);
-        }
-      }
-      if (relativePath) {
-        pathVariations.push(relativePath);
-        pathVariations.push(relativePath.startsWith("uploads/") ? relativePath.replace(/^uploads\//, "") : `uploads/${relativePath}`);
-      }
-
-      const cleanPathVariations = Array.from(new Set(pathVariations.filter(Boolean)));
-      const bucketVariations = Array.from(new Set([bucket, "attachments", "inspection-media", "company-assets", "public"]));
-
-      let downloadedBuffer: ArrayBuffer | null = null;
-      let contentType = fileType || "image/jpeg";
-
-      for (const b of bucketVariations) {
-        for (const p of cleanPathVariations) {
-          // Skip keys that still contain Windows backslashes or colons
-          if (p.includes("\\") || p.includes(":")) continue;
-          try {
-            const { data, error } = await supabase.storage.from(b).download(p);
-            if (!error && data) {
-              downloadedBuffer = await data.arrayBuffer();
-              contentType = data.type || getMimeType(p) || "image/jpeg";
-              break;
-            }
-          } catch {}
-        }
-        if (downloadedBuffer) break;
-      }
-
-      if (downloadedBuffer) {
-        const uint8 = new Uint8Array(downloadedBuffer);
-        setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, contentType);
-        return { buffer: uint8, contentType };
-      }
-
-      // Try signed URL or public URL via Supabase Storage ONLY if key has an extension and no Windows separators
-      if (relativePath && path.extname(relativePath) && !relativePath.includes("\\") && !relativePath.includes(":")) {
-        try {
-          const { data: signedData } = await supabase.storage.from(bucket).createSignedUrl(relativePath, 3600);
-          const urlToFetch = signedData?.signedUrl || supabase.storage.from(bucket).getPublicUrl(relativePath)?.data?.publicUrl;
-          if (urlToFetch) {
-            const fetchResp = await fetch(urlToFetch);
-            if (fetchResp.ok) {
-              const buffer = await fetchResp.arrayBuffer();
-              const ct = fetchResp.headers.get("Content-Type") || "image/jpeg";
-              const uint8 = new Uint8Array(buffer);
-              setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
-              return { buffer: uint8, contentType: ct };
-            }
-          }
-        } catch {}
-      }
-    }
-
-    // 6. Resolve via Storage Handler for multi-cloud (Backblaze B2, S3, GDrive, Azure, Cloudinary)
-    // ONLY if active provider is explicitly configured and not legacy/supabase
-    let settingsQuery = (supabase as any).from("company_settings").select("storage_provider, storage_config");
-    const targetCompanyId = companyId || request.headers.get("x-company-id") || request.cookies.get("active_company_id")?.value;
-    if (targetCompanyId) {
-      settingsQuery = settingsQuery.eq("company_id", targetCompanyId);
-    }
-    let { data: settings } = await settingsQuery.limit(1).maybeSingle();
-
-    if (!settings?.storage_config || Object.keys(settings.storage_config).length === 0) {
-      try {
-        const { data: fallbackSettings } = await (supabase as any)
-          .from("company_settings")
-          .select("storage_provider, storage_config")
-          .not("storage_config", "is", null)
-          .filter("storage_config", "neq", "{}")
-          .limit(1)
-          .maybeSingle();
-        if (fallbackSettings?.storage_config && Object.keys(fallbackSettings.storage_config).length > 0) {
-          settings = fallbackSettings;
-        }
-      } catch (_) {}
-    }
-
+  // 2d. Supabase Storage fallback (if default provider was not Supabase)
+  if (defaultProvider.toLowerCase() !== "supabase") {
     try {
-      let activeProvider = provider || settings?.storage_provider;
-      if (targetUrlOrPath.includes("backblazeb2.com") || (fallbackPath && fallbackPath.includes("backblazeb2.com"))) {
-        activeProvider = "Backblaze";
-      } else if (targetUrlOrPath.includes("amazonaws.com") || (fallbackPath && fallbackPath.includes("amazonaws.com"))) {
-        activeProvider = "AWS S3";
+      const supaResult = await tryRetrieveWithStorageProvider({
+        provider: "Supabase",
+        config: {},
+        targetPath: targetUrlOrPath,
+        fileName,
+        bucket,
+        sourceId: attachmentRecord?.source_id,
+        id,
+        supabase,
+      });
+
+      if (supaResult && supaResult.buffer && supaResult.buffer.length > 0) {
+        return buildFreshResponse(
+          new Uint8Array(supaResult.buffer),
+          supaResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+        );
       }
-      if (!activeProvider) activeProvider = "Supabase";
+    } catch (_) {}
+  }
 
-      const handler = await getStorageHandler(activeProvider, settings?.storage_config || {});
+  // 2e. Local or Network Server Filesystem (e.g. localhost Windows Y:\, C:\, W:\)
+  const isWindowsOrLocalPath =
+    /^[A-Za-z]:[\\\/]/.test(targetUrlOrPath) ||
+    targetUrlOrPath.startsWith("\\\\") ||
+    targetUrlOrPath.includes("\\") ||
+    recordProvider?.toLowerCase() === "legacy";
 
-      // 1. Direct server-side download (Immune to CORS, zero redirects, fastest)
-      if (typeof (handler as any).download === "function") {
-        try {
-          const dlResult = await (handler as any).download(targetUrlOrPath);
-          if (dlResult && dlResult.buffer) {
-            const ct = dlResult.contentType || "image/jpeg";
-            const uint8 = dlResult.buffer instanceof Uint8Array ? dlResult.buffer : new Uint8Array(dlResult.buffer);
-            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
-            return { buffer: uint8, contentType: ct };
-          }
-        } catch (dlErr) {
-          console.warn("[AttachmentURL] Handler direct download error:", dlErr);
-        }
+  if (isWindowsOrLocalPath) {
+    const resolvedLocal = resolveLocalPath(targetUrlOrPath, fileName);
+    if (resolvedLocal) {
+      try {
+        const buffer = await fs.promises.readFile(resolvedLocal);
+        const mime = getMimeType(resolvedLocal) || fileType || "application/octet-stream";
+        return buildFreshResponse(new Uint8Array(buffer), mime);
+      } catch (readErr) {
+        console.warn("[AttachmentURL] Local file read error:", readErr);
       }
-
-      // 2. Presigned URL + server proxy
-      const signedUrl = await handler.getSignedUrl(targetUrlOrPath, 3600);
-
-      if (signedUrl && (signedUrl.startsWith("http://") || signedUrl.startsWith("https://"))) {
-        try {
-          const response = await fetch(signedUrl);
-          if (response.ok) {
-            const buffer = await response.arrayBuffer();
-            const ct = response.headers.get("Content-Type") || "image/jpeg";
-            const uint8 = new Uint8Array(buffer);
-            setToCache([...lookupKeys, `path:${targetUrlOrPath}`], uint8, ct);
-            return { buffer: uint8, contentType: ct };
-          } else {
-            console.warn(`[AttachmentURL] Signed URL fetch returned status ${response.status}`);
-            lastSignedUrlFallback = signedUrl;
-          }
-        } catch (streamErr) {
-          console.warn("[AttachmentURL] Stream fetch error on signed URL:", streamErr);
-          lastSignedUrlFallback = signedUrl;
-        }
-      }
-    } catch (storageErr: any) {
-      console.warn("[AttachmentURL] Storage handler error:", storageErr?.message || storageErr);
     }
+  }
 
-    lastNotFoundInfo = {
-      originalTitle,
-      fileName,
+  // -----------------------------------------------------------------------------------------
+  // 3. If file cannot be found/accessed: Return friendly HTML page for browser tabs, or clean JSON 404
+  // -----------------------------------------------------------------------------------------
+  const acceptHeader = request.headers.get("accept") || "";
+  const isHtmlRequest = acceptHeader.includes("text/html");
+
+  if (isHtmlRequest) {
+    const html = renderLegacyFileNotFoundHtml({
+      attachmentName: originalTitle || "Attachment",
+      originalFileName: fileName || "",
       legacyPath: targetUrlOrPath,
-      isLegacyPath: isWindowsOrLocalPath,
       sourceType: attachmentRecord?.source_type,
       sourceId: attachmentRecord?.source_id,
-    };
-    return null;
-  })();
+    });
 
-  inFlightRequests.set(primaryDedupKey, workerPromise);
-  try {
-    const result = await workerPromise;
-    if (result) {
-      return buildCachedResponse(result.buffer, result.contentType);
-    }
-    // 7. If file cannot be found/accessed: Return friendly HTML page for browser tabs, or clean JSON 404
-    const acceptHeader = request.headers.get("accept") || "";
-    const isHtmlRequest = acceptHeader.includes("text/html");
+    return new Response(html, {
+      status: 404,
+      headers: {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      },
+    });
+  }
 
-    // Fallback (from dev_adrian): if the server-side proxy could not fetch the presigned
-    // URL, let the client try the signed URL directly.
-    if (lastSignedUrlFallback && !isHtmlRequest) {
-      return NextResponse.redirect(lastSignedUrlFallback);
-    }
-
-    if (isHtmlRequest) {
-      const info = lastNotFoundInfo as NotFoundInfo | null;
-      const html = renderLegacyFileNotFoundHtml({
-        attachmentName: info?.originalTitle || "Attachment",
-        originalFileName: info?.fileName || "",
-        legacyPath: info?.legacyPath || fallbackPath || id || "",
-        sourceType: info?.sourceType,
-        sourceId: info?.sourceId,
-      });
-
-      return new Response(html, {
-        status: 404,
-        headers: {
-          "Content-Type": "text/html; charset=utf-8",
-          "Cache-Control": "no-store, max-age=0",
-        },
-      });
-    }
-
-    const notFound = lastNotFoundInfo as NotFoundInfo | null;
-    return NextResponse.json({
+  return NextResponse.json(
+    {
       error: "Attachment file not accessible",
       code: "FILE_NOT_FOUND",
-      name: notFound?.originalTitle || "",
-      fileName: notFound?.fileName || "",
-      path: notFound?.legacyPath || fallbackPath || "",
-      isLegacyPath: notFound?.isLegacyPath ?? false,
-      message: "The physical file is not accessible on the server or cloud storage bucket.",
-    }, { status: 404 });
-  } catch (err: any) {
-    console.error(`[AttachmentURL] Exception:`, err);
-    return NextResponse.json({ error: `Failed to resolve attachment URL: ${err.message}` }, { status: 500 });
-  } finally {
-    inFlightRequests.delete(primaryDedupKey);
-  }
+      name: originalTitle || "",
+      fileName: fileName || "",
+      path: targetUrlOrPath,
+      isLegacyPath: isWindowsOrLocalPath,
+      message: "The physical file is not accessible at the configured company storage or referenced record path.",
+    },
+    {
+      status: 404,
+      headers: {
+        "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      },
+    }
+  );
 }
 
 export async function OPTIONS() {
@@ -814,6 +883,7 @@ export async function OPTIONS() {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
     },
   });
 }

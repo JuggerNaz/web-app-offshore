@@ -2,10 +2,11 @@ import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { Database } from "@/supabase/schema";
 import { fetchWithTimeout } from "./fetch-with-timeout";
+import { autoPaginateClient } from "./auto-paginate";
 
 export const createClient = () => {
 
-  return createServerClient<Database>(
+  const client = createServerClient<Database>(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
@@ -32,6 +33,8 @@ export const createClient = () => {
       },
     }
   );
+
+  return autoPaginateClient(client);
 };
 export const createAdminClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -47,7 +50,7 @@ export const createAdminClient = () => {
     throw new Error("Supabase URL or Key is missing. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY to your .env.local file.");
   }
 
-  return createServerClient<Database>(url, key, {
+  const client = createServerClient<Database>(url, key, {
     global: { fetch: fetchWithTimeout },
     cookies: {
       getAll() {
@@ -56,4 +59,7 @@ export const createAdminClient = () => {
       setAll() { },
     },
   });
+
+  return autoPaginateClient(client);
 };
+

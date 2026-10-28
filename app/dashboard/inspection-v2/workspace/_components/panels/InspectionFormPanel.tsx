@@ -360,10 +360,7 @@ export function InspectionFormPanel({
                 onChangeComponentClick={() => setShowCompSelector(true)}
                 libOptionsMap={libOptionsMap}
                 onDeleteRecord={() => editingRecordId && handleDeleteRecord(editingRecordId)}
-                onPrintReport={() => {
-                  const r = currentRecords.find((rec: any) => rec.insp_id === editingRecordId);
-                  if (r) handlePrintAnomaly(r);
-                }}
+                onPrintReport={() => handlePrintAnomaly(editingRecordId)}
                 validateAnomalyRef={validateAnomalyRef}
                 setPrevRefNo={setPrevRefNo}
                 criteriaRules={criteriaRules}

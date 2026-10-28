@@ -1,10 +1,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUser } from "@/utils/with-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);
@@ -60,6 +66,130 @@ export async function GET(request: NextRequest) {
         let anomalies = anomaliesData || [];
 
         if (viewError) {
+            console.warn("[AnomalyReport] View query error, attempting direct query fallback:", viewError);
+        }
+
+        // Robust Fallback: If view query returned 0 rows or errored and specific inspectionId or anomalyId is requested
+        if (anomalies.length === 0 && (inspectionId || anomalyId)) {
+            try {
+                console.log(`[AnomalyReport] View returned 0 rows for inspectionId=${inspectionId}, anomalyId=${anomalyId}. Attempting direct query fallback...`);
+                let directQuery = (supabase as any)
+                    .from("insp_anomalies")
+                    .select("*, insp_records!inner(*, structure_components(*), insp_video_tapes(*), insp_dive_jobs(*), insp_rov_jobs(*))");
+
+                if (anomalyId) {
+                    directQuery = directQuery.eq("anomaly_id", anomalyId);
+                } else if (inspectionId) {
+                    directQuery = directQuery.eq("inspection_id", inspectionId);
+                }
+
+                const { data: directAnoms, error: directErr } = await directQuery;
+                if (!directErr && directAnoms && directAnoms.length > 0) {
+                    anomalies = directAnoms.map((da: any) => {
+                        const r = da.insp_records || {};
+                        const sc = r.structure_components || {};
+                        const dj = r.insp_dive_jobs || {};
+                        const rj = r.insp_rov_jobs || {};
+                        const vt = r.insp_video_tapes || {};
+                        return {
+                            anomaly_id: da.anomaly_id,
+                            display_ref_no: da.anomaly_ref_no,
+                            description: da.defect_description,
+                            priority: da.priority_code,
+                            category: da.defect_category_code,
+                            defect_type: da.defect_type_code,
+                            recommended_action: da.recommended_action,
+                            status: da.status,
+                            rectified: da.is_rectified,
+                            rectified_by: da.rectified_by,
+                            rectified_date: da.rectified_date,
+                            rectified_remarks: da.rectified_remarks,
+                            action_priority: da.action_priority,
+                            anomaly_status: da.status,
+                            id: r.insp_id,
+                            inspection_date: r.inspection_date,
+                            observations: r.description,
+                            has_anomaly: r.has_anomaly,
+                            elevation: r.elevation,
+                            fp_kp: r.fp_kp,
+                            tape_id: r.tape_id,
+                            tape_no: vt.tape_no || r.tape_no,
+                            video_ref: r.tape_count_no,
+                            component_id: sc.id || r.component_id,
+                            component_type: sc.code || r.component_type,
+                            component_qid: sc.q_id || r.component_qid,
+                            jobpack_id: r.jobpack_id,
+                            structure_id: r.structure_id,
+                            sow_report_no: r.sow_report_no,
+                            dive_job_id: dj.dive_job_id,
+                            dive_no: dj.dive_no,
+                            diver_name: dj.diver_name,
+                            dive_start: dj.start_time,
+                            rov_job_id: rj.rov_job_id,
+                            deployment_no: rj.deployment_no,
+                            rov_name: rj.rov_operator,
+                            rov_machine: rj.rov_serial_no,
+                            rov_start: rj.start_time,
+                        };
+                    });
+                }
+
+                // If still empty and inspectionId is provided (e.g. Findings that do not have an insp_anomalies row)
+                if (anomalies.length === 0 && inspectionId) {
+                    const { data: recData, error: recErr } = await (supabase as any)
+                        .from("insp_records")
+                        .select("*, structure_components(*), insp_video_tapes(*), insp_dive_jobs(*), insp_rov_jobs(*)")
+                        .eq("insp_id", inspectionId)
+                        .maybeSingle();
+
+                    if (!recErr && recData) {
+                        const sc = recData.structure_components || {};
+                        const dj = recData.insp_dive_jobs || {};
+                        const rj = recData.insp_rov_jobs || {};
+                        const vt = recData.insp_video_tapes || {};
+                        anomalies = [{
+                            anomaly_id: null,
+                            display_ref_no: `INSP-${recData.insp_id}`,
+                            description: recData.description || recData.observation || recData.inspection_data?.finding || recData.inspection_data?.findings || "Finding",
+                            priority: recData.inspection_data?.priority || "Normal",
+                            category: recData.inspection_type_code,
+                            defect_type: recData.inspection_type_code,
+                            recommended_action: recData.inspection_data?.recommended_action || "",
+                            status: recData.status || "OPEN",
+                            rectified: recData.status === "COMPLETED" || recData.status === "CLOSED",
+                            id: recData.insp_id,
+                            inspection_date: recData.inspection_date,
+                            observations: recData.description,
+                            has_anomaly: recData.has_anomaly,
+                            elevation: recData.elevation,
+                            fp_kp: recData.fp_kp,
+                            tape_id: recData.tape_id,
+                            tape_no: vt.tape_no || recData.tape_no,
+                            video_ref: recData.tape_count_no,
+                            component_id: sc.id || recData.component_id,
+                            component_type: sc.code || recData.component_type,
+                            component_qid: sc.q_id || recData.component_qid,
+                            jobpack_id: recData.jobpack_id,
+                            structure_id: recData.structure_id,
+                            sow_report_no: recData.sow_report_no,
+                            dive_job_id: dj.dive_job_id,
+                            dive_no: dj.dive_no,
+                            diver_name: dj.diver_name,
+                            dive_start: dj.start_time,
+                            rov_job_id: rj.rov_job_id,
+                            deployment_no: rj.deployment_no,
+                            rov_name: rj.rov_operator,
+                            rov_machine: rj.rov_serial_no,
+                            rov_start: rj.start_time,
+                        }];
+                    }
+                }
+            } catch (fbErr) {
+                console.error("[AnomalyReport] Fallback query error:", fbErr);
+            }
+        }
+
+        if (viewError && anomalies.length === 0) {
             console.error("View Error:", viewError);
             throw viewError;
         }
@@ -122,13 +252,13 @@ export async function GET(request: NextRequest) {
 
         console.log(`[AnomalyReport] Found ${anomalies.length} anomalies via View.`);
         
-        // Enrich missing tape_no and inspection_data from insp_records & insp_video_tapes
+        // Enrich missing tape_no, inspection_data, dive_job_id, rov_job_id from insp_records & insp_video_tapes
         const allInspIds = Array.from(new Set(anomalies.map((a: any) => a.id || a.insp_id).filter(Boolean)));
         if (allInspIds.length > 0) {
             try {
                 const { data: recData } = await (supabase as any)
                     .from("insp_records")
-                    .select("insp_id, tape_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
+                    .select("insp_id, tape_id, dive_job_id, rov_job_id, inspection_data, insp_video_tapes:tape_id(tape_no)")
                     .in("insp_id", allInspIds);
                 if (recData && recData.length > 0) {
                     const recMap = new Map<number, any>();
@@ -143,11 +273,68 @@ export async function GET(request: NextRequest) {
                             if (!a.inspection_data && match.inspection_data) {
                                 a.inspection_data = match.inspection_data;
                             }
+                            if (!a.dive_job_id && match.dive_job_id) {
+                                a.dive_job_id = match.dive_job_id;
+                            }
+                            if (!a.rov_job_id && match.rov_job_id) {
+                                a.rov_job_id = match.rov_job_id;
+                            }
                         }
                     });
                 }
             } catch (err) {
                 console.warn("[AnomalyReport] Error enriching insp_records:", err);
+            }
+        }
+
+        // Enrich dive and ROV job metadata (supervisor, report_coordinator, deployment_no / dive_no)
+        const rovJobIds = Array.from(new Set(anomalies.map((a: any) => a.rov_job_id).filter(Boolean)));
+        if (rovJobIds.length > 0) {
+            try {
+                const { data: rovData } = await (supabase as any)
+                    .from("insp_rov_jobs")
+                    .select("rov_job_id, deployment_no, rov_operator, rov_supervisor, report_coordinator")
+                    .in("rov_job_id", rovJobIds);
+                if (rovData && rovData.length > 0) {
+                    const rovMap = new Map<number, any>();
+                    rovData.forEach((rj: any) => rovMap.set(Number(rj.rov_job_id), rj));
+                    anomalies.forEach((a: any) => {
+                        const rj = rovMap.get(Number(a.rov_job_id));
+                        if (rj) {
+                            if (!a.deployment_no && rj.deployment_no) a.deployment_no = rj.deployment_no;
+                            if (!a.rov_name && rj.rov_operator) a.rov_name = rj.rov_operator;
+                            if (!a.supervisor && rj.rov_supervisor) a.supervisor = rj.rov_supervisor;
+                            if (!a.report_coordinator && rj.report_coordinator) a.report_coordinator = rj.report_coordinator;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_rov_jobs:", err);
+            }
+        }
+
+        const diveJobIds = Array.from(new Set(anomalies.map((a: any) => a.dive_job_id).filter(Boolean)));
+        if (diveJobIds.length > 0) {
+            try {
+                const { data: diveData } = await (supabase as any)
+                    .from("insp_dive_jobs")
+                    .select("dive_job_id, dive_no, diver_name, dive_supervisor, report_coordinator")
+                    .in("dive_job_id", diveJobIds);
+                if (diveData && diveData.length > 0) {
+                    const diveMap = new Map<number, any>();
+                    diveData.forEach((dj: any) => diveMap.set(Number(dj.dive_job_id), dj));
+                    anomalies.forEach((a: any) => {
+                        const dj = diveMap.get(Number(a.dive_job_id));
+                        if (dj) {
+                            if (!a.dive_no && dj.dive_no) a.dive_no = dj.dive_no;
+                            if (!a.diver_name && dj.diver_name) a.diver_name = dj.diver_name;
+                            if (!a.supervisor && dj.dive_supervisor) a.supervisor = dj.dive_supervisor;
+                            if (!a.report_coordinator && dj.report_coordinator) a.report_coordinator = dj.report_coordinator;
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[AnomalyReport] Error enriching insp_dive_jobs:", err);
             }
         }
 

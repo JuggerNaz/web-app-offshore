@@ -63,6 +63,7 @@ import { generatePipelineEventSketchReport } from "@/utils/report-generators/pip
 import { generateROVNavigReport } from "@/utils/report-generators/rov-navig-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
 import { generateVideoLogReport as generateVideoLogReportTemplate } from "@/utils/report-generators/video-log-report";
+import { generateInspectionIncompleteFlaggedReport as generateInspectionIncompleteFlaggedReportTemplate, isStatusIncomplete } from "@/utils/report-generators/inspection-incomplete-flagged-report";
 
 import { applyWatermarkAndSignaturesGlobal } from "@/utils/report-generators/shared-logo";
 
@@ -173,6 +174,7 @@ export function useWorkspaceReports(
     const [divingJtisiDetailPreviewOpen, setDivingJtisiDetailPreviewOpen] = useState(false);
     const [divingItisiPreviewOpen, setDivingItisiPreviewOpen] = useState(false);
     const [divingItisiDetailPreviewOpen, setDivingItisiDetailPreviewOpen] = useState(false);
+    const [incompleteFlaggedPreviewOpen, setIncompleteFlaggedPreviewOpen] = useState(false);
     const [seabedTemplateType, setSeabedTemplateType] = useState<string>('seabed-survey-debris');
 
     const [previewRecord, setPreviewRecord] = useState<any>(null);
@@ -199,11 +201,19 @@ export function useWorkspaceReports(
                 showSignatures: showSignatures ?? reportConfig.showSignatures
             };
 
+            const matchedAnomalyId = previewRecord?.anomaly_id || previewRecord?.insp_anomalies?.[0]?.anomaly_id;
+            if (matchedAnomalyId) {
+                config.anomalyId = matchedAnomalyId;
+            }
             if (previewRecord?.insp_id) {
                 config.inspectionId = previewRecord.insp_id;
-            } else if (previewRecord?.anomaly_id) {
-                config.anomalyId = previewRecord.anomaly_id;
             }
+
+            const isFinding = previewRecord?.record_category === "FINDING" ||
+                              previewRecord?.insp_anomalies?.[0]?.record_category === "FINDING" ||
+                              previewRecord?.findingType === "Finding" ||
+                              previewRecord?.status === "Finding";
+            config.isFindingsReport = isFinding;
 
             const result = await generateDefectAnomalyReport(
                 { id: jobPackId || "0", name: headerData.jobpackName },
@@ -513,7 +523,16 @@ export function useWorkspaceReports(
     };
 
     const generateSZCIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const szciRecords = currentRecords.filter(r => r.inspection_type_code === 'RSZCI' || r.inspection_type?.code === 'RSZCI');
+        const szCodes = ['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI'];
+        const sowReportNo = headerData.sowReportNo;
+        const szciRecords = currentRecords.filter(r => {
+            const code = String(r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
+            const isSZ = szCodes.includes(code);
+            if (!isSZ) return false;
+            if (!sowReportNo || sowReportNo === "N/A" || sowReportNo === "all") return true;
+            const rSow = String(r.sow_report_no || '').toLowerCase();
+            return !r.sow_report_no || rSow.includes(sowReportNo.toLowerCase()) || sowReportNo.toLowerCase().includes(rSow);
+        });
 
         const settings = await getReportHeaderData();
         
@@ -712,7 +731,29 @@ export function useWorkspaceReports(
     };
 
     const generateBLReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const blRecords = currentRecords.filter(r => isBLRecord(r));
+        // Preload structure components to resolve parent-child hierarchy for BL and FD components
+        const compMap = new Map<string | number, any>();
+        try {
+            const structId = Number(structureId);
+            if (structId) {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', structId);
+                allComps?.forEach((c: any) => {
+                    compMap.set(c.id, c);
+                    compMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        compMap.set(String(c.q_id).toUpperCase(), c);
+                        compMap.set(String(c.q_id), c);
+                    }
+                });
+            }
+        } catch (e) {
+            console.warn("[useWorkspaceReports] Could not preload structure_components for BL/FD:", e);
+        }
+
+        const blRecords = currentRecords.filter(r => isBLRecord(r, compMap));
 
         const settings = await getReportHeaderData();
         const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
@@ -1406,6 +1447,27 @@ export function useWorkspaceReports(
         return await generateROVRWDIReportTemplate(records, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures });
     };
 
+    const generateIncompleteFlaggedReport = async () => {
+        setIncompleteFlaggedPreviewOpen(true);
+    };
+
+    const generateIncompleteFlaggedReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void | null> => {
+        const records = currentRecords.filter(isStatusIncomplete);
+        const settings = await getReportHeaderData();
+        const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+        let contractorLogoUrl = '';
+        if (jobPack?.metadata?.contrac) {
+            const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
+            contractorLogoUrl = contrData?.logo_url || '';
+        }
+        return await generateInspectionIncompleteFlaggedReportTemplate(
+            records,
+            { ...headerData, contractorLogoUrl, allRecords: currentRecords, structureId: structureId ? Number(structureId) : undefined, jobPackId: jobPackId ? Number(jobPackId) : undefined },
+            { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
+            { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures, allRecords: currentRecords, structureId: structureId ? Number(structureId) : undefined, jobPackId: jobPackId ? Number(jobPackId) : undefined }
+        );
+    };
+
     const generateBSINSReport = async () => {
         setBsinsPreviewOpen(true);
     };
@@ -1889,16 +1951,70 @@ export function useWorkspaceReports(
         }
 
         // 2. Map DB attachments to match report format
-        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO');
+        const photosFromDb = dbAttachments.filter(a => !a.type || a.type === 'PHOTO').map(a => {
+            const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+            const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+            const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+            const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+            const isFinding = Boolean(
+                a.is_finding ||
+                metaStatus === 'finding' ||
+                String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+            );
+            const findingRef = isFinding 
+                ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                : null;
+            return {
+                ...a,
+                insp_date: recDate,
+                inspection_date: recDate,
+                inspection_time: recTime,
+                insp_id: rec?.insp_id || a.source_id || 0,
+                anomaly_ref: !isFinding ? anomRef : null,
+                finding_ref: findingRef,
+                is_finding: isFinding,
+                is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
+            };
+        });
 
         // 3. Include Pending Attachments (local state)
         // Only include those that are marked as 'PHOTO'
         const photosFromPending = pendingAttachments
             .filter(a => a.type === 'PHOTO' || !a.type)
-            .map(a => ({
-                ...a,
-                path: a.path || a.previewUrl // Generator uses path, but pending might only have previewUrl/blob
-            }));
+            .map(a => {
+                const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+                const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+                const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+                const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+                return {
+                    ...a,
+                    path: a.path || a.previewUrl,
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: rec?.insp_id || a.source_id || 0,
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
+                };
+            });
 
         const allPhotos = [...photosFromDb, ...photosFromPending];
 
@@ -1927,7 +2043,70 @@ export function useWorkspaceReports(
             dbAttachments = data || [];
         }
 
-        const allPhotos = [...dbAttachments, ...pendingAttachments];
+        const photosFromDbLog = dbAttachments.filter(a => !a.type || a.type === 'PHOTO').map(a => {
+            const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+            const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+            const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+            const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+            const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+            const isFinding = Boolean(
+                a.is_finding ||
+                metaStatus === 'finding' ||
+                String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+            );
+            const findingRef = isFinding 
+                ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                : null;
+            return {
+                ...a,
+                insp_date: recDate,
+                inspection_date: recDate,
+                inspection_time: recTime,
+                insp_id: rec?.insp_id || a.source_id || 0,
+                anomaly_ref: !isFinding ? anomRef : null,
+                finding_ref: findingRef,
+                is_finding: isFinding,
+                is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
+            };
+        });
+
+        const photosFromPendingLog = pendingAttachments
+            .filter(a => a.type === 'PHOTO' || !a.type)
+            .map(a => {
+                const rec = currentRecords.find(r => r.insp_id === a.source_id || r.insp_id === (a as any).inspection_id);
+                const recDate = rec?.inspection_date || rec?.insp_date || rec?.date || rec?.inspection_data?.inspection_date || rec?.inspection_data?.insp_date || rec?.inspection_data?.date || null;
+                const recTime = rec?.inspection_time || rec?.inspection_data?.inspection_time || rec?.inspection_data?.time || null;
+                const anomRef = rec?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null;
+                const metaStatus = String(rec?.inspection_data?._meta_status || rec?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(rec?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || rec?.finding_ref || rec?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+                return {
+                    ...a,
+                    path: a.path || a.previewUrl,
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: rec?.insp_id || a.source_id || 0,
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || rec?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
+                };
+            });
+
+        const allPhotos = [...photosFromDbLog, ...photosFromPendingLog];
 
         return await generateROVPhotographyLogReport(allPhotos, { ...headerData, contractorLogoUrl }, { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName }, { returnBlob: true, printFriendly, showSignatures: showSignatures ?? reportConfig.showSignatures }) as Blob;
     };
@@ -2207,6 +2386,7 @@ export function useWorkspaceReports(
         divingAcfmcPreviewOpen, setDivingAcfmcPreviewOpen,
         divingPlcoPreviewOpen, setDivingPlcoPreviewOpen,
         rovRwdiPreviewOpen, setRovRwdiPreviewOpen,
+        incompleteFlaggedPreviewOpen, setIncompleteFlaggedPreviewOpen,
         bsinsPreviewOpen, setBsinsPreviewOpen,
         cvinsPreviewOpen, setCvinsPreviewOpen,
         cleanPreviewOpen, setCleanPreviewOpen,
@@ -2509,6 +2689,8 @@ export function useWorkspaceReports(
         generateDivingPLCOReportBlob,
         generateROVRWDIReport,
         generateROVRWDIReportBlob,
+        generateIncompleteFlaggedReport,
+        generateIncompleteFlaggedReportBlob,
         generateBSINSReport,
         generateBSINSReportBlob,
         generateCVINSReport,
@@ -2575,7 +2757,7 @@ export function useWorkspaceReports(
         },
         generateInspectionSummaryGraphReportBlob: async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
             const settings = await getReportHeaderData();
-            const { data: jobPack } = await supabase.from('jobpack').select('metadata').eq('id', Number(jobPackId)).maybeSingle();
+            const { data: jobPack } = await supabase.from('jobpack').select('id, name, metadata').eq('id', Number(jobPackId)).maybeSingle();
             let contractorLogoUrl = '';
             if (jobPack?.metadata?.contrac) {
                 const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack?.metadata?.contrac).maybeSingle();
@@ -2592,12 +2774,14 @@ export function useWorkspaceReports(
             const json = await res.json();
             const summaryData = json.data || {};
 
+            const resolvedJobpackName = jobPack?.name || headerData.jobpackName || summaryData?.jobpackName || summaryData?.jobpack?.name || "";
+
             const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
             return await generateInspectionSummaryGraphReport(
                 summaryData,
-                { ...headerData, contractorLogoUrl },
+                { ...headerData, contractorLogoUrl, jobpackName: resolvedJobpackName },
                 { company_name: settings.companyName, logo_url: settings.companyLogo, department_name: settings.departmentName },
-                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures } as any
+                { returnBlob: true, printFriendly, sowReportNo: headerData.sowReportNo, jobPackId: Number(jobPackId), structureId: Number(structureId), showSignatures: showSignatures ?? reportConfig.showSignatures, jobpackName: resolvedJobpackName } as any
             ) as Blob;
         },
         generateSZONEReport,

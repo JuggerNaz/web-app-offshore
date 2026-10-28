@@ -1,9 +1,11 @@
-import { normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, isPurelyIncompleteRecord } from "./shared-logo";
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isROVRecord, hasCPReading } from "./rov-cp-report";
 import { isDivingCPSURVRecord } from "./diving-cpsurv-report";
+import { isExcludedFromRGVI } from "./rov-rgvi-report";
+import { isStatusIncomplete } from "./inspection-incomplete-flagged-report";
 
 const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
@@ -39,7 +41,7 @@ const convertPdfBlobToImages = async (
         for (let i = 1; i <= pdf.numPages; i++) {
             onPageProgress?.(i, pdf.numPages);
             const page = await pdf.getPage(i);
-            const viewport = page.getViewport({ scale: 2.0 });
+            const viewport = page.getViewport({ scale: 1.5 });
 
             // Check if page is landscape
             const isLandscape = viewport.width > viewport.height;
@@ -59,7 +61,7 @@ const convertPdfBlobToImages = async (
                 viewport: viewport
             }).promise;
 
-            const base64Data = canvas.toDataURL("image/png");
+            const base64Data = canvas.toDataURL("image/jpeg", 0.82);
 
             // Release canvas GPU and backing memory immediately
             canvas.width = 0;
@@ -71,11 +73,11 @@ const convertPdfBlobToImages = async (
             pages.push({
                 page_image: {
                     data: base64Data,
-                    extension: ".png"
+                    extension: ".jpg"
                 },
                 photo: {
                     data: base64Data,
-                    extension: ".png"
+                    extension: ".jpg"
                 },
                 is_landscape: isLandscape,
                 section_break: "",
@@ -140,6 +142,7 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-rseab-gas-detail-report': ['RSEAB_GAS', 'RSEAB_GAS_REPORT', 'RSEAB_GAS_PAGES'],
     'rov-rseab-crater-detail-report': ['RSEAB_CRATER', 'RSEAB_CRATER_REPORT', 'RSEAB_CRATER_PAGES'],
     'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOR_REPORT', 'RSCOR_PAGES', 'SCOUR_PAGES'],
+    'rov-scour-v2-report': ['RSCOR_V2', 'RSCOR_V2_REPORT', 'RSCOR_V2_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rov-rscor-v2-report': ['RSCOR_V2', 'RSCOR_V2_REPORT', 'RSCOR_V2_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rov-rscor-survey-report': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
     'rscor-survey': ['RSCOR_SURVEY', 'RSCOR_SURVEY_REPORT', 'RSCOR_SURVEY_PAGES', 'RSCOR_PAGES', 'SCOUR_PAGES', 'RSCOR'],
@@ -151,7 +154,7 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'rov-conductor-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-report': ['RCOND', 'CONDUCTOR', 'CONDUCTOR_SUB', 'RCOND_REPORT', 'RCOND_PAGES'],
     'rov-rcond-sketch-report': ['RCOND_SKETCH', 'CONDUCTOR_SKETCH', 'RCOND_SKETCH_REPORT', 'RCOND_SKETCH_PAGES'],
-    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOAT_LANDING', 'BOATLANDING_SUB', 'BOAT_LANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES', 'BOATLANDING_PAGES', 'BOAT_LANDING_PAGES'],
+    'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'BOAT_LANDING', 'BOATLANDING_SUB', 'BOAT_LANDING_SUB', 'RBLTG_REPORT', 'RBLTG_PAGES', 'BOATLANDING_PAGES', 'BOAT_LANDING_PAGES', 'FD', 'FD_PAGES', 'FENDER', 'FENDER_PAGES', 'BF', 'BF_PAGES'],
     'rov-bb-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
     'boat-bumper-report': ['BB', 'BOATBUMPER', 'BOAT_BUMPER', 'BOATBUMBER', 'BOAT_BUMBER', 'BOATBUMPER_SUB', 'BOAT_BUMPER_SUB', 'BB_REPORT', 'BB_PAGES', 'BOATBUMPER_PAGES', 'BOAT_BUMPER_PAGES', 'BOATBUMBER_PAGES', 'BOAT_BUMBER_PAGES', 'FENDER_PAGES'],
     'rov-rg-report': ['RGUARD', 'RG', 'RISERGUARD', 'RISER_GUARD', 'RISERGUARD_SUB', 'RISER_GUARD_SUB', 'RGUARD_REPORT', 'RGUARD_PAGES', 'RISERGUARD_PAGES', 'RISER_GUARD_PAGES'],
@@ -175,10 +178,14 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'work-scope-report': ['WORK_SCOPE', 'WORK_SCOPE_REPORT', 'WORK_SCOPE_PAGES', 'SOW_REPORT_PAGES'],
     'work-scope-status-report': ['WORK_SCOPE_STATUS', 'WORK_SCOPE_STATUS_REPORT', 'WORK_SCOPE_STATUS_PAGES'],
     'work-scope-incomplete-report': ['WORK_SCOPE_INCOMPLETE', 'WORK_SCOPE_INCOMPLETE_REPORT', 'WORK_SCOPE_INCOMPLETE_PAGES'],
+    'inspection-incomplete-flagged-report': ['INC', 'INCOMPLETE_PAGES', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
+    'incomplete-flagged-report': ['INC', 'INCOMPLETE_PAGES', 'INCOMPLETE_FLAGGED', 'INSPECTION_INCOMPLETE', 'INCOMPLETE_REPORT', 'INC_REPORT'],
     'defect-criteria-report': ['DEFECT_CRITERIA', 'DEFECT_CRITERIA_REPORT', 'DEFECT_CRITERIA_PAGES'],
     'structure-summary': ['STRUCTURE_SUMMARY', 'STRUCTURE_SUMMARY_REPORT', 'STRUCTURE_SUMMARY_PAGES'],
+    'inspection-summary': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
     'inspection-summary-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSPECTION_SUMMARY_PAGES'],
-    'inspection-summary-graph-report': ['INSPECTION_SUMMARY', 'INSPECTION_SUMMARY_REPORT', 'INSP_SUM', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_PAGES']
+    'inspection-summary-graph': ['INSPECTION_SUMMARY_GRAPH', 'INSPECTION_SUMMARY_GRAPH_REPORT', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_GRAPH_PAGES'],
+    'inspection-summary-graph-report': ['INSPECTION_SUMMARY_GRAPH', 'INSPECTION_SUMMARY_GRAPH_REPORT', 'INSP_SUM_GRAPH', 'INSPECTION_SUMMARY_GRAPH_PAGES']
 };
 
 export interface DocxMappingProgress {
@@ -202,7 +209,7 @@ export const mapInspectionDataForDocx = async (
     activeTemplateTags?: Set<string> | null,
     onProgress?: (info: DocxMappingProgress) => void
 ) => {
-    records = normalizeReportRecords(records);
+    records = normalizeReportRecords(records, { allowPurelyIncomplete: true });
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
 
@@ -212,28 +219,71 @@ export const mapInspectionDataForDocx = async (
         detail: `Starting parallel attachment fetch`
     });
 
+    // Pre-load all structure components into a lookup map to resolve parent-child hierarchy (e.g. FD and associated components)
+    const effectiveStructureId = structure?.id || structure?.structure_id || jobPack?.structure_id || jobPack?.structure?.id || records.find(r => r.structure_id)?.structure_id;
+    const structureCompMap = new Map<string | number, any>();
+    if (effectiveStructureId) {
+        try {
+            const { createClient } = await import("@/utils/supabase/client");
+            const supabase = createClient();
+            const { data: allComps } = await supabase
+                .from('structure_components')
+                .select('id, q_id, code, metadata')
+                .eq('structure_id', effectiveStructureId);
+            if (allComps) {
+                for (const c of allComps) {
+                    structureCompMap.set(c.id, c);
+                    structureCompMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        structureCompMap.set(String(c.q_id).toUpperCase(), c);
+                        structureCompMap.set(String(c.q_id), c);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn("[report-data-mapper] Error pre-loading structure components for FD association check:", e);
+        }
+    }
+    for (const r of records) {
+        const sc = r.structure_components || r.component;
+        if (sc && (sc.id || sc.q_id)) {
+            if (sc.id) {
+                if (!structureCompMap.has(sc.id)) structureCompMap.set(sc.id, sc);
+                if (!structureCompMap.has(String(sc.id))) structureCompMap.set(String(sc.id), sc);
+            }
+            if (sc.q_id) {
+                const uq = String(sc.q_id).toUpperCase();
+                if (!structureCompMap.has(uq)) structureCompMap.set(uq, sc);
+                if (!structureCompMap.has(String(sc.q_id))) structureCompMap.set(String(sc.q_id), sc);
+            }
+        }
+    }
+
     // Fetch all attachments for these inspection records if any
     const recordIds = records.map(r => r.insp_id).filter(Boolean);
+    const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+    const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
     let attachments: any[] = [];
-    if (recordIds.length > 0) {
+    if (allSourceIds.length > 0) {
         try {
             const { createClient } = await import("@/utils/supabase/client");
             const supabase = createClient();
 
             // Query attachments in parallel batches of 100 to maximize throughput and avoid URL length limitations
             const chunks: number[][] = [];
-            for (let i = 0; i < recordIds.length; i += 100) {
-                chunks.push(recordIds.slice(i, i + 100));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                chunks.push(allSourceIds.slice(i, i + 100));
             }
 
             // Always query BOTH 'attachment' table AND 'insp_media' table in parallel so freshly uploaded photos are never missed
-            const [attachmentBatches, mediaBatches] = await Promise.all([
+            const [attachmentBatches, mediaBatches, anomMediaBatches] = await Promise.all([
                 Promise.all(
                     chunks.map(chunk =>
                         supabase
                             .from('attachment')
                             .select('*')
                             .in('source_id', chunk)
+                            .range(0, 9999)
                     )
                 ),
                 Promise.all(
@@ -242,8 +292,20 @@ export const mapInspectionDataForDocx = async (
                             .from('insp_media' as any)
                             .select('*')
                             .in('inspection_id', chunk)
+                            .range(0, 9999)
                     )
-                )
+                ),
+                anomalyIds.length > 0
+                    ? Promise.all(
+                        chunks.map(chunk =>
+                            supabase
+                                .from('insp_media' as any)
+                                .select('*')
+                                .in('anomaly_id', chunk)
+                                .range(0, 9999)
+                        )
+                    )
+                    : Promise.resolve([])
             ]);
 
             for (const { data, error } of attachmentBatches) {
@@ -267,6 +329,23 @@ export const mapInspectionDataForDocx = async (
                     })));
                 }
             }
+
+            for (const { data: media, error } of (anomMediaBatches as any[])) {
+                if (!error && media && media.length > 0) {
+                    attachments.push(...media.map((m: any) => ({
+                        id: m.media_id,
+                        path: m.file_path,
+                        file_path: m.file_path,
+                        name: m.file_name || `Photo ${m.media_id}`,
+                        source_id: m.inspection_id,
+                        anomaly_id: m.anomaly_id,
+                        source_type: 'anomaly',
+                        meta: m.meta,
+                        bucket: (m.meta as any)?.bucket || 'inspection-media',
+                        created_at: m.created_at || m.captured_at
+                    })));
+                }
+            }
         } catch (e) {
             console.error("Failed to fetch attachments for docx:", e);
         }
@@ -278,23 +357,54 @@ export const mapInspectionDataForDocx = async (
         detail: `Sorting and associating media items`
     });
 
+    const recordMap = new Map<number, any>();
+    records.forEach(r => {
+        if (r.insp_id) recordMap.set(Number(r.insp_id), r);
+    });
+
     const attMap = new Map<number, any[]>();
     attachments.forEach(att => {
-        const sid = Number(att.source_id);
+        const sid = Number(att.source_id || att.inspection_id);
+        const rec = recordMap.get(sid);
+        if (rec) {
+            const recDate = rec.inspection_date || rec.insp_date || rec.date || rec.inspection_data?.inspection_date || rec.inspection_data?.insp_date || rec.inspection_data?.date || null;
+            const recTime = rec.inspection_time || rec.inspection_data?.inspection_time || rec.inspection_data?.time || null;
+            att.insp_date = recDate;
+            att.inspection_date = recDate;
+            att.inspection_time = recTime;
+            att.insp_id = rec.insp_id;
+            if (!att.anomaly_ref && rec.insp_anomalies?.[0]?.anomaly_ref_no) {
+                att.anomaly_ref = rec.insp_anomalies[0].anomaly_ref_no;
+            }
+        }
         if (!attMap.has(sid)) attMap.set(sid, []);
         attMap.get(sid)!.push(att);
     });
-    // Sort attachments newest-first for each record
+    // Sort attachments by user-defined sort_order first, then newest-first
     attMap.forEach(list => {
         list.sort((a, b) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
             const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
             const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
             return dateB - dateA;
         });
     });
     records.forEach(r => {
+        const recDate = r.inspection_date || r.insp_date || r.date || r.inspection_data?.inspection_date || r.inspection_data?.insp_date || r.inspection_data?.date || null;
+        const recTime = r.inspection_time || r.inspection_data?.inspection_time || r.inspection_data?.time || null;
         if (r.insp_id && attMap.has(Number(r.insp_id))) {
             const list = attMap.get(Number(r.insp_id)) || [];
+            list.forEach(att => {
+                att.insp_date = recDate;
+                att.inspection_date = recDate;
+                att.inspection_time = recTime;
+                att.insp_id = r.insp_id;
+                if (!att.anomaly_ref && r.insp_anomalies?.[0]?.anomaly_ref_no) {
+                    att.anomaly_ref = r.insp_anomalies[0].anomaly_ref_no;
+                }
+            });
             r.attachments = list;
             r.insp_photos = list;
             r.photos = list;
@@ -347,11 +457,11 @@ export const mapInspectionDataForDocx = async (
     // GVI Table (ROV GVI Table of Results for inline Word tables)
     const rgviRecsForTable = records.filter(r => {
         const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-        return c === "RGVI" || c === "GVI";
+        return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
     });
+    reportData.HAS_GVI = rgviRecsForTable.length > 0;
+    reportData.HAS_RGVI = rgviRecsForTable.length > 0;
     if (rgviRecsForTable.length > 0) {
-        reportData.HAS_GVI = true;
-        reportData.HAS_RGVI = true;
         reportData.GVI_TABLE = rgviRecsForTable.map((r, idx) => {
             const d = r.inspection_data || r.inspection_dat || {};
             return {
@@ -367,6 +477,9 @@ export const mapInspectionDataForDocx = async (
             };
         });
         reportData.RGVI_TABLE = reportData.GVI_TABLE;
+    } else {
+        reportData.GVI_TABLE = [];
+        reportData.RGVI_TABLE = [];
     }
 
     // 3. Handle System Aliases
@@ -395,11 +508,12 @@ export const mapInspectionDataForDocx = async (
         'diving-itisi-detail-report': ['DRRISI', 'DRISI', 'RSURV', 'RISER', 'DRSER', 'DRSI', 'ITISI'],
         'rov-jtisi-detail-report': ['RRISI'],
         'rov-itisi-detail-report': ['RRISI'],
-        'rov-scour-report': ['RSCOR', 'SCOUR'],
-        'rov-rscor-v2-report': ['RSCOR', 'SCOUR'],
-        'rscor-v2': ['RSCOR', 'SCOUR'],
-        'rov-rscor-survey-report': ['RSCOR', 'SCOUR'],
-        'rscor-survey': ['RSCOR', 'SCOUR'],
+        'rov-scour-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
+        'rov-scour-v2-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rov-rscor-v2-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rscor-v2': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2'],
+        'rov-rscor-survey-report': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
+        'rscor-survey': ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR'],
         'rov-caisson-report': ['RCASN', 'CASN'],
         'rov-rcasn-report': ['RCASN', 'CASN'],
         'rov-rcasn-sketch-report': ['RCASN', 'CASN'],
@@ -417,7 +531,9 @@ export const mapInspectionDataForDocx = async (
         'rgani-report': ['RGVI', 'RGANI', 'GANI', 'ANODE', 'ANOD', 'RAN'],
         'rov-anode-rsani-report': ['RSANI', 'SANI'],
         'anode-rsani-report': ['RSANI', 'SANI'],
-        'rsani-report': ['RSANI', 'SANI']
+        'rsani-report': ['RSANI', 'SANI'],
+        'rov-bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'FD'],
+        'bl-report': ['RBLTG', 'BL', 'BOATLANDING', 'FD']
     };
 
     let contractorLogoUrl = "";
@@ -597,13 +713,21 @@ export const mapInspectionDataForDocx = async (
                 return (r.description && r.description !== "N/A") && !(r.has_anomaly === 1 || r.has_anomaly === true);
             }
             if (templateId === 'inspection-report') {
-                return true;
+                return !isPurelyIncompleteRecord(r);
             }
             if (templateId === 'work-scope-incomplete') {
                 return r.status && !['COMPLETED', 'APPROVED', 'CLOSE', 'CLOSED'].includes(r.status.toUpperCase());
             }
+            if (['inspection-incomplete-flagged-report', 'incomplete-flagged-report'].includes(templateId)) {
+                return isStatusIncomplete(r);
+            }
             if (templateId === 'inspection-schedule' || templateId === 'planning-overview') {
                 return true;
+            }
+
+            // Exclude purely incomplete records from standard inspection report templates
+            if (isPurelyIncompleteRecord(r)) {
+                return false;
             }
 
             // Photography reports explicit routing
@@ -629,7 +753,15 @@ export const mapInspectionDataForDocx = async (
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
                 const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                const assocId = meta.associated_comp_id || meta.parent_id;
+                const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                const parentCode = String(parentComp?.code || '').toUpperCase();
+                const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                const isParentCond = ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(parentCode) || 
+                                     parentQid.startsWith('CON') || parentQid.startsWith('CGF') ||
+                                     assocQid.startsWith('CON') || assocQid.startsWith('CGF');
+                const hasCondAssoc = Boolean(isParentCond);
                 return ['RCOND', 'RCON', 'COND'].includes(code) || 
                        ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
                        compQid.startsWith('CON') || compQid.startsWith('CGF') ||
@@ -639,7 +771,14 @@ export const mapInspectionDataForDocx = async (
                 const compCode = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                 const compQid = (r.structure_components?.q_id || r.component?.q_id || "").toUpperCase();
                 const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                const assocId = meta.associated_comp_id || meta.parent_id;
+                const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                const parentCode = String(parentComp?.code || '').toUpperCase();
+                const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                const isParentCasn = ['CS', 'CAS', 'CASN'].includes(parentCode) || 
+                                     parentQid.startsWith('CAS') || assocQid.startsWith('CAS');
+                const hasCasnAssoc = Boolean(isParentCasn);
                 return ['RCASN', 'CASN'].includes(code) || 
                        ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
                        compQid.startsWith('CS') || compQid.startsWith('CASN') ||
@@ -657,6 +796,16 @@ export const mapInspectionDataForDocx = async (
                 const compType = String(r.structure_components?.metadata?.type || r.component?.metadata?.type || "").toUpperCase();
                 const typeName = String(r.inspection_type?.name || r.inspection_type_name || "").toUpperCase();
                 return (code === "RSANI" || code === "SANI" || typeName.includes("SELECTED ANODE")) && (compCode === 'AN' || compType === 'ANODE' || !compCode);
+            }
+
+            // ROV GVI (RGVI) explicit routing: exclude dedicated templates and FD & its associated components
+            if (['rov-rgvi-report', 'rov-gvi-report', 'rgvi-report', 'gvi-report'].includes(templateId)) {
+                return (code === "RGVI" || code === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
+            }
+
+            // ROV Boatlanding / Fender explicit routing
+            if (['rov-bl-report', 'bl-report', 'boatlanding-report'].includes(templateId)) {
+                return isBLRecord(r, structureCompMap) || ['RBLTG', 'BL', 'BOATLANDING', 'FD'].includes(code);
             }
 
             // Activity-specific reports routing
@@ -681,6 +830,10 @@ export const mapInspectionDataForDocx = async (
             'diver-log-report',
             'video-log-report',
             'structure-summary',
+            'inspection-summary',
+            'inspection-summary-report',
+            'inspection-summary-graph',
+            'inspection-summary-graph-report',
             'component-catalog',
             'technical-specs',
             'component-spec',
@@ -736,7 +889,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
-                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                    { ...sharedConfig, returnBlob: true, showSignatures: false, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
                 const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");
@@ -763,6 +916,15 @@ export const mapInspectionDataForDocx = async (
                     companySettings || {},
                     sharedConfig as any
                 ) as any;
+            } else if (templateId === 'inspection-incomplete-flagged-report' || templateId === 'incomplete-flagged-report') {
+                const { generateInspectionIncompleteFlaggedReport } = await import("./inspection-incomplete-flagged-report");
+                const incompleteRecs = records.filter(isStatusIncomplete);
+                pdfBlob = await generateInspectionIncompleteFlaggedReport(
+                    incompleteRecs,
+                    { ...sharedHeaderData, allRecords: records },
+                    companySettings || {},
+                    { ...sharedConfig, allRecords: records } as any
+                );
             } else if (templateId === 'work-scope-report') {
                 const { generateWorkScopeReport } = await import("./work-scope-report");
                 pdfBlob = await generateWorkScopeReport(
@@ -791,10 +953,10 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'rov-rgvi-report' || templateId === 'rov-gvi-report') {
-                const { generateROVRGVIReport, isExcludedFromRGVI } = await import("./rov-rgvi-report");
+                const { generateROVRGVIReport } = await import("./rov-rgvi-report");
                 const rgviRecords = records.filter(r => {
                     const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                    return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r);
+                    return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
                 });
                 pdfBlob = await generateROVRGVIReport(
                     rgviRecords,
@@ -836,9 +998,12 @@ export const mapInspectionDataForDocx = async (
                     return ['RCASN', 'CASN'].includes(typeCode) || ['CS', 'CASN'].includes(compCode);
                 });
                 pdfBlob = await generateROVCasnReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-bl-report') {
+            } else if (templateId === 'rov-bl-report' || templateId === 'bl-report' || templateId === 'boatlanding-report') {
                 const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
-                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r) || (r.inspection_type?.code || "").toUpperCase() === "RBLTG"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['RBLTG', 'BL', 'BOATLANDING', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
+            } else if (templateId === 'rov-bb-report' || templateId === 'boat-bumper-report') {
+                const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
+                pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['BB', 'BOATBUMPER', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rg-report') {
                 const { generateROVRiserGuardReport } = await import("./rov-riser-guard-report");
                 pdfBlob = await generateROVRiserGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGUARD"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -858,7 +1023,15 @@ export const mapInspectionDataForDocx = async (
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
                     const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
                     const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                    const hasCondAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    const assocId = meta.associated_comp_id || meta.parent_id;
+                    const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                    const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                    const parentCode = String(parentComp?.code || '').toUpperCase();
+                    const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                    const isParentCond = ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(parentCode) || 
+                                         parentQid.startsWith('CON') || parentQid.startsWith('CGF') ||
+                                         assocQid.startsWith('CON') || assocQid.startsWith('CGF');
+                    const hasCondAssoc = Boolean(isParentCond);
                     return ['RCOND', 'RCON', 'COND'].includes(typeCode) || 
                            ['CD', 'CON', 'CF', 'CGF', 'CG'].includes(compCode) ||
                            compQid.startsWith('CON') || compQid.startsWith('CGF') ||
@@ -872,7 +1045,14 @@ export const mapInspectionDataForDocx = async (
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
                     const compQid = String(r.structure_components?.q_id || r.component?.q_id || '').toUpperCase();
                     const meta = r.structure_components?.metadata || r.component?.metadata || {};
-                    const hasCasnAssoc = Boolean(meta.associated_comp_id || meta.associated_comp_qid || meta.parent_id);
+                    const assocId = meta.associated_comp_id || meta.parent_id;
+                    const assocQid = String(meta.associated_comp_qid || meta.parent_qid || '').toUpperCase();
+                    const parentComp = assocId ? (structureCompMap.get(assocId) || structureCompMap.get(String(assocId))) : null;
+                    const parentCode = String(parentComp?.code || '').toUpperCase();
+                    const parentQid = String(parentComp?.q_id || '').toUpperCase();
+                    const isParentCasn = ['CS', 'CAS', 'CASN'].includes(parentCode) || 
+                                         parentQid.startsWith('CAS') || assocQid.startsWith('CAS');
+                    const hasCasnAssoc = Boolean(isParentCasn);
                     return ['RCASN', 'CASN'].includes(typeCode) || 
                            ['CS', 'CASN', 'CG', 'RCG'].includes(compCode) ||
                            compQid.startsWith('CS') || compQid.startsWith('CASN') ||
@@ -907,7 +1087,7 @@ export const mapInspectionDataForDocx = async (
                 const { generateROVSZCIReport } = await import("./rov-szci-report");
                 pdfBlob = await generateROVSZCIReport(records.filter(r => {
                     const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                    return ["RSZCI", "SZCI", "SZONE", "SPLASH"].includes(code);
+                    return ["RSZCI", "SZCI", "SZONE", "SPLASH", "DSZCI"].includes(code);
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-anode-report' || templateId === 'anode-report' || templateId === 'rgani-report') {
                 const { generateROVAnodeReport } = await import("./rov-anode-report");
@@ -937,9 +1117,10 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'rov-scour-report') {
                 const { generateROVRSCORReport } = await import("./rov-rscor-report");
                 pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2') {
+            } else if (templateId === 'rov-scour-v2-report' || templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2' || templateId === 'rscor_v2_rov') {
                 const { generateROVRSCORV2Report } = await import("./rov-rscor-v2-report");
-                pdfBlob = await generateROVRSCORV2Report(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
+                const scourCodes = ["RSCOR", "SCOUR", "RSCOUR", "DSCOU", "DSCOUR", "DSCOR", "RSCOR_V2"];
+                pdfBlob = await generateROVRSCORV2Report(records.filter(r => scourCodes.includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
                 const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
                 pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
@@ -953,14 +1134,14 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'utwt-report') {
                 const { generateROVUTWTReport } = await import("./rov-utwt-report");
                 pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-photo-report') {
+            } else if (templateId === 'rov-photo-report' || templateId === 'diving-photo-report' || templateId === 'photo-report') {
                 const { generateROVPhotographyReport } = await import("./rov-photography-report");
-                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || (r.inspection_type?.code || "").toUpperCase() === "RPHOTO");
+                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
-            } else if (templateId === 'rov-photo-log-report') {
+            } else if (templateId === 'rov-photo-log-report' || templateId === 'diving-photo-log-report' || templateId === 'photo-log-report') {
                 const { generateROVPhotographyLogReport } = await import("./rov-photography-log-report");
-                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || (r.inspection_type?.code || "").toUpperCase() === "RPHOTO");
+                const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyLogReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-seabed-report' || templateId === 'seabed-survey-debris' || templateId === 'seabed-survey-gas' || templateId === 'seabed-survey-crater') {
@@ -1082,7 +1263,66 @@ export const mapInspectionDataForDocx = async (
                 } catch (e) {
                     console.error("Error fetching full structure in docx mapper:", e);
                 }
-                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { ...sharedConfig, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any)) || null;
+                pdfBlob = (await generateStructureReport(fullStructure, companySettings, { 
+                    ...sharedConfig, 
+                    showContractorLogo: true, 
+                    isFinalDatasheet: true, 
+                    contractorLogoUrl: sharedConfig.contractorLogoUrl || (companySettings as any)?.contractorLogoUrl,
+                    sowReportNo: sowReportNo || "", 
+                    reportNoPrefix: sowReportNo || "" 
+                } as any)) || null;
+            } else if (templateId === 'inspection-summary-graph' || templateId === 'inspection-summary-graph-report') {
+                const { generateInspectionSummaryGraphReport } = await import("./inspection-summary-graph-report");
+                let summaryData: any = null;
+                try {
+                    const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;
+                    const jpId = jobPack?.id || jobPack?.jobpack_id;
+                    const params = new URLSearchParams();
+                    if (structId) params.set("structure_id", String(structId));
+                    if (jpId) params.set("jobpack_id", String(jpId));
+                    if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "all") {
+                        params.set("sow_report_no", String(sowReportNo));
+                    }
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data || {};
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary data in mapper:", e);
+                }
+                pdfBlob = (await generateInspectionSummaryGraphReport(
+                    summaryData || jobPack,
+                    { ...sharedHeaderData, ...structure },
+                    companySettings || {},
+                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                )) || null;
+            } else if (templateId === 'inspection-summary' || templateId === 'inspection-summary-report') {
+                const { generateInspectionSummaryReport } = await import("./inspection-summary-report");
+                let summaryData: any = null;
+                try {
+                    const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;
+                    const jpId = jobPack?.id || jobPack?.jobpack_id;
+                    const params = new URLSearchParams();
+                    if (structId) params.set("structure_id", String(structId));
+                    if (jpId) params.set("jobpack_id", String(jpId));
+                    if (sowReportNo && sowReportNo !== "N/A" && sowReportNo !== "all") {
+                        params.set("sow_report_no", String(sowReportNo));
+                    }
+                    const res = await fetch(`/api/inspection-summary?${params.toString()}`);
+                    if (res.ok) {
+                        const json = await res.json();
+                        summaryData = json.data || {};
+                    }
+                } catch (e) {
+                    console.error("Error fetching inspection summary data in mapper:", e);
+                }
+                pdfBlob = (await generateInspectionSummaryReport(
+                    summaryData || jobPack,
+                    { ...sharedHeaderData, ...structure },
+                    companySettings || {},
+                    { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
+                )) || null;
             }
         } catch (genErr) {
             console.error(`Failed to generate PDF for template ${templateId}:`, genErr);
@@ -1113,12 +1353,15 @@ export const mapInspectionDataForDocx = async (
                     if (!cleanT) return;
                     reportData[`T_${cleanT}`] = true;
                     reportData[`${cleanT}_PAGES`] = pages;
-                    reportData[`${cleanT}_RECORDS`] = pages;
-                    reportData[cleanT] = pages;
+                    if (cleanT !== 'INCOMPLETE') {
+                        reportData[cleanT] = pages;
+                    }
                     if (cleanT.endsWith('_PAGES')) {
                         const base = cleanT.replace(/_PAGES$/, '');
                         reportData[`${base}_PAGES`] = pages;
-                        reportData[base] = pages;
+                        if (base !== 'INCOMPLETE') {
+                            reportData[base] = pages;
+                        }
                     }
                     reportData[`HAS_${cleanT}_PAGES`] = true;
                     reportData[`NO_${cleanT}_PAGES`] = false;
@@ -1141,10 +1384,17 @@ export const mapInspectionDataForDocx = async (
             
             const mappedRecords = recordsForTemplate.map((r, idx) => {
                 const d = r.inspection_data || r.inspection_dat || {};
-                const recordAttachments = attachments.filter(att => 
+                const recordAttachments = (r.attachments || attachments.filter(att => 
                     Number(att.source_id) === Number(r.insp_id) && 
                     (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
-                );
+                )).slice().sort((a: any, b: any) => {
+                    const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                    const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                    if (orderA !== orderB) return orderA - orderB;
+                    const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+                    const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+                    return dateB - dateA;
+                });
                 const firstPhoto = recordAttachments[0];
                 
                 const formatAttachmentImg = (att: any) => {
@@ -1195,10 +1445,17 @@ export const mapInspectionDataForDocx = async (
             const pages: any[] = [];
             if (isPhotoOrAnomalyTemplate) {
                 recordsForTemplate.forEach(r => {
-                    const recordAttachments = attachments.filter(att => 
+                    const recordAttachments = (r.attachments || attachments.filter(att => 
                         Number(att.source_id) === Number(r.insp_id) && 
                         (!att.type || att.type.toUpperCase() === 'PHOTO' || att.type.toUpperCase() === 'IMAGE' || /\.(jpg|jpeg|png|webp)$/i.test(att.path || ""))
-                    );
+                    )).slice().sort((a: any, b: any) => {
+                        const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+                        const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+                        if (orderA !== orderB) return orderA - orderB;
+                        const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+                        const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+                        return dateB - dateA;
+                    });
                     recordAttachments.forEach(att => {
                         const p = att.path || att.file_path || att.url || att.file_url || "";
                         const src = att.id

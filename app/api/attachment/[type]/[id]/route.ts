@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
+import { getCurrentUser } from "@/utils/with-auth";
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string; type: string }> }
 ) {
   const { id, type } = await params;
+
+  const authUser = await getCurrentUser();
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
 
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
@@ -66,7 +72,61 @@ export async function GET(
       }
     }
 
-    return NextResponse.json(data);
+    return NextResponse.json({ data });
+  }
+
+  if (type.toLowerCase() === "anomaly") {
+    // 1. Fetch anomaly record to get linked inspection_id
+    const { data: anom } = await (supabase as any)
+      .from("insp_anomalies")
+      .select("anomaly_id, inspection_id")
+      .eq("anomaly_id", numericId)
+      .maybeSingle();
+
+    const inspectionId = anom?.inspection_id;
+    const allSourceIds = [numericId];
+    if (inspectionId) allSourceIds.push(inspectionId);
+
+    // 2. Fetch all attachments for anomaly + its inspection record
+    const { data: directData } = await supabase
+      .from("attachment")
+      .select("*")
+      .in("source_id", allSourceIds)
+      .in("source_type", ["inspection", "INSPECTION", "anomaly", "ANOMALY", "defect", "DEFECT", "insp_record", "INSP_RECORD"]);
+
+    if (directData && directData.length > 0) {
+      data.push(...directData);
+    }
+
+    // 3. Fetch from insp_media
+    const { data: media } = await (supabase as any)
+      .from("insp_media")
+      .select("*")
+      .or(`anomaly_id.eq.${numericId}${inspectionId ? `,inspection_id.eq.${inspectionId}` : ''}`);
+
+    if (media && media.length > 0) {
+      const normalizedMedia = (media as any[]).map((m: any) => ({
+        id: `media-${m.media_id}`,
+        name: m.name || m.file_name || `Snapshot ${m.media_id}`,
+        path: m.file_path,
+        source_id: m.anomaly_id || numericId,
+        source_type: "ANOMALY",
+        meta: {
+          ...m.meta,
+          bucket: "inspection-media",
+          is_insp_media: true,
+        },
+        cr_date: m.captured_at,
+        created_at: m.captured_at || new Date().toISOString(),
+      }));
+      for (const nm of normalizedMedia) {
+        if (!data.some(d => d.path === nm.path || String(d.id) === String(nm.id))) {
+          data.push(nm);
+        }
+      }
+    }
+
+    return NextResponse.json({ data });
   }
 
   const isStructureVisual = type.toLowerCase() === "platform_structure_image" || type.toLowerCase() === "pipeline_structure_image";

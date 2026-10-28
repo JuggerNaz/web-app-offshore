@@ -165,6 +165,8 @@ To paste any sub-report into your Final Document template, insert a page loop:
 | **Diver Log Report** | `diver-log-report` | `{#DIVER_LOG_PAGES}` | `{#HAS_DIVER_LOG_PAGES}` | `{#NO_DIVER_LOG_PAGES}` |
 | **Video Log Report** | `video-log-report` | `{#VIDEO_LOG_PAGES}` | `{#HAS_VIDEO_LOG_PAGES}` | `{#NO_VIDEO_LOG_PAGES}` |
 | **Structure Summary** | `structure-summary` | `{#STRUCTURE_SUMMARY_PAGES}`| `{#HAS_STRUCTURE_SUMMARY_PAGES}`| `{#NO_STRUCTURE_SUMMARY_PAGES}`|
+| **Inspection Summary Report** | `inspection-summary` | `{#INSPECTION_SUMMARY_PAGES}` | `{#HAS_INSPECTION_SUMMARY_PAGES}` | `{#NO_INSPECTION_SUMMARY_PAGES}` |
+| **Inspection Summary by Graph** | `inspection-summary-graph` | `{#INSPECTION_SUMMARY_GRAPH_PAGES}` | `{#HAS_INSPECTION_SUMMARY_GRAPH_PAGES}` | `{#NO_INSPECTION_SUMMARY_GRAPH_PAGES}` |
 | **ROV CP Survey Report** | `rov-cp-report` | `{#RCP_PAGES}` *(or `{#CP_REPORT_PAGES}`)* | `{#HAS_RCP_PAGES}` | `{#NO_RCP_PAGES}` |
 | **Diving CP Survey Report** | `diving-cpsurv-report` | `{#DCPSURV_PAGES}` *(or `{#DIVING_CP_PAGES}`)* | `{#HAS_DCPSURV_PAGES}` | `{#NO_DCPSURV_PAGES}` |
 | **Diving CP Calibration** | `diving-cpclb-report` | `{#CPCLB_PAGES}` | `{#HAS_CPCLB_PAGES}` | `{#NO_CPCLB_PAGES}` |
@@ -258,11 +260,14 @@ Loop through `{#SOW_SUMMARY}` to print the campaign work scope completion regist
 ### 6.1 Incomplete Scope Collections
 | Loop Collection | Condition Flag | Inverted Flag | Description |
 |---|---|---|---|
-| `{#INCOMPLETE_RECORDS}` | `{#HAS_INCOMPLETE_RECORDS}` | `{#NO_INCOMPLETE_RECORDS}` | All incomplete inspection records |
-| `{#INCOMPLETE_ROV}` | `{#HAS_INCOMPLETE_ROV}` | `{#NO_INCOMPLETE_ROV}` | ROV incomplete scope items |
-| `{#INCOMPLETE_DIVE}` | `{#HAS_INCOMPLETE_DIVE}` | `{#NO_INCOMPLETE_DIVE}` | Diver incomplete scope items |
-| `{#OUTSTANDING_TASKS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Scope of work outstanding task items |
+| `{#INCOMPLETE_RECORDS}` | `{#HAS_INCOMPLETE_RECORDS}` | `{#NO_INCOMPLETE_RECORDS}` | All incomplete inspection records (sorted by elevation descending) |
+| `{#INCOMPLETE_ROV}` | `{#HAS_INCOMPLETE_ROV}` | `{#NO_INCOMPLETE_ROV}` | ROV incomplete scope items (sorted by elevation descending) |
+| `{#INCOMPLETE_DIVE}` | `{#HAS_INCOMPLETE_DIVE}` | `{#NO_INCOMPLETE_DIVE}` | Diver incomplete scope items (sorted by elevation descending) |
+| `{#OUTSTANDING_TASKS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Scope of work outstanding task items (sorted by elevation descending) |
 | `{#OUTSTANDING_GROUPS}` | `{#HAS_OUTSTANDING_TASKS}` | `{#NO_OUTSTANDING_TASKS}` | Outstanding tasks grouped by inspection type |
+
+> [!NOTE]
+> All incomplete task collections are automatically sorted in **offshore elevation order** (topside / highest elevation down to seabed / deepest level, e.g. `(+)15.0m` &rarr; `0.0m` &rarr; `(-)12.0m` &rarr; `(-)70.0m`), with items having missing elevations placed at the end and secondary sort ordered alphanumerically by `qid`. Row indices `{no}` are sequential starting from 1 matching the sorted elevation order.
 
 ### 6.2 Incomplete Scope Fields Inside Loops
 - `{no}` : Sequential row number
@@ -438,6 +443,7 @@ When the Executive Summary is placed inside a Final Document as Section/Chapter 
    - `{no}` : Sequential item integer (`1`, `2`, `3`). You can also write `{parent_no}.{no}` or `2.{no}` directly in Word.
 3. **Explicit Override**: You can also place an optional tag anywhere in the template: `{PARENT_SECTION_NO: 2}`.
 
+
 | Tag Name | Value Example (Parent = 2) | Description |
 |---|---|---|
 | `{paragraph_no}` | `2.1` | Section paragraph number inside `{#SECTIONS}` |
@@ -456,7 +462,50 @@ When the Executive Summary is placed inside a Final Document as Section/Chapter 
 | `{PARAGRAPH_NO_INCOMPLETE_SCOPE}`| `2.31.1`| Incomplete scope sub-heading |
 | `{PARAGRAPH_NO_OUTSTANDING_TASKS}`| `2.31.2`| Outstanding tasks sub-heading |
 
+### 11.2 Section Discriminator Tags Inside `{#SECTIONS}`
+
+When iterating over all sections in the Word template using `{#SECTIONS} ... {/SECTIONS}`, you can restrict special tables, lists, or custom blocks so they **only print in their designated section** using section discriminator flags:
+
+| Section Discriminator Tag | Matching Section in Report | Use Case |
+|---|---|---|
+| `{#is_incomplete}` / `{#IS_INCOMPLETE}` / `{#is_section_incomplete}` | **Incomplete Scope Summary** (Section 1.30) | Incomplete scope table & site memo references |
+| `{#is_anomaly_finding}` / `{#IS_ANOMALY_FINDING}` | **Anomaly & Findings Summary** (Section 1.29) | Global anomaly register & findings tables |
+| `{#is_gvi}` / `{#IS_GVI}` | **General Visual Inspection (GVI)** | Jacket GVI summary & component findings |
+| `{#is_cp}` / `{#IS_CP}` | **Cathodic Potential (CP) Survey** | CP stabs, min/max potential stats |
+| `{#is_fmd}` / `{#IS_FMD}` | **Flooded Member Detection (FMD)** | FMD members table & flooding conditions |
+| `{#is_mgi}` / `{#IS_MGI}` | **Marine Growth Inspection (MGI)** | Marine growth coverage & thickness charts |
+| `{#is_scour}` / `{#IS_SCOUR}` | **Base Level / Scour Survey** | Seabed scour depth & exposed pile table |
+| `{#is_seabed}` / `{#IS_SEABED}` | **Seabed Survey** | Debris & seabed bathymetry |
+| `{#is_intro}` / `{#IS_INTRO}` | **Introduction** | Scope background & project details |
+
+#### Example: Restricting Incomplete Tasks Table to Section 1.30 Only
+```
+{#SECTIONS}
+{paragraph_no}  {title}
+
+{content}
+
+{#is_incomplete}
+{#NO_OUTSTANDING_TASKS}
+No outstanding tasks exist for this report.
+{/NO_OUTSTANDING_TASKS}
+
+{#HAS_OUTSTANDING_TASKS}
+{sub_paragraph_no_1} Summary of Incomplete task List
+
++----+-----------+-----------+------------------------------------------------------+
+| No.| QID       | Elev (m)  | Findings                                             |
++----+-----------+-----------+------------------------------------------------------+
+| {#INCOMPLETE_RECORDS}{no} | {qid} | {elevation} | {findings}{/INCOMPLETE_RECORDS}  |
++----+-----------+-----------+------------------------------------------------------+
+{/HAS_OUTSTANDING_TASKS}
+{/is_incomplete}
+
+{/SECTIONS}
+```
+
 ---
+
 
 ## 12. Ready-to-Copy Template Examples
 

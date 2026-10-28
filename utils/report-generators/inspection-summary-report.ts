@@ -4,10 +4,12 @@ import { format } from "date-fns";
 import { 
     loadLogoWithTransparency, 
     drawLogo, 
+    draw3SectionHeader,
     applyWatermarkAndSignaturesGlobal, 
     formatPdfDate, 
     REPORT_FOOTER_APP_TEXT 
 } from "./shared-logo";
+import { getInspectionDateRange } from "./date-range-utils";
 
 export interface CompanySettings {
     company_name?: string;
@@ -71,8 +73,8 @@ export const generateInspectionSummaryReport = async (
         const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
         const pageWidth = doc.internal.pageSize.getWidth();   // 297mm
         const pageHeight = doc.internal.pageSize.getHeight(); // 210mm
-        const margin = 12;                                    // 12mm
-        const contentWidth = pageWidth - (margin * 2);        // 273mm
+        const margin = 10;                                    // 10mm Standard Margin
+        const contentWidth = pageWidth - (margin * 2);        // 277mm
 
         const isPF = !!config?.printFriendly;
 
@@ -88,6 +90,8 @@ export const generateInspectionSummaryReport = async (
             textDark: [15, 23, 42] as [number, number, number],     // Slate 900
             textMuted: [100, 116, 139] as [number, number, number], // Slate 500
             emerald: [16, 185, 129] as [number, number, number],
+            teal: [20, 184, 166] as [number, number, number],
+            blue: [59, 130, 246] as [number, number, number],
             amber: [245, 158, 11] as [number, number, number],
             red: [220, 38, 38] as [number, number, number],
             cyan: [6, 182, 212] as [number, number, number],
@@ -131,6 +135,7 @@ export const generateInspectionSummaryReport = async (
         const scour = summaryData?.scour;
         const fmd = summaryData?.fmd;
         const cp = summaryData?.cp;
+        const defectCriteria = summaryData?.defectCriteria;
 
         // Structure & Header Info
         const structureInfo = summaryData?.structureInfo || headerDataOrStructure || {};
@@ -167,62 +172,146 @@ export const generateInspectionSummaryReport = async (
         const waterDepth = rawWaterDepth ? Math.abs(Number(rawWaterDepth)) : 0;
 
         // ── 2. Pre-load Logos ────────────────────────────────────────────────────
-        let companyLogo: any = null;
-        let contractorLogo: any = null;
-        if (companySettings?.logo_url) {
+        let companyLogo: any = (config as any)?.clientLogoData || (companySettings as any)?.clientLogoData || null;
+        if (!companyLogo && companySettings?.logo_url) {
             try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
-        const contractorLogoUrl = headerDataOrStructure?.contractorLogoUrl || headerDataOrStructure?.contrLogoUrl || "";
-        if (contractorLogoUrl) {
+
+        // Comprehensive Contractor Logo Resolution (Config -> HeaderData -> Structure -> JobPack -> Library Fallback)
+        let contractorLogoUrl = (config as any)?.contractorLogoUrl || 
+                                (config as any)?.contractorLogo || 
+                                (config as any)?.headerData?.contractorLogoUrl || 
+                                (config as any)?.headerData?.contrLogoUrl || 
+                                headerDataOrStructure?.contractorLogoUrl || 
+                                headerDataOrStructure?.contrLogoUrl || 
+                                headerDataOrStructure?.metadata?.contractorLogoUrl ||
+                                (companySettings as any)?.contractorLogoUrl || 
+                                (companySettings as any)?.contractor_logo_url || "";
+
+        const jobPackObj = (config as any)?.jobPack || (config as any)?.headerData?.jobPack || (config as any)?.headerData?.jobpack || (dataOrJobPack?.jobpack_id ? dataOrJobPack : null);
+        const contractorId = (config as any)?.contractorId || (config as any)?.headerData?.contractorId || headerDataOrStructure?.contractorId || jobPackObj?.metadata?.contrac || (jobPackObj as any)?.contractor_id;
+
+        if (!contractorLogoUrl && contractorId && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const contrRes = await fetch(`/api/libraries/contractors?id=${contractorId}`);
+                if (contrRes.ok) {
+                    const contrData = await contrRes.json();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                }
+            } catch (_) {}
+            if (!contractorLogoUrl) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    if (cRes.ok) {
+                        const cJson = await cRes.json();
+                        const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                        const cLow = String(contractorId).toLowerCase();
+                        const found = cList.find((c: any) =>
+                            String(c.lib_id).toLowerCase() === cLow ||
+                            String(c.id).toLowerCase() === cLow ||
+                            String(c.code || "").toLowerCase() === cLow ||
+                            String(c.lib_desc || "").toLowerCase() === cLow
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        if (!contractorLogoUrl && jobPackId && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+                if (jpRes.ok) {
+                    const jpData = await jpRes.json();
+                    const jp = jpData?.data || jpData;
+                    const cId = jp?.metadata?.contrac || jp?.contractor_id;
+                    if (cId) {
+                        const contrRes = await fetch(`/api/libraries/contractors?id=${cId}`);
+                        if (contrRes.ok) {
+                            const contrData = await contrRes.json();
+                            if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                        }
+                        if (!contractorLogoUrl) {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(cId).toLowerCase();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id).toLowerCase() === cLow ||
+                                    String(c.id).toLowerCase() === cLow ||
+                                    String(c.code || "").toLowerCase() === cLow
+                                );
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        if (!contractorLogoUrl && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const contrRes = await fetch('/api/libraries/contractors');
+                if (contrRes.ok) {
+                    const contrJson = await contrRes.json();
+                    const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                    const found = contrList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+        if (!contractorLogoUrl && typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const cRes = await fetch('/api/library/CONTR_NAM');
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                    const found = cList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+
+        let contractorLogo: any = (config as any)?.contractorLogoData || (headerDataOrStructure as any)?.contractorLogoData || null;
+        if (!contractorLogo && contractorLogoUrl) {
             try { contractorLogo = await loadLogoWithTransparency(contractorLogoUrl); } catch (_) {}
         }
 
-        // ── 3. Header Drawing Function ───────────────────────────────────────────
-        const HEADER_H = 24;
-        const drawPageHeader = (d: jsPDF) => {
-            if (isPF) {
-                d.setDrawColor(...colors.navy);
-                d.setLineWidth(0.4);
-                d.rect(margin, margin, contentWidth, HEADER_H, "S");
-                d.setTextColor(...colors.navy);
-            } else {
-                d.setFillColor(...colors.navy);
-                d.rect(margin, margin, contentWidth, HEADER_H, "F");
-                d.setTextColor(255);
-            }
-
-            // Logos: Contractor Logo (Left), Company/Client Logo (Right)
-            if (contractorLogo) {
-                drawLogo(d, contractorLogo, 17, 17, margin + 4, margin + 3.5, "left", "center");
-            }
-            if (companyLogo) {
-                drawLogo(d, companyLogo, 17, 17, pageWidth - margin - 21, margin + 3.5, "right", "center");
-            }
-
-            // Center Branding Header
-            d.setFontSize(10.5);
-            d.setFont("helvetica", "bold");
-            d.text(companySettings?.company_name || "NasQuest Resources Sdn Bhd", margin + (contentWidth / 2), margin + 5.5, { align: "center" });
-
-            d.setFontSize(7.5);
-            d.setFont("helvetica", "normal");
-            d.text(companySettings?.department_name || "Technical Inspection Division", margin + (contentWidth / 2), margin + 10, { align: "center" });
-
-            d.setFontSize(11);
-            d.setFont("helvetica", "bold");
-            d.text("INSPECTION SUMMARY", margin + (contentWidth / 2), margin + 15.5, { align: "center" });
-
-            d.setFontSize(7.5);
-            d.setFont("helvetica", "normal");
-            d.text(`Report No: ${sowReportNo}`, margin + (contentWidth / 2), margin + 20, { align: "center" });
+        // ── 3. Header Drawing Function (Universal Standard 3-Section Header) ─────
+        const HEADER_H = 25;
+        const HEADER_Y = 7;
+        const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
+            draw3SectionHeader(d, {
+                reportTitle: extraTitleInfo ? `INSPECTION SUMMARY - ${extraTitleInfo}` : "INSPECTION SUMMARY",
+                reportNo: sowReportNo || (config?.reportNoPrefix || headerDataOrStructure?.sowReportNo) || "N/A",
+                structureName: platformName,
+                companySettings,
+                config,
+                headerData: {
+                    ...headerDataOrStructure,
+                    contractorLogoUrl,
+                    sowReportNo,
+                    platformName,
+                },
+                contractorLogoData: contractorLogo,
+                clientLogoData: companyLogo,
+                isPrintFriendly: isPF,
+                pageWidth,
+                pageHeight,
+                orientation: "landscape",
+                margin: 10,
+                headerY: HEADER_Y,
+                headerH: HEADER_H,
+            });
         };
 
         // Render Page 1 Header
         drawPageHeader(doc);
 
-        let currentY = margin + HEADER_H + 2.5;
+        let currentY = HEADER_Y + HEADER_H + 2.5;
 
-        // ── 4. Sub-Header Platform & Depth Banner ────────────────────────────────
+        // ── 4. Sub-Header Scope Banner (Field Name, Structure Name, Jobpack Name, Inspection Date) ──
         const SUB_H = 6.5;
         doc.setDrawColor(...colors.border);
         doc.setLineWidth(0.2);
@@ -232,20 +321,126 @@ export const generateInspectionSummaryReport = async (
         }
         doc.rect(margin, currentY, contentWidth, SUB_H, "S");
 
-        // Left text: FIELD | STRUCTURE
-        doc.setFontSize(7.5);
-        doc.setFont("helvetica", "bold");
-        doc.setTextColor(...colors.textDark);
-        const facilityLabel = fieldName 
-            ? `${fieldName.toUpperCase()} | ${platformName.toUpperCase()}`
-            : platformName.toUpperCase();
-        doc.text(facilityLabel, margin + 3, currentY + 4.5);
+        // Resolve Jobpack Name
+        let jobPackName = (config as any)?.jobpackName || 
+                          (config as any)?.jobPackName || 
+                          (config as any)?.jobpack || 
+                          headerDataOrStructure?.jobpackName || 
+                          headerDataOrStructure?.jobPackName || 
+                          headerDataOrStructure?.jobpack_name || 
+                          headerDataOrStructure?.jobpack || 
+                          jobPackObj?.name || 
+                          jobPackObj?.jobpack_name || 
+                          summaryData?.jobpack?.name || 
+                          summaryData?.jobPack?.name || 
+                          "";
 
-        // Right text: Water depth (Registered anodes removed per user request)
-        doc.setFont("helvetica", "normal");
-        const depthText = waterDepth ? `${waterDepth} m` : "-- m";
-        const metaRightStr = `Water depth: ${depthText}`;
-        doc.text(metaRightStr, pageWidth - margin - 3, currentY + 4.5, { align: "right" });
+        // Resolve Inspection Date Range (start to end date)
+        let inspDateRangeStr = "";
+        const candidateDate = (config as any)?.dateRange || 
+                             (config as any)?.inspDateRange || 
+                             headerDataOrStructure?.dateRange || 
+                             headerDataOrStructure?.inspDateRange || 
+                             headerDataOrStructure?.date_range ||
+                             headerDataOrStructure?.inspectionDateRange;
+
+        if (candidateDate && typeof candidateDate === "string" && candidateDate.trim() && candidateDate.trim().toUpperCase() !== "N/A") {
+            inspDateRangeStr = candidateDate.trim();
+        } else if (summaryData?.records?.startDate && summaryData?.records?.endDate) {
+            try {
+                const d1 = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy");
+                const d2 = format(new Date(summaryData.records.endDate), "dd-MMM-yyyy");
+                inspDateRangeStr = d1 === d2 ? d1 : `${d1} – ${d2}`;
+            } catch (_) {
+                inspDateRangeStr = `${summaryData.records.startDate} – ${summaryData.records.endDate}`;
+            }
+        } else if (summaryData?.records?.startDate) {
+            try { inspDateRangeStr = format(new Date(summaryData.records.startDate), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(summaryData.records.startDate); }
+        } else {
+            try {
+                const calc = getInspectionDateRange(
+                    summaryData?.records?.items || summaryData?.records || [],
+                    headerDataOrStructure,
+                    config
+                );
+                if (calc && calc !== "N/A") inspDateRangeStr = calc;
+            } catch (_) {}
+        }
+        if (!inspDateRangeStr || inspDateRangeStr === "N/A") {
+            if (headerDataOrStructure?.inspection_date || headerDataOrStructure?.insp_date || headerDataOrStructure?.date) {
+                const singleD = headerDataOrStructure.inspection_date || headerDataOrStructure.insp_date || headerDataOrStructure.date;
+                try { inspDateRangeStr = format(new Date(singleD), "dd-MMM-yyyy"); } catch (_) { inspDateRangeStr = String(singleD); }
+            }
+        }
+
+        const fieldVal = fieldName ? fieldName.toUpperCase() : "--";
+        const structVal = platformName ? platformName.toUpperCase() : "--";
+        const jpVal = jobPackName || "--";
+        const dateVal = inspDateRangeStr || "--";
+
+        let bannerFontSize = 6.8;
+        doc.setFontSize(bannerFontSize);
+        const textY = currentY + 4.5;
+
+        // Left text: Field Name: ...  |  Structure Name: ...
+        const leftParts = [
+            { text: "Field Name: ", bold: true, color: colors.textDark },
+            { text: `${fieldVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Structure Name: ", bold: true, color: colors.textDark },
+            { text: structVal, bold: false, color: colors.navy },
+        ];
+
+        // Right text: Jobpack Name: ...  |  Inspection Date: ...
+        const rightParts = [
+            { text: "Jobpack Name: ", bold: true, color: colors.textDark },
+            { text: `${jpVal}   `, bold: false, color: colors.navy },
+            { text: "|   ", bold: false, color: colors.border },
+            { text: "Inspection Date: ", bold: true, color: colors.textDark },
+            { text: dateVal, bold: false, color: colors.navy },
+        ];
+
+        // Measure widths and auto-scale font if overall text is wider than available width
+        let totalLeftW = leftParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        let totalRightW = rightParts.reduce((sum, p) => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            return sum + doc.getTextWidth(p.text);
+        }, 0);
+
+        while ((totalLeftW + totalRightW) > (contentWidth - 8) && bannerFontSize > 4.8) {
+            bannerFontSize -= 0.3;
+            doc.setFontSize(bannerFontSize);
+            totalLeftW = leftParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+            totalRightW = rightParts.reduce((sum, p) => {
+                doc.setFont("helvetica", p.bold ? "bold" : "normal");
+                return sum + doc.getTextWidth(p.text);
+            }, 0);
+        }
+
+        // Render Left items
+        let curLeftX = margin + 3;
+        leftParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curLeftX, textY);
+            curLeftX += doc.getTextWidth(p.text);
+        });
+
+        // Render Right items
+        let curRightX = pageWidth - margin - 3 - totalRightW;
+        rightParts.forEach(p => {
+            doc.setFont("helvetica", p.bold ? "bold" : "normal");
+            doc.setTextColor(...p.color);
+            doc.text(p.text, curRightX, textY);
+            curRightX += doc.getTextWidth(p.text);
+        });
 
         currentY += SUB_H + 2.5;
 
@@ -258,40 +453,59 @@ export const generateInspectionSummaryReport = async (
         const completedCount = sow.completed || rec.completed || 0;
         const incompleteCount = sow.incomplete || rec.incomplete || 0;
         const anomalyCount = anomalies.total || rec.anomaly || 0;
-        const compRateVal = sow.completionPct !== undefined 
-            ? Math.round(sow.completionPct)
-            : (totalQidsCount > 0 ? Math.round((completedCount / totalQidsCount) * 100) : 0);
+        
+        // Accurate Completion Rate: MUST NOT treat incomplete tasks as completed!
+        const compRateVal = totalQidsCount > 0 
+            ? Math.round((completedCount / totalQidsCount) * 100) 
+            : (sow.completedPct !== undefined ? Math.round(sow.completedPct) : (sow.completionPct !== undefined ? Math.round(sow.completionPct) : 0));
+        const incRateVal = totalQidsCount > 0
+            ? Math.round((incompleteCount / totalQidsCount) * 100)
+            : (sow.incompletePct !== undefined ? Math.round(sow.incompletePct) : 0);
 
-        const kpiCards = [
+        const pendingCount = Math.max(0, totalQidsCount - completedCount - incompleteCount);
+        const pendRateVal = totalQidsCount > 0
+            ? Math.round((pendingCount / totalQidsCount) * 100)
+            : (sow.pendingPct !== undefined ? Math.round(sow.pendingPct) : 0);
+
+        const compRateSubtext = incompleteCount > 0
+            ? `${completedCount}/${totalQidsCount} QIDs (${incRateVal}% Inc)`
+            : "Completed / applicable QIDs";
+
+        const kpiCards: Array<{
+            title: string;
+            value: string;
+            subtext: string;
+            color: [number, number, number];
+        }> = [
             {
-                title: "TOTAL QIDs",
+                title: "TOTAL TASKS / QIDs",
                 value: totalQidsCount > 0 ? String(totalQidsCount) : "--",
-                subtext: "Unique in approved jobpack",
+                subtext: "Scoped in approved SOW",
                 color: colors.navy,
             },
             {
                 title: "COMPLETED",
                 value: completedCount > 0 ? String(completedCount) : "--",
-                subtext: "Verified completed QIDs",
+                subtext: "Verified completed tasks",
                 color: colors.navy,
             },
             {
                 title: "INCOMPLETE",
                 value: incompleteCount > 0 ? String(incompleteCount) : "--",
-                subtext: "Outstanding / restricted",
-                color: colors.navy,
+                subtext: "Outstanding / restricted tasks",
+                color: incompleteCount > 0 ? colors.amber : colors.navy,
             },
             {
                 title: "TOTAL ANOMALIES",
                 value: anomalyCount > 0 ? String(anomalyCount) : "--",
                 subtext: "Unique anomaly IDs",
-                color: colors.navy,
+                color: anomalyCount > 0 ? colors.red : colors.navy,
             },
             {
                 title: "COMPLETION RATE",
-                value: compRateVal > 0 ? `${compRateVal} %` : "-- %",
-                subtext: "Completed / applicable QIDs",
-                color: colors.navy,
+                value: totalQidsCount > 0 ? `${compRateVal} %` : "-- %",
+                subtext: compRateSubtext,
+                color: compRateVal >= 100 ? colors.teal : colors.navy,
             },
         ];
 
@@ -306,23 +520,135 @@ export const generateInspectionSummaryReport = async (
             }
             doc.rect(cx, currentY, CARD_W, CARD_H, "S");
 
-            // Card Title
-            doc.setFontSize(7);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.title, cx + 3, currentY + 4.2);
+            if (idx === 4) {
+                // Card 5: Pic 5 Completion Rate with Completion %, Incomplete %, Pending %, segmented bar, and legend
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...colors.navy);
+                doc.text("COMPLETION RATE", cx + 3, currentY + 4.2);
 
-            // Card Value
-            doc.setFontSize(14);
-            doc.setFont("helvetica", "bold");
-            doc.setTextColor(...card.color);
-            doc.text(card.value, cx + 3, currentY + 11.5);
+                if (totalQidsCount === 0) {
+                    doc.setFontSize(14);
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("-- %", cx + 3, currentY + 11.5);
+                    doc.setFontSize(5.5);
+                    doc.setFont("helvetica", "normal");
+                    doc.text("No scope QIDs defined", cx + 3, currentY + 16.5);
+                } else {
+                    // Show percentages on top row
+                    const hasPending = pendingCount > 0 && pendRateVal > 0;
+                    doc.setFontSize(hasPending ? 8.5 : 10.5);
+                    doc.setFont("helvetica", "bold");
 
-            // Card Subtext
-            doc.setFontSize(5.5);
-            doc.setFont("helvetica", "normal");
-            doc.setTextColor(...colors.textMuted);
-            doc.text(card.subtext, cx + 3, currentY + 16.5);
+                    let px = cx + 3;
+                    // Completed % (Green)
+                    doc.setTextColor(22, 163, 74);
+                    const compStr = `${compRateVal}% Comp`;
+                    doc.text(compStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(compStr) + 2;
+
+                    // Divider
+                    doc.setFont("helvetica", "normal");
+                    doc.setTextColor(...colors.textMuted);
+                    doc.text("•", px, currentY + 10.2);
+                    px += doc.getTextWidth("•") + 2;
+
+                    // Incomplete % (Amber)
+                    doc.setFont("helvetica", "bold");
+                    doc.setTextColor(217, 119, 6);
+                    const incStr = `${incRateVal}% Inc`;
+                    doc.text(incStr, px, currentY + 10.2);
+                    px += doc.getTextWidth(incStr) + 2;
+
+                    // Pending % (if any)
+                    if (hasPending) {
+                        doc.setFont("helvetica", "normal");
+                        doc.setTextColor(...colors.textMuted);
+                        doc.text("•", px, currentY + 10.2);
+                        px += doc.getTextWidth("•") + 2;
+
+                        doc.setFont("helvetica", "bold");
+                        doc.setTextColor(100, 116, 139);
+                        doc.text(`${pendRateVal}% Pend`, px, currentY + 10.2);
+                    }
+
+                    // Segmented visual progress bar
+                    const barX = cx + 3;
+                    const barY = currentY + 11.8;
+                    const barW = CARD_W - 6;
+                    const barH = 2.2;
+
+                    doc.setFillColor(...colors.barTrack);
+                    doc.roundedRect(barX, barY, barW, barH, 0.6, 0.6, "F");
+
+                    const compBarW = Math.max(0, (barW * compRateVal) / 100);
+                    const incBarW = Math.max(0, (barW * incRateVal) / 100);
+                    const pendBarW = hasPending ? Math.max(0, barW - compBarW - incBarW) : 0;
+
+                    if (compBarW > 0) {
+                        doc.setFillColor(22, 163, 74); // Green
+                        doc.roundedRect(barX, barY, Math.min(barW, compBarW), barH, 0.6, 0.6, "F");
+                    }
+                    if (incBarW > 0) {
+                        doc.setFillColor(217, 119, 6); // Amber
+                        doc.rect(barX + compBarW, barY, Math.min(incBarW, barW - compBarW), barH, "F");
+                    }
+                    if (pendBarW > 0) {
+                        doc.setFillColor(148, 163, 184); // Slate
+                        doc.roundedRect(barX + compBarW + incBarW, barY, pendBarW, barH, 0.6, 0.6, "F");
+                    }
+
+                    // Legend under the progress bar
+                    const legY = currentY + 17.0;
+                    doc.setFontSize(4.7);
+                    doc.setFont("helvetica", "normal");
+
+                    // Done item
+                    let lx = cx + 3;
+                    doc.setFillColor(22, 163, 74);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    doc.setTextColor(...colors.textDark);
+                    const legComp = `${completedCount} Done (${compRateVal}%)`;
+                    doc.text(legComp, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legComp) + 3;
+
+                    // Incomplete item
+                    doc.setFillColor(217, 119, 6);
+                    doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                    lx += 2.4;
+                    const legInc = `${incompleteCount} Inc (${incRateVal}%)`;
+                    doc.text(legInc, lx, legY - 0.3);
+                    lx += doc.getTextWidth(legInc) + 3;
+
+                    // Pending item
+                    if (hasPending && lx + 12 < cx + CARD_W) {
+                        doc.setFillColor(148, 163, 184);
+                        doc.rect(lx, legY - 1.6, 1.6, 1.6, "F");
+                        lx += 2.4;
+                        doc.text(`${pendingCount} Pend`, lx, legY - 0.3);
+                    }
+                }
+            } else {
+                // Card Title
+                doc.setFontSize(7);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.title, cx + 3, currentY + 4.2);
+
+                // Card Value
+                doc.setFontSize(14);
+                doc.setFont("helvetica", "bold");
+                doc.setTextColor(...card.color);
+                doc.text(card.value, cx + 3, currentY + 11.5);
+
+                // Card Subtext
+                doc.setFontSize(5.5);
+                doc.setFont("helvetica", "normal");
+                doc.setTextColor(...colors.textMuted);
+                doc.text(card.subtext, cx + 3, currentY + 16.5);
+            }
         });
 
         currentY += CARD_H + 3.5;
@@ -347,14 +673,25 @@ export const generateInspectionSummaryReport = async (
             doc.rect(leftX, currentY, LEFT_COL_W, 5.5, "F");
             doc.setTextColor(255);
         }
+        // Parse Task Level Aggregate Statistics
+        const taskStats = summaryData?.tasks || {};
+        const totalRecordTasks = taskStats.total || rec.total || 0;
+        const incompleteRecordTasks = taskStats.incomplete !== undefined ? taskStats.incomplete : (rec.incomplete || 0);
+        const completedRecordTasks = taskStats.completed !== undefined ? taskStats.completed : Math.max(0, totalRecordTasks - incompleteRecordTasks);
+        const overallTaskCompPct = totalRecordTasks > 0 ? Math.round((completedRecordTasks / totalRecordTasks) * 100) : 0;
+        const overallTaskIncPct = totalRecordTasks > 0 ? Math.round((incompleteRecordTasks / totalRecordTasks) * 100) : 0;
+
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "bold");
         doc.text("INSPECTION TASK COVERAGE", leftX + 3, currentY + 3.8);
 
-        doc.setFontSize(6);
+        doc.setFontSize(5.5);
         doc.setFont("helvetica", "normal");
         if (!isPF) doc.setTextColor(220, 230, 242);
-        doc.text("By task / applicable QIDs", leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
+        const headerSubtext = totalRecordTasks > 0 
+            ? `Tasks: ${overallTaskCompPct}% Done (${completedRecordTasks}/${totalRecordTasks}) | Inc: ${overallTaskIncPct}% (${incompleteRecordTasks})` 
+            : "By task / applicable QIDs";
+        doc.text(headerSubtext, leftX + LEFT_COL_W - 3, currentY + 3.8, { align: "right" });
 
         // Build Coverage Rows from SOW or live breakdown
         let coverageRows: any[] = [];
@@ -395,8 +732,19 @@ export const generateInspectionSummaryReport = async (
             }
         }
 
-        // Limit coverage table rows to 6 so it stays within middle height
-        const visibleCoverageRows = coverageRows.slice(0, 6);
+        // Limit coverage table rows to 5 so we have space for the Overall Task Summary row
+        const maxDataRows = 5;
+        const visibleCoverageRows = coverageRows.slice(0, maxDataRows);
+        const hasTotalSummaryRow = totalRecordTasks > 0;
+        if (hasTotalSummaryRow) {
+            visibleCoverageRows.push([
+                "OVERALL TASK SUMMARY",
+                String(totalRecordTasks),
+                String(completedRecordTasks),
+                String(incompleteRecordTasks),
+                `${overallTaskCompPct}%`,
+            ]);
+        }
 
         (autoTable as any)(doc, {
             startY: currentY + 5.5,
@@ -431,13 +779,29 @@ export const generateInspectionSummaryReport = async (
                 lineWidth: 0.1,
                 drawColor: colors.border,
             },
+            didParseCell: (data: any) => {
+                if (hasTotalSummaryRow && data.row.index === visibleCoverageRows.length - 1 && data.section === "body") {
+                    data.cell.styles.fontStyle = "bold";
+                    data.cell.styles.fillColor = [241, 245, 249];
+                    if (data.column.index === 4) {
+                        data.cell.styles.textColor = overallTaskCompPct >= 100 ? colors.teal : (overallTaskCompPct >= 80 ? colors.navy : colors.amber);
+                    } else if (data.column.index === 3 && incompleteRecordTasks > 0) {
+                        data.cell.styles.textColor = colors.amber;
+                    } else {
+                        data.cell.styles.textColor = colors.navy;
+                    }
+                }
+            },
         });
 
         const coverageTableEnd = (doc as any).lastAutoTable?.finalY ?? (currentY + 38);
         doc.setFontSize(5.5);
         doc.setFont("helvetica", "italic");
         doc.setTextColor(...colors.textMuted);
-        doc.text("Task counts can overlap when one QID has multiple inspection tasks.", leftX + 1, coverageTableEnd + 3);
+        const footnote = totalRecordTasks > 0
+            ? `Task counts include all individual task records across QIDs. Overall Incomplete rate: ${overallTaskIncPct}%.`
+            : "Task counts can overlap when one QID has multiple inspection tasks.";
+        doc.text(footnote, leftX + 1, coverageTableEnd + 3);
 
         // Table Grid Helper for Section 6 & 7 Blocks
         const drawTableGrid = (
@@ -687,8 +1051,13 @@ export const generateInspectionSummaryReport = async (
             { code: "VS", label: "Variation to spec (VS)" },
         ];
 
-        const defectRows: Array<{ cols: Array<{ val: string; bold?: boolean; align?: "left" | "center" | "right" }> }> = defectCriteriaList.map(d => {
-            const val = getDefectCriteriaCount(defectMap, d.code);
+        // Sort descending by count as requested
+        const sortedDefectCriteriaList = defectCriteriaList
+            .map(d => ({ ...d, count: getDefectCriteriaCount(defectMap, d.code) }))
+            .sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
+
+        const defectRows: Array<{ cols: Array<{ val: string; bold?: boolean; align?: "left" | "center" | "right" }> }> = sortedDefectCriteriaList.map(d => {
+            const val = d.count;
             return {
                 cols: [
                     { val: d.label, align: "left" as const },
@@ -851,17 +1220,30 @@ export const generateInspectionSummaryReport = async (
                 const d25 = depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 0;
                 const d50 = depletions["50-75%"] ?? depletions["50–75%"] ?? 0;
                 const d75 = depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 0;
+                const dNotEval = depletions["Not Evaluated"] ?? depletions["not evaluated"] ?? depletions["Not Recorded"] ?? depletions["not recorded"] ?? 0;
 
                 const col1W = Math.round(bw * 0.63);
                 const col2W = bw - col1W;
 
+                const totAnodeCount = (Number(d0) + Number(d25) + Number(d50) + Number(d75) + Number(dNotEval)) || anodeGvi?.total || 1;
+                const pct0 = totAnodeCount > 0 ? Math.round((Number(d0) / totAnodeCount) * 100) : 0;
+                const pct25 = totAnodeCount > 0 ? Math.round((Number(d25) / totAnodeCount) * 100) : 0;
+                const pct50 = totAnodeCount > 0 ? Math.round((Number(d50) / totAnodeCount) * 100) : 0;
+                const pct75 = totAnodeCount > 0 ? Math.round((Number(d75) / totAnodeCount) * 100) : 0;
+                const pctNotEval = totAnodeCount > 0 ? Math.round((Number(dNotEval) / totAnodeCount) * 100) : 0;
+
+                const healthPct = totAnodeCount > 0 ? Math.round(((Number(d0) + Number(d25)) / totAnodeCount) * 100) : 100;
+                const adviceText = `Anode Health: ${healthPct}% (<50% dep.)`;
+
                 const rows = [
                     { cols: [{ val: "Platform Anode Type", align: "left" as const }, { val: anodeTypeDisplay, bold: true, align: "right" as const }] },
-                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: String(d0), bold: Number(d0) > 0, align: "right" as const }] },
-                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: String(d25), bold: Number(d25) > 0, align: "right" as const }] },
-                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: String(d50), bold: Number(d50) > 0, align: "right" as const }] },
-                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: String(d75), bold: Number(d75) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || 0), bold: true, align: "right" as const }] },
+                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: `${d0} (${pct0}%)`, bold: Number(d0) > 0, align: "right" as const }] },
+                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: Number(d25) > 0, align: "right" as const }] },
+                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: Number(d50) > 0, align: "right" as const }] },
+                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: Number(d75) > 0, align: "right" as const }] },
+                    { cols: [{ val: "Not Evaluated", align: "left" as const }, { val: `${dNotEval} (${pctNotEval}%)`, bold: Number(dNotEval) > 0, align: "right" as const }] },
+                    { cols: [{ val: "Anode Health", align: "left" as const }, { val: `${healthPct}% (<50% dep.)`, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || totAnodeCount), bold: true, align: "right" as const }] },
                 ];
 
                 drawTableGrid(
@@ -895,26 +1277,73 @@ export const generateInspectionSummaryReport = async (
                 const scourFindings = scour?.scourFindingsCount !== undefined && scour?.scourFindingsCount !== null ? scour.scourFindingsCount : (scour?.exposed ? scour.exposed : "0");
 
                 let maxDepthStr = "-- mm";
+                let maxDepthMm = 0;
                 if (scour?.maxDepthMm !== undefined && scour?.maxDepthMm !== null && scour.maxDepthMm > 0) {
+                    maxDepthMm = Number(scour.maxDepthMm);
                     maxDepthStr = `${Math.round(scour.maxDepthMm)} mm`;
                 } else if (scour?.maxDepth !== undefined && scour?.maxDepth !== null && Number(scour.maxDepth) > 0) {
                     const depthNum = Number(scour.maxDepth);
-                    const mmVal = depthNum <= 10 ? Math.round(depthNum * 1000) : Math.round(depthNum);
-                    maxDepthStr = `${mmVal} mm`;
+                    maxDepthMm = depthNum <= 10 ? Math.round(depthNum * 1000) : Math.round(depthNum);
+                    maxDepthStr = `${maxDepthMm} mm`;
                 } else if (scour?.maxDepthMeters !== undefined && scour?.maxDepthMeters !== null && scour.maxDepthMeters > 0) {
-                    maxDepthStr = `${Math.round(scour.maxDepthMeters * 1000)} mm`;
+                    maxDepthMm = Math.round(scour.maxDepthMeters * 1000);
+                    maxDepthStr = `${maxDepthMm} mm`;
                 }
 
-                const col1W = Math.round(bw * 0.63);
+                const maxQid = scour?.maxDepthQid && scour.maxDepthQid !== "N/A" ? scour.maxDepthQid : "";
+                const maxLoc = scour?.maxDepthLocation || scour?.maxDepthLeg || "";
+                const maxInfo = [maxQid, maxLoc && maxLoc !== "N/A" ? maxLoc : ""].filter(Boolean).join(" - ");
+                const maxLocClean = maxInfo ? ` (${maxInfo})` : "";
+
+                let minDepthMm = scour?.minDepthMm !== undefined && scour?.minDepthMm !== null 
+                    ? Number(scour.minDepthMm) 
+                    : (scour?.minDepth ? Number(scour.minDepth) : 0);
+                let minQid = scour?.minDepthQid && scour.minDepthQid !== "N/A" ? scour.minDepthQid : "";
+                let minLoc = scour?.minDepthLocation || "";
+
+                if (Array.isArray(scour?.qidReadings) && scour.qidReadings.length > 0) {
+                    const posReadings = scour.qidReadings.filter((r: any) => {
+                        const d = Number(r.depthMm ?? r.depth ?? 0);
+                        const b = Number(r.burialPct ?? r.burial ?? 0);
+                        return d > 0 && !r.isBuried && b === 0;
+                    });
+                    if (posReadings.length > 0 && (minDepthMm <= 0 || !minQid)) {
+                        const lowest = [...posReadings].sort((a: any, b: any) => Number(a.depthMm || 0) - Number(b.depthMm || 0))[0];
+                        minDepthMm = Number(lowest.depthMm);
+                        minQid = lowest.qid || minQid;
+                        minLoc = lowest.location || minLoc;
+                    }
+                }
+
+                const minInfo = [minQid, minLoc && minLoc !== "N/A" ? minLoc : ""].filter(Boolean).join(" - ");
+                const minLocClean = minInfo ? ` (${minInfo})` : "";
+                const minDepthStr = minDepthMm > 0 ? `${Math.round(minDepthMm)} mm${minLocClean}` : "0 mm";
+
+                const scourLimit = Number(
+                    scour?.maxAllowableMm || 
+                    scour?.maxAllowableLimit || 
+                    defectCriteria?.scour?.maxAllowableMm || 
+                    800
+                );
+
+                const isAnomaly = maxDepthMm > scourLimit || Number(exposedPileCount) > 0;
+                let statusStr = `Normal / Safe (≤${scourLimit}mm)`;
+                if (isAnomaly) {
+                    statusStr = `ANOMALY: >${scourLimit}mm${maxLoc ? ` at ${maxLoc}` : ""}`;
+                }
+
+                const col1W = Math.round(bw * 0.58);
                 const col2W = bw - col1W;
 
                 const rows = [
                     { cols: [{ val: "Platform faces", align: "left" as const }, { val: `${registeredFaces} registered`, align: "right" as const }] },
-                    { cols: [{ val: "Faces surveyed", align: "left" as const }, { val: String(facesSurveyed), align: "right" as const }] },
-                    { cols: [{ val: "Piles surveyed", align: "left" as const }, { val: String(pilesSurveyed), align: "right" as const }] },
+                    { cols: [{ val: "Faces / Piles surveyed", align: "left" as const }, { val: `${facesSurveyed} faces / ${pilesSurveyed} piles`, align: "right" as const }] },
                     { cols: [{ val: "Exposed pile count", align: "left" as const }, { val: String(exposedPileCount || 0), bold: Number(exposedPileCount) > 0, align: "right" as const }] },
                     { cols: [{ val: "Piles with scour findings", align: "left" as const }, { val: String(scourFindings || 0), bold: Number(scourFindings) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Maximum scour depth", align: "left" as const }, { val: maxDepthStr, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Minimum scour depth", align: "left" as const }, { val: minDepthStr, align: "right" as const }] },
+                    { cols: [{ val: "Maximum scour depth", align: "left" as const }, { val: `${maxDepthStr}${maxLocClean}`, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Allowable depth limit", align: "left" as const }, { val: `${scourLimit} mm`, align: "right" as const }] },
+                    { cols: [{ val: "Safety threshold status", align: "left" as const }, { val: statusStr, bold: isAnomaly, align: "right" as const }] },
                 ];
 
                 drawTableGrid(
@@ -945,13 +1374,33 @@ export const generateInspectionSummaryReport = async (
                     const col1W = Math.round(bw * 0.63);
                     const col2W = bw - col1W;
 
+                    const maxV = cp?.maxVal != null ? Number(cp.maxVal) : -854;
+                    const minV = cp?.minVal != null ? Number(cp.minVal) : -1030;
+                    const primaryCount = cp?.primaryCount ?? 0;
+                    const additionalCount = cp?.additionalCount ?? 0;
+                    const totCp = cp?.totalCount || (primaryCount + additionalCount) || (cp?.primaryCount ? cp.primaryCount : 0);
+
+                    const cpMinAllowable = Number(cp?.minAllowableMv || defectCriteria?.cp?.minAllowableMv || -1150);
+                    const cpNominalMax = Number(cp?.nominalMaxMv || cp?.maxAllowableMv || defectCriteria?.cp?.nominalMaxMv || defectCriteria?.cp?.maxAllowableMv || -800);
+                    const cpCriticalMax = Number(cp?.criticalMaxMv || defectCriteria?.cp?.criticalMaxMv || -650);
+
+                    const isCriteriaMet = minV >= cpMinAllowable && maxV <= cpNominalMax;
+                    const isCriticalDefect = maxV > cpCriticalMax || minV < cpMinAllowable;
+                    const isP2Caution = !isCriteriaMet && !isCriticalDefect;
+
+                    let statusLabel = "CRITERIA MET";
+                    if (isCriticalDefect) statusLabel = "CRITICAL DEFECT (P1)";
+                    else if (isP2Caution) statusLabel = "P2 CAUTION (> -800mV)";
+
                     const rows = [
-                        { cols: [{ val: "Total Readings Logged", align: "left" as const }, { val: String(cp?.totalCount || cp?.primaryCount || 0), bold: true, align: "right" as const }] },
-                        { cols: [{ val: "Most Negative (Max)", align: "left" as const }, { val: cp?.maxVal != null ? `${cp.maxVal} mV` : "--", align: "right" as const }] },
-                        { cols: [{ val: "Least Negative (Min)", align: "left" as const }, { val: cp?.minVal != null ? `${cp.minVal} mV` : "--", align: "right" as const }] },
-                        { cols: [{ val: "ROV Logged Readings", align: "left" as const }, { val: String(cp?.primaryRov || 0), align: "right" as const }] },
-                        { cols: [{ val: "Diver Logged Readings", align: "left" as const }, { val: String(cp?.primaryDive || 0), align: "right" as const }] },
-                        { cols: [{ val: "Protection Criteria", align: "left" as const }, { val: "Normal (-850mV)", bold: true, align: "right" as const }] },
+                        { cols: [{ val: "Total Readings Logged", align: "left" as const }, { val: `${totCp} readings`, bold: true, align: "right" as const }] },
+                        { cols: [{ val: "Primary / Addl Readings", align: "left" as const }, { val: `${primaryCount} Pri, ${additionalCount} Addl`, align: "right" as const }] },
+                        { cols: [{ val: "Recorded Min Potential", align: "left" as const }, { val: `${minV} mV`, bold: minV < cpMinAllowable, align: "right" as const }] },
+                        { cols: [{ val: "Recorded Max Potential", align: "left" as const }, { val: `${maxV} mV`, bold: maxV > cpNominalMax, align: "right" as const }] },
+                        { cols: [{ val: "Min Allowable Limit (P1)", align: "left" as const }, { val: `${cpMinAllowable} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Nominal Max Allowable (P2)", align: "left" as const }, { val: `${cpNominalMax} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Critical Defect Max (P1)", align: "left" as const }, { val: `${cpCriticalMax} mV`, align: "right" as const }] },
+                        { cols: [{ val: "Protection Criteria Status", align: "left" as const }, { val: statusLabel, bold: true, align: "right" as const }] },
                     ];
 
                     drawTableGrid(
@@ -1009,34 +1458,39 @@ export const generateInspectionSummaryReport = async (
         // 7F. Task Block: MGI Thickness Reading — Conditional if inspection data contains thickness readings
         const thkStats = mgi?.thickness || {};
         const hasThicknessRecords = Boolean(
-            thkStats.hasData || (thkStats.count && thkStats.count > 0) || (mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)
+            (thkStats.hasData && thkStats.count > 0) ||
+            (mgi?.byQid && Object.values(mgi.byQid).some((arr: any) => Array.isArray(arr) && arr.length > 0)) ||
+            (mgi?.total && mgi.total > 0 && ((mgi?.avg && mgi.avg > 0) || (mgi?.max && mgi.max > 0)))
         );
 
         if (hasThicknessRecords) {
             taskBlocks.push({
                 id: "mgi_thickness",
                 title: "MGI THICKNESS READINGS",
-                subtitle: "Measurements in mm",
+                subtitle: mgi?.profileName ? `Profile: ${mgi.profileName}` : "Measurements in mm",
                 isDone: true,
                 render: (bx, by, bw, bh) => {
-                    drawBlockHeader(bx, by, bw, "MGI THICKNESS READINGS", "Measurements in mm");
+                    const profileSubtitle = mgi?.profileName ? `Profile: ${mgi.profileName}` : "Measurements in mm";
+                    drawBlockHeader(bx, by, bw, "MGI THICKNESS READINGS", profileSubtitle);
 
                     const maxT = thkStats.max ? `${thkStats.max} mm` : (mgi?.max ? `${mgi.max} mm` : "--");
                     const minT = thkStats.min ? `${thkStats.min} mm` : (mgi?.min ? `${mgi.min} mm` : "--");
                     const avgT = thkStats.avg ? `${thkStats.avg} mm` : (mgi?.avg ? `${mgi.avg.toFixed(1)} mm` : "--");
                     const hardAvgStr = thkStats.hardAvg ? `${thkStats.hardAvg} mm` : "--";
                     const softAvgStr = thkStats.softAvg ? `${thkStats.softAvg} mm` : "--";
+                    const profileStr = mgi?.profileName || "Standard";
+                    const anomaliesCount = mgi?.anomaliesCount !== undefined ? Number(mgi.anomaliesCount) : (mgi?.exceeded ? 1 : 0);
 
                     const col1W = Math.round(bw * 0.63);
                     const col2W = bw - col1W;
 
                     const rows = [
                         { cols: [{ val: "Readings Logged", align: "left" as const }, { val: String(thkStats.count || mgi?.total || 0), bold: true, align: "right" as const }] },
+                        { cols: [{ val: "MGI Profile Used", align: "left" as const }, { val: profileStr, bold: true, align: "right" as const }] },
                         { cols: [{ val: "Average Thickness", align: "left" as const }, { val: avgT, bold: true, align: "right" as const }] },
                         { cols: [{ val: "Maximum Thickness", align: "left" as const }, { val: maxT, align: "right" as const }] },
-                        { cols: [{ val: "Minimum Thickness", align: "left" as const }, { val: minT, align: "right" as const }] },
-                        { cols: [{ val: "Hard Growth (Avg)", align: "left" as const }, { val: hardAvgStr, align: "right" as const }] },
-                        { cols: [{ val: "Soft Growth (Avg)", align: "left" as const }, { val: softAvgStr, align: "right" as const }] },
+                        { cols: [{ val: "Hard / Soft Avg", align: "left" as const }, { val: `${hardAvgStr} / ${softAvgStr}`, align: "right" as const }] },
+                        { cols: [{ val: "Exceeding Profile", align: "left" as const }, { val: anomaliesCount > 0 ? `${anomaliesCount} (ANOMALY)` : "0 (MET)", bold: anomaliesCount > 0, align: "right" as const }] },
                     ];
 
                     drawTableGrid(
@@ -1071,7 +1525,7 @@ export const generateInspectionSummaryReport = async (
         if (availableSpaceOnPage1 < BLOCK_H) {
             doc.addPage();
             drawPageHeader(doc);
-            currentY = margin + HEADER_H + 4;
+            currentY = HEADER_Y + HEADER_H + 3.5;
         }
 
         activeBlocks.forEach((block, idx) => {
@@ -1081,7 +1535,7 @@ export const generateInspectionSummaryReport = async (
                 if (currentY + BLOCK_H > pageHeight - 16) {
                     doc.addPage();
                     drawPageHeader(doc);
-                    currentY = margin + HEADER_H + 4;
+                    currentY = HEADER_Y + HEADER_H + 3.5;
                 }
             }
             const bx = margin + (colIdx * (blockW + BLOCK_GAP));
@@ -1099,7 +1553,7 @@ export const generateInspectionSummaryReport = async (
             if (currentY + sigH > pageHeight - 16) {
                 doc.addPage();
                 drawPageHeader(doc);
-                currentY = margin + HEADER_H + 4;
+                currentY = HEADER_Y + HEADER_H + 3.5;
             }
 
             const sigY = Math.max(currentY, pageHeight - 31);
