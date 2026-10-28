@@ -63,19 +63,36 @@ const loadImage = async (url: string): Promise<LoadedImageData | null> => {
             img.onload = () => {
                 clearTimeout(timeout);
                 try {
+                    const origW = img.naturalWidth || img.width || 800;
+                    const origH = img.naturalHeight || img.height || 600;
+                    const aspect = origH > 0 ? origW / origH : 1.333;
+
+                    // Bound dimensions to max 1000x750 for PDF rendering to avoid bloating memory
+                    const MAX_WIDTH = 1000;
+                    const MAX_HEIGHT = 750;
+                    let targetW = origW;
+                    let targetH = origH;
+                    if (targetW > MAX_WIDTH || targetH > MAX_HEIGHT) {
+                        const scale = Math.min(MAX_WIDTH / targetW, MAX_HEIGHT / targetH);
+                        targetW = Math.max(1, Math.round(targetW * scale));
+                        targetH = Math.max(1, Math.round(targetH * scale));
+                    }
+
                     const canvas = document.createElement("canvas");
-                    const w = img.naturalWidth || img.width || 800;
-                    const h = img.naturalHeight || img.height || 600;
-                    canvas.width = w;
-                    canvas.height = h;
+                    canvas.width = targetW;
+                    canvas.height = targetH;
                     const ctx = canvas.getContext("2d");
                     if (ctx) {
-                        ctx.drawImage(img, 0, 0);
-                        const aspect = h > 0 ? w / h : 1.333;
+                        ctx.imageSmoothingEnabled = true;
+                        ctx.imageSmoothingQuality = "medium";
+                        ctx.drawImage(img, 0, 0, targetW, targetH);
+                        const optimizedData = canvas.toDataURL("image/jpeg", 0.78);
+                        canvas.width = 0;
+                        canvas.height = 0;
                         resolve({
-                            data: canvas.toDataURL("image/jpeg", 0.95),
-                            width: w,
-                            height: h,
+                            data: optimizedData,
+                            width: targetW,
+                            height: targetH,
                             aspect
                         });
                     } else {
@@ -147,7 +164,7 @@ export const generateDefectAnomalyReport = async (
     config: ReportConfig
 ) => {
     const supabase = createClient();
-    const doc = new jsPDF();
+    const doc = new jsPDF({ compress: true });
     const pageWidth = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
     const margin = 10;
@@ -296,7 +313,7 @@ export const generateDefectAnomalyReport = async (
     const isPrintFriendly = config.printFriendly === true;
 
     const drawHeader = (doc: jsPDF) => {
-        const reportTitle = config.isFindingsReport ? "Findings Report" : "Defect / Anomaly Report";
+        const reportTitle = config.isFindingsReport ? "Findings Report" : "Anomaly Report";
         const reportNoDisplay = sowReportNo || (anomalies.length > 0 ? anomalies[0].sow_report_no : null) || (jobPack?.metadata && jobPack?.metadata?.report_no) || (config as any)?.reportNoPrefix || (config as any)?.headerData?.sowReportNo || "N/A";
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
@@ -669,7 +686,7 @@ export const generateDefectAnomalyReport = async (
 
         // Removed redundant text as requested
 
-        const images = Array.isArray(record.attachments) && record.attachments.length > 0
+        const rawImages = Array.isArray(record.attachments) && record.attachments.length > 0
             ? record.attachments
             : Array.isArray(record.photos) && record.photos.length > 0
             ? record.photos
@@ -678,6 +695,14 @@ export const generateDefectAnomalyReport = async (
             : Array.isArray(record.insp_photos) && record.insp_photos.length > 0
             ? record.insp_photos
             : [];
+        const images = [...rawImages].sort((a: any, b: any) => {
+            const orderA = a.meta?.sort_order !== undefined ? Number(a.meta.sort_order) : (a.sort_order !== undefined ? Number(a.sort_order) : 999999);
+            const orderB = b.meta?.sort_order !== undefined ? Number(b.meta.sort_order) : (b.sort_order !== undefined ? Number(b.sort_order) : 999999);
+            if (orderA !== orderB) return orderA - orderB;
+            const dateA = new Date(a.updated_at || a.created_at || a.captured_at || 0).getTime();
+            const dateB = new Date(b.updated_at || b.created_at || b.captured_at || 0).getTime();
+            return dateA - dateB;
+        });
         // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
         const loadedImages = await Promise.all(
             images.map(async (rawAtt: any) => {
@@ -830,7 +855,7 @@ export const generateDefectAnomalyReport = async (
                 // 3. Draw Image (Centered horizontally within container box)
                 const imgX = margin + (contentWidth - photoW) / 2;
                 const imgY = lastY + headerH_box + 2;
-                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH);
+                doc.addImage(imgData, "JPEG", imgX, imgY, photoW, photoH, undefined, "FAST");
 
                 // 4. Draw Footer for Description (Centered)
                 const footerY_pos = lastY + headerH_box + photoH + 2;
@@ -1001,7 +1026,13 @@ export const generateDefectAnomalyReport = async (
 
     if (config.returnBlob) {
         applyWatermarkAndSignaturesGlobal(doc, config);
-        return doc.output("blob");
+        try {
+            return doc.output("blob");
+        } catch (blobErr) {
+            console.warn("defect report doc.output('blob') failed, using arraybuffer fallback:", blobErr);
+            const buffer = doc.output("arraybuffer");
+            return new Blob([buffer], { type: "application/pdf" });
+        }
     } else {
         const fileNameSuffix = config.isFindingsReport ? "FindingsReport" : "AnomalyReport";
         applyWatermarkAndSignaturesGlobal(doc, config);

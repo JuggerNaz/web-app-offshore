@@ -167,7 +167,7 @@ export const generateDivingUTWTKReport = async (
         currentY += 18;
 
         // Table Data
-        // Details as follows, Item No. , QID, Elevation, Dive No., clock position (group all the clock pos thickness value 12,3,6,9) , Nominal Thickness , Findings.
+        // Details as follows, No. , QID, Elevation, Dive No., clock position (group all the clock pos thickness value 12,3,6,9) , Nominal Thickness , Findings.
         const tableBody = records.map((r, index) => {
             let d = r.inspection_data || {};
             if (Array.isArray(d)) {
@@ -225,7 +225,7 @@ export const generateDivingUTWTKReport = async (
             margin: { left: margin, right: margin, bottom: margin + 25 },
             head: [
                 [
-                    { content: "Item No.", rowSpan: 2, styles: {cellWidth: 12, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.", rowSpan: 2, styles: {cellWidth: 12, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID", rowSpan: 2, styles: {cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation", rowSpan: 2, styles: {cellWidth: 16, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.", rowSpan: 2, styles: {cellWidth: 16, lineWidth: 0.1, lineColor: colors.border} },

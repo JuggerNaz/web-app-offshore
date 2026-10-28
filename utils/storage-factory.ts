@@ -405,6 +405,11 @@ class AWSS3StorageHandler implements StorageHandler {
   }
 
   async download(filePath: string): Promise<{ buffer: Buffer; contentType: string } | null> {
+    if (!this.hasCredentials) {
+      console.warn(`[${this.constructor.name}] No credentials configured for S3/B2. Skipping download.`);
+      return null;
+    }
+
     const { bucket, key } = parseS3Location(filePath, this.bucket);
     const keyCandidates = [key];
     if (!key.startsWith("uploads/")) {

@@ -441,23 +441,51 @@ function InspectionAttachmentsTab({
     const handleSaveAttachment = async (updated: any) => {
         if (!updated) return;
         try {
+            let finalPath = updated.path;
+            if ((updated.isEdited || updated.isReplaced) && updated.file) {
+                const formData = new FormData();
+                formData.append("id", String(updated.id));
+                formData.append("file", updated.file);
+                if (updated.path) formData.append("filePath", updated.path);
+                if (updated.title) formData.append("title", updated.title);
+                if (updated.description) formData.append("description", updated.description);
+                if (updated.sort_order !== undefined) formData.append("sort_order", String(updated.sort_order));
+
+                const response = await fetch("/api/attachment", {
+                    method: "PUT",
+                    body: formData
+                });
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.url) {
+                        finalPath = result.url;
+                        updated.path = result.url;
+                    }
+                } else {
+                    const errJson = await response.json().catch(() => ({}));
+                    console.error("PUT /api/attachment failed:", errJson);
+                }
+            }
+
             const supabase = createClient();
             const { error } = await supabase
                 .from('attachment')
                 .update({
                     name: updated.title || updated.name,
+                    path: finalPath,
                     meta: {
                         ...(updated.meta || {}),
                         description: updated.description,
                         title: updated.title,
                         type: updated.type || 'PHOTO',
+                        ...(updated.meta?.original_file_name ? { original_file_name: updated.meta.original_file_name } : {}),
                     }
                 })
                 .eq('id', updated.id);
             if (error) throw error;
             refreshAttachmentCaches();
             mutateInspectionAttachments();
-            toast.success("Attachment visual updates saved successfully");
+            toast.success("Attachment saved successfully");
             setEditingAttachment(null);
         } catch (err: any) {
             console.error("Failed to save attachment:", err);

@@ -27,7 +27,7 @@ interface ReportConfig {
 /**
  * ROV Water Depth Inspection Report (RWDI) — Portrait
  *
- * Columns: Item No. | QID | Elevation (m) | Dive No. | Water Depth (m) | Findings
+ * Columns: No. | QID | Elevation (m) | Dive No. | Water Depth (m) | Findings
  */
 export const generateROVRWDIReport = async (
     records: any[],
@@ -140,7 +140,7 @@ export const generateROVRWDIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "QID",               styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)",    styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",          styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

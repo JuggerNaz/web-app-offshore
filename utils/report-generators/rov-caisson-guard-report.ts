@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV Caisson Guard Inspection Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
+ * Columns: No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
  * Data is grouped by Caisson Guard (SG / CS_GUARD). Each SG group starts on a new page.
  * Associated components (like anodes, clamps attached to SG) are clubbed with their parent SG QID.
@@ -272,7 +272,7 @@ export const generateROVCaissonGuardReport = async (
                 startY: (doc as any)._tableStartY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
-                    { content: "Item No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID",             styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)",  styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },

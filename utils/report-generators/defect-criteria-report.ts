@@ -7,6 +7,10 @@ interface ReportConfig {
     sowReportNo?: string;
     reportNoPrefix?: string;
     reportYear?: string;
+    jobPackId?: string | number;
+    contractorLogoUrl?: string;
+    contractorLogo?: string;
+    jobPack?: any;
     preparedBy?: { name: string; date: string; position?: string };
     reviewedBy?: { name: string; date: string; position?: string };
     approvedBy?: { name: string; date: string; position?: string };
@@ -30,6 +34,191 @@ const getLibraryLabel = (library: any[], id: string) => {
     if (!library || !id) return id;
     const item = library.find(item => item.lib_id === id); // assuming string id comparison
     return item ? item.lib_desc : id;
+};
+
+/**
+ * Resolves the engineering physical unit for a defect criteria rule based on:
+ * 1. Explicit unit properties (rule.unit, rule.thresholdUnit, customParameters.unit, etc.)
+ * 2. Field name notation with embedded unit in parentheses (e.g., "CP Rdg (mV)", "Depth (mm)", "Loss (%)")
+ * 3. Defect Code / Defect Group / Defect Type standards (AW -> %, CP -> mV, SC -> mm, MG -> mm, PS -> m, IN -> deg)
+ * 4. Value-based heuristics (negative threshold values <= -100 are CP voltage readings in mV)
+ */
+export const resolveRuleUnit = (
+    rule: any,
+    defectCodeDesc?: string,
+    defectTypeDesc?: string
+): string => {
+    if (!rule) return '';
+
+    // 1. Explicit unit from rule or customParameters
+    if (rule.unit && typeof rule.unit === 'string') return rule.unit.trim();
+    if (rule.thresholdUnit && typeof rule.thresholdUnit === 'string') return rule.thresholdUnit.trim();
+    if (rule.threshold_unit && typeof rule.threshold_unit === 'string') return rule.threshold_unit.trim();
+    if (rule.parameterUnit && typeof rule.parameterUnit === 'string') return rule.parameterUnit.trim();
+    if (rule.customParameters?.unit) return String(rule.customParameters.unit).trim();
+    if (rule.customParameters?.threshold_unit) return String(rule.customParameters.threshold_unit).trim();
+
+    // 2. Unit embedded in fieldName (e.g. "CP Rdg (mV)" -> "mV", "Thickness (mm)" -> "mm", "Loss (%)" -> "%")
+    const fieldName = String(rule.fieldName || rule.field_name || "");
+    const fieldParenMatch = fieldName.match(/\((mV|mm|m|%|deg|°|kg|bar|psi|in)\)/i);
+    if (fieldParenMatch) {
+        return fieldParenMatch[1];
+    }
+
+    // 3. Known Defect Code ID / Descriptions
+    const codeId = String(rule.defectCodeId || rule.defect_code_id || "").toUpperCase().trim();
+    const codeDesc = String(defectCodeDesc || "").toUpperCase();
+    const typeDesc = String(defectTypeDesc || "").toUpperCase();
+    const fieldUpper = fieldName.toUpperCase();
+
+    // Anode Wastage -> %
+    if (
+        codeId === 'AW' || 
+        codeDesc.includes('ANODE') || 
+        codeDesc.includes('WASTAGE') || 
+        typeDesc.includes('ANODE') || 
+        fieldUpper.includes('ANODE') || 
+        fieldUpper.includes('DEPLETION')
+    ) {
+        return '%';
+    }
+
+    // Cathodic Potential -> mV
+    if (
+        codeId === 'CP' || 
+        codeDesc.includes('CATHODIC') || 
+        codeDesc.includes('POTENTIAL') || 
+        typeDesc.includes('CATHODIC') || 
+        fieldUpper.includes('CP RDG') || 
+        fieldUpper.includes('CP_RDG') ||
+        fieldUpper.includes('CP READING')
+    ) {
+        return 'mV';
+    }
+
+    // Marine Growth -> mm
+    if (
+        codeId === 'MG' || 
+        codeId === 'MGI' || 
+        codeDesc.includes('MARINE GROWTH') || 
+        typeDesc.includes('MARINE GROWTH')
+    ) {
+        return 'mm';
+    }
+
+    // Scour -> mm (standard scour depth threshold in offshore jacket/subsea inspection, e.g. 900 mm)
+    if (
+        codeId === 'SC' || 
+        codeDesc.includes('SCOUR') || 
+        typeDesc.includes('SCOUR') || 
+        fieldUpper.includes('SCOUR')
+    ) {
+        if (fieldUpper.includes('(M)') || fieldUpper.includes(' (M)')) return 'm';
+        return 'mm';
+    }
+
+    // Free Spanning / Pipeline Spanning -> m
+    if (
+        codeId === 'PS' || 
+        codeDesc.includes('SPAN') || 
+        typeDesc.includes('SPAN') || 
+        fieldUpper.includes('SPAN')
+    ) {
+        return 'm';
+    }
+
+    // Tilt / Inclinometer -> deg
+    if (
+        codeId === 'IN' || 
+        codeId === 'IC' || 
+        codeDesc.includes('INCLINOMETER') || 
+        codeDesc.includes('TILT')
+    ) {
+        return 'deg';
+    }
+
+    // Wall Thickness Loss / Corrosion / Physical Damage
+    if (
+        codeId === 'WT' || 
+        codeDesc.includes('WALL THICKNESS') || 
+        typeDesc.includes('WALL THICKNESS')
+    ) {
+        if (typeDesc.includes('%') || fieldUpper.includes('%') || fieldUpper.includes('LOSS')) {
+            return '%';
+        }
+        return 'mm';
+    }
+
+    if (
+        codeId === 'CR' || 
+        codeId === 'PD' || 
+        codeDesc.includes('CORROSION') || 
+        codeDesc.includes('DAMAGE')
+    ) {
+        if (fieldUpper.includes('%') || typeDesc.includes('%')) {
+            return '%';
+        }
+        return 'mm';
+    }
+
+    // 4. Value-based heuristics
+    const valNum = Number(rule.thresholdValue);
+    if (!isNaN(valNum)) {
+        // CP reading voltages in seawater are negative (typically -650 to -1150 mV)
+        if (valNum <= -100) {
+            return 'mV';
+        }
+    }
+
+    return '';
+};
+
+/**
+ * Formats a rule threshold condition string including its physical engineering unit
+ * when a numeric threshold value is specified.
+ */
+export const formatRuleCondition = (
+    rule: any,
+    defectCodeDesc?: string,
+    defectTypeDesc?: string
+): string => {
+    if (!rule) return "N/A";
+
+    const hasValue = rule.thresholdValue !== undefined && rule.thresholdValue !== null && String(rule.thresholdValue).trim() !== '';
+    const hasText = rule.thresholdText !== undefined && rule.thresholdText !== null && String(rule.thresholdText).trim() !== '';
+    const hasOperator = Boolean(rule.thresholdOperator && String(rule.thresholdOperator).trim() !== '');
+
+    if (!hasValue && !hasText && !hasOperator) {
+        return "N/A";
+    }
+
+    const op = rule.thresholdOperator || (hasText ? 'LIKE' : '');
+    const rawVal = hasValue ? rule.thresholdValue : (rule.thresholdText || '');
+    const rawValStr = String(rawVal).trim();
+
+    // Check if this condition has a numeric value that should carry a unit
+    const isNumericValue = hasValue || /^[-+]?\d+(\.\d+)?/.test(rawValStr);
+
+    let displayVal = rawValStr;
+    if (isNumericValue) {
+        const unit = resolveRuleUnit(rule, defectCodeDesc, defectTypeDesc);
+        if (unit) {
+            const cleanUnit = unit.trim();
+            const endsWithUnit = displayVal.toLowerCase().endsWith(cleanUnit.toLowerCase());
+            if (!endsWithUnit) {
+                if (cleanUnit === '%') {
+                    displayVal = `${displayVal}%`;
+                } else {
+                    displayVal = `${displayVal} ${cleanUnit}`;
+                }
+            }
+        }
+    }
+
+    if (op) {
+        return `${op} ${displayVal}`.trim();
+    }
+    return displayVal || "N/A";
 };
 
 export const generateDefectCriteriaReport = async (
@@ -116,17 +305,63 @@ export const generateDefectCriteriaReport = async (
             console.error("Error fetching rules", e);
         }
 
-        // 4. Fetch Active MGI Profiles (Active only)
+        // 4. Fetch MGI Profiles (with multi-tier fallback so MGI details are always printed)
         let activeMgiProfiles: any[] = [];
         try {
-            const mgiRes = await fetch('/api/mgi-profiles');
+            const jpId = config?.jobPackId || (config as any)?.jobPack?.id || (config as any)?.headerData?.jobPackId;
+            const mgiUrl = jpId ? `/api/mgi-profiles?jobpack_id=${jpId}` : '/api/mgi-profiles';
+            const mgiRes = await fetch(mgiUrl);
             if (mgiRes.ok) {
                 const mgiData = await mgiRes.json();
-                const allMgi = Array.isArray(mgiData) ? mgiData : (mgiData.data || []);
-                activeMgiProfiles = allMgi.filter((p: any) => p.is_active && !p.is_archived);
+                const allMgi: any[] = Array.isArray(mgiData) ? mgiData : (mgiData.data || []);
+                
+                // Priority 1: If jobPack specifies an mgi_profile_id, prioritize that profile
+                const jobPackMgiId = (config as any)?.jobPack?.mgi_profile_id || (config as any)?.jobPack?.metadata?.mgi_profile_id;
+                if (jobPackMgiId) {
+                    const matchedJobProf = allMgi.filter((p: any) => Number(p.id) === Number(jobPackMgiId) && !p.is_archived);
+                    if (matchedJobProf.length > 0) {
+                        activeMgiProfiles = matchedJobProf;
+                    }
+                }
+
+                // Priority 2: Any profiles explicitly marked active
+                if (activeMgiProfiles.length === 0) {
+                    activeMgiProfiles = allMgi.filter((p: any) => 
+                        (p.is_active === true || String(p.is_active) === 'true' || p.is_active === 1) && 
+                        !p.is_archived
+                    );
+                }
+
+                // Priority 3: Fallback to the latest/default unarchived configured profile in system settings
+                if (activeMgiProfiles.length === 0 && allMgi.length > 0) {
+                    const unarchived = allMgi.filter((p: any) => !p.is_archived && Array.isArray(p.thresholds) && p.thresholds.length > 0);
+                    if (unarchived.length > 0) {
+                        unarchived.sort((a: any, b: any) => (Number(b.id) || 0) - (Number(a.id) || 0));
+                        activeMgiProfiles = [unarchived[0]];
+                    } else {
+                        activeMgiProfiles = [allMgi[0]];
+                    }
+                }
             }
         } catch (e) {
             console.error("Error fetching MGI profiles", e);
+        }
+
+        // Priority 4: Standard PTS-2023 Specification fallback if no profile was resolved
+        if (activeMgiProfiles.length === 0) {
+            activeMgiProfiles = [
+                {
+                    id: 'pts-standard',
+                    name: "PTS-2023 Standard Profile",
+                    description: "Standard Marine Growth Specification Thresholds",
+                    is_active: true,
+                    thresholds: [
+                        { from_elevation: "MSL", max_thickness: 80 },
+                        { from_elevation: "1/3 WD", max_thickness: 80 },
+                        { from_elevation: "Mudline", max_thickness: 25 }
+                    ]
+                }
+            ];
         }
 
         // Preload logos
@@ -134,9 +369,107 @@ export const generateDefectCriteriaReport = async (
         if (companySettings?.logo_url) {
             try { clientLogoData = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
         }
+
+        // Resolve Contractor Logo URL
+        let contractorLogoUrl = (config as any)?.contractorLogoUrl || 
+                                (config as any)?.contractorLogo || 
+                                (config as any)?.headerData?.contractorLogoUrl || 
+                                (config as any)?.headerData?.contrLogoUrl || 
+                                (companySettings as any)?.contractorLogoUrl || 
+                                (companySettings as any)?.contractor_logo_url;
+
+        // 1. If not yet found, check jobPack passed in config or headerData
+        const jobPackObj = (config as any)?.jobPack || (config as any)?.headerData?.jobPack || (config as any)?.headerData?.jobpack;
+        const contractorId = (config as any)?.contractorId || (config as any)?.headerData?.contractorId || jobPackObj?.metadata?.contrac || (jobPackObj as any)?.contractor_id;
+
+        if (!contractorLogoUrl && contractorId) {
+            try {
+                const contrRes = await fetch(`/api/libraries/contractors?id=${contractorId}`);
+                if (contrRes.ok) {
+                    const contrData = await contrRes.json();
+                    if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                }
+            } catch (_) {}
+            if (!contractorLogoUrl) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    if (cRes.ok) {
+                        const cJson = await cRes.json();
+                        const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                        const cLow = String(contractorId).toLowerCase();
+                        const found = cList.find((c: any) =>
+                            String(c.lib_id).toLowerCase() === cLow ||
+                            String(c.id).toLowerCase() === cLow ||
+                            String(c.code || "").toLowerCase() === cLow ||
+                            String(c.lib_desc || "").toLowerCase() === cLow
+                        );
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // 2. If still not found and jobPackId is available, fetch jobpack to get contractor ID
+        const jobPackId = config?.jobPackId || (config as any)?.headerData?.jobPackId;
+        if (!contractorLogoUrl && jobPackId) {
+            try {
+                const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+                if (jpRes.ok) {
+                    const jpData = await jpRes.json();
+                    const jp = jpData?.data || jpData;
+                    const cId = jp?.metadata?.contrac || jp?.contractor_id;
+                    if (cId) {
+                        const contrRes = await fetch(`/api/libraries/contractors?id=${cId}`);
+                        if (contrRes.ok) {
+                            const contrData = await contrRes.json();
+                            if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                        }
+                        if (!contractorLogoUrl) {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(cId).toLowerCase();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id).toLowerCase() === cLow ||
+                                    String(c.id).toLowerCase() === cLow ||
+                                    String(c.code || "").toLowerCase() === cLow
+                                );
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            }
+                        }
+                    }
+                }
+            } catch (_) {}
+        }
+
+        // 3. Fallback: fetch any active contractor with a valid logo from library
+        if (!contractorLogoUrl) {
+            try {
+                const contrRes = await fetch('/api/libraries/contractors');
+                if (contrRes.ok) {
+                    const contrJson = await contrRes.json();
+                    const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                    const found = contrList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+        if (!contractorLogoUrl) {
+            try {
+                const cRes = await fetch('/api/library/CONTR_NAM');
+                if (cRes.ok) {
+                    const cJson = await cRes.json();
+                    const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                    const found = cList.find((c: any) => Boolean(c.logo_url));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                }
+            } catch (_) {}
+        }
+
         let contractorLogoData: any = null;
-        if ((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo) {
-            try { contractorLogoData = await loadLogoWithTransparency((config as any)?.contractorLogoUrl || (config as any)?.contractorLogo); } catch (_) {}
+        if (contractorLogoUrl) {
+            try { contractorLogoData = await loadLogoWithTransparency(contractorLogoUrl); } catch (_) {}
         }
 
         const rawReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || config?.reportNoPrefix || (config?.reportYear ? `${config.reportNoPrefix || ''}-${config.reportYear}` : "") || companySettings?.serial_no || "N/A";
@@ -350,31 +683,28 @@ export const generateDefectCriteriaReport = async (
                 });
 
                 // Add Group Header
-                tableBody.push([{ content: groupKey, colSpan: 6, styles: {fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
+                tableBody.push([{ content: groupKey, colSpan: 5, styles: {fillColor: [245, 245, 245], fontStyle: 'bold', halign: 'left', lineWidth: 0.1, lineColor: [203, 213, 225]} }]);
 
                 // Add Rules
                 groupRules.forEach(rule => {
-                    // Format Threshold
-                    let condition = "N/A";
-                    if (rule.thresholdOperator || rule.thresholdText) {
-                        const op = rule.thresholdOperator || (rule.thresholdText ? 'LIKE' : '');
-                        const val = rule.thresholdText || rule.thresholdValue;
-                        condition = `${op} ${val}`.trim();
-                    }
-
-                    // Format Priority
-                    const prioLabel = getLibraryLabel(libraryData.priorities, rule.priorityId);
-
                     // Labels - Defect Type in Proper Case
                     const defectTypeRaw = getLibraryLabel(libraryData.defectTypes, rule.defectTypeId);
                     const defectType = toProperCase(defectTypeRaw);
+
+                    // Defect Code Description
+                    const defectCodeDesc = getLibraryLabel(libraryData.defectCodes, rule.defectCodeId);
+
+                    // Format Threshold / Condition with Unit
+                    const condition = formatRuleCondition(rule, defectCodeDesc, defectTypeRaw);
+
+                    // Format Priority
+                    const prioLabel = getLibraryLabel(libraryData.priorities, rule.priorityId);
 
                     const structureGroupDisplay = rule.structureGroup 
                         ? rule.structureGroup.split(',').map((s: string) => s.trim()).filter(Boolean).join(', ')
                         : "-";
 
                     tableBody.push([
-                        rule.order || "-",
                         structureGroupDisplay,
                         defectType,
                         condition,
@@ -386,7 +716,7 @@ export const generateDefectCriteriaReport = async (
 
             autoTable(doc, {
                 startY: currentY,
-                head: [['Order', 'Structure Group', 'Defect Type', 'Condition', 'Priority', 'Alert Message']],
+                head: [['Structure Group', 'Defect Type', 'Condition', 'Priority', 'Alert Message']],
                 body: tableBody,
                 theme: 'grid',
                 headStyles: {
@@ -397,7 +727,7 @@ export const generateDefectCriteriaReport = async (
                     lineColor: [200, 200, 200],
                     halign: 'center',
                     valign: 'middle',
-                    minCellHeight: 10
+                    minCellHeight: 8
                 },
                 styles: {
                     fontSize: 7,
@@ -408,18 +738,17 @@ export const generateDefectCriteriaReport = async (
                     valign: 'middle'
                 },
                 columnStyles: {
-                    0: { cellWidth: 10, halign: 'center' }, // Order
-                    1: { cellWidth: 34, halign: 'center' }, // Structure Group
-                    2: { cellWidth: 46, halign: 'left' },   // Defect Type
-                    3: { cellWidth: 24, halign: 'center' }, // Condition
-                    4: { cellWidth: 24, halign: 'center' }, // Priority
-                    5: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
+                    0: { cellWidth: 38, halign: 'center' }, // Structure Group
+                    1: { cellWidth: 46, halign: 'left' },   // Defect Type
+                    2: { cellWidth: 28, halign: 'center' }, // Condition (with units)
+                    3: { cellWidth: 26, halign: 'center' }, // Priority
+                    4: { cellWidth: 'auto', halign: 'left' } // Alert Message (Remaining space)
                 },
                 didDrawPage: (data: any) => {
                     if (data.pageNumber > 1) addHeader(data.pageNumber);
                 },
                 didParseCell: (data: any) => {
-                    if (data.section === 'body' && data.column.index === 4) {
+                    if (data.section === 'body' && data.column.index === 3) {
                         const rawPriorityId = data.cell.raw.rawPriorityId;
                         if (rawPriorityId && libraryData.anomalyColors) {
                             // Find color for this priority
@@ -449,15 +778,7 @@ export const generateDefectCriteriaReport = async (
                 margin: { top: 35, bottom: 20, left: 10, right: 10 },
             });
 
-            const procFinalY = (doc as any).lastAutoTable?.finalY ?? currentY;
-
-            // Defect Criteria Specification Report always renders the signatory tables for each procedure (both standalone and compiled in final inspection datasheet)
-            if (procFinalY > sigTopY - 5) {
-                doc.addPage();
-                addHeader(doc.getNumberOfPages());
-            }
-            sigPages.add(doc.getNumberOfPages());
-            drawSignatories();
+            currentY = (doc as any).lastAutoTable?.finalY ?? currentY;
         }
 
         // --- SECTION: Active Marine Growth Inspection (MGI) Profile Settings ---
@@ -550,8 +871,9 @@ export const generateDefectCriteriaReport = async (
                     } else {
                         rawThresholds.forEach((t: any, idx: number) => {
                             let elevLabel = String(t.from_elevation ?? "-").trim();
-                            if (elevLabel.toUpperCase() === "MSL") elevLabel = "MSL (0.00m)";
+                            if (elevLabel.toUpperCase() === "MSL" || elevLabel === "0" || elevLabel === "0m") elevLabel = "MSL (0.00m)";
                             else if (elevLabel.toUpperCase() === "MUDLINE") elevLabel = "Mudline (Seabed Level)";
+                            else if (elevLabel.toUpperCase().includes("WD")) elevLabel = `${elevLabel.toUpperCase()} (Water Depth)`;
                             else if (!isNaN(Number(elevLabel))) elevLabel = `${Number(elevLabel).toFixed(2)} m`;
 
                             const maxThick = t.max_thickness != null ? `${t.max_thickness} mm` : "N/A";
@@ -608,6 +930,17 @@ export const generateDefectCriteriaReport = async (
                     currentY = (doc as any).lastAutoTable.finalY + 8;
                 }
             }
+        }
+
+        // Draw Signatures block at the end of the report if enabled (standalone report mode; omitted in final datasheet)
+        if (config?.showSignatures !== false && hasContent) {
+            const finalReportY = (doc as any).lastAutoTable?.finalY ?? currentY;
+            if (finalReportY > sigTopY - 5) {
+                doc.addPage();
+                addHeader(doc.getNumberOfPages());
+            }
+            sigPages.add(doc.getNumberOfPages());
+            drawSignatories();
         }
 
         if (!hasContent) {

@@ -69,7 +69,7 @@ export const isDivingCPSURVRecord = (r: any): boolean => {
  * Diving CP Survey Report (CPSURV) — Landscape
  *
  * Header: Dual logos, Company Info, Report Title, Report No.
- * Table Group Headers: Item No. | QID | Elevation (m) | Dive No. | Equipment / Serial No. | Cathodic Potential (mV) [Pre Dive (mV) | Post Dive (mV) | CP Value (mV)] | Findings
+ * Table Group Headers: No. | QID | Elevation (m) | Dive No. | Equipment / Serial No. | Cathodic Potential (mV) [Pre Dive (mV) | Post Dive (mV) | CP Value (mV)] | Findings
  */
 export const generateDivingCPSURVReport = async (
     records: any[],
@@ -285,7 +285,7 @@ export const generateDivingCPSURVReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [
                 [
-                    { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Component\nQID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

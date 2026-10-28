@@ -476,7 +476,7 @@ export const generateROVCondSketchReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
-                head: [['Item No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                head: [['No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
                 body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};

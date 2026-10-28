@@ -489,7 +489,7 @@ export const generateDivingRRISIDetailReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
-                ['Item No.', 'QID', 'Elevation (m)', 'Dive No.', 'CP', 'UT', 'Findings']
+                ['No.', 'QID', 'Elevation (m)', 'Dive No.', 'CP', 'UT', 'Findings']
             ],
             body: bodyForAutoTable,
             theme: 'grid',

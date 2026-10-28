@@ -26,12 +26,15 @@ interface ReportConfig {
 }
 
 const EXCLUDED_RGVI_COMP_CODES = new Set([
-    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG",
+    "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG", "BB",
     "ANODE", "ANOD", "RISG", "RGRD", "RISER GUARD", "SEAG", "SEA GUARD", 
-    "CAIS", "CAISSON GUARD", "COND", "CONDUCTOR GUARD", "BOATLANDING"
+    "CAIS", "CAISSON GUARD", "COND", "CONDUCTOR GUARD", "BOATLANDING", "BOAT LANDING",
+    "FEND", "FND", "FENDER", "BOAT BUMPER", "BOATBUMPER", "BOAT BUMBER", "BOATBUMBER"
 ]);
 
-export const isExcludedFromRGVI = (r: any): boolean => {
+export const isExcludedFromRGVI = (r: any, compMap?: Map<string | number, any>): boolean => {
+    if (!r) return false;
+
     // 1. Check explicit component code / type fields
     const candidates = [
         r.structure_components?.code,
@@ -62,12 +65,11 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         }
     }
 
-    // 2. Check component QID prefix (e.g. "RG-01", "CU-01", "SG-01", "AN-01", "RS/02", "CD_01", "BL 01", "SG-01")
+    // 2. Check component QID prefix and description
+    const comp = r.structure_components || r.component || {};
     const qid = (
-        r.structure_components?.q_id ||
-        r.structure_components?.name ||
-        r.component?.q_id ||
-        r.component?.name ||
+        comp.q_id ||
+        comp.name ||
         r.component_qid ||
         r.component_name ||
         r.inspection_data?.component_qid ||
@@ -77,12 +79,12 @@ export const isExcludedFromRGVI = (r: any): boolean => {
     ).toString().trim().toUpperCase();
 
     if (qid) {
-        // Match 2-letter codes: RG, CU, SG, AN, FD, BL, CS, CD, CG, RS
+        // Match 2-letter codes: RG, CU, SG, AN, FD, BL, CS, CD, CG, RS, BB
         const prefixMatch2 = qid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
         if (prefixMatch2 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch2[1])) {
             return true;
         }
-        // Match 3-6 letter codes or longer prefixes: RISG, RGRD, SEAG, CAIS, COND, ANOD, FLOT
+        // Match 3-6 letter codes or longer prefixes: RISG, RGRD, SEAG, CAIS, COND, ANOD, FEND, FND
         const prefixMatch3 = qid.match(/^([A-Z]{3,6})([-_/\s\d]|$)/);
         if (prefixMatch3 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch3[1])) {
             return true;
@@ -90,6 +92,105 @@ export const isExcludedFromRGVI = (r: any): boolean => {
         if (qid.startsWith("RG-") || qid.startsWith("RG_") || qid.startsWith("RG/") || qid.startsWith("RG ") || qid.startsWith("RISG") || qid.startsWith("RGRD")) return true;
         if (qid.startsWith("CU-") || qid.startsWith("CU_") || qid.startsWith("CU/") || qid.startsWith("CU ") || qid.startsWith("CG-") || qid.startsWith("CG_") || qid.startsWith("CG/") || qid.startsWith("CG ")) return true;
         if (qid.startsWith("SG-") || qid.startsWith("SG_") || qid.startsWith("SG/") || qid.startsWith("SG ") || qid.startsWith("SEAG")) return true;
+        if (qid.startsWith("FD-") || qid.startsWith("FD_") || qid.startsWith("FD/") || qid.startsWith("FD ") || qid.startsWith("FEND") || qid.startsWith("FND") || qid.includes("BUMPER") || qid.includes("FENDER")) return true;
+    }
+
+    const metadata = comp.metadata || r.metadata || {};
+    const desc = String(comp.description || metadata.description || "").trim().toUpperCase();
+    if (desc.includes("FENDER") || desc.includes("BOAT BUMPER") || desc.includes("BOATBUMPER") || desc.startsWith("FEND")) {
+        return true;
+    }
+
+    // 3. Check Associated / Parent Component for FD and other excluded components
+    const assocId = metadata.associated_comp_id || 
+                    metadata.parent_id || 
+                    metadata.comp_id_parent || 
+                    metadata.parent_comp_id || 
+                    metadata.associated_id || null;
+    const assocQid = String(
+        metadata.associated_comp_qid || 
+        metadata.parent_qid || 
+        metadata.parent_q_id || 
+        ""
+    ).trim().toUpperCase();
+
+    // Check associated QID string
+    if (assocQid) {
+        if (assocQid.startsWith("FD") || assocQid.startsWith("FEND") || assocQid.startsWith("FND") || assocQid.includes("FENDER") || assocQid.includes("BUMPER")) {
+            return true;
+        }
+        const prefixMatch2 = assocQid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
+        if (prefixMatch2 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch2[1])) {
+            return true;
+        }
+        const prefixMatch3 = assocQid.match(/^([A-Z]{3,6})([-_/\s\d]|$)/);
+        if (prefixMatch3 && EXCLUDED_RGVI_COMP_CODES.has(prefixMatch3[1])) {
+            return true;
+        }
+    }
+
+    // Check associated ID in compMap (resolving parent component)
+    if (assocId && compMap) {
+        let currId: any = assocId;
+        let depth = 0;
+        while (currId && depth < 5) {
+            depth++;
+            const parentComp = compMap.get(currId) || compMap.get(String(currId)) || compMap.get(Number(currId));
+            if (!parentComp) break;
+
+            const pCode = String(parentComp.code || parentComp.comp_type || "").trim().toUpperCase();
+            if (EXCLUDED_RGVI_COMP_CODES.has(pCode) || pCode === "FD") {
+                return true;
+            }
+
+            const pQid = String(parentComp.q_id || "").trim().toUpperCase();
+            if (pQid.startsWith("FD") || pQid.startsWith("FEND") || pQid.startsWith("FND") || pQid.includes("FENDER") || pQid.includes("BUMPER")) {
+                return true;
+            }
+            const pMatch2 = pQid.match(/^([A-Z]{2})([-_/\s\d]|$)/);
+            if (pMatch2 && EXCLUDED_RGVI_COMP_CODES.has(pMatch2[1])) {
+                return true;
+            }
+
+            const pDesc = String(parentComp.metadata?.description || "").trim().toUpperCase();
+            if (pDesc.includes("FENDER") || pDesc.includes("BOAT BUMPER") || pDesc.includes("BOATBUMPER") || pDesc.startsWith("FEND")) {
+                return true;
+            }
+
+            const pMeta = parentComp.metadata || {};
+            currId = pMeta.associated_comp_id || pMeta.parent_id || pMeta.comp_id_parent || pMeta.parent_comp_id || pMeta.associated_id || null;
+        }
+    }
+
+    // Check if this record's component itself in compMap is associated with an FD component
+    const directCompId = r.component_id || comp.id;
+    if (directCompId && compMap) {
+        const fullComp = compMap.get(directCompId) || compMap.get(String(directCompId)) || compMap.get(Number(directCompId));
+        if (fullComp) {
+            const fCode = String(fullComp.code || "").trim().toUpperCase();
+            if (EXCLUDED_RGVI_COMP_CODES.has(fCode) || fCode === "FD") {
+                return true;
+            }
+            const fMeta = fullComp.metadata || {};
+            const fAssocId = fMeta.associated_comp_id || fMeta.parent_id || fMeta.comp_id_parent || fMeta.parent_comp_id || fMeta.associated_id;
+            const fAssocQid = String(fMeta.associated_comp_qid || fMeta.parent_qid || "").trim().toUpperCase();
+            if (fAssocQid && (fAssocQid.startsWith("FD") || fAssocQid.startsWith("FEND") || fAssocQid.startsWith("FND") || fAssocQid.includes("FENDER") || fAssocQid.includes("BUMPER"))) {
+                return true;
+            }
+            if (fAssocId) {
+                const parentOfFull = compMap.get(fAssocId) || compMap.get(String(fAssocId)) || compMap.get(Number(fAssocId));
+                if (parentOfFull) {
+                    const pfCode = String(parentOfFull.code || "").trim().toUpperCase();
+                    if (EXCLUDED_RGVI_COMP_CODES.has(pfCode) || pfCode === "FD") {
+                        return true;
+                    }
+                    const pfQid = String(parentOfFull.q_id || "").trim().toUpperCase();
+                    if (pfQid.startsWith("FD") || pfQid.startsWith("FEND") || pfQid.startsWith("FND") || pfQid.includes("FENDER") || pfQid.includes("BUMPER")) {
+                        return true;
+                    }
+                }
+            }
+        }
     }
 
     return false;
@@ -97,7 +198,7 @@ export const isExcludedFromRGVI = (r: any): boolean => {
 
 /**
  * ROV General Visual Inspection (RGVI) Report (Portrait)
- * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
+ * Columns: No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  */
 export const generateROVRGVIReport = async (
     records: any[],
@@ -108,8 +209,35 @@ export const generateROVRGVIReport = async (
     try {
         records = await enrichRecordsWithTapesAndDeployments(null, records);
         records = normalizeReportRecords(records);
-        // Exclude components that have dedicated report templates ('AN','FD','BL','CS','SG','CD','CG','CU','RS','RG')
-        const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r));
+
+        // Preload structure components to resolve parent-child hierarchy for 'FD' and other components
+        const effectiveStructureId = config.structureId || headerData?.structureId || records.find(r => r.structure_id)?.structure_id;
+        const compMap = new Map<string | number, any>();
+        if (effectiveStructureId) {
+            try {
+                const { createClient } = await import("@/utils/supabase/client");
+                const supabase = createClient();
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', effectiveStructureId);
+                if (allComps) {
+                    allComps.forEach(c => {
+                        compMap.set(c.id, c);
+                        compMap.set(String(c.id), c);
+                        if (c.q_id) {
+                            compMap.set(c.q_id.toUpperCase(), c);
+                            compMap.set(String(c.q_id), c);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn("[ROV RGVI Report] Error loading structure components for FD association check:", e);
+            }
+        }
+
+        // Exclude components that have dedicated report templates or are FD and its associated components
+        const validRecords = (records || []).filter((r: any) => !isExcludedFromRGVI(r, compMap));
 
         if (!config.isBlankReport && validRecords.length === 0) {
             return null;
@@ -261,7 +389,7 @@ export const generateROVRGVIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component\nQID",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

@@ -24,7 +24,11 @@ import {
     History,
     ArrowRightLeft,
     Film,
-    Anchor
+    Anchor,
+    Eye,
+    RotateCcw,
+    ChevronLeft,
+    MapPin
 } from "lucide-react";
 
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -150,6 +154,7 @@ interface WorkspaceDialogsProps {
         showRemovalConfirm: boolean;
         editingRecordId: number | null;
         pendingReclass: any;
+        elevationSuggestion?: any;
         showTaskSelector: boolean;
         activeSpec: string | null;
         allInspectionTypes: any[];
@@ -204,6 +209,7 @@ interface WorkspaceDialogsProps {
         divingItemReportPreviewOpen?: boolean;
         divingItmainReportPreviewOpen?: boolean;
         rovRwdiPreviewOpen: boolean;
+        incompleteFlaggedPreviewOpen?: boolean;
         divingDcasnUwPreviewOpen: boolean;
         divingDcasnTsPreviewOpen: boolean;
         divingDcondUwPreviewOpen: boolean;
@@ -271,6 +277,7 @@ interface WorkspaceDialogsProps {
         setNavigPreviewOpen?: (open: boolean) => void;
         setShowRemovalConfirm: (open: boolean) => void;
         setPendingReclass: (val: any) => void;
+        setElevationSuggestion?: (val: any) => void;
         setShowTaskSelector: (open: boolean) => void;
         setAddTaskSearch: (val: string) => void;
         setShowCompSelector: (open: boolean) => void;
@@ -314,6 +321,7 @@ interface WorkspaceDialogsProps {
         setDivingItemReportPreviewOpen?: (open: boolean) => void;
         setDivingItmainReportPreviewOpen?: (open: boolean) => void;
         setRovRwdiPreviewOpen: (open: boolean) => void;
+        setIncompleteFlaggedPreviewOpen?: (open: boolean) => void;
         setDivingDcasnUwPreviewOpen: (open: boolean) => void;
         setDivingDcasnTsPreviewOpen: (open: boolean) => void;
         setDivingDcondUwPreviewOpen: (open: boolean) => void;
@@ -335,6 +343,7 @@ interface WorkspaceDialogsProps {
         handleRegisterAnomaly: () => void;
         handleConfirmRemoval: () => void;
         confirmReclassification: () => void;
+        applyComponentChange?: (newComp: any, updateElevation: boolean, newElevValue?: number) => void;
         handleTaskChange: (code: string) => void;
         handleComponentSelection: (comp: any) => void;
         handleExternalFileUpload: (e: React.ChangeEvent<HTMLInputElement>) => void;
@@ -427,6 +436,8 @@ interface WorkspaceDialogsProps {
         generateDivingITMAINReport?: () => void;
         generateDivingITMAINReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateROVRWDIReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
+        generateIncompleteFlaggedReport?: () => void;
+        generateIncompleteFlaggedReportBlob?: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void | null>;
         generateDivingDCASNUWReport: () => void;
         generateDivingDCASNUWReportBlob: (printFriendly?: boolean, showSignatures?: boolean) => Promise<Blob | void>;
         generateDivingDCASNTSReport: () => void;
@@ -534,6 +545,7 @@ export function WorkspaceDialogs({
         showRemovalConfirm,
         editingRecordId,
         pendingReclass,
+        elevationSuggestion,
         showTaskSelector,
         activeSpec,
         allInspectionTypes,
@@ -589,6 +601,7 @@ export function WorkspaceDialogs({
         divingItemReportPreviewOpen,
         divingItmainReportPreviewOpen,
         rovRwdiPreviewOpen,
+        incompleteFlaggedPreviewOpen,
         divingDcasnUwPreviewOpen,
         divingDcasnTsPreviewOpen,
         divingDcondUwPreviewOpen,
@@ -645,6 +658,7 @@ export function WorkspaceDialogs({
         setNavigPreviewOpen,
         setShowRemovalConfirm,
         setPendingReclass,
+        setElevationSuggestion,
         setShowTaskSelector,
         setAddTaskSearch,
         setShowCompSelector,
@@ -688,6 +702,7 @@ export function WorkspaceDialogs({
         setDivingItemReportPreviewOpen,
         setDivingItmainReportPreviewOpen,
         setRovRwdiPreviewOpen,
+        setIncompleteFlaggedPreviewOpen,
         setDivingDcasnUwPreviewOpen,
         setDivingDcasnTsPreviewOpen,
         setDivingDcondUwPreviewOpen,
@@ -703,6 +718,7 @@ export function WorkspaceDialogs({
         handleRegisterAnomaly,
         handleConfirmRemoval,
         confirmReclassification,
+        applyComponentChange,
         handleTaskChange,
         handleComponentSelection,
         handleExternalFileUpload,
@@ -774,6 +790,8 @@ export function WorkspaceDialogs({
         generateDivingACFMCReportBlob,
         generateDivingPLCOReportBlob,
         generateROVRWDIReportBlob,
+        generateIncompleteFlaggedReport,
+        generateIncompleteFlaggedReportBlob,
         generateDivingDCASNUWReport,
         generateDivingDCASNUWReportBlob,
         generateDivingDCASNTSReport,
@@ -975,6 +993,99 @@ export function WorkspaceDialogs({
         const sowCompIdsWithValidTask = new Set(dialogSowList.map(c => c.id));
         return allComps.filter((c: any) => !sowCompIdsWithValidTask.has(c.id));
     }, [allComps, dialogSowList]);
+
+    const handleMoveRecordAttachment = async (index: number, direction: -1 | 1) => {
+        if (!viewingRecordAttachments) return;
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= viewingRecordAttachments.length) return;
+
+        const updated = [...viewingRecordAttachments];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(targetIndex, 0, moved);
+
+        const ordered = updated.map((item, idx) => ({
+            ...item,
+            sort_order: idx + 1,
+            meta: { ...(item.meta || {}), sort_order: idx + 1 }
+        }));
+
+        setViewingRecordAttachments(ordered);
+
+        // Sync pendingAttachments
+        setPendingAttachments((prev: any[]) => {
+            const idToOrder = new Map(ordered.map((item, idx) => [String(item.id), idx + 1]));
+            const next = prev.map(a => {
+                const newOrder = idToOrder.get(String(a.id));
+                if (newOrder !== undefined) {
+                    return { ...a, sort_order: newOrder, meta: { ...(a.meta || {}), sort_order: newOrder } };
+                }
+                return a;
+            });
+            return [...next].sort((a, b) => {
+                const ordA = a.sort_order ?? a.meta?.sort_order ?? 999999;
+                const ordB = b.sort_order ?? b.meta?.sort_order ?? 999999;
+                return ordA - ordB;
+            });
+        });
+
+        // Persist to API
+        try {
+            const items = ordered.map((item, idx) => ({ id: item.id, sort_order: idx + 1 }));
+            await fetch('/api/attachment/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items })
+            });
+            toast.success("Attachment order updated");
+        } catch (e) {
+            console.error("Failed to reorder attachments:", e);
+        }
+    };
+
+    const handleResetRecordAttachmentsOrder = async () => {
+        if (!viewingRecordAttachments || viewingRecordAttachments.length <= 1) return;
+
+        const resetList = [...viewingRecordAttachments].sort((a, b) => {
+            const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            if (timeA !== timeB) return timeA - timeB;
+            return String(a.id).localeCompare(String(b.id));
+        }).map((item, idx) => ({
+            ...item,
+            sort_order: idx + 1,
+            meta: { ...(item.meta || {}), sort_order: idx + 1 }
+        }));
+
+        setViewingRecordAttachments(resetList);
+
+        setPendingAttachments((prev: any[]) => {
+            const idToOrder = new Map(resetList.map((item, idx) => [String(item.id), idx + 1]));
+            const next = prev.map(a => {
+                const newOrder = idToOrder.get(String(a.id));
+                if (newOrder !== undefined) {
+                    return { ...a, sort_order: newOrder, meta: { ...(a.meta || {}), sort_order: newOrder } };
+                }
+                return a;
+            });
+            return [...next].sort((a, b) => {
+                const ordA = a.sort_order ?? a.meta?.sort_order ?? 999999;
+                const ordB = b.sort_order ?? b.meta?.sort_order ?? 999999;
+                return ordA - ordB;
+            });
+        });
+
+        try {
+            const items = resetList.map((item, idx) => ({ id: item.id, sort_order: idx + 1 }));
+            await fetch('/api/attachment/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items })
+            });
+            toast.success("Attachment order reset to default");
+        } catch (e) {
+            console.error("Failed to reset attachment order:", e);
+        }
+    };
 
     return (
         <>
@@ -1393,26 +1504,103 @@ export function WorkspaceDialogs({
             </Dialog>
 
             <Dialog open={!!viewingRecordAttachments} onOpenChange={(open) => !open && setViewingRecordAttachments(null)}>
-                <DialogContent className="max-w-4xl max-h-[85vh] flex flex-col p-6 overflow-hidden dark:bg-slate-950 dark:border-slate-800 bg-white">
-                    <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
-                            <Paperclip className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-                            Record Attachments
-                        </DialogTitle>
+                <DialogContent className="max-w-5xl max-h-[88vh] flex flex-col p-6 overflow-hidden dark:bg-slate-950 dark:border-slate-800 bg-white">
+                    <DialogHeader className="flex flex-row items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800 space-y-0">
+                        <div className="flex items-center gap-2">
+                            <div className="p-2 bg-blue-100 dark:bg-blue-900/40 rounded-lg text-blue-600 dark:text-blue-400">
+                                <Paperclip className="w-5 h-5" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-base font-bold flex items-center gap-2">
+                                    Record Attachments
+                                    <Badge variant="secondary" className="text-xs px-2 py-0.5 font-bold">
+                                        {viewingRecordAttachments?.length || 0}
+                                    </Badge>
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-slate-500">
+                                    View all record attachments in one place, adjust sequence, or reset order for report printing.
+                                </DialogDescription>
+                            </div>
+                        </div>
+                        <div className="flex items-center gap-2 pr-6">
+                            {viewingRecordAttachments && viewingRecordAttachments.length > 1 && (
+                                <Button 
+                                    size="sm" 
+                                    variant="outline" 
+                                    onClick={handleResetRecordAttachmentsOrder}
+                                    className="h-8 text-xs font-semibold gap-1.5 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 shadow-sm"
+                                    title="Reset attachments to default chronological order"
+                                >
+                                    <RotateCcw className="w-3.5 h-3.5 text-blue-500" />
+                                    Reset Order
+                                </Button>
+                            )}
+                            {viewingRecordAttachments && viewingRecordAttachments.length > 0 && (
+                                <Button
+                                    size="sm"
+                                    onClick={() => {
+                                        const firstAtt = viewingRecordAttachments[0];
+                                        const publicUrl = getAttachmentUrl(firstAtt, supabase);
+                                        setEditingAttachment({ ...firstAtt, publicUrl, recordAttachments: viewingRecordAttachments });
+                                    }}
+                                    className="h-8 text-xs font-bold gap-1.5 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                                >
+                                    <Eye className="w-3.5 h-3.5" />
+                                    Open Preview & Gallery
+                                </Button>
+                            )}
+                        </div>
                     </DialogHeader>
                     <div className="flex-1 overflow-y-auto mt-4 pr-2">
                         {viewingRecordAttachments && viewingRecordAttachments.length > 0 ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                {viewingRecordAttachments.map((att: any) => {
+                                {viewingRecordAttachments.map((att: any, attIdx: number) => {
                                     const publicUrl = getAttachmentUrl(att, supabase);
                                     return (
-                                        <Card key={att.id} className="overflow-hidden border-slate-200 dark:border-slate-800 group flex flex-col bg-slate-50 dark:bg-slate-900 shadow-sm">
-                                            <div className="aspect-video bg-slate-900 flex items-center justify-center text-white relative">
+                                        <Card key={att.id || attIdx} className="overflow-hidden border-slate-200 dark:border-slate-800 group flex flex-col bg-slate-50 dark:bg-slate-900 shadow-sm hover:shadow-md transition-shadow relative">
+                                            {/* Order badge & reorder controls overlay */}
+                                            <div className="absolute top-2 left-2 z-10 flex items-center gap-1.5">
+                                                <Badge className="bg-slate-900/80 hover:bg-slate-900 text-white text-[10px] font-black backdrop-blur-sm shadow border border-white/10 px-2 py-0.5">
+                                                    #{attIdx + 1}
+                                                </Badge>
+                                                {viewingRecordAttachments.length > 1 && (
+                                                    <div className="flex items-center bg-slate-900/80 rounded-md backdrop-blur-sm border border-white/10 p-0.5 shadow">
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            disabled={attIdx === 0}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleMoveRecordAttachment(attIdx, -1);
+                                                            }}
+                                                            title="Move earlier"
+                                                            className="w-5 h-5 text-white/90 hover:text-white hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none p-0"
+                                                        >
+                                                            <ChevronLeft className="w-3 h-3" />
+                                                        </Button>
+                                                        <Button
+                                                            size="icon"
+                                                            variant="ghost"
+                                                            disabled={attIdx === viewingRecordAttachments.length - 1}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleMoveRecordAttachment(attIdx, 1);
+                                                            }}
+                                                            title="Move later"
+                                                            className="w-5 h-5 text-white/90 hover:text-white hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none p-0"
+                                                        >
+                                                            <ChevronRight className="w-3 h-3" />
+                                                        </Button>
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="aspect-video bg-slate-950 flex items-center justify-center text-white relative">
                                                 {(!att.meta?.type || att.meta.type === 'PHOTO') ? (
                                                     <img 
                                                         src={publicUrl} 
                                                         className="w-full h-full object-contain cursor-pointer" 
-                                                        onClick={() => setEditingAttachment({ ...att, publicUrl })} 
+                                                        onClick={() => setEditingAttachment({ ...att, publicUrl, recordAttachments: viewingRecordAttachments })} 
                                                         title={att.name} 
                                                     />
                                                 ) : (
@@ -1422,7 +1610,14 @@ export function WorkspaceDialogs({
                                                     </div>
                                                 )}
                                                 <div className="absolute inset-x-0 bottom-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center p-2">
-                                                    <Button size="sm" variant="secondary" className="w-full text-[10px] h-7 font-black uppercase tracking-wider" onClick={() => setEditingAttachment({ ...att, publicUrl })}>Open Preview & Edit</Button>
+                                                    <Button 
+                                                        size="sm" 
+                                                        variant="secondary" 
+                                                        className="w-full text-[10px] h-7 font-black uppercase tracking-wider" 
+                                                        onClick={() => setEditingAttachment({ ...att, publicUrl, recordAttachments: viewingRecordAttachments })}
+                                                    >
+                                                        Open Preview & Edit
+                                                    </Button>
                                                 </div>
                                             </div>
                                             <div className="p-3 flex-1 flex flex-col gap-1 bg-white dark:bg-slate-950">
@@ -1628,10 +1823,75 @@ export function WorkspaceDialogs({
                 open={!!editingAttachment}
                 onOpenChange={(open) => !open && setEditingAttachment(null)}
                 attachment={editingAttachment}
+                attachments={editingAttachment?.recordAttachments || viewingRecordAttachments || pendingAttachments}
+                onReorder={async (newOrder) => {
+                    const idToOrder = new Map(newOrder.map((item, idx) => [String(item.id), idx + 1]));
+
+                    // 1. Update pendingAttachments
+                    setPendingAttachments((prev: any[]) => {
+                        const updated = prev.map(a => {
+                            const newOrderNum = idToOrder.get(String(a.id));
+                            if (newOrderNum !== undefined) {
+                                return {
+                                    ...a,
+                                    sort_order: newOrderNum,
+                                    meta: { ...(a.meta || {}), sort_order: newOrderNum }
+                                };
+                            }
+                            return a;
+                        });
+                        return [...updated].sort((a, b) => {
+                            const ordA = a.sort_order ?? a.meta?.sort_order ?? 999999;
+                            const ordB = b.sort_order ?? b.meta?.sort_order ?? 999999;
+                            return ordA - ordB;
+                        });
+                    });
+
+                    // 2. Update viewingRecordAttachments
+                    const updateViewing = (prev: any[] | null) => {
+                        if (!prev) return prev;
+                        const updated = prev.map(a => {
+                            const newOrderNum = idToOrder.get(String(a.id));
+                            if (newOrderNum !== undefined) {
+                                return {
+                                    ...a,
+                                    sort_order: newOrderNum,
+                                    meta: { ...(a.meta || {}), sort_order: newOrderNum }
+                                };
+                            }
+                            return a;
+                        });
+                        return [...updated].sort((a, b) => {
+                            const ordA = a.sort_order ?? a.meta?.sort_order ?? 999999;
+                            const ordB = b.sort_order ?? b.meta?.sort_order ?? 999999;
+                            return ordA - ordB;
+                        });
+                    };
+
+                    if (typeof setViewingRecordAttachments === 'function') {
+                        setViewingRecordAttachments(updateViewing);
+                    } else if (setters && typeof setters.setViewingRecordAttachments === 'function') {
+                        setters.setViewingRecordAttachments(updateViewing);
+                    }
+
+                    // 3. Persist to API
+                    try {
+                        const items = newOrder.map((item, idx) => ({ id: item.id, sort_order: idx + 1 }));
+                        await fetch('/api/attachment/reorder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ items })
+                        });
+                        toast.success("Attachment order updated");
+                    } catch (e) {
+                        console.error('Failed to persist attachment reorder:', e);
+                    }
+                }}
                 onSave={async (updated) => {
                     if (!updated) return;
                     const updatedTitle = updated.title || updated.name || '';
                     const updatedDesc = updated.description || '';
+                    const updatedSortOrder = updated.sort_order ?? updated.meta?.sort_order ?? null;
 
                     // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
                     setPendingAttachments((prev: any[]) => {
@@ -1645,11 +1905,13 @@ export function WorkspaceDialogs({
                                     description: updatedDesc,
                                     path: updated.path || a.path,
                                     previewUrl: updated.previewUrl || a.previewUrl,
+                                    sort_order: updatedSortOrder ?? a.sort_order,
                                     meta: {
                                         ...(a.meta || {}),
                                         ...(updated.meta || {}),
                                         title: updatedTitle,
                                         description: updatedDesc,
+                                        sort_order: updatedSortOrder ?? a.meta?.sort_order,
                                     }
                                 };
                             }
@@ -1668,11 +1930,13 @@ export function WorkspaceDialogs({
                                 description: updatedDesc,
                                 path: updated.path || a.path,
                                 previewUrl: updated.previewUrl || a.previewUrl,
+                                sort_order: updatedSortOrder ?? a.sort_order,
                                 meta: {
                                     ...(a.meta || {}),
                                     ...(updated.meta || {}),
                                     title: updatedTitle,
                                     description: updatedDesc,
+                                    sort_order: updatedSortOrder ?? a.meta?.sort_order,
                                 }
                             } : a) : null;
                         if (typeof setViewingRecordAttachments === 'function') {
@@ -1687,11 +1951,15 @@ export function WorkspaceDialogs({
                     if (isExistingRecord) {
                         try {
                             let finalPath = updated.path;
-                            if (updated.isEdited && updated.file) {
+                            if ((updated.isEdited || updated.isReplaced) && updated.file) {
                                 const formData = new FormData();
                                 formData.append("id", String(updated.id));
                                 formData.append("file", updated.file);
-                                formData.append("filePath", updated.path || "");
+                                if (updated.path) formData.append("filePath", updated.path);
+                                if (updatedTitle) formData.append("title", updatedTitle);
+                                if (updatedDesc) formData.append("description", updatedDesc);
+                                if (updatedSortOrder !== null && updatedSortOrder !== undefined) formData.append("sort_order", String(updatedSortOrder));
+
                                 const response = await fetch("/api/attachment", {
                                     method: "PUT",
                                     body: formData
@@ -1702,12 +1970,15 @@ export function WorkspaceDialogs({
                                         finalPath = result.url;
                                         updated.path = result.url;
                                     }
+                                } else {
+                                    const errJson = await response.json().catch(() => ({}));
+                                    console.error("PUT /api/attachment failed:", errJson);
                                 }
                             }
 
-                            const isMediaPrefix = String(updated.id).startsWith("media-");
+                            const isMediaPrefix = String(updated.id).startsWith("media-") || String(updated.id).startsWith("m-");
                             if (isMediaPrefix) {
-                                const cleanId = Number(String(updated.id).replace("media-", ""));
+                                const cleanId = Number(String(updated.id).replace(/^(media-|m-)/, ""));
                                 if (!isNaN(cleanId)) {
                                     await (supabase as any)
                                         .from('insp_media')
@@ -1717,6 +1988,7 @@ export function WorkspaceDialogs({
                                                 ...(updated.meta || {}),
                                                 title: updatedTitle,
                                                 description: updatedDesc,
+                                                sort_order: updatedSortOrder,
                                             }
                                         })
                                         .eq('media_id', cleanId);
@@ -1731,7 +2003,9 @@ export function WorkspaceDialogs({
                                             ...(updated.meta || {}),
                                             title: updatedTitle,
                                             description: updatedDesc,
-                                            type: updated.type || 'PHOTO'
+                                            type: updated.type || 'PHOTO',
+                                            sort_order: updatedSortOrder,
+                                            ...(updated.meta?.original_file_name ? { original_file_name: updated.meta.original_file_name } : {}),
                                         }
                                     })
                                     .eq('id', Number(updated.id));
@@ -1858,6 +2132,60 @@ export function WorkspaceDialogs({
                                 })()}
                             </Button>
                         </div>
+                    </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Component Elevation Suggestion Dialog */}
+            <Dialog 
+                open={!!elevationSuggestion} 
+                onOpenChange={(open) => {
+                    if (!open && elevationSuggestion) {
+                        applyComponentChange?.(elevationSuggestion.newComponent, false);
+                        setElevationSuggestion?.(null);
+                    }
+                }}
+            >
+                <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-2 border-blue-200 dark:border-blue-900/50 shadow-2xl">
+                    <DialogHeader>
+                        <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 mb-1">
+                            <MapPin className="w-5 h-5" />
+                            <DialogTitle className="text-base font-bold uppercase tracking-tight">Elevation Difference Detected</DialogTitle>
+                        </div>
+                        <DialogDescription className="text-xs text-slate-600 dark:text-slate-400 font-medium leading-relaxed">
+                            The selected component <span className="font-bold text-slate-900 dark:text-slate-100">{elevationSuggestion?.newComponent?.name || elevationSuggestion?.newComponent?.q_id}</span> has elevation <span className="font-bold text-blue-600 dark:text-blue-400">{elevationSuggestion?.elevationRangeText || `${elevationSuggestion?.suggestedElevation}m`}</span>, but the current record elevation is <span className="font-bold text-amber-600 dark:text-amber-400">{elevationSuggestion?.currentElevation}m</span>.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="p-3 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                        <p className="font-bold uppercase tracking-wider text-[9px] text-slate-400 dark:text-slate-500">Inspection Data Preservation:</p>
+                        <p>All other inspection data and findings are strictly maintained. Would you like to update the record elevation to match the new component?</p>
+                    </div>
+
+                    <div className="mt-4 flex flex-col sm:flex-row gap-2">
+                        <Button 
+                            variant="outline" 
+                            className="flex-1 font-bold text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700 text-xs uppercase tracking-wider"
+                            onClick={() => {
+                                if (elevationSuggestion) {
+                                    applyComponentChange?.(elevationSuggestion.newComponent, false);
+                                    setElevationSuggestion?.(null);
+                                }
+                            }}
+                        >
+                            Keep Current ({elevationSuggestion?.currentElevation}m)
+                        </Button>
+                        <Button 
+                            className="flex-1 font-bold bg-blue-600 hover:bg-blue-700 text-white text-xs uppercase tracking-wider"
+                            onClick={() => {
+                                if (elevationSuggestion) {
+                                    applyComponentChange?.(elevationSuggestion.newComponent, true, elevationSuggestion.suggestedElevation);
+                                    setElevationSuggestion?.(null);
+                                }
+                            }}
+                        >
+                            Update to {elevationSuggestion?.suggestedElevation}m
+                        </Button>
                     </div>
                 </DialogContent>
             </Dialog>
@@ -2177,17 +2505,26 @@ export function WorkspaceDialogs({
                 />
             )}
 
-            <ReportPreviewDialog
-                reportConfig={reportConfig}
-                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
-                initialShowSignatures={wizardShowSignatures}
-                initialPrintFriendly={wizardPrintFriendly}
-                open={previewOpen} 
-                onOpenChange={setPreviewOpen} 
-                title="Anomaly Report Preview" 
-                fileName={`Anomaly_Report_${previewRecord?.anomaly_ref_no || 'Draft'}`} 
-                generateReport={generateAnomalyReportBlob} 
-            />
+            {(() => {
+                const isFinding = previewRecord?.record_category === "FINDING" ||
+                                  previewRecord?.insp_anomalies?.[0]?.record_category === "FINDING" ||
+                                  previewRecord?.findingType === "Finding" ||
+                                  previewRecord?.status === "Finding";
+                const refNo = previewRecord?.anomaly_ref_no || previewRecord?.insp_anomalies?.[0]?.anomaly_ref_no || 'Draft';
+                return (
+                    <ReportPreviewDialog
+                        reportConfig={reportConfig}
+                        onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                        initialShowSignatures={wizardShowSignatures}
+                        initialPrintFriendly={wizardPrintFriendly}
+                        open={previewOpen} 
+                        onOpenChange={setPreviewOpen} 
+                        title={isFinding ? "Findings Report Preview" : "Anomaly Report Preview"} 
+                        fileName={`${isFinding ? 'Finding' : 'Anomaly'}_Report_${refNo}`} 
+                        generateReport={generateAnomalyReportBlob} 
+                    />
+                );
+            })()}
             <ReportPreviewDialog
                 reportConfig={reportConfig}
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
@@ -2845,6 +3182,18 @@ export function WorkspaceDialogs({
                 onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
                 initialShowSignatures={wizardShowSignatures}
                 initialPrintFriendly={wizardPrintFriendly}
+                open={incompleteFlaggedPreviewOpen || false} 
+                onOpenChange={setIncompleteFlaggedPreviewOpen || (() => {})} 
+                title="Inspection Incomplete Summary Report Preview" 
+                fileName={`Inspection_Incomplete_Summary_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                generateReport={generateIncompleteFlaggedReportBlob as any} 
+            />
+
+            <ReportPreviewDialog
+                reportConfig={reportConfig}
+                onBack={() => { isReturningFromPreview.current = true; setIsReportWizardOpen(true); }}
+                initialShowSignatures={wizardShowSignatures}
+                initialPrintFriendly={wizardPrintFriendly}
                 open={divingDcasnUwPreviewOpen} 
                 onOpenChange={setDivingDcasnUwPreviewOpen} 
                 title="Caisson Inspection Underwater Diving Report Preview" 
@@ -2986,129 +3335,7 @@ export function WorkspaceDialogs({
                 sowReportNo={headerData?.sowReportNo || null}
             />
 
-            <AttachmentEditorDialog 
-                open={!!editingAttachment}
-                onOpenChange={() => setEditingAttachment(null)}
-                attachment={editingAttachment}
-                onSave={async (updated) => {
-                    if (!updated) return;
-                    const updatedTitle = updated.title || updated.name || '';
-                    const updatedDesc = updated.description || '';
 
-                    // 1. ALWAYS update pendingAttachments immediately so the inspection screen updates instantly
-                    setPendingAttachments((prev: any[]) => {
-                        return prev.map(a => {
-                            if (String(a.id) === String(updated.id) || (a.name && a.name === updated.name && a.created_at === updated.created_at)) {
-                                return {
-                                    ...a,
-                                    ...updated,
-                                    title: updatedTitle,
-                                    name: updatedTitle || a.name,
-                                    description: updatedDesc,
-                                    path: updated.path || a.path,
-                                    previewUrl: updated.previewUrl || a.previewUrl,
-                                    meta: {
-                                        ...(a.meta || {}),
-                                        ...(updated.meta || {}),
-                                        title: updatedTitle,
-                                        description: updatedDesc,
-                                    }
-                                };
-                            }
-                            return a;
-                        });
-                    });
-
-                    // 2. Also update viewingRecordAttachments if present
-                    if (viewingRecordAttachments) {
-                        const updateViewing = (prev: any[] | null) => 
-                            prev ? prev.map(a => String(a.id) === String(updated.id) ? {
-                                ...a,
-                                ...updated,
-                                title: updatedTitle,
-                                name: updatedTitle || a.name,
-                                description: updatedDesc,
-                                path: updated.path || a.path,
-                                previewUrl: updated.previewUrl || a.previewUrl,
-                                meta: {
-                                    ...(a.meta || {}),
-                                    ...(updated.meta || {}),
-                                    title: updatedTitle,
-                                    description: updatedDesc,
-                                }
-                            } : a) : null;
-                        if (setters && typeof setters.setViewingRecordAttachments === 'function') {
-                            setters.setViewingRecordAttachments(updateViewing);
-                        } else if (typeof setViewingRecordAttachments === 'function') {
-                            setViewingRecordAttachments(updateViewing);
-                        }
-                    }
-
-                    // 3. Persist to DB if existing record
-                    const isExistingRecord = updated.isExisting || (!isNaN(Number(updated.id)) && !String(updated.id).startsWith('temp-') && !String(updated.id).startsWith('rand-'));
-                    if (isExistingRecord) {
-                        try {
-                            let finalPath = updated.path;
-                            if (updated.isEdited && updated.file) {
-                                const formData = new FormData();
-                                formData.append("id", String(updated.id));
-                                formData.append("file", updated.file);
-                                formData.append("filePath", updated.path || "");
-                                const response = await fetch("/api/attachment", {
-                                    method: "PUT",
-                                    body: formData
-                                });
-                                if (response.ok) {
-                                    const result = await response.json();
-                                    if (result.url) {
-                                        finalPath = result.url;
-                                        updated.path = result.url;
-                                    }
-                                }
-                            }
-
-                            const isMediaPrefix = String(updated.id).startsWith("media-");
-                            if (isMediaPrefix) {
-                                const cleanId = Number(String(updated.id).replace("media-", ""));
-                                if (!isNaN(cleanId)) {
-                                    await (supabase as any)
-                                        .from('insp_media')
-                                        .update({
-                                            name: updatedTitle,
-                                            meta: {
-                                                ...(updated.meta || {}),
-                                                title: updatedTitle,
-                                                description: updatedDesc,
-                                            }
-                                        })
-                                        .eq('media_id', cleanId);
-                                }
-                            } else if (!isNaN(Number(updated.id))) {
-                                await (supabase as any)
-                                    .from('attachment')
-                                    .update({
-                                        name: updatedTitle,
-                                        path: finalPath,
-                                        meta: {
-                                            ...(updated.meta || {}),
-                                            title: updatedTitle,
-                                            description: updatedDesc,
-                                            type: updated.type || 'PHOTO'
-                                        }
-                                    })
-                                    .eq('id', Number(updated.id));
-                            }
-                            toast.success("Attachment updated successfully");
-                        } catch (err: any) {
-                            console.error("Failed to save attachment:", err);
-                            toast.error("Failed to save attachment: " + (err.message || "Unknown error"));
-                        }
-                    } else {
-                        toast.success("Attachment updated locally");
-                    }
-                    setEditingAttachment(null);
-                }}
-            />
             <ReportWizardDialog
                 open={isReportWizardOpen}
                 onOpenChange={setIsReportWizardOpen}
@@ -3146,6 +3373,7 @@ export function WorkspaceDialogs({
                     generateDivingItemReport: () => setters.setDivingItemReportPreviewOpen ? setters.setDivingItemReportPreviewOpen(true) : handlers.generateDivingItemReport?.(),
                     generateDivingITMAINReport: () => setters.setDivingItmainReportPreviewOpen ? setters.setDivingItmainReportPreviewOpen(true) : handlers.generateDivingITMAINReport?.(),
                     generateROVRWDIReport: () => setters.setRovRwdiPreviewOpen(true),
+                    generateIncompleteFlaggedReport: () => setters.setIncompleteFlaggedPreviewOpen ? setters.setIncompleteFlaggedPreviewOpen(true) : handlers.generateIncompleteFlaggedReport?.(),
                     generatePhotographyReport: () => setters.setPhotographyPreviewOpen(true),
                     generatePhotographyLogReport: () => setters.setPhotographyLogPreviewOpen(true),
                     generateVideoLogReport: () => setters.setVideoLogPreviewOpen ? setters.setVideoLogPreviewOpen(true) : handlers.generateVideoLogReport?.(),
@@ -3228,6 +3456,8 @@ export function WorkspaceDialogs({
                             case 'ITEM': setters.setDivingItemReportPreviewOpen?.(true); break;
                             case 'ITMAIN': setters.setDivingItmainReportPreviewOpen?.(true); break;
                             case 'RWDI': setters.setRovRwdiPreviewOpen(true); break;
+                            case 'INC':
+                            case 'INCOMPLETE': setters.setIncompleteFlaggedPreviewOpen ? setters.setIncompleteFlaggedPreviewOpen(true) : handlers.generateIncompleteFlaggedReport?.(); break;
                             case 'PHOTO': setters.setPhotographyPreviewOpen(true); break;
                             case 'PLOG': setters.setPhotographyLogPreviewOpen(true); break;
                             case 'DFMD':
@@ -3267,6 +3497,10 @@ export function WorkspaceDialogs({
                                 break;
                             case 'RSCOR-V2':
                             case 'RSCOR_V2':
+                            case 'RSCOR-V2-REPORT':
+                            case 'ROV-SCOUR-V2-REPORT':
+                            case 'ROV-RSCOR-V2-REPORT':
+                            case 'RSCOR_V2_ROV':
                                 setters.setRscorV2PreviewOpen(true);
                                 break;
                             case 'RRISI': setters.setRrisiPreviewOpen(true); break;

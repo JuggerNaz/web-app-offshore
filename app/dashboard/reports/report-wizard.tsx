@@ -64,6 +64,9 @@ import { generateDivingANMAINReport } from "@/utils/report-generators/diving-anm
 import { generateDivingItemReport } from "@/utils/report-generators/diving-item-report";
 import { generateDivingITMAINReport } from "@/utils/report-generators/diving-itmain-report";
 import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/defect-summary-pipeline-report";
+import { generateInspectionSummaryReport } from "@/utils/report-generators/inspection-summary-report";
+import { generateInspectionSummaryGraphReport } from "@/utils/report-generators/inspection-summary-graph-report";
+import { generateDefectSummaryReport } from "@/utils/report-generators/defect-summary-report";
 
 // Types
 type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
@@ -95,6 +98,7 @@ interface SelectionState {
     procedureId: string;
     sowReportNo: string;
     printBlankReport?: boolean;
+    structureName?: string;
 }
 
 export { REPORT_TEMPLATES, TOC_SECTIONS } from "./report-template-catalog";
@@ -1859,37 +1863,48 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         console.log(`[fetchStructureData] Fetching data for structure ID: ${cleanId}`);
         try {
             const res = await fetch(`/api/structures/${cleanId}`);
-            const data = await res.json();
-            if (!data.success && !data.data) {
-                console.warn("[fetchStructureData] API returned success=false");
-                return null;
-            }
+            if (res.ok) {
+                const data = await res.json();
+                const structureData = data.data || data;
+                if (structureData) {
+                    console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
 
-            const structureData = data.data || data;
-            console.log(`[fetchStructureData] Success. Structure name: ${structureData.str_name}`);
-
-            // Fetch discussion/comment records for this structure
-            try {
-                const strType = structureData.str_type?.toLowerCase() || "platform";
-                console.log(`[fetchStructureData] Fetching comments for ${strType} structure ID: ${cleanId}`);
-                const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
-                const commentText = await commentRes.text();
-                if (commentText.trim()) {
-                    const commentJson = JSON.parse(commentText);
-                    if (commentJson.data && Array.isArray(commentJson.data)) {
-                        structureData.discussions = commentJson.data;
-                        console.log(`[fetchStructureData] Loaded ${commentJson.data.length} comments`);
+                    // Fetch discussion/comment records for this structure
+                    try {
+                        const strType = structureData.str_type?.toLowerCase() || "platform";
+                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
+                        if (commentRes.ok) {
+                            const commentText = await commentRes.text();
+                            if (commentText.trim()) {
+                                const commentJson = JSON.parse(commentText);
+                                if (commentJson.data && Array.isArray(commentJson.data)) {
+                                    structureData.discussions = commentJson.data;
+                                }
+                            }
+                        }
+                    } catch (commentErr) {
+                        console.warn("Error fetching structure comments for report:", commentErr);
                     }
-                }
-            } catch (commentErr) {
-                console.error("Error fetching structure comments for report:", commentErr);
-            }
 
-            return structureData;
+                    return structureData;
+                }
+            }
         } catch (e) {
-            console.error("Error fetching structure:", e);
-            return null;
+            console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
         }
+
+        // Cache fallback: Check if structure exists in structures from useSWR
+        const found = (structures || []).find((s: any) =>
+            String(s.id) === String(cleanId) ||
+            String(s.str_id) === String(cleanId) ||
+            String(s.code || "").toLowerCase() === cleanId.toLowerCase()
+        );
+        if (found) {
+            console.log(`[fetchStructureData] Using cached structure: ${found.str_name || found.name}`);
+            return found;
+        }
+
+        return { id: cleanId, str_name: selections.structureName || "Structure " + cleanId };
     };
 
     const fetchJobPackData = async () => {
@@ -1900,17 +1915,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         console.log(`[fetchJobPackData] Fetching data for job pack ID: ${selections.jobPackId}`);
         try {
             const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
-            const data = await res.json();
-            if (data.data) {
-                console.log(`[fetchJobPackData] Success. Jobpack name: ${data.data.name || data.data.title}`);
-                return data.data;
+            if (res.ok) {
+                const data = await res.json();
+                if (data.data) {
+                    console.log(`[fetchJobPackData] Success. Jobpack name: ${data.data.name || data.data.title}`);
+                    return data.data;
+                }
+                return data;
             }
-            console.warn("[fetchJobPackData] No data field in API response");
-            return data;
         } catch (e) {
-            console.error("Error fetching jobpack:", e);
-            return null;
+            console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
         }
+
+        const found = (jobPacks || []).find((jp: any) => String(jp.id) === String(selections.jobPackId));
+        if (found) return found;
+        return { id: selections.jobPackId, name: "Jobpack " + selections.jobPackId };
     };
 
     const fetchComponentTypes = async () => {
@@ -1999,6 +2018,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateROVRSEABGasDetailReport } = await import("@/utils/report-generators/rov-rseab-gas-detail-report");
             const { generateROVRSEABCraterDetailReport } = await import("@/utils/report-generators/rov-rseab-crater-detail-report");
             const { generateROVRSCORReport } = await import("@/utils/report-generators/rov-rscor-report");
+            const { generateROVRSCORV2Report } = await import("@/utils/report-generators/rov-rscor-v2-report");
             const { generateROVRSCORSurveyReport } = await import("@/utils/report-generators/rov-rscor-survey-report");
             const { generateROVCPReport, isROVRecord, hasCPReading } = await import("@/utils/report-generators/rov-cp-report");
             const { generateROVRGVIReport }  = await import("@/utils/report-generators/rov-rgvi-report");
@@ -2029,6 +2049,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const { generateDivingMEASUReport } = await import("@/utils/report-generators/diving-measu-report");
             const { generateDivingRRISIReport } = await import("@/utils/report-generators/diving-rrisi-report");
             const { generateDivingRRISIDetailReport } = await import("@/utils/report-generators/diving-rrisi-detail-report");
+            const { generateInspectionIncompleteFlaggedReport, isStatusIncomplete } = await import("@/utils/report-generators/inspection-incomplete-flagged-report");
 
 
             // Fetch real company settings from API
@@ -2093,26 +2114,150 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
             } else {
-                // All-in-One: Combine all selected templates with cover sheets!
+                // All-in-One: Combine all selected templates with cover sheets and interactive Table of Contents (TOC)!
                 if (selectedTOC.length === 0) return null;
 
                 const originalAlert = window.alert;
                 window.alert = () => {}; 
                 try {
-                    const mergedPdf = await PDFDocument.create();
+                    const structureData = selections.structureId ? await fetchStructureData() : null;
+                    const jobPackData = selections.jobPackId ? await fetchJobPackData() : null;
+
+                    const selectedStructureObj = structures.find((s: any) => String(s.id) === String(cleanStructureId) || String(s.str_name) === String(cleanStructureId));
+
+                    let contractorName = "";
+                    let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+                    const contracId = jobPackData?.metadata?.contrac || 
+                                     selectedJobPack?.metadata?.contrac || 
+                                     (jobPackData as any)?.contractor_id || 
+                                     (selectedJobPack as any)?.contractor_id;
+
+                    if (contracId) {
+                        try {
+                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            if (cRes.ok) {
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const cLow = String(contracId).toLowerCase().trim();
+                                const found = cList.find((c: any) =>
+                                    String(c.lib_id || "").toLowerCase().trim() === cLow ||
+                                    String(c.id || "").toLowerCase().trim() === cLow ||
+                                    String(c.code || "").toLowerCase().trim() === cLow ||
+                                    String(c.lib_desc || "").toLowerCase().trim() === cLow
+                                );
+                                if (found) {
+                                    contractorName = found.lib_desc || found.name || "";
+                                    if (found.logo_url) contractorLogoUrl = found.logo_url;
+                                }
+                            }
+                        } catch (_) {}
+                    }
+
+                    if (!contractorName) {
+                        const cand = jobPackData?.metadata?.contractor || 
+                                     jobPackData?.metadata?.contractor_name || 
+                                     selectedJobPack?.metadata?.contractor || 
+                                     selectedJobPack?.metadata?.contractor_name ||
+                                     jobPackData?.contractor ||
+                                     selectedJobPack?.contractor;
+                        if (cand && typeof cand === "string" && !cand.toLowerCase().includes("petronas")) {
+                            contractorName = cand;
+                        } else if (contracId && isNaN(Number(contracId)) && !String(contracId).toLowerCase().includes("petronas")) {
+                            contractorName = String(contracId);
+                        } else {
+                            contractorName = "NasQuest Resources Sdn Bhd";
+                        }
+                    }
+
+                    const isPipeline = selections.structureId?.startsWith("pipeline-") || 
+                                       structureData?.type === "pipeline" || 
+                                       selectedStructureObj?.type === "pipeline" || 
+                                       activeCategory === "Pipeline";
+
+                    const vessel = jobPackData?.metadata?.vessel || 
+                                   selectedJobPack?.metadata?.vessel || 
+                                   jobPackData?.vessel || 
+                                   selectedJobPack?.vessel || 
+                                   (jobPackData?.metadata?.vessel_history?.[0]?.name) || 
+                                   (selectedJobPack?.metadata?.vessel_history?.[0]?.name) || 
+                                   "MEO RESOLUTION";
+
+                    let inspectionDateRange = (reportConfig as any)?.dateRange || 
+                                              (reportConfig as any)?.inspDateRange || 
+                                              jobPackData?.metadata?.date_range || 
+                                              selectedJobPack?.metadata?.date_range || 
+                                              "";
+                    if (!inspectionDateRange && jobPackData?.start_date && jobPackData?.end_date) {
+                        try {
+                            const { format } = await import("date-fns");
+                            const d1 = format(new Date(jobPackData.start_date), "dd-MMM-yyyy");
+                            const d2 = format(new Date(jobPackData.end_date), "dd-MMM-yyyy");
+                            inspectionDateRange = d1 === d2 ? d1 : `${d1} – ${d2}`;
+                        } catch (_) {
+                            inspectionDateRange = `${jobPackData.start_date} – ${jobPackData.end_date}`;
+                        }
+                    }
+                    if (!inspectionDateRange) {
+                        inspectionDateRange = "24 Aug 2026 – 31 Aug 2026";
+                    }
+
+                    const coverOptions = {
+                        structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
+                        fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
+                        jobPackName: jobPackData?.name || jobPackData?.title || selectedJobPack?.name || "UIMC2026/SKA/PLAT01",
+                        sowReportNo: selections.sowReportNo || reportConfig?.sowReportNo || "AM26-016-01",
+                        clientName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
+                        companyName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
+                        contractorName: contractorName || "NasQuest Resources Sdn Bhd",
+                        vessel,
+                        inspectionDateRange,
+                        logoUrl: companySettings?.logo_url || "",
+                        contractorLogoUrl: contractorLogoUrl || "",
+                        inspectionModes: "ROV & Diving Consolidated",
+                        dateStr: new Date().toISOString().split("T")[0],
+                        revision: (reportConfig as any)?.revision || "0",
+                        issuedDate: (reportConfig as any)?.issuedDate || (reportConfig as any)?.date || new Date().toISOString().split("T")[0],
+                        isPipeline,
+                        structureType: isPipeline ? ("pipeline" as const) : ("platform" as const),
+                        preparedBy: reportConfig?.preparedBy?.name ? reportConfig.preparedBy : undefined,
+                        reviewedBy: reportConfig?.reviewedBy?.name ? reportConfig.reviewedBy : undefined,
+                        approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : undefined,
+                    };
+
+                    const {
+                        generateMainCoverPage,
+                        generateTOCPages,
+                        generateSectionDividerPage,
+                        generateEndOfReportCoverPage,
+                        applyTOCLinksToPdf
+                    } = await import("@/utils/report-generators/final-datasheet-report");
+
+                    const collectedSections: Array<{
+                        section: typeof TOC_SECTIONS[0];
+                        dividerDonorDoc: any;
+                        reports: Array<{
+                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            donorDoc: any;
+                            pageCount: number;
+                        }>;
+                    }> = [];
 
                     let count = 0;
                     for (const s of TOC_SECTIONS) {
                         const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
                         if (sectionTemplates.length === 0) continue;
 
-                        const sectionReportBlobs: Blob[] = [];
+                        const activeReports: Array<{
+                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            donorDoc: any;
+                            pageCount: number;
+                        }> = [];
 
                         for (const t of sectionTemplates) {
                             count++;
                             setCurrentGeneratingTemplate(t.name);
-                            setGenerationProgress(Math.min(95, 5 + Math.round(((count - 1) / selectedTOC.length) * 90)));
-                            await new Promise(resolve => setTimeout(resolve, 400));
+                            setGenerationProgress(Math.min(90, 5 + Math.round(((count - 1) / selectedTOC.length) * 85)));
+                            await new Promise(resolve => setTimeout(resolve, 300));
 
                             try {
                                 let sectionResult = await generateReportAction(true, t.id); // Must ask for Blob
@@ -2120,7 +2265,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     sectionResult = (sectionResult as any).output('blob');
                                 }
                                 if (sectionResult instanceof Blob) {
-                                    sectionReportBlobs.push(sectionResult);
+                                    const sectionArrayBuffer = await sectionResult.arrayBuffer();
+                                    const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
+                                    activeReports.push({
+                                        template: t,
+                                        donorDoc: donorSectionPdf,
+                                        pageCount: donorSectionPdf.getPageCount()
+                                    });
                                 } else {
                                     console.warn(`Skipping template ${t.name} as it yielded no records.`);
                                 }
@@ -2129,29 +2280,115 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                             }
                         }
 
-                        if (sectionReportBlobs.length > 0) {
+                        if (activeReports.length > 0) {
                             try {
-                                // Section generated! NOW add cover page for the entire SECTION
-                                const coverBlob = await generateCoverPage(s.name);
-                                const coverArrayBuffer = await coverBlob.arrayBuffer();
-                                const donorCoverPdf = await PDFDocument.load(coverArrayBuffer);
-                                const copiedCoverPages = await mergedPdf.copyPages(donorCoverPdf, donorCoverPdf.getPageIndices());
-                                copiedCoverPages.forEach((page) => mergedPdf.addPage(page));
+                                const dividerBlob = await generateSectionDividerPage(s.name, coverOptions);
+                                const dividerBuffer = await dividerBlob.arrayBuffer();
+                                const dividerDonor = await PDFDocument.load(dividerBuffer);
 
-                                // Add section pages
-                                for (const blob of sectionReportBlobs) {
-                                    const sectionArrayBuffer = await blob.arrayBuffer();
-                                    const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
-                                    const copiedSectionPages = await mergedPdf.copyPages(donorSectionPdf, donorSectionPdf.getPageIndices());
-                                    copiedSectionPages.forEach((page) => mergedPdf.addPage(page));
-                                }
-                            } catch (coverErr) {
-                                console.error(`Error appending section ${s.name} cover and pages:`, coverErr);
+                                collectedSections.push({
+                                    section: s,
+                                    dividerDonorDoc: dividerDonor,
+                                    reports: activeReports
+                                });
+                            } catch (err) {
+                                console.error(`Error preparing section divider for ${s.name}:`, err);
                             }
                         }
                     }
 
-                    // Stamp global continuous page numbers on all merged pages
+                    if (collectedSections.length === 0) return null;
+
+                    // 1. Calculate Exact Page Numbers for TOC
+                    const totalTocItems = collectedSections.reduce((acc, s) => acc + 1 + s.reports.length, 0);
+                    const tocPagesCount = Math.max(1, Math.ceil(totalTocItems / 22));
+
+                    // Page 1: Main Cover
+                    // Pages 2 .. (1 + tocPagesCount): TOC Pages
+                    let runningPageNum = 1 + tocPagesCount + 1;
+
+                    const sectionsWithPages = collectedSections.map(cs => {
+                        const secPageNum = runningPageNum;
+                        runningPageNum += 1; // Section divider page is 1 page
+
+                        const repItems = cs.reports.map(r => {
+                            const repPageNum = runningPageNum;
+                            runningPageNum += r.pageCount;
+                            return {
+                                id: r.template.id,
+                                name: r.template.name,
+                                mode: r.template.mode,
+                                pageNum: repPageNum,
+                                pageCount: r.pageCount
+                            };
+                        });
+
+                        return {
+                            id: cs.section.id,
+                            name: cs.section.name,
+                            pageNum: secPageNum,
+                            templates: repItems
+                        };
+                    });
+
+                    // 1B. Account for the End of Report Cover Page (1 page at the end of the dossier)
+                    const endOfReportPageNum = runningPageNum;
+                    runningPageNum += 1;
+
+                    const totalDocumentPages = runningPageNum - 1;
+
+                    // 2. Generate Main Cover & TOC Pages
+                    setCurrentGeneratingTemplate("Creating Main Cover Page & Interactive TOC...");
+                    const coverBlob = await generateMainCoverPage(coverOptions);
+                    const coverBuffer = await coverBlob.arrayBuffer();
+                    const coverDonor = await PDFDocument.load(coverBuffer);
+
+                    const { blobs: tocBlobs, linkTargets } = await generateTOCPages(
+                        sectionsWithPages,
+                        totalDocumentPages,
+                        coverOptions
+                    );
+
+                    // 3. Assemble in mergedPdf
+                    const mergedPdf = await PDFDocument.create();
+
+                    // 3A. Main Cover Page (Page 1)
+                    const [copiedCover] = await mergedPdf.copyPages(coverDonor, [0]);
+                    mergedPdf.addPage(copiedCover);
+
+                    // 3B. TOC Pages (Pages 2 .. 1 + tocPagesCount)
+                    const addedTocPages: any[] = [];
+                    for (const tBlob of tocBlobs) {
+                        const tBuffer = await tBlob.arrayBuffer();
+                        const tDonor = await PDFDocument.load(tBuffer);
+                        const [copiedToc] = await mergedPdf.copyPages(tDonor, [0]);
+                        mergedPdf.addPage(copiedToc);
+                        addedTocPages.push(copiedToc);
+                    }
+
+                    // 3C. Section Dividers & Reports
+                    for (const cs of collectedSections) {
+                        const [copiedDiv] = await mergedPdf.copyPages(cs.dividerDonorDoc, [0]);
+                        mergedPdf.addPage(copiedDiv);
+
+                        for (const r of cs.reports) {
+                            const pages = await mergedPdf.copyPages(r.donorDoc, r.donorDoc.getPageIndices());
+                            pages.forEach(p => mergedPdf.addPage(p));
+                        }
+                    }
+
+                    // 3D. End of Report Cover Page
+                    setCurrentGeneratingTemplate("Adding End of Report Cover Page...");
+                    const endCoverBlob = await generateEndOfReportCoverPage(coverOptions);
+                    const endCoverBuffer = await endCoverBlob.arrayBuffer();
+                    const endCoverDonor = await PDFDocument.load(endCoverBuffer);
+                    const [copiedEndCover] = await mergedPdf.copyPages(endCoverDonor, [0]);
+                    mergedPdf.addPage(copiedEndCover);
+
+                    // 4. Attach Interactive PDF Link Annotations to the TOC page(s)
+                    applyTOCLinksToPdf(mergedPdf, addedTocPages, linkTargets);
+
+                    // 5. Stamp global continuous page numbers on all merged pages
                     const totalPagesCount = mergedPdf.getPageCount();
                     const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
 
@@ -2159,15 +2396,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         const p = mergedPdf.getPage(idx);
                         const { width } = p.getSize();
                         const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
-                        const fontSize = 8;
+                        const fontSize = 7.5;
                         const textWidth = font.widthOfTextAtSize(pageStr, fontSize);
+                        const textColor = rgb(0.45, 0.52, 0.62); // slate-500
 
                         p.drawText(pageStr, {
-                            x: width - 12 - textWidth,
-                            y: 6,
+                            x: width - 40 - textWidth,
+                            y: 17,
                             size: fontSize,
                             font,
-                            color: rgb(0.12, 0.16, 0.23), // slate-800
+                            color: textColor,
                         });
                     }
 
@@ -2200,15 +2438,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Defect Criteria Report (No Structure Data Required)
         if (currentTemplateId === "defect-criteria-report") {
-            return await generateDefectCriteriaReport(companySettings, { ...reportConfig, showSignatures: true, procedureId: selections.procedureId, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
-        }
-
-        // Inspection Summary Report
-        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
-            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
-            let contractorLogoUrl = "";
-            if (jobPack?.metadata?.contrac) {
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+            if (!contractorLogoUrl && jobPack?.metadata?.contrac) {
                 try {
                     const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
                     if (contrRes.ok) {
@@ -2216,6 +2448,76 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         contractorLogoUrl = contrData?.logo_url || "";
                     }
                 } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(jobPack.metadata.contrac).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
+            }
+            if (!contractorLogoUrl) {
+                try {
+                    const contrRes = await fetch('/api/libraries/contractors');
+                    if (contrRes.ok) {
+                        const contrJson = await contrRes.json();
+                        const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+                        const found = contrList.find((c: any) => Boolean(c.logo_url));
+                        if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                    }
+                } catch (_) {}
+            }
+            return await generateDefectCriteriaReport(companySettings, { 
+                ...reportConfig, 
+                showSignatures: reportConfig?.showSignatures !== false, 
+                jobPack,
+                jobPackId: selections.jobPackId || jobPack?.id,
+                contractorLogoUrl,
+                procedureId: selections.procedureId, 
+                sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, 
+                reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo 
+            } as any);
+        }
+
+        // Inspection Summary Report
+        if (currentTemplateId === "inspection-summary" || currentTemplateId === "inspection-summary-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || (selections as any)?.contractorLogoUrl || "";
+            const contracId = jobPack?.metadata?.contrac || (jobPack as any)?.contractor_id;
+            if (!contractorLogoUrl && contracId) {
+                try {
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${contracId}`);
+                    if (contrRes.ok) {
+                        const contrData = await contrRes.json();
+                        contractorLogoUrl = contrData?.logo_url || "";
+                    }
+                } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(contracId).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
             }
 
             let summaryData: any = null;
@@ -2235,7 +2537,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
             }
 
-            const { generateInspectionSummaryReport } = await import("@/utils/report-generators/inspection-summary-report");
+            // Inspection Summary Report
             return await generateInspectionSummaryReport(
                 summaryData || jobPack || {},
                 {
@@ -2249,7 +2551,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     sowReportNo: selections.sowReportNo
                 },
                 companySettings,
-                reportConfig
+                { ...reportConfig, contractorLogoUrl }
             );
         }
 
@@ -2257,15 +2559,32 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         if (currentTemplateId === "inspection-summary-graph" || currentTemplateId === "inspection-summary-graph-report") {
             const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
             const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
-            let contractorLogoUrl = "";
-            if (jobPack?.metadata?.contrac) {
+            let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || (selections as any)?.contractorLogoUrl || "";
+            const contracId = jobPack?.metadata?.contrac || (jobPack as any)?.contractor_id;
+            if (!contractorLogoUrl && contracId) {
                 try {
-                    const contrRes = await fetch(`/api/libraries/contractors?id=${jobPack.metadata.contrac}`);
+                    const contrRes = await fetch(`/api/libraries/contractors?id=${contracId}`);
                     if (contrRes.ok) {
                         const contrData = await contrRes.json();
                         contractorLogoUrl = contrData?.logo_url || "";
                     }
                 } catch (_) {}
+                if (!contractorLogoUrl) {
+                    try {
+                        const cRes = await fetch(`/api/library/CONTR_NAM`);
+                        if (cRes.ok) {
+                            const cJson = await cRes.json();
+                            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                            const cLow = String(contracId).toLowerCase();
+                            const found = cList.find((c: any) =>
+                                String(c.lib_id).toLowerCase() === cLow ||
+                                String(c.id).toLowerCase() === cLow ||
+                                String(c.code || "").toLowerCase() === cLow
+                            );
+                            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                        }
+                    } catch (_) {}
+                }
             }
 
             let summaryData: any = null;
@@ -2285,7 +2604,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
             }
 
-            const { generateInspectionSummaryGraphReport } = await import("@/utils/report-generators/inspection-summary-graph-report");
+            // Inspection Summary by Graph
             return await generateInspectionSummaryGraphReport(
                 summaryData || jobPack || {},
                 {
@@ -2296,10 +2615,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     waterDepth: structure?.depth ?? structure?.waterDepth ?? structure?.water_depth ?? summaryData?.structureInfo?.depth ?? 0,
                     depth: structure?.depth ?? structure?.waterDepth ?? summaryData?.structureInfo?.depth ?? 0,
                     contractorLogoUrl,
-                    sowReportNo: selections.sowReportNo
+                    sowReportNo: selections.sowReportNo,
+                    jobpackName: jobPack?.name || summaryData?.jobpackName || summaryData?.jobpack?.name || "",
                 },
                 companySettings,
-                reportConfig
+                { ...reportConfig, contractorLogoUrl, jobpackName: jobPack?.name || summaryData?.jobpackName || summaryData?.jobpack?.name || "" }
             );
         }
 
@@ -3320,19 +3640,42 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
+            // Fetch type IDs for Splash Zone inspection types to query efficiently in SQL
+            const { data: typeRows } = await supabase
+                .from('inspection_type')
+                .select('id, code')
+                .or('code.ilike.%SZ%,code.ilike.%SPLASH%,code.ilike.%SZONE%');
+
+            const szTypeIds = typeRows ? typeRows.map(t => t.id) : [];
+
             // 1. Fetch records with all necessary joins for SZCI
-            const { data: records, error: fetchError } = await supabase
+            let szciQuery = supabase
                 .from('insp_records')
                 .select(`
                     *,
                     inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code),
+                    structure_components:component_id!left(id, q_id, code, metadata),
                     insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                     insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                     insp_video_tapes:tape_id!left(tape_no),
                     insp_anomalies(*)
                 `)
                 .eq('structure_id', structId);
+
+            if (szTypeIds.length > 0) {
+                szciQuery = szciQuery.in('inspection_type_id', szTypeIds);
+            }
+            if (selections.jobPackId) {
+                szciQuery = szciQuery.eq('jobpack_id', Number(selections.jobPackId));
+            }
+            if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                szciQuery = szciQuery.or(`sow_report_no.eq."${selections.sowReportNo}",sow_report_no.is.null`);
+            }
+
+            const { data: records, error: fetchError } = await szciQuery
+                .order('inspection_date', { ascending: false })
+                .order('insp_id', { ascending: false })
+                .limit(5000);
 
             if (fetchError) {
                 console.error("Fetch Error:", fetchError);
@@ -3341,16 +3684,21 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // FILTER MANUALLY
+            const szCodes = ['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI'];
             const szciRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
-                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
+                    selections.sowReportNo === "all" ||
+                    selections.sowReportNo === "N/A" ||
+                    String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase()) ||
+                    String(selections.sowReportNo).toLowerCase().includes(String(r.sow_report_no || '').toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRSZCI = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSZCI';
-                return sowMatches && jobPackMatches && isRSZCI;
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isSZ = szCodes.includes(code);
+                return sowMatches && jobPackMatches && isSZ;
             });
 
             if (!szciRecords || szciRecords.length === 0) {
-                alert(`No ROV Splash Zone records (RSZCI) found for structure "${structure.str_name}" in this SOW.`);
+                alert(`No Splash Zone records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
@@ -3660,8 +4008,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV Scour Survey Sketch Report
-        if (currentTemplateId === "rov-scour-report") {
+        // ROV Scour Survey Sketch Report (v1 & v2)
+        if (
+            currentTemplateId === "rov-scour-report" || 
+            currentTemplateId === "rov-scour-v2-report" || 
+            currentTemplateId === "rov-rscor-v2-report" || 
+            currentTemplateId === "rscor-v2"
+        ) {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
             const jobPack = await fetchJobPackData();
@@ -3694,15 +4047,17 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
 
             // FILTER MANUALLY
+            const scourCodes = ['RSCOR', 'SCOUR', 'RSCOUR', 'DSCOU', 'DSCOUR', 'DSCOR', 'RSCOR_V2', 'RSCOR-V2', 'ROV-SCOUR'];
             const scourRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
                     String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isRSCOR = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase() === 'RSCOR';
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
+                const isRSCOR = scourCodes.includes(code);
                 return sowMatches && jobPackMatches && isRSCOR;
-            });
+            }) || [];
 
-            if (!scourRecords || scourRecords.length === 0) {
+            if (!selections.printBlankReport && scourRecords.length === 0) {
                 alert(`No ROV Scour records (RSCOR) found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
@@ -3727,6 +4082,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             try {
+                if (currentTemplateId !== "rov-scour-report") {
+                    return await generateROVRSCORV2Report(
+                        scourRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
+                        headerData,
+                        companySettings,
+                        { ...reportConfig, isBlankReport: selections.printBlankReport, returnBlob } as any
+                    );
+                }
                 return await generateROVRSCORReport(
                     scourRecords.map(r => ({ ...r, inspection_data: r.inspection_data || r.inspection_dat })),
                     headerData,
@@ -4215,7 +4578,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     .select(`
                         *,
                         inspection_type:inspection_type_id!left(id, code, name),
-                        structure_components:component_id!left(q_id, code),
+                        structure_components:component_id!left(id, q_id, code, metadata),
                         insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
                         insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
                         insp_video_tapes:tape_id!left(tape_no),
@@ -4230,13 +4593,36 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     return null;
                 }
 
+                // Pre-load structure components to resolve parent-child hierarchy (e.g. FD and associated components)
+                const compMap = new Map<string | number, any>();
+                if (structId) {
+                    try {
+                        const { data: allComps } = await supabase
+                            .from("structure_components")
+                            .select("id, q_id, code, metadata")
+                            .eq("structure_id", structId);
+                        if (allComps) {
+                            for (const c of allComps) {
+                                compMap.set(c.id, c);
+                                compMap.set(String(c.id), c);
+                                if (c.q_id) {
+                                    compMap.set(String(c.q_id).toUpperCase(), c);
+                                    compMap.set(String(c.q_id), c);
+                                }
+                            }
+                        }
+                    } catch (e) {
+                        console.warn("[ReportWizard] Error pre-loading structure components for FD association check:", e);
+                    }
+                }
+
                 const { isExcludedFromRGVI } = await import("@/utils/report-generators/rov-rgvi-report");
                 rgviRecords = (records || []).filter((r: any) => {
                     const sowMatches = !selections.sowReportNo ||
                         String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                     const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
                     const isRGVI = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase() === "RGVI";
-                    return sowMatches && jobPackMatches && isRGVI && !isExcludedFromRGVI(r);
+                    return sowMatches && jobPackMatches && isRGVI && !isExcludedFromRGVI(r, compMap);
                 });
 
                 if (!rgviRecords || rgviRecords.length === 0) {
@@ -6016,11 +6402,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
+            // Preload structure components to resolve parent-child hierarchy for BL and FD components
+            const compMap = new Map<string | number, any>();
+            try {
+                const { data: allComps } = await supabase
+                    .from('structure_components')
+                    .select('id, q_id, code, metadata')
+                    .eq('structure_id', structId);
+                allComps?.forEach(c => {
+                    compMap.set(c.id, c);
+                    compMap.set(String(c.id), c);
+                    if (c.q_id) {
+                        compMap.set(String(c.q_id).toUpperCase(), c);
+                        compMap.set(String(c.q_id), c);
+                    }
+                });
+            } catch (e) {
+                console.warn("[report-wizard] Could not preload structure_components for BL/FD:", e);
+            }
+
             const blRecords = (records || []).filter((r: any) => {
                 const sowMatches = !selections.sowReportNo ||
                     String(r.sow_report_no || "").toLowerCase().includes(selections.sowReportNo.toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const isBL = isBLRecord(r);
+                const isBL = isBLRecord(r, compMap);
                 return sowMatches && jobPackMatches && isBL;
             });
 
@@ -6366,56 +6771,207 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
             };
 
-            const { data: records } = await supabase
-                .from("insp_records")
-                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", structId)
-                .eq("jobpack_id", jobPackIdNum)
-                .eq("sow_report_no", targetSowNo);
+            // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
+            let records: any[] = [];
+            let recFrom = 0;
+            const recPageSize = 1000;
+            let recHasMore = true;
+            while (recHasMore) {
+                const { data, error } = await supabase
+                    .from("insp_records")
+                    .select(`insp_id, inspection_date, inspection_time, inspection_data, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_id, anomaly_ref_no)`)
+                    .eq("structure_id", structId)
+                    .eq("jobpack_id", jobPackIdNum)
+                    .eq("sow_report_no", targetSowNo)
+                    .range(recFrom, recFrom + recPageSize - 1);
+                if (error || !data || data.length === 0) {
+                    recHasMore = false;
+                } else {
+                    records.push(...data);
+                    if (data.length < recPageSize) recHasMore = false;
+                    else recFrom += recPageSize;
+                }
+            }
 
             if (!records || records.length === 0) {
                 alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            const recordIds = records.map(r => r.insp_id);
+            const recordIds = records.map(r => r.insp_id).filter(Boolean);
+            const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+            const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
 
-            const { data: attachments } = await supabase
-                .from("attachment")
-                .select("*")
-                .in("source_id", recordIds)
-                .order("created_at", { ascending: true });
+            // 2. Fetch ALL attachments with chunking & pagination (bypassing default 1000 limit)
+            const allAttachments: any[] = [];
+            const pageSize = 1000;
 
-            let allAttachments = attachments || [];
-            if (allAttachments.length === 0) {
-                const { data: media } = await supabase
-                    .from("insp_media" as any)
-                    .select("*")
-                    .in("inspection_id", recordIds);
-                if (media && media.length > 0) {
-                    allAttachments = media.map((m: any) => ({
-                        id: m.media_id,
-                        path: m.file_path,
-                        file_path: m.file_path,
-                        name: m.file_name || `Media ${m.media_id}`,
-                        source_id: m.inspection_id,
-                        source_type: "inspection",
-                        meta: m.meta,
-                        bucket: (m.meta as any)?.bucket || "inspection-media"
-                    }));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                const chunk = allSourceIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from("attachment")
+                        .select("*")
+                        .in("source_id", chunk)
+                        .order("created_at", { ascending: true })
+                        .range(from, from + pageSize - 1);
+                    if (error || !data || data.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...data);
+                        if (data.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
                 }
             }
 
+            // Also fetch from insp_media for both inspection_ids and anomaly_ids
+            for (let i = 0; i < recordIds.length; i += 100) {
+                const chunk = recordIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data: media, error } = await supabase
+                        .from("insp_media" as any)
+                        .select("*")
+                        .in("inspection_id", chunk)
+                        .range(from, from + pageSize - 1);
+                    if (error || !media || media.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...media.map((m: any) => ({
+                            id: m.media_id,
+                            path: m.file_path,
+                            file_path: m.file_path,
+                            name: m.file_name || `Media ${m.media_id}`,
+                            source_id: m.inspection_id,
+                            source_type: "inspection",
+                            meta: m.meta,
+                            bucket: (m.meta as any)?.bucket || "inspection-media"
+                        })));
+                        if (media.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
+                }
+            }
+
+            if (anomalyIds.length > 0) {
+                for (let i = 0; i < anomalyIds.length; i += 100) {
+                    const chunk = anomalyIds.slice(i, i + 100);
+                    let from = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data: media, error } = await supabase
+                            .from("insp_media" as any)
+                            .select("*")
+                            .in("anomaly_id", chunk)
+                            .range(from, from + pageSize - 1);
+                        if (error || !media || media.length === 0) {
+                            hasMore = false;
+                        } else {
+                            allAttachments.push(...media.map((m: any) => ({
+                                id: m.media_id,
+                                path: m.file_path,
+                                file_path: m.file_path,
+                                name: m.file_name || `Media ${m.media_id}`,
+                                source_id: m.inspection_id,
+                                anomaly_id: m.anomaly_id,
+                                source_type: "anomaly",
+                                meta: m.meta,
+                                bucket: (m.meta as any)?.bucket || "inspection-media"
+                            })));
+                            if (media.length < pageSize) hasMore = false;
+                            else from += pageSize;
+                        }
+                    }
+                }
+            }
+
+            // Robust image attachment identifier (checks metadata, MIME, extensions, edited/ paths)
             const isImageAttachment = (a: any) => {
-                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
-                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+                if (!a) return false;
+                let meta = a.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+                const attType = String(a.type || meta.type || "").toUpperCase();
+                if (attType === "PHOTO" || attType === "IMAGE") return true;
+
+                const mime = String(a.file_type || a.mime || meta.file_type || meta.mime || meta.fileType || "").toLowerCase();
+                if (mime.startsWith("image/")) return true;
+
+                const pathsToCheck = [
+                    a.path,
+                    a.file_path,
+                    a.url,
+                    a.file_url,
+                    a.storage_path,
+                    meta.file_url,
+                    meta.file_path,
+                    meta.original_file_name,
+                    meta.fileName,
+                    a.name,
+                    a.file_name
+                ];
+
+                for (const p of pathsToCheck) {
+                    if (typeof p === 'string' && p.trim()) {
+                        if (p.startsWith("data:image/") || p.match(/\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i)) {
+                            return true;
+                        }
+                    }
+                }
+
+                const rawPath = String(a.path || a.file_path || meta.file_path || "");
+                if (rawPath.startsWith("edited/") || rawPath.startsWith("uploads/")) {
+                    if (!rawPath.match(/\.(pdf|mp4|mov|avi|mkv|wav|mp3|zip|docx|xlsx|doc|xls|csv)$/i)) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
             const photoData = allAttachments.filter(isImageAttachment).map(a => {
-                const record = records?.find(r => r.insp_id === a.source_id);
+                const record = records?.find(r => 
+                    r.insp_id === a.source_id || 
+                    r.insp_id === (a as any).inspection_id ||
+                    r.insp_anomalies?.some((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id)
+                );
+                const recDate = record?.inspection_date || record?.insp_date || record?.date || record?.inspection_data?.inspection_date || record?.inspection_data?.insp_date || record?.inspection_data?.date || null;
+                const recTime = record?.inspection_time || record?.inspection_data?.inspection_time || record?.inspection_data?.time || null;
+
+                let anomRef = a.anomaly_ref || null;
+                if (!anomRef && record?.insp_anomalies && record.insp_anomalies.length > 0) {
+                    const matching = record.insp_anomalies.find((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id);
+                    anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
+                }
+
+                const metaStatus = String(record?.inspection_data?._meta_status || record?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(record?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || record?.finding_ref || record?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: record?.insp_id || a.source_id || 0,
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || record?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 
@@ -6496,56 +7052,207 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 vessel: resolveVessel ? resolveVessel(jobPack) : (jobPack.metadata?.vessel || "N/A")
             };
 
-            const { data: records } = await supabase
-                .from("insp_records")
-                .select(`insp_id, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_ref_no)`)
-                .eq("structure_id", structId)
-                .eq("jobpack_id", jobPackIdNum)
-                .eq("sow_report_no", targetSowNo);
+            // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
+            let records: any[] = [];
+            let recFrom = 0;
+            const recPageSize = 1000;
+            let recHasMore = true;
+            while (recHasMore) {
+                const { data, error } = await supabase
+                    .from("insp_records")
+                    .select(`insp_id, inspection_date, inspection_time, inspection_data, sow_report_no, jobpack_id, structure_id, insp_anomalies(anomaly_id, anomaly_ref_no)`)
+                    .eq("structure_id", structId)
+                    .eq("jobpack_id", jobPackIdNum)
+                    .eq("sow_report_no", targetSowNo)
+                    .range(recFrom, recFrom + recPageSize - 1);
+                if (error || !data || data.length === 0) {
+                    recHasMore = false;
+                } else {
+                    records.push(...data);
+                    if (data.length < recPageSize) recHasMore = false;
+                    else recFrom += recPageSize;
+                }
+            }
 
             if (!records || records.length === 0) {
                 alert(`No records found for structure "${structure.str_name}" in this SOW.`);
                 return null;
             }
 
-            const recordIds = records.map(r => r.insp_id);
+            const recordIds = records.map(r => r.insp_id).filter(Boolean);
+            const anomalyIds = records.flatMap(r => r.insp_anomalies?.map((a: any) => a.anomaly_id)).filter(Boolean);
+            const allSourceIds = Array.from(new Set([...recordIds, ...anomalyIds]));
 
-            const { data: attachments } = await supabase
-                .from("attachment")
-                .select("*")
-                .in("source_id", recordIds)
-                .order("created_at", { ascending: true });
+            // 2. Fetch ALL attachments with chunking & pagination (bypassing default 1000 limit)
+            const allAttachments: any[] = [];
+            const pageSize = 1000;
 
-            let allAttachments = attachments || [];
-            if (allAttachments.length === 0) {
-                const { data: media } = await supabase
-                    .from("insp_media" as any)
-                    .select("*")
-                    .in("inspection_id", recordIds);
-                if (media && media.length > 0) {
-                    allAttachments = media.map((m: any) => ({
-                        id: m.media_id,
-                        path: m.file_path,
-                        file_path: m.file_path,
-                        name: m.file_name || `Media ${m.media_id}`,
-                        source_id: m.inspection_id,
-                        source_type: "inspection",
-                        meta: m.meta,
-                        bucket: (m.meta as any)?.bucket || "inspection-media"
-                    }));
+            for (let i = 0; i < allSourceIds.length; i += 100) {
+                const chunk = allSourceIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data, error } = await supabase
+                        .from("attachment")
+                        .select("*")
+                        .in("source_id", chunk)
+                        .order("created_at", { ascending: true })
+                        .range(from, from + pageSize - 1);
+                    if (error || !data || data.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...data);
+                        if (data.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
                 }
             }
 
+            // Also fetch from insp_media for both inspection_ids and anomaly_ids
+            for (let i = 0; i < recordIds.length; i += 100) {
+                const chunk = recordIds.slice(i, i + 100);
+                let from = 0;
+                let hasMore = true;
+                while (hasMore) {
+                    const { data: media, error } = await supabase
+                        .from("insp_media" as any)
+                        .select("*")
+                        .in("inspection_id", chunk)
+                        .range(from, from + pageSize - 1);
+                    if (error || !media || media.length === 0) {
+                        hasMore = false;
+                    } else {
+                        allAttachments.push(...media.map((m: any) => ({
+                            id: m.media_id,
+                            path: m.file_path,
+                            file_path: m.file_path,
+                            name: m.file_name || `Media ${m.media_id}`,
+                            source_id: m.inspection_id,
+                            source_type: "inspection",
+                            meta: m.meta,
+                            bucket: (m.meta as any)?.bucket || "inspection-media"
+                        })));
+                        if (media.length < pageSize) hasMore = false;
+                        else from += pageSize;
+                    }
+                }
+            }
+
+            if (anomalyIds.length > 0) {
+                for (let i = 0; i < anomalyIds.length; i += 100) {
+                    const chunk = anomalyIds.slice(i, i + 100);
+                    let from = 0;
+                    let hasMore = true;
+                    while (hasMore) {
+                        const { data: media, error } = await supabase
+                            .from("insp_media" as any)
+                            .select("*")
+                            .in("anomaly_id", chunk)
+                            .range(from, from + pageSize - 1);
+                        if (error || !media || media.length === 0) {
+                            hasMore = false;
+                        } else {
+                            allAttachments.push(...media.map((m: any) => ({
+                                id: m.media_id,
+                                path: m.file_path,
+                                file_path: m.file_path,
+                                name: m.file_name || `Media ${m.media_id}`,
+                                source_id: m.inspection_id,
+                                anomaly_id: m.anomaly_id,
+                                source_type: "anomaly",
+                                meta: m.meta,
+                                bucket: (m.meta as any)?.bucket || "inspection-media"
+                            })));
+                            if (media.length < pageSize) hasMore = false;
+                            else from += pageSize;
+                        }
+                    }
+                }
+            }
+
+            // Robust image attachment identifier (checks metadata, MIME, extensions, edited/ paths)
             const isImageAttachment = (a: any) => {
-                const p = a.path || a.file_path || a.url || a.file_url || a.storage_path || "";
-                return p.match(/\.(jpg|jpeg|png|webp|gif|bmp)$/i) || p.startsWith("data:image/") || (a.file_type && a.file_type.startsWith("image/"));
+                if (!a) return false;
+                let meta = a.meta || {};
+                if (typeof meta === 'string') {
+                    try { meta = JSON.parse(meta); } catch (e) { meta = {}; }
+                }
+                const attType = String(a.type || meta.type || "").toUpperCase();
+                if (attType === "PHOTO" || attType === "IMAGE") return true;
+
+                const mime = String(a.file_type || a.mime || meta.file_type || meta.mime || meta.fileType || "").toLowerCase();
+                if (mime.startsWith("image/")) return true;
+
+                const pathsToCheck = [
+                    a.path,
+                    a.file_path,
+                    a.url,
+                    a.file_url,
+                    a.storage_path,
+                    meta.file_url,
+                    meta.file_path,
+                    meta.original_file_name,
+                    meta.fileName,
+                    a.name,
+                    a.file_name
+                ];
+
+                for (const p of pathsToCheck) {
+                    if (typeof p === 'string' && p.trim()) {
+                        if (p.startsWith("data:image/") || p.match(/\.(jpg|jpeg|png|webp|gif|bmp|tiff|svg)(\?.*)?$/i)) {
+                            return true;
+                        }
+                    }
+                }
+
+                const rawPath = String(a.path || a.file_path || meta.file_path || "");
+                if (rawPath.startsWith("edited/") || rawPath.startsWith("uploads/")) {
+                    if (!rawPath.match(/\.(pdf|mp4|mov|avi|mkv|wav|mp3|zip|docx|xlsx|doc|xls|csv)$/i)) {
+                        return true;
+                    }
+                }
+
+                return false;
             };
 
             const photoData = allAttachments.filter(isImageAttachment).map(a => {
-                const record = records?.find(r => r.insp_id === a.source_id);
+                const record = records?.find(r => 
+                    r.insp_id === a.source_id || 
+                    r.insp_id === (a as any).inspection_id ||
+                    r.insp_anomalies?.some((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id)
+                );
+                const recDate = record?.inspection_date || record?.insp_date || record?.date || record?.inspection_data?.inspection_date || record?.inspection_data?.insp_date || record?.inspection_data?.date || null;
+                const recTime = record?.inspection_time || record?.inspection_data?.inspection_time || record?.inspection_data?.time || null;
+
+                let anomRef = a.anomaly_ref || null;
+                if (!anomRef && record?.insp_anomalies && record.insp_anomalies.length > 0) {
+                    const matching = record.insp_anomalies.find((an: any) => an.anomaly_id === a.source_id || an.anomaly_id === (a as any).anomaly_id);
+                    anomRef = matching?.anomaly_ref_no || record.insp_anomalies[0].anomaly_ref_no;
+                }
+
+                const metaStatus = String(record?.inspection_data?._meta_status || record?._meta_status || a._meta_status || "").toLowerCase();
+                const isFinding = Boolean(
+                    a.is_finding ||
+                    metaStatus === 'finding' ||
+                    String(record?.finding_type || "").toUpperCase() === 'FINDING' ||
+                    (anomRef && String(anomRef).toUpperCase().startsWith('F-'))
+                );
+                const findingRef = isFinding 
+                    ? (a.finding_ref || record?.finding_ref || record?.inspection_data?._meta_ref_no || anomRef || null) 
+                    : null;
+
                 return {
                     ...a,
-                    anomaly_ref: record?.insp_anomalies?.[0]?.anomaly_ref_no || a.anomaly_ref || null
+                    insp_date: recDate,
+                    inspection_date: recDate,
+                    inspection_time: recTime,
+                    insp_id: record?.insp_id || a.source_id || 0,
+                    anomaly_ref: !isFinding ? anomRef : null,
+                    finding_ref: findingRef,
+                    is_finding: isFinding,
+                    is_anomaly: !isFinding && Boolean(anomRef || record?.has_anomaly || a.anomaly_id),
+                    _meta_status: isFinding ? 'finding' : (anomRef ? 'anomaly' : 'normal'),
+                    source_type: a.source_type || (isFinding ? 'finding' : (anomRef ? 'anomaly' : 'inspection'))
                 };
             });
 
@@ -6795,6 +7502,100 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateWorkScopeIncompleteReport(jobPack, structure, sowData, companySettings, { ...reportConfig, showSignatures: reportConfig.showSignatures } as any);
         }
 
+        // Inspection Incomplete Flagged Detail List Report (All Inspection Types)
+        if (currentTemplateId === "inspection-incomplete-flagged-report" || currentTemplateId === "incomplete-flagged-report") {
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : (selections.structureId ? await fetchStructureData() : null);
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            if (!selections.printBlankReport && (!structure || !jobPack)) return null;
+
+            let incompleteRecords: any[] = [];
+            let allRecords: any[] = [];
+            if (!selections.printBlankReport) {
+                try {
+                    const supabase = (await import("@/utils/supabase/client")).createClient();
+                    let query = supabase
+                        .from('insp_records')
+                        .select(`
+                            *,
+                            inspection_type:inspection_type_id!left(id, code, name),
+                            structure_components:component_id!left(id, q_id, code, metadata),
+                            insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator),
+                            insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name),
+                            insp_anomalies(*)
+                        `)
+                        .order('insp_id', { ascending: true });
+
+                    if (cleanStructureId) {
+                        query = query.eq('structure_id', structId);
+                    }
+                    if (cleanJobPackId) {
+                        query = query.eq('jobpack_id', jobPackIdNum);
+                    }
+                    if (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") {
+                        query = query.eq('sow_report_no', selections.sowReportNo);
+                    }
+
+                    let page = 0;
+                    const PAGE_SIZE = 1000;
+                    while (true) {
+                        const { data: pageData, error } = await query.range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+                        if (error) {
+                            console.error("Error fetching records for inspection incomplete flagged report:", error);
+                            break;
+                        }
+                        if (!pageData || pageData.length === 0) break;
+                        allRecords.push(...pageData);
+                        if (pageData.length < PAGE_SIZE) break;
+                        page++;
+                    }
+                    incompleteRecords = allRecords.filter(isStatusIncomplete);
+
+                    if (incompleteRecords.length === 0) {
+                        alert(`No Incomplete Flagged inspection records found for "${structure?.str_name || 'structure'}" in this SOW.`);
+                        return null;
+                    }
+                } catch (err) {
+                    console.error("Error fetching incomplete flagged records:", err);
+                }
+            }
+
+            let contractorLogoUrl = "";
+            if (jobPack?.metadata?.contrac) {
+                try {
+                    const cRes = await fetch(`/api/library/CONTR_NAM`);
+                    const cJson = await cRes.json();
+                    const found = cJson.data?.find((c: any) => String(c.lib_id) === String(jobPack.metadata.contrac));
+                    if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                } catch (e) {
+                    try {
+                        const supabase = (await import("@/utils/supabase/client")).createClient();
+                        const { data: contrData } = await supabase.from('u_lib_list').select('logo_url').eq('lib_code', 'CONTR_NAM').eq('lib_id', jobPack.metadata.contrac).maybeSingle();
+                        if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                    } catch (_) {}
+                }
+            }
+
+            const headerData = {
+                jobpackName: jobPack?.name || jobPack?.title || "N/A",
+                sowReportNo: selections.sowReportNo || "N/A",
+                platformName: structure?.str_name || structure?.title || "N/A",
+                contractorLogoUrl,
+                vessel: resolveVessel(jobPack),
+                allRecords,
+                structureId: structId,
+                jobPackId: jobPackIdNum,
+                jobPack,
+                structure
+            };
+
+            return await generateInspectionIncompleteFlaggedReport(
+                incompleteRecords,
+                headerData,
+                companySettings,
+                { ...reportConfig, returnBlob, allRecords, structureId: structId, jobPackId: jobPackIdNum } as any
+            );
+        }
+
         // Work Scope Report (Job Pack + Structure)
         if (currentTemplateId === "work-scope-report") {
             const jobPack = await fetchJobPackData();
@@ -6867,8 +7668,41 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // const reportConfig = { ...config, returnBlob }; // Already declared above
 
         switch (currentTemplateId) {
-            case "structure-summary":
-                return await generateStructureReport(data, companySettings, { ...reportConfig, sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix, reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo } as any);
+            case "structure-summary": {
+                const isFromFinalDatasheet = isFinalDatasheet || (reportConfig as any)?.isFinalDatasheet === true;
+                const jobPack = (isFromFinalDatasheet && selections.jobPackId) ? await fetchJobPackData() : null;
+                let contractorLogoUrl = (reportConfig as any)?.contractorLogoUrl || "";
+                if (isFromFinalDatasheet && !contractorLogoUrl && jobPack) {
+                    const contrId = jobPack.metadata?.contrac || (jobPack as any).contractor_id;
+                    if (contrId) {
+                        try {
+                            const contrRes = await fetch(`/api/libraries/contractors?id=${contrId}`);
+                            if (contrRes.ok) {
+                                const contrData = await contrRes.json();
+                                if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+                            }
+                        } catch (_) {}
+                        if (!contractorLogoUrl) {
+                            try {
+                                const cRes = await fetch(`/api/library/CONTR_NAM`);
+                                const cJson = await cRes.json();
+                                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                                const found = cList.find((c: any) => String(c.lib_id) === String(contrId) || String(c.code) === String(contrId));
+                                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+                            } catch (_) {}
+                        }
+                    }
+                }
+                return await generateStructureReport(data, companySettings, {
+                    ...reportConfig,
+                    jobPack,
+                    contractorLogoUrl: isFromFinalDatasheet ? contractorLogoUrl : "",
+                    showContractorLogo: isFromFinalDatasheet,
+                    isFinalDatasheet: isFromFinalDatasheet,
+                    sowReportNo: selections.sowReportNo || reportConfig?.reportNoPrefix,
+                    reportNoPrefix: reportConfig?.reportNoPrefix || selections.sowReportNo
+                } as any);
+            }
 
             case "component-catalog":
                 // Note: generateComponentSummaryReport currently doesn't support full config object in signature based on previous view

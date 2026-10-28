@@ -425,25 +425,6 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
     }
   }, [searchParams, selectedStructures]);
 
-  // Fetch components when SOW dialog opens
-  useEffect(() => {
-    const fetchComponents = async () => {
-      if (sowStructure && sowDialogOpen) {
-        try {
-          console.log("Fetching components for structure:", sowStructure.id);
-          const response = await fetch(`/api/structure-components?structure_id=${sowStructure.id}`);
-          const result = await response.json();
-          console.log("Components API response:", result);
-          setSOWComponents(result.data || []);
-        } catch (error) {
-          console.error("Error fetching components:", error);
-          setSOWComponents([]);
-        }
-      }
-    };
-
-    fetchComponents();
-  }, [sowStructure, sowDialogOpen]);
 
 
 

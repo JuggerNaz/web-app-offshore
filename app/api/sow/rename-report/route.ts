@@ -48,9 +48,22 @@ export const POST = withTenant(async (request, { companyId }) => {
             if (sowData?.id) sowQueryId = sowData.id;
         }
 
-        const { data: allSowItems } = sowQueryId
-            ? await (supabase as any).from("u_sow_items").select("id, report_number").eq("sow_id", sowQueryId)
-            : await (supabase as any).from("u_sow_items").select("id, report_number");
+        const allSowItems: any[] = [];
+        let fromSow = 0;
+        const PAGE_SIZE = 1000;
+        while (true) {
+            let q = (supabase as any).from("u_sow_items").select("id, report_number");
+            if (sowQueryId) q = q.eq("sow_id", sowQueryId);
+            const { data: pageItems, error } = await q.range(fromSow, fromSow + PAGE_SIZE - 1);
+            if (error) break;
+            if (pageItems && pageItems.length > 0) {
+                allSowItems.push(...pageItems);
+                if (pageItems.length < PAGE_SIZE) break;
+                fromSow += PAGE_SIZE;
+            } else {
+                break;
+            }
+        }
 
         const targetItems = (allSowItems || []).filter((item: any) => isReportMatch(item.report_number));
 
@@ -76,22 +89,42 @@ export const POST = withTenant(async (request, { companyId }) => {
         counts.u_sow_items_duplicates_cleaned = deletedDupCount;
 
         // 2. Update insp_records (sow_report_no column)
-        const { data: recsToUpdate } = await (supabase as any)
-            .from("insp_records")
-            .select("insp_id, sow_report_no")
-            .eq("jobpack_id", jobpackIdNum)
-            .eq("structure_id", structureIdNum);
+        const recsToUpdate: any[] = [];
+        let fromRec = 0;
+        while (true) {
+            const { data: pageRecs, error: recError } = await (supabase as any)
+                .from("insp_records")
+                .select("insp_id, sow_report_no")
+                .eq("jobpack_id", jobpackIdNum)
+                .eq("structure_id", structureIdNum)
+                .range(fromRec, fromRec + PAGE_SIZE - 1);
+
+            if (recError) break;
+            if (pageRecs && pageRecs.length > 0) {
+                recsToUpdate.push(...pageRecs);
+                if (pageRecs.length < PAGE_SIZE) break;
+                fromRec += PAGE_SIZE;
+            } else {
+                break;
+            }
+        }
 
         const recIds = (recsToUpdate || []).filter((r: any) => isReportMatch(r.sow_report_no)).map((r: any) => r.insp_id);
 
         if (recIds.length > 0) {
-            const { data: updatedRecords, error: recErr } = await (supabase as any)
-                .from("insp_records")
-                .update({ sow_report_no: new_report_no })
-                .in("insp_id", recIds)
-                .select("insp_id");
-            if (recErr) console.error("[rename-report] insp_records error:", recErr);
-            else counts.insp_records = updatedRecords?.length || 0;
+            let totalUpdatedRecs = 0;
+            const CHUNK_SIZE = 500;
+            for (let i = 0; i < recIds.length; i += CHUNK_SIZE) {
+                const chunk = recIds.slice(i, i + CHUNK_SIZE);
+                const { data: updatedRecords, error: recErr } = await (supabase as any)
+                    .from("insp_records")
+                    .update({ sow_report_no: new_report_no })
+                    .in("insp_id", chunk)
+                    .select("insp_id");
+                if (recErr) console.error("[rename-report] insp_records error:", recErr);
+                else totalUpdatedRecs += updatedRecords?.length || 0;
+            }
+            counts.insp_records = totalUpdatedRecs;
         }
 
         // 3. Update insp_dive_jobs & insp_rov_jobs

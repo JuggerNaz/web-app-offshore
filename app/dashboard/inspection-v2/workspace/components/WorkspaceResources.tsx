@@ -532,14 +532,23 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
         }
 
         let recordsToUse = existingRecords || [];
-        // If not in paginated memory, query Supabase directly for this component and task
-        if (recordsToUse.length === 0 && compToUse?.id && supabase) {
+        // If not in memory, query Supabase directly for this component and task
+        if (recordsToUse.length === 0 && (compToUse?.id || compToUse?.q_id) && supabase) {
             try {
-                const { data: dbRecs } = await supabase
+                let dbQuery = supabase
                     .from("insp_records")
-                    .select("*, inspection_type:inspection_type_id!left(id, code, name), structure_components:component_id!left(id, q_id, code, metadata), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_anomalies(*)")
-                    .eq("component_id", compToUse.id)
-                    .order("inspection_date", { ascending: false });
+                    .select("*, inspection_type:inspection_type_id!left(id, code, name), structure_components:component_id!left(id, q_id, code, metadata), insp_rov_jobs:rov_job_id!left(job_no:deployment_no, name:rov_operator), insp_dive_jobs:dive_job_id!left(job_no:dive_no, name:diver_name), insp_video_tapes:tape_id!left(tape_no, chapter_no), insp_anomalies(*)");
+
+                const cQid = compToUse.q_id || compToUse.name;
+                if (compToUse?.id && cQid) {
+                    dbQuery = dbQuery.or(`component_id.eq.${compToUse.id},component_qid.eq."${cQid}"`);
+                } else if (compToUse?.id) {
+                    dbQuery = dbQuery.eq("component_id", compToUse.id);
+                } else if (cQid) {
+                    dbQuery = dbQuery.eq("component_qid", cQid);
+                }
+
+                const { data: dbRecs } = await dbQuery.order("inspection_date", { ascending: false });
 
                 if (dbRecs && dbRecs.length > 0) {
                     const matched = dbRecs.filter((r: any) => {
@@ -848,10 +857,20 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                     });
 
                                                                                     const rawTsStatus = String(ts.status || "").toLowerCase();
-                                                                                    const isCompleted = rawTsStatus === "completed" || rawTsStatus === "anomaly" || taskRecords.length > 0;
-                                                                                    const hasAnom = rawTsStatus === "anomaly" || taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly");
-                                                                                    const isIncomplete = rawTsStatus === "incomplete" || taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete");
-                                                                                    const isInspected = isCompleted || isIncomplete || hasAnom;
+                                                                                    const isPending = rawTsStatus === "pending" || rawTsStatus === "" || rawTsStatus === "not_started";
+                                                                                    const hasRecordedRecords = taskRecords.length > 0;
+                                                                                    const hasAnom = hasRecordedRecords
+                                                                                        ? taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly")
+                                                                                        : rawTsStatus === "anomaly";
+                                                                                    const isIncomplete = hasRecordedRecords
+                                                                                        ? taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete")
+                                                                                        : rawTsStatus === "incomplete";
+                                                                                    const isCompleted = hasRecordedRecords
+                                                                                        ? (!isIncomplete && !hasAnom)
+                                                                                        : (rawTsStatus === "completed");
+                                                                                    const isInspected = hasRecordedRecords || (!isPending && (isCompleted || isIncomplete || hasAnom));
+                                                                                    const taskCount = Math.max(taskRecords.length, Number(ts.count || ts.recordCount || 0));
+                                                                                    const totalCount = taskCount > 0 ? taskCount : (isInspected ? 1 : 0);
 
                                                                                     return (
                                                                                         <span 
@@ -871,12 +890,12 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                                 isCompleted ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700' :
                                                                                                 'bg-slate-50 dark:bg-slate-800/50 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
                                                                                             }`}
-                                                                                            title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${taskRecords.length > 0 ? taskRecords.length : 1} rec)` : `Start inspection for ${displayName}`}
+                                                                                            title={isInspected ? `Single-click: add new inspection. Double-click: view recorded data (${totalCount} rec)` : `Start inspection for ${displayName}`}
                                                                                         >
                                                                                             <span className={`w-1.5 h-1.5 rounded-full ${hasAnom ? 'bg-rose-500 animate-pulse' : isIncomplete ? 'bg-amber-500' : isCompleted ? 'bg-emerald-500' : 'bg-slate-400'}`} />
                                                                                             {tCode}
-                                                                                            {isInspected && (
-                                                                                                <span className={`text-[7.5px] font-black ${hasAnom ? 'text-rose-600 dark:text-rose-300' : isIncomplete ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'}`}>({taskRecords.length > 0 ? taskRecords.length : 1})</span>
+                                                                                            {isInspected && totalCount > 0 && (
+                                                                                                <span className={`text-[7.5px] font-black ${hasAnom ? 'text-rose-600 dark:text-rose-300' : isIncomplete ? 'text-amber-600 dark:text-amber-300' : 'text-emerald-600 dark:text-emerald-300'}`}>({totalCount})</span>
                                                                                             )}
                                                                                         </span>
                                                                                     );
@@ -1121,10 +1140,20 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                      });
 
                                                                      const rawTsStatus = String(tItem?.status || "").toLowerCase();
-                                                                     const isCompleted = rawTsStatus === "completed" || rawTsStatus === "anomaly" || taskRecords.length > 0;
-                                                                     const hasAnom = rawTsStatus === "anomaly" || taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly");
-                                                                     const isIncomplete = rawTsStatus === "incomplete" || taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete");
-                                                                     const isInspected = isCompleted || isIncomplete || hasAnom;
+                                                                     const isPending = rawTsStatus === "pending" || rawTsStatus === "" || rawTsStatus === "not_started";
+                                                                     const hasRecordedRecords = taskRecords.length > 0;
+                                                                     const hasAnom = hasRecordedRecords
+                                                                         ? taskRecords.some((r: any) => r.has_anomaly || String(r.status).toLowerCase() === "anomaly")
+                                                                         : rawTsStatus === "anomaly";
+                                                                     const isIncomplete = hasRecordedRecords
+                                                                         ? taskRecords.some((r: any) => String(r.status).toLowerCase() === "incomplete")
+                                                                         : rawTsStatus === "incomplete";
+                                                                     const isCompleted = hasRecordedRecords
+                                                                         ? (!isIncomplete && !hasAnom)
+                                                                         : (rawTsStatus === "completed");
+                                                                     const isInspected = hasRecordedRecords || (!isPending && (isCompleted || isIncomplete || hasAnom));
+                                                                     const taskCount = Math.max(taskRecords.length, Number(tItem?.count || tItem?.recordCount || 0));
+                                                                     const totalCount = taskCount > 0 ? taskCount : (isInspected ? 1 : 0);
 
                                                                      return (
                                                                          <button
@@ -1140,7 +1169,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                      ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600 hover:text-white"
                                                                                      : "bg-blue-600/20 text-blue-300 border-blue-500/40 hover:bg-blue-600 hover:text-white"
                                                                              }`}
-                                                                             title={isInspected ? `Single-click: add new entry. Double-click: view recorded inspection (${taskRecords.length > 0 ? taskRecords.length : 1} rec)` : `Start inspection for ${displayName}`}
+                                                                             title={isInspected ? `Single-click: add new entry. Double-click: view recorded inspection (${totalCount} rec)` : `Start inspection for ${displayName}`}
                                                                          >
                                                                              {isInspected ? (
                                                                                  <CheckCircle2 className={`w-2.5 h-2.5 ${hasAnom ? 'text-rose-400 fill-rose-500/20' : isIncomplete ? 'text-amber-400 fill-amber-500/20' : 'text-emerald-400 fill-emerald-500/20'}`} />
@@ -1148,7 +1177,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                  <Play className="w-2.5 h-2.5 fill-current" />
                                                                              )}
                                                                              <span>{displayName}</span>
-                                                                             {isInspected && (
+                                                                             {isInspected && totalCount > 0 && (
                                                                                  <span className={`text-[7.5px] font-black uppercase tracking-widest px-1 py-0.2 rounded border ml-0.5 ${
                                                                                      hasAnom 
                                                                                          ? "text-rose-400 bg-rose-950/80 border-rose-500/40" 
@@ -1156,7 +1185,7 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                          ? "text-amber-400 bg-amber-950/80 border-amber-500/40" 
                                                                                          : "text-emerald-400 bg-emerald-950/80 border-emerald-500/40"
                                                                                  }`}>
-                                                                                     {taskRecords.length > 1 ? `Inspected (${taskRecords.length})` : "Inspected"}
+                                                                                     {totalCount > 1 ? `Inspected (${totalCount})` : "Inspected (1)"}
                                                                                  </span>
                                                                              )}
                                                                          </button>

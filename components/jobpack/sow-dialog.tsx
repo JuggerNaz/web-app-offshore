@@ -146,24 +146,20 @@ export function SOWDialog({
         setPendingRenames([]);
         
         try {
-            const res = await fetch(`/api/sow?jobpack_id=${jobpackId}&structure_id=${structure.id}`);
-            const { data } = await res.json();
+            const [sowRes, compRes, itRes] = await Promise.all([
+                fetch(`/api/sow?jobpack_id=${jobpackId}&structure_id=${structure.id}`).then(r => r.json()).catch(e => ({ data: null })),
+                fetch(`/api/structure-components?structure_id=${structure.id}`).then(r => r.json()).catch(e => {
+                    console.warn("[SOWDialog] Error loading enriched components:", e);
+                    return { data: [] };
+                }),
+                fetch('/api/inspection-types').then(r => r.json()).catch(e => ({ data: [] }))
+            ]);
 
-            // Fetch live enriched components (with inspections & anomalies)
-            try {
-                const compRes = await fetch(`/api/structure-components?structure_id=${structure.id}`);
-                const compData = await compRes.json();
-                if (compData?.data && Array.isArray(compData.data)) {
-                    setLiveComponents(compData.data);
-                }
-            } catch (e) {
-                console.warn("[SOWDialog] Error loading enriched components:", e);
+            const data = sowRes?.data;
+            if (compRes?.data && Array.isArray(compRes.data)) {
+                setLiveComponents(compRes.data);
             }
-            
-            // Also fetch all master inspection types to allow adding new ones
-            const itRes = await fetch('/api/inspection-types');
-            const itData = await itRes.json();
-            setAllInspectionTypes(itData?.data || []);
+            setAllInspectionTypes(itRes?.data || []);
 
             if (data) {
                 setSOW(data);
@@ -453,15 +449,50 @@ export function SOWDialog({
         return cleanItem === cleanActive || cleanActive.startsWith(cleanItem) || cleanItem.startsWith(cleanActive);
     };
 
-    const getItemStatus = (compId: number, typeId: number, s: number, e: number): InspectionStatus => {
-        const itm = sowItems.find(i => i.component_id === compId && i.inspection_type_id === typeId && isReportMatch(i.report_number, activeReport));
-        const comp = (liveComponents.length > 0 ? liveComponents : components).find(c => c.id === compId);
-        const itType = validInspections.find(t => t.id === typeId);
+    const sowItemMap = useMemo(() => {
+        const map = new Map<string, any>();
+        for (const i of sowItems) {
+            if (i.component_id && i.inspection_type_id) {
+                const kBase = `${i.component_id}_${i.inspection_type_id}`;
+                if (!map.has(kBase)) map.set(kBase, i);
+                if (i.report_number) {
+                    const clean = String(i.report_number).replace(/[^a-zA-Z0-9]/g, '').toUpperCase();
+                    map.set(`${kBase}_${clean}`, i);
+                }
+            }
+        }
+        return map;
+    }, [sowItems]);
 
-        // Check if there is an inspection record for this component and inspection type in live components strictly matching this jobpack
-        const rec = comp && Array.isArray((comp as any).inspections)
-            ? (comp as any).inspections.find((r: any) => {
-                const matchesJobpack = r.jobpack_id && jobpackId ? String(r.jobpack_id) === String(jobpackId) : false;
+    const compMap = useMemo(() => {
+        const list = liveComponents.length > 0 ? liveComponents : components;
+        const map = new Map<number, any>();
+        for (const c of list) {
+            if (c.id) map.set(c.id, c);
+        }
+        return map;
+    }, [liveComponents, components]);
+
+    const itTypeMap = useMemo(() => {
+        const map = new Map<number, any>();
+        for (const t of validInspections) {
+            if (t.id) map.set(t.id, t);
+        }
+        return map;
+    }, [validInspections]);
+
+    const getItemStatus = (compId: number, typeId: number, s: number, e: number): InspectionStatus => {
+        const cleanActive = (activeReport && activeReport !== 'null') ? activeReport.replace(/[^a-zA-Z0-9]/g, '').toUpperCase() : '';
+        const itm = (cleanActive ? sowItemMap.get(`${compId}_${typeId}_${cleanActive}`) : null) || 
+                    sowItemMap.get(`${compId}_${typeId}`) || 
+                    sowItems.find(i => i.component_id === compId && i.inspection_type_id === typeId && isReportMatch(i.report_number, activeReport));
+        const comp = compMap.get(compId) || (liveComponents.length > 0 ? liveComponents : components).find(c => c.id === compId);
+        const itType = itTypeMap.get(typeId) || validInspections.find(t => t.id === typeId);
+
+        // Check matching inspection records for this component and inspection type
+        const compInsps = comp && Array.isArray((comp as any).inspections)
+            ? (comp as any).inspections.filter((r: any) => {
+                const matchesJobpack = r.jobpack_id && jobpackId ? String(r.jobpack_id) === String(jobpackId) : true;
                 const matchesRpt = !activeReport || activeReport === 'null' || (r.sow_report_no && isReportMatch(r.sow_report_no, activeReport));
                 const matchesCode = itType && r.inspection_type_code && (
                     r.inspection_type_code.toUpperCase() === itType.code.toUpperCase() ||
@@ -470,28 +501,25 @@ export function SOWDialog({
                 );
                 return matchesJobpack && matchesRpt && matchesCode;
             })
-            : null;
+            : [];
 
-        // Check if component has direct anomaly in anomalies array matching inspection type/code and report
+        const hasRecAnomaly = compInsps.some((r: any) => r.has_anomaly || String(r.status).toUpperCase() === 'ANOMALY');
+        const hasRecIncomplete = compInsps.some((r: any) => String(r.status).toUpperCase() === 'INCOMPLETE');
+        const hasRecCompleted = compInsps.some((r: any) => String(r.status).toUpperCase() === 'COMPLETED');
+
+        // Check if component has direct anomaly in anomalies array matching this report
         const hasDirectCompAnomaly = comp && Array.isArray((comp as any).anomalies) && (comp as any).anomalies.some((a: any) => {
-            const matchesRpt = a.sow_report_no && isReportMatch(a.sow_report_no, activeReport);
-            if (!matchesRpt) return false;
-            if (!itType) return true;
-            const cat = (a.category || a.defect_type || a.description || "").toUpperCase();
-            const code = itType.code.toUpperCase();
-            const name = itType.name.toUpperCase();
-            return cat.includes(code) || cat.includes(name) || name.includes(cat) || code.includes(cat);
+            const matchesRpt = !activeReport || activeReport === 'null' || !a.sow_report_no || isReportMatch(a.sow_report_no, activeReport);
+            return matchesRpt;
         });
 
-        // Check anomaly flags across sowItem, elevation range, live inspection record, and component anomalies
+        // Check anomaly flags across sowItem, elevation range, live inspection records, and component anomalies
         const itmStatusStr = ((itm?.status as string) || '').toLowerCase();
-        const recStatusStr = ((rec?.status as string) || '').toLowerCase();
 
         const isAnom = 
             itmStatusStr === 'anomaly' || itmStatusStr === 'anomalous' ||
-            recStatusStr === 'anomaly' || recStatusStr === 'anomalous' ||
+            Boolean(hasRecAnomaly) ||
             Boolean((itm as any)?.has_anomaly || (itm as any)?.hasAnomaly || (itm as any)?.is_anomaly) ||
-            Boolean(rec?.has_anomaly) ||
             Boolean(hasDirectCompAnomaly) ||
             (Array.isArray((itm as any)?.insp_anomalies) && (itm as any).insp_anomalies.length > 0);
 
@@ -507,8 +535,10 @@ export function SOWDialog({
             }
         }
 
-        if (itmStatusStr === 'completed' || recStatusStr === 'completed') return "completed" as InspectionStatus;
-        if (itmStatusStr === 'incomplete' || recStatusStr === 'incomplete') return "incomplete" as InspectionStatus;
+        if (itmStatusStr === 'incomplete') return "incomplete" as InspectionStatus;
+        if (itmStatusStr === 'completed') return "completed" as InspectionStatus;
+        if (hasRecIncomplete) return "incomplete" as InspectionStatus;
+        if (hasRecCompleted) return "completed" as InspectionStatus;
 
         return "pending" as InspectionStatus;
     };
@@ -718,22 +748,21 @@ export function SOWDialog({
                 matchesStatus = inspectionsToCheck.some(it => {
                     const ranges = getComponentRanges(c);
                     return ranges.some(r => {
+                        if (!isSelected(c.id, it.id, r.start, r.end)) return false;
                         const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
-                        return status === 'completed';
+                        return status === 'completed' || status === 'anomaly' || status === 'anomalous';
                     });
                 });
             } else if (scopeStatusFilter === 'incomplete') {
                 matchesStatus = inspectionsToCheck.some(it => {
                     const ranges = getComponentRanges(c);
-                    return ranges.some(r => {
-                        const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
-                        return status === 'incomplete';
-                    });
+                    return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) && getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase() === 'incomplete');
                 });
             } else if (scopeStatusFilter === 'anomaly') {
                 matchesStatus = inspectionsToCheck.some(it => {
                     const ranges = getComponentRanges(c);
                     return ranges.some(r => {
+                        if (!isSelected(c.id, it.id, r.start, r.end)) return false;
                         const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
                         return status === 'anomaly' || status === 'anomalous';
                     });
@@ -742,7 +771,7 @@ export function SOWDialog({
                 if (selectedInspectionFilter !== 'all') {
                     matchesStatus = inspectionsToCheck.some(it => {
                         const ranges = getComponentRanges(c);
-                        return ranges.some(r => isSelected(c.id, it.id, r.start, r.end) || getItemStatus(c.id, it.id, r.start, r.end) !== 'pending');
+                        return ranges.some(r => isSelected(c.id, it.id, r.start, r.end));
                     });
                 } else {
                     matchesStatus = true;
@@ -771,7 +800,106 @@ export function SOWDialog({
             if (valA > valB) return compSortConfig.direction === 'asc' ? 1 : -1;
             return 0;
         });
-    }, [componentsToFilter, componentSearch, filterFace, filterCompType, filterTopUnd, filterNode, filterLeg, filterMinElevation, filterMaxElevation, scopeStatusFilter, selectedInspectionFilter, validInspections, compSortConfig, selectedItems, componentSplitByElevation, componentBreakpoints, hideArchived]);
+    }, [componentsToFilter, componentSearch, filterFace, filterCompType, filterTopUnd, filterNode, filterLeg, filterMinElevation, filterMaxElevation, scopeStatusFilter, selectedInspectionFilter, validInspections, compSortConfig, selectedItems, componentSplitByElevation, componentBreakpoints, hideArchived, sowItems, liveComponents, activeReport]);
+
+    // Accurate status breakdown across all scoped components and tasks in active report
+    const scopeStatusBreakdown = useMemo(() => {
+        const inspectedCompIds = new Set<number>();
+        const incompleteCompIds = new Set<number>();
+        const pendingCompIds = new Set<number>();
+        const anomalyCompIds = new Set<number>();
+        const selectedCompIds = new Set<number>();
+
+        let inspectedTasks = 0;
+        let incompleteTasks = 0;
+        let pendingTasks = 0;
+        let anomalyTasks = 0;
+        let selectedTasks = 0;
+
+        componentsToFilter.forEach(c => {
+            const ranges = getComponentRanges(c);
+            validInspections.forEach(it => {
+                ranges.forEach(r => {
+                    if (isSelected(c.id, it.id, r.start, r.end)) {
+                        selectedTasks++;
+                        selectedCompIds.add(c.id);
+
+                        const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                        if (status === 'completed' || status === 'anomaly' || status === 'anomalous') {
+                            inspectedTasks++;
+                            inspectedCompIds.add(c.id);
+                        }
+                        if (status === 'anomaly' || status === 'anomalous') {
+                            anomalyTasks++;
+                            anomalyCompIds.add(c.id);
+                        } else if (status === 'incomplete') {
+                            incompleteTasks++;
+                            incompleteCompIds.add(c.id);
+                        } else if (status === 'pending' || !status) {
+                            pendingTasks++;
+                            pendingCompIds.add(c.id);
+                        }
+                    }
+                });
+            });
+        });
+
+        let totalReportAnomalies = 0;
+        componentsToFilter.forEach(c => {
+            if (selectedCompIds.has(c.id) && Array.isArray((c as any).anomalies)) {
+                const anoms = (c as any).anomalies.filter((a: any) => !activeReport || activeReport === 'null' || !a.sow_report_no || isReportMatch(a.sow_report_no, activeReport));
+                totalReportAnomalies += anoms.length;
+            }
+        });
+
+        return {
+            selectedComps: selectedCompIds.size,
+            selectedTasks,
+            inspectedComps: inspectedCompIds.size,
+            inspectedTasks,
+            incompleteComps: incompleteCompIds.size,
+            incompleteTasks,
+            pendingComps: pendingCompIds.size,
+            pendingTasks,
+            anomalyComps: anomalyCompIds.size,
+            anomalyTasks,
+            totalReportAnomalies,
+        };
+    }, [componentsToFilter, validInspections, selectedItems, activeReport, sowItems, liveComponents, componentSplitByElevation, componentBreakpoints]);
+
+    // Count of scoped tasks for components currently visible in activeComponents
+    const activeTasksCount = useMemo(() => {
+        let count = 0;
+        const inspectionsToCheck = selectedInspectionFilter === 'all'
+            ? validInspections
+            : validInspections.filter(it => String(it.id) === String(selectedInspectionFilter));
+
+        activeComponents.forEach(c => {
+            const ranges = getComponentRanges(c);
+            inspectionsToCheck.forEach(it => {
+                ranges.forEach(r => {
+                    if (isSelected(c.id, it.id, r.start, r.end)) {
+                        if (scopeStatusFilter === 'all' || scopeStatusFilter === 'selected') {
+                            count++;
+                        } else if (scopeStatusFilter === 'completed') {
+                            const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                            if (status === 'completed' || status === 'anomaly' || status === 'anomalous') count++;
+                        } else if (scopeStatusFilter === 'incomplete') {
+                            const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                            if (status === 'incomplete') count++;
+                        } else if (scopeStatusFilter === 'pending') {
+                            const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                            if (status === 'pending') count++;
+                        } else if (scopeStatusFilter === 'anomaly') {
+                            const status = getItemStatus(c.id, it.id, r.start, r.end)?.toString().toLowerCase();
+                            if (status === 'anomaly' || status === 'anomalous') count++;
+                        }
+                    }
+                });
+            });
+        });
+        return count;
+    }, [activeComponents, selectedInspectionFilter, validInspections, scopeStatusFilter, selectedItems, liveComponents, sowItems, activeReport, componentSplitByElevation, componentBreakpoints]);
 
     // ── ACTIONS ──
     const handleAddReportNumber = () => {
@@ -1480,40 +1608,58 @@ export function SOWDialog({
                                 <h4 className="text-[9px] font-black text-slate-400 uppercase tracking-widest">Filter By Status</h4>
                                 
                                 <div className="grid grid-cols-2 gap-1.5">
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'all' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'all' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-900 dark:text-slate-100" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'all'} onChange={() => setScopeStatusFilter('all')} className="sr-only" />
-                                        <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                                        <span className="truncate">All</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <Layers className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                            <span className="truncate">All</span>
+                                        </div>
+                                        <span className="text-[9px] font-bold text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-200/50 dark:bg-slate-700/50">{componentsToFilter.length}</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'selected' ? "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'selected' ? "bg-blue-50 dark:bg-blue-950/60 border-blue-300 dark:border-blue-700 text-blue-700 dark:text-blue-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'selected'} onChange={() => setScopeStatusFilter('selected')} className="sr-only" />
-                                        <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                                        <span className="truncate">Selected</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <CheckCircle2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                            <span className="truncate">Selected</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-md bg-blue-100/60 dark:bg-blue-900/60" title={`${scopeStatusBreakdown.selectedComps} comps (${scopeStatusBreakdown.selectedTasks} tasks)`}>{scopeStatusBreakdown.selectedTasks}</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'pending' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'pending' ? "bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'pending'} onChange={() => setScopeStatusFilter('pending')} className="sr-only" />
-                                        <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                                        <span className="truncate">Pending</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <Clock className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                            <span className="truncate">Pending</span>
+                                        </div>
+                                        <span className="text-[9px] font-bold text-slate-400 px-1.5 py-0.5 rounded-md bg-slate-200/50 dark:bg-slate-700/50">{scopeStatusBreakdown.pendingTasks}</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'completed' ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'completed' ? "bg-emerald-50 dark:bg-emerald-950/60 border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'completed'} onChange={() => setScopeStatusFilter('completed')} className="sr-only" />
-                                        <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
-                                        <span className="truncate">Inspected</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <Check className="h-3.5 w-3.5 text-emerald-500 shrink-0" />
+                                            <span className="truncate">Inspected</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-md bg-emerald-100/60 dark:bg-emerald-900/60" title={`${scopeStatusBreakdown.inspectedComps} comps (${scopeStatusBreakdown.inspectedTasks} tasks)`}>{scopeStatusBreakdown.inspectedTasks}</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'incomplete' ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'incomplete' ? "bg-amber-50 dark:bg-amber-950/60 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'incomplete'} onChange={() => setScopeStatusFilter('incomplete')} className="sr-only" />
-                                        <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                                        <span className="truncate">Incomplete</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <AlertCircle className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+                                            <span className="truncate">Incomplete</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-md bg-amber-100/60 dark:bg-amber-900/60" title={`${scopeStatusBreakdown.incompleteComps} comps (${scopeStatusBreakdown.incompleteTasks} tasks)`}>{scopeStatusBreakdown.incompleteTasks}</span>
                                     </label>
 
-                                    <label className={cn("flex items-center gap-1.5 p-1.5 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'anomaly' ? "bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
+                                    <label className={cn("flex items-center justify-between p-1.5 px-2 rounded-xl border text-[10px] font-black cursor-pointer transition-colors relative overflow-hidden", scopeStatusFilter === 'anomaly' ? "bg-rose-50 dark:bg-rose-950/60 border-rose-300 dark:border-rose-700 text-rose-700 dark:text-rose-300" : "border-slate-100 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                                         <input type="radio" checked={scopeStatusFilter === 'anomaly'} onChange={() => setScopeStatusFilter('anomaly')} className="sr-only" />
-                                        <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
-                                        <span className="truncate">Anomalies</span>
+                                        <div className="flex items-center gap-1.5 truncate">
+                                            <AlertTriangle className="h-3.5 w-3.5 text-rose-500 shrink-0" />
+                                            <span className="truncate">Anomalies</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-rose-600 dark:text-rose-400 px-1.5 py-0.5 rounded-md bg-rose-100/60 dark:bg-rose-900/60" title={`${scopeStatusBreakdown.anomalyComps} comps (${scopeStatusBreakdown.totalReportAnomalies || scopeStatusBreakdown.anomalyTasks} defects)`}>{scopeStatusBreakdown.totalReportAnomalies || scopeStatusBreakdown.anomalyTasks}</span>
                                     </label>
                                 </div>
 
@@ -1739,7 +1885,7 @@ export function SOWDialog({
                                         <span className="text-[10px] font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">Bulk Scope Action</span>
                                     </div>
                                     <Badge variant="outline" className="text-[8px] font-black bg-blue-100/80 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 border-none px-1.5 py-0.5">
-                                        {activeComponents.length} comps
+                                        {activeComponents.length} comps {activeTasksCount > 0 && activeTasksCount !== activeComponents.length ? `(${activeTasksCount} tasks)` : ''}
                                     </Badge>
                                 </div>
                                 <p className="text-[9px] text-slate-500 dark:text-slate-400 leading-tight">
@@ -1789,10 +1935,16 @@ export function SOWDialog({
                                 <div className="h-7 w-7 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-1">
                                     <Navigation className="h-3.5 w-3.5 text-blue-500 dark:text-blue-400"/>
                                 </div>
-                                <div className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter">
-                                    {activeComponents.length}
-                                    <span className="text-[11px] font-medium text-slate-400 ml-1">/ {componentsToFilter.length}</span>
+                                <div className="text-xl font-black text-slate-800 dark:text-slate-100 tracking-tighter flex items-baseline gap-1">
+                                    <span>{activeComponents.length}</span>
+                                    <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400">comps</span>
+                                    <span className="text-[11px] font-medium text-slate-400">/ {componentsToFilter.length}</span>
                                 </div>
+                                {hasActiveFilters && activeTasksCount > 0 && (
+                                    <div className="text-[9px] font-black text-blue-600 dark:text-blue-400 mt-0.5">
+                                        {activeTasksCount} Scoped Tasks / QIDs
+                                    </div>
+                                )}
                                 <div className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-widest text-center mt-0.5 leading-tight">
                                     {hasActiveFilters ? "Filtered Active Library" : "Total Component Library"}
                                 </div>
@@ -1809,7 +1961,7 @@ export function SOWDialog({
                                 
                                 {hasActiveFilters && (
                                     <div className="flex items-center gap-1.5 bg-blue-50/60 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900 px-2.5 py-1 rounded-full text-[9px] font-bold text-blue-700 dark:text-blue-300">
-                                        <span>Showing {activeComponents.length} of {componentsToFilter.length} comps</span>
+                                        <span>Showing {activeComponents.length} of {componentsToFilter.length} comps {activeTasksCount > 0 ? `(${activeTasksCount} scoped tasks)` : ''}</span>
                                         <button 
                                             onClick={handleResetAllFilters} 
                                             className="text-rose-500 hover:text-rose-700 font-black ml-1 flex items-center gap-0.5"

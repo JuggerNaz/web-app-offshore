@@ -2344,19 +2344,20 @@ export function InspectionSummaryPanel({
                     <div className="space-y-1.5">
                       {(
                         [
-                          { key: "0–25%", color: "#10b981" },
-                          { key: "25–50%", color: "#f59e0b" },
-                          { key: "50–75%", color: "#f97316" },
-                          { key: "75–100%", color: "#ef4444" },
-                        ] as { key: string; color: string }[]
-                      ).map(({ key, color }) => {
-                        const cnt = anodeGvi.depletionBuckets[key] ?? 0;
+                          { key: "0-25%", altKey: "0–25%", label: "0-25%", color: "#10b981" },
+                          { key: "26-50%", altKey: "25–50%", label: "26-50%", color: "#3b82f6" },
+                          { key: "50-75%", altKey: "50–75%", label: "50-75%", color: "#f59e0b" },
+                          { key: "76-100%", altKey: "75–100%", label: "76-100%", color: "#ef4444" },
+                          { key: "Not Evaluated", altKey: "Not Recorded", label: "Not Evaluated", color: "#64748b" },
+                        ] as { key: string; altKey: string; label: string; color: string }[]
+                      ).map(({ key, altKey, label, color }) => {
+                        const cnt = anodeGvi.depletionBuckets[key] ?? (altKey ? anodeGvi.depletionBuckets[altKey] : 0) ?? 0;
                         const pct =
                           anodeGvi.total > 0 ? Math.round((cnt / anodeGvi.total) * 100) : 0;
                         return (
                           <div key={key} className="flex items-center gap-2">
-                            <div className="w-14 text-[9px] font-black text-slate-400 shrink-0 text-right">
-                              {key}
+                            <div className="w-20 text-[9px] font-black text-slate-400 shrink-0 text-right">
+                              {label}
                             </div>
                             <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">
                               <div
@@ -2372,10 +2373,14 @@ export function InspectionSummaryPanel({
                       })}
                       {/* Any extra non-standard keys */}
                       {Object.entries(anodeGvi.depletionBuckets)
-                        .filter(([k]) => !["0–25%", "25–50%", "50–75%", "75–100%"].includes(k))
+                        .filter(([k]) => ![
+                          "0–25%", "25–50%", "50–75%", "75–100%",
+                          "0-25%", "26-50%", "50-75%", "76-100%",
+                          "Not Evaluated", "Not Recorded"
+                        ].includes(k))
                         .map(([k, cnt]) => (
                           <div key={k} className="flex items-center gap-2">
-                            <div className="w-14 text-[9px] font-black text-slate-400 shrink-0 text-right">
+                            <div className="w-20 text-[9px] font-black text-slate-400 shrink-0 text-right">
                               {k}
                             </div>
                             <div className="flex-1 h-2 bg-slate-800 rounded-full overflow-hidden">

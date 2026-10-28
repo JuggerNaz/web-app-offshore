@@ -29,7 +29,7 @@ interface ReportConfig {
  * Item Maintenance Inspection Report (Diving) — Portrait Mode
  * Specific for Inspection Type ITMAIN
  * 
- * Columns: Item No. | QID | Elevation (m) | Dive No. | Angle (°) | Dim 1 (m) | Dim 2 (m) | Dim 3 (m) | Findings
+ * Columns: No. | QID | Elevation (m) | Dive No. | Angle (°) | Dim 1 (m) | Dim 2 (m) | Dim 3 (m) | Findings
  */
 export const generateDivingITMAINReport = async (
     records: any[],
@@ -193,7 +193,7 @@ export const generateDivingITMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
@@ -218,7 +218,7 @@ export const generateDivingITMAINReport = async (
                 lineColor: colors.border,
                 overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
-                0: { cellWidth: 10, halign: "center" },  // Item No.
+                0: { cellWidth: 10, halign: "center" },  // No.
                 1: { cellWidth: 20 },                     // QID
                 2: { cellWidth: 16, halign: "center" },   // Elevation
                 3: { cellWidth: 16, halign: "center" },   // Dive No.

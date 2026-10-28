@@ -1,4 +1,5 @@
 import { createBrowserClient } from "@supabase/ssr";
+import { autoPaginateClient } from "./auto-paginate";
 
 let clientInstance: ReturnType<typeof createBrowserClient> | null = null;
 
@@ -7,10 +8,12 @@ export const createClient = () => {
     return clientInstance;
   }
 
-  const client = createBrowserClient(
+  const baseClient = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
+
+  const client = autoPaginateClient(baseClient);
 
   // Wrap auth.getSession to prevent unhandled AuthRetryableFetchError
   const originalGetSession = client.auth.getSession.bind(client.auth);
@@ -58,3 +61,4 @@ export const createClient = () => {
 
   return client;
 };
+

@@ -1076,7 +1076,7 @@ export const generatePipelineDefectSummaryReport = async (
     autoTable(doc, {
         startY: currentY,
         head: [[
-            "Item No.",
+            "No.",
             "Easting (m E)",
             "Northing (m N)",
             "KP / Elevation",
@@ -1104,7 +1104,7 @@ export const generatePipelineDefectSummaryReport = async (
             fontSize: 7.5,
             halign: "center", lineWidth: 0.1, lineColor: [200, 200, 200]},
         columnStyles: {
-            0: { cellWidth: 10, halign: "center" },   // Item No.
+            0: { cellWidth: 10, halign: "center" },   // No.
             1: { cellWidth: 28, halign: "center" },   // Easting (m E)
             2: { cellWidth: 28, halign: "center" },   // Northing (m N)
             3: { cellWidth: 20, halign: "center" },   // KP / Elevation

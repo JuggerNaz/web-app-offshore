@@ -1491,36 +1491,176 @@ export default function ExecutiveSummaryPage() {
             const p2Findings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P2");
             const p3Findings = rawFindings.filter((x: any) => getPriorityKey(x.priority || x.priority_code) === "P3");
 
+            const parseElevationForSort = (val: any): number | null => {
+                if (val === undefined || val === null) return null;
+                const str = String(val).trim();
+                if (str === "" || str === "-" || str === "—" || str.toUpperCase() === "N/A") return null;
+                const cleaned = str.replace(/\(-\)/g, "-").replace(/\(\+\)/g, "+").replace(/[^\d.+-]/g, "");
+                const num = parseFloat(cleaned);
+                return isNaN(num) ? null : num;
+            };
+
+            const getRecordElevationRaw = (r: any) => {
+                return (
+                    r.elevation ??
+                    r.elev ??
+                    r.inspection_data?.elevation ??
+                    r.inspection_data?.elev ??
+                    r.inspection_data?.verification_depth ??
+                    r.inspection_data?.depth ??
+                    r.structure_components?.metadata?.elevation ??
+                    r.structure_components?.metadata?.elevation1 ??
+                    "-"
+                );
+            };
+
+            const isRecordIncomplete = (r: any): boolean => {
+                if (!r) return false;
+                const d = r.inspection_data || r.inspection_dat || {};
+                const st = String(r.status || "").trim().toUpperCase();
+                const dataStatus = String(d.status || "").trim().toUpperCase();
+                const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
+                const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+
+                // 1. Explicit COMPLETED/CLOSED/APPROVED check:
+                // If marked completed and not explicitly flagged as incomplete, do not consider incomplete
+                if (st === "COMPLETED" || dataStatus === "COMPLETED" || st === "CLOSED" || dataStatus === "CLOSED" || st === "APPROVED" || dataStatus === "APPROVED") {
+                    if (st !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
+                        return false;
+                    }
+                }
+
+                // 2. Explicit INCOMPLETE status / finding type
+                if (st === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
+                    return true;
+                }
+
+                // 3. Boolean flag
+                if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
+                    return true;
+                }
+
+                // 4. Incomplete reason provided via the incomplete form
+                const incompleteReason = String(
+                    r.incomplete_reason || 
+                    r.incompleteReason || 
+                    d.incomplete_reason || 
+                    d.incompleteReason || 
+                    ""
+                ).trim();
+                if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") {
+                    return true;
+                }
+
+                // 5. Explicit prefix in description
+                const desc = String(r.description || "").trim().toUpperCase();
+                if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) {
+                    return true;
+                }
+
+                return false;
+            };
+
             const incompleteRecords = allRecords
-                .filter((r: any) => {
-                    const st = String(r.status || r.inspection_data?.status || "").toUpperCase();
-                    const ft = String(r.finding_type || r.inspection_data?.finding_type || "").toUpperCase();
-                    return st === "INCOMPLETE" || ft === "INCOMPLETE" || Boolean(r.incomplete_reason || r.inspection_data?.incomplete_reason);
+                .filter(isRecordIncomplete)
+                .sort((a: any, b: any) => {
+                    const rawA = getRecordElevationRaw(a);
+                    const rawB = getRecordElevationRaw(b);
+                    const valA = parseElevationForSort(rawA);
+                    const valB = parseElevationForSort(rawB);
+
+                    if (valA !== null && valB !== null) {
+                        if (valA !== valB) {
+                            return valB - valA; // Descending: highest elevation (topside/surface) down to seabed
+                        }
+                    } else if (valA !== null) {
+                        return -1; // Valid elevations first
+                    } else if (valB !== null) {
+                        return 1; // Missing elevations last
+                    }
+
+                    // Secondary sort: alphanumeric by QID
+                    const qidA = String(a.structure_components?.q_id || a.inspection_data?.q_id || a.qid || "");
+                    const qidB = String(b.structure_components?.q_id || b.inspection_data?.q_id || b.qid || "");
+                    return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: "base" });
                 })
                 .map((r: any, idx: number) => {
-                    const reason = r.incomplete_reason || r.incompleteReason || r.inspection_data?.incomplete_reason || r.reason || "Weather / Operational Constraints";
+                    const rawReason = (
+                        r.incomplete_reason || 
+                        r.incompleteReason || 
+                        r.inspection_data?.incomplete_reason || 
+                        r.inspection_data?.incompleteReason || 
+                        r.reason || 
+                        ""
+                    ).toString().trim();
+                    const rawDesc = (
+                        r.description ||
+                        r.inspection_data?.description ||
+                        r.findings ||
+                        r.inspection_data?.findings ||
+                        ""
+                    ).toString().trim();
+                    const reason = (rawReason && rawReason !== "-" && rawReason !== "—")
+                        ? rawReason
+                        : ((rawDesc && rawDesc !== "-" && rawDesc !== "—" && rawDesc !== "No significant findings" && rawDesc !== "N/A")
+                            ? rawDesc
+                            : "Weather / Operational Constraints");
+
                     const remarks = r.remarks || r.inspection_data?.remarks || r.comments || r.inspection_data?.comments || "-";
                     const qid = r.structure_components?.q_id || r.inspection_data?.q_id || r.qid || "N/A";
-                    const elv = r.elevation || r.inspection_data?.elevation || "-";
+                    const rawElv = getRecordElevationRaw(r);
+                    const formatElevation = (val: any) => {
+                        if (val === undefined || val === null || String(val).trim() === "" || String(val).trim() === "-") return "-";
+                        const str = String(val).trim();
+                        if (str.includes("(-)") || str.includes("(+)")) return str;
+                        const num = parseElevationForSort(str);
+                        if (num === null) return str;
+                        if (num < 0) return `(-)${Math.abs(num)}`;
+                        return String(val);
+                    };
+                    const elv = formatElevation(rawElv);
                     const inspType = r.inspection_type?.name || r.inspection_type_code || r.inspection_type?.code || "N/A";
                     const compType = r.structure_components?.component_type || r.component_type || "N/A";
                     const taskName = r.task_name || `${inspType} - ${qid}`;
                     const actionPlan = r.action_plan || r.remedial_action || "To be deferred to next campaign";
+                    const commentsText = reason || remarks || "Unable to inspect due to access/visibility constraint";
+
                     return {
                         ...r,
                         no: idx + 1,
+                        NO: idx + 1,
                         id: idx + 1,
+                        ID: idx + 1,
                         qid,
+                        QID: qid,
                         elevation: elv,
+                        ELEVATION: elv,
+                        elev: elv,
+                        ELEV: elv,
                         component_type: compType,
+                        COMPONENT_TYPE: compType,
                         inspection_type: inspType,
+                        INSPECTION_TYPE: inspType,
                         task_name: taskName,
+                        TASK_NAME: taskName,
                         status: "INCOMPLETE",
+                        STATUS: "INCOMPLETE",
                         reason,
+                        REASON: reason,
                         incomplete_reason: reason,
+                        INCOMPLETE_REASON: reason,
                         remarks,
+                        REMARKS: remarks,
+                        comments: commentsText,
+                        COMMENTS: commentsText,
+                        findings: commentsText,
+                        FINDINGS: commentsText,
+                        description: commentsText,
+                        DESCRIPTION: commentsText,
                         action_plan: actionPlan,
-                        dive_no: r.dive_no || r.inspection_data?.dive_no || "-"
+                        ACTION_PLAN: actionPlan,
+                        dive_no: r.dive_no || r.inspection_data?.dive_no || "-",
+                        DIVE_NO: r.dive_no || r.inspection_data?.dive_no || "-"
                     };
                 });
 
@@ -1758,9 +1898,7 @@ export default function ExecutiveSummaryPage() {
                         const code = String(r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
                         if (code === "PL_CO" || code === "PLCO") return;
                         const name = formatInspectionTypeName(r.inspection_type?.name || r.inspection_type_name || code || "Inspection");
-                        const st = String(r.status || r.inspection_data?.status || "").toUpperCase();
-                        const ft = String(r.finding_type || r.inspection_data?.finding_type || "").toUpperCase();
-                        const isInc = st === "INCOMPLETE" || ft === "INCOMPLETE" || Boolean(r.incomplete_reason || r.inspection_data?.incomplete_reason) || r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1;
+                        const isInc = isRecordIncomplete(r);
                         const taskType = determineTaskType(r);
                         
                         if (!gMap.has(name)) {
@@ -1951,6 +2089,10 @@ export default function ExecutiveSummaryPage() {
                         no: idx + 1
                     }));
 
+                const isSecIncomplete = sec.id === "incomplete" || 
+                    String(sec.id || "").toLowerCase().includes("incomplete") || 
+                    String(sec.title || "").toLowerCase().includes("incomplete");
+
                 return {
                     ...sec,
                     // Section-specific filtered tables
@@ -2001,8 +2143,10 @@ export default function ExecutiveSummaryPage() {
                     has_anomalies: totalAnomCount > 0 || rawAnomalies.length > 0,
                     HAS_FINDINGS: totalFindingsCount > 0,
                     has_findings: totalFindingsCount > 0,
-                    HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
-                    NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
+                    HAS_OUTSTANDING_TASKS: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                    has_outstanding_tasks: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                    NO_OUTSTANDING_TASKS: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
+                    no_outstanding_tasks: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
                     ANOMALY_SUMMARY_TABLE: categoryStats,
                     anomaly_summary_table: categoryStats,
                     ANOMALIES_SUMMARY_TABLE: categoryStats,
@@ -2094,17 +2238,39 @@ export default function ExecutiveSummaryPage() {
                         ...t,
                         no: idx + 1
                     })),
-                    INCOMPLETE_RECORDS: incompleteRecords,
-                    INCOMPLETE_ROV: incompleteRecords.filter(isROV),
-                    INCOMPLETE_DIVE: incompleteRecords.filter(isDiving),
-                    HAS_INCOMPLETE_RECORDS: incompleteRecords.length > 0,
-                    HAS_INCOMPLETE_ROV: incompleteRecords.some(isROV),
-                    HAS_INCOMPLETE_DIVE: incompleteRecords.some(isDiving),
                     CP_RECORDS: insightData?.data?.cp_items || [],
                     FMD_RECORDS: insightData?.data?.fmd_items || [],
                     MGI_RECORDS: insightData?.data?.mgi_items || [],
                     STATS: insightData?.data?.records || {},
-                    ...mappedData
+                    ...mappedData,
+                    INCOMPLETE_RECORDS: incompleteRecords,
+                    incomplete_records: incompleteRecords,
+                    INCOMPLETE: incompleteRecords,
+                    incomplete: incompleteRecords,
+                    INCOMPLETE_ROV: incompleteRecords.filter(isROV),
+                    incomplete_rov: incompleteRecords.filter(isROV),
+                    INCOMPLETE_DIVE: incompleteRecords.filter(isDiving),
+                    incomplete_dive: incompleteRecords.filter(isDiving),
+                    HAS_INCOMPLETE_RECORDS: incompleteRecords.length > 0,
+                    has_incomplete_records: incompleteRecords.length > 0,
+                    NO_INCOMPLETE_RECORDS: incompleteRecords.length === 0,
+                    no_incomplete_records: incompleteRecords.length === 0,
+                    HAS_INCOMPLETE_ROV: incompleteRecords.some(isROV),
+                    has_incomplete_rov: incompleteRecords.some(isROV),
+                    HAS_INCOMPLETE_DIVE: incompleteRecords.some(isDiving),
+                    has_incomplete_dive: incompleteRecords.some(isDiving),
+                    IS_INCOMPLETE: isSecIncomplete,
+                    is_incomplete: isSecIncomplete,
+                    IS_SECTION_INCOMPLETE: isSecIncomplete,
+                    is_section_incomplete: isSecIncomplete,
+                    IS_INCOMPLETE_SCOPE: isSecIncomplete,
+                    is_incomplete_scope: isSecIncomplete,
+                    IS_INCOMPLETE_SECTION: isSecIncomplete,
+                    is_incomplete_section: isSecIncomplete,
+                    HAS_INCOMPLETE: incompleteRecords.length > 0,
+                    has_incomplete: incompleteRecords.length > 0,
+                    NO_INCOMPLETE: incompleteRecords.length === 0,
+                    no_incomplete: incompleteRecords.length === 0,
                 };
             });
 
@@ -2126,13 +2292,6 @@ export default function ExecutiveSummaryPage() {
                 NOT_RECTIFIED_ANOMALIES: rawAnomalies.filter((a: any) => !a.is_rectified).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
                 HAS_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => a.is_rectified),
                 HAS_NOT_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => !a.is_rectified),
-
-                INCOMPLETE_RECORDS: incompleteRecords,
-                INCOMPLETE_ROV: incompleteRecords.filter(isROV),
-                INCOMPLETE_DIVE: incompleteRecords.filter(isDiving),
-                HAS_INCOMPLETE_RECORDS: incompleteRecords.length > 0,
-                HAS_INCOMPLETE_ROV: incompleteRecords.some(isROV),
-                HAS_INCOMPLETE_DIVE: incompleteRecords.some(isDiving),
 
                 FINDINGS_ROV: rawFindings.filter(isROV).map((f, i) => ({ ...f, no: i + 1, id: i + 1 })),
                 FINDINGS_DIVE: rawFindings.filter(isDiving).map((f, i) => ({ ...f, no: i + 1, id: i + 1 })),
@@ -2444,9 +2603,21 @@ export default function ExecutiveSummaryPage() {
                     return sec ? `${sec.paragraph_no}.2` : `${activeParentPrefix}.30.2`;
                 })(),
 
-                HAS_OUTSTANDING_TASKS: outstandingRawList.length > 0,
-                NO_OUTSTANDING_TASKS: outstandingRawList.length === 0,
-                OUTSTANDING_TASKS: outstandingRawList.map((t: any, idx: number) => ({
+                HAS_OUTSTANDING_TASKS: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                has_outstanding_tasks: (outstandingRawList.length > 0 || incompleteRecords.length > 0),
+                NO_OUTSTANDING_TASKS: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
+                no_outstanding_tasks: (outstandingRawList.length === 0 && incompleteRecords.length === 0),
+                OUTSTANDING_TASKS: [...outstandingRawList].sort((a: any, b: any) => {
+                    const valA = parseElevationForSort(a.elevation || a.elev);
+                    const valB = parseElevationForSort(b.elevation || b.elev);
+                    if (valA !== null && valB !== null) {
+                        if (valA !== valB) return valB - valA;
+                    } else if (valA !== null) return -1;
+                    else if (valB !== null) return 1;
+                    const qidA = String(a.qid || a.component_qid || "");
+                    const qidB = String(b.qid || b.component_qid || "");
+                    return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: "base" });
+                }).map((t: any, idx: number) => ({
                     ...t,
                     no: idx + 1
                 })),
@@ -2460,7 +2631,17 @@ export default function ExecutiveSummaryPage() {
                     return Array.from(groupsMap.entries()).map(([type, items]) => ({
                         inspectionType: type,
                         totalCount: items.length,
-                        tasks: items.map((item, idx) => ({
+                        tasks: [...items].sort((a: any, b: any) => {
+                            const valA = parseElevationForSort(a.elevation || a.elev);
+                            const valB = parseElevationForSort(b.elevation || b.elev);
+                            if (valA !== null && valB !== null) {
+                                if (valA !== valB) return valB - valA;
+                            } else if (valA !== null) return -1;
+                            else if (valB !== null) return 1;
+                            const qidA = String(a.qid || a.component_qid || "");
+                            const qidB = String(b.qid || b.component_qid || "");
+                            return qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: "base" });
+                        }).map((item, idx) => ({
                             ...item,
                             no: idx + 1
                         }))
@@ -3357,6 +3538,30 @@ export default function ExecutiveSummaryPage() {
 
                 // ── Mapped Data from Inspection Records ──────────────
                 ...mappedData,
+
+                // ── Incomplete Scope & Outstanding Tasks (Protected from mappedData overrides) ──
+                INCOMPLETE_RECORDS: incompleteRecords,
+                incomplete_records: incompleteRecords,
+                INCOMPLETE: incompleteRecords,
+                incomplete: incompleteRecords,
+                INCOMPLETE_ROV: incompleteRecords.filter(isROV).map((r: any, i: number) => ({ ...r, no: i + 1, NO: i + 1, id: i + 1, ID: i + 1 })),
+                incomplete_rov: incompleteRecords.filter(isROV).map((r: any, i: number) => ({ ...r, no: i + 1, NO: i + 1, id: i + 1, ID: i + 1 })),
+                INCOMPLETE_DIVE: incompleteRecords.filter(isDiving).map((r: any, i: number) => ({ ...r, no: i + 1, NO: i + 1, id: i + 1, ID: i + 1 })),
+                incomplete_dive: incompleteRecords.filter(isDiving).map((r: any, i: number) => ({ ...r, no: i + 1, NO: i + 1, id: i + 1, ID: i + 1 })),
+                HAS_INCOMPLETE_RECORDS: incompleteRecords.length > 0,
+                has_incomplete_records: incompleteRecords.length > 0,
+                NO_INCOMPLETE_RECORDS: incompleteRecords.length === 0,
+                no_incomplete_records: incompleteRecords.length === 0,
+                HAS_INCOMPLETE_ROV: incompleteRecords.some(isROV),
+                has_incomplete_rov: incompleteRecords.some(isROV),
+                HAS_INCOMPLETE_DIVE: incompleteRecords.some(isDiving),
+                has_incomplete_dive: incompleteRecords.some(isDiving),
+                IS_INCOMPLETE: incompleteRecords.length > 0,
+                is_incomplete: incompleteRecords.length > 0,
+                HAS_INCOMPLETE: incompleteRecords.length > 0,
+                has_incomplete: incompleteRecords.length > 0,
+                NO_INCOMPLETE: incompleteRecords.length === 0,
+                no_incomplete: incompleteRecords.length === 0,
             };
 
             // Automatically generate dynamically filtered lists inside reportData for type codes & defect codes

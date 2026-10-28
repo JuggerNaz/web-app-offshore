@@ -143,7 +143,7 @@ export const generateDivingCVINSReport = async (
             currentY += 18;
 
             // Table Data
-            // Details as follows, Item No. , QID, Elevation, Length, Width, Lighting Method, Findings.
+            // Details as follows, No. , QID, Elevation, Length, Width, Lighting Method, Findings.
             const tableBody = records.map((r, index) => {
                 const d = r.inspection_data || {};
                 const qid = r.structure_components?.q_id || r.component?.q_id || "—";
@@ -169,7 +169,7 @@ export const generateDivingCVINSReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, bottom: margin + 25 },
                 head: [[
-                    { content: "Item No.", styles: {cellWidth: 15, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.", styles: {cellWidth: 15, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID", styles: {cellWidth: 25, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation", styles: {cellWidth: 20, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Length", styles: {cellWidth: 20, lineWidth: 0.1, lineColor: colors.border} },

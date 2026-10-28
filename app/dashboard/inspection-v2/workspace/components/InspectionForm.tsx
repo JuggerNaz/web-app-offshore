@@ -24,7 +24,10 @@ import {
     Search,
     Loader2,
     Sparkles,
-    RefreshCw
+    RefreshCw,
+    RotateCcw,
+    ChevronUp,
+    ChevronDown
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -1459,6 +1462,63 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [handleDynamicPropChange, setRecordNotes, setFindingType, setIsManualOverride, setAnomalyData, dynamicProps, handleCommitRecord, onCapturePhoto, onVoiceActionCommand, selectedComp]);
 
+    const handleMoveAttachment = (index: number, direction: -1 | 1) => {
+        const targetIndex = index + direction;
+        if (targetIndex < 0 || targetIndex >= pendingAttachments.length) return;
+
+        const updated = [...pendingAttachments];
+        const [moved] = updated.splice(index, 1);
+        updated.splice(targetIndex, 0, moved);
+
+        const ordered = updated.map((item, idx) => ({
+            ...item,
+            sort_order: idx + 1,
+            meta: { ...(item.meta || {}), sort_order: idx + 1 }
+        }));
+
+        setPendingAttachments(ordered);
+
+        // If any attachments are already saved records in the DB, persist the reorder
+        const hasExisting = ordered.some(item => item.isExisting || (!isNaN(Number(item.id)) && !String(item.id).startsWith('temp-') && !String(item.id).startsWith('rand-')));
+        if (hasExisting) {
+            const items = ordered.map((item, idx) => ({ id: item.id, sort_order: idx + 1 }));
+            fetch('/api/attachment/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items })
+            }).catch(e => console.error("Failed to persist attachment reorder:", e));
+        }
+    };
+
+    const handleResetAttachmentOrder = () => {
+        if (pendingAttachments.length <= 1) return;
+
+        const resetList = [...pendingAttachments].sort((a, b) => {
+            const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+            const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+            if (timeA !== timeB) return timeA - timeB;
+            return String(a.id).localeCompare(String(b.id));
+        }).map((item, idx) => ({
+            ...item,
+            sort_order: idx + 1,
+            meta: { ...(item.meta || {}), sort_order: idx + 1 }
+        }));
+
+        setPendingAttachments(resetList);
+
+        const hasExisting = resetList.some(item => item.isExisting || (!isNaN(Number(item.id)) && !String(item.id).startsWith('temp-') && !String(item.id).startsWith('rand-')));
+        if (hasExisting) {
+            const items = resetList.map((item, idx) => ({ id: item.id, sort_order: idx + 1 }));
+            fetch('/api/attachment/reorder', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ items })
+            }).catch(e => console.error("Failed to persist attachment reorder:", e));
+        }
+
+        toast.success("Attachment order reset to default");
+    };
+
     return (
         <Card className="flex flex-col h-full animate-in fade-in slide-in-from-bottom-[5%] bg-white dark:bg-slate-950 z-10 border-none rounded-none shadow-none text-slate-800 dark:text-slate-200">
             <div className="px-3 py-1.5 bg-blue-600 dark:bg-blue-700 text-white flex justify-between items-center shrink-0 shadow-sm border-b border-blue-700 dark:border-blue-800 flex-wrap gap-1.5">
@@ -1518,7 +1578,7 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                     />
                     <div className="flex items-center gap-1">
                         {onPrintReport && (findingType === 'Anomaly' || findingType === 'Finding') && (
-                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title="Print Report"><Printer className="w-3.5 h-3.5" /></button>
+                            <button onClick={onPrintReport} className="p-1 hover:bg-white/10 bg-black/10 rounded transition text-blue-100 hover:white" title={!isEditing ? "Save record to print report" : (findingType === 'Finding' ? 'Print Finding Report' : 'Print Anomaly Report')}><Printer className="w-3.5 h-3.5" /></button>
                         )}
                         {isEditing && onDeleteRecord && (
                             <button onClick={onDeleteRecord} className="p-1 hover:bg-red-500/20 bg-black/10 rounded transition text-red-200 hover:text-red-100" title="Delete Record"><Trash2 className="w-3.5 h-3.5" /></button>
@@ -2543,9 +2603,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                         <div className="space-y-2">
                             <div className="flex items-center justify-between">
                                 <label className="text-[10px] font-bold text-slate-800 dark:text-slate-200 uppercase flex items-center gap-1"><Paperclip className="w-3.5 h-3.5" /> Attachments ({pendingAttachments.length})</label>
-                                <div className="flex gap-1.5">
+                                <div className="flex gap-1.5 items-center">
+                                    {pendingAttachments.length > 1 && (
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-7 text-[10px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 px-2"
+                                            onClick={handleResetAttachmentOrder}
+                                            title="Reset attachments to default chronological order"
+                                        >
+                                            <RotateCcw className="w-3 h-3 mr-1 text-blue-500" /> Reset Order
+                                        </Button>
+                                    )}
                                     <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { const snaps = recordedFiles.filter(f => f.type === 'photo'); if (snaps.length > 0) setIsAttachmentManagerOpen(true); else toast.info("No screen captures available."); }}><Camera className="w-3.5 h-3.5 mr-1 text-blue-500" /> From Grabs</Button>
-                                    <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = (e) => { const files = (e.target as HTMLInputElement).files; if (files) { const newAtts = Array.from(files).map(f => { const isAnomaly = findingType === 'Anomaly'; const isFinding = findingType === 'Finding'; const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : ''); const refNo = anomalyData.referenceNo || 'Pending'; return { id: Math.random().toString(36).substr(2, 9), file: f, name: f.name, type: f.type.startsWith('video') ? 'VIDEO' as const : (f.type.startsWith('image') ? 'PHOTO' as const : 'DOCUMENT' as const), title: prefix ? `${prefix}${refNo}` : f.name, description: '', source: 'UPLOAD', previewUrl: URL.createObjectURL(f) }; }); setPendingAttachments((prev: any[]) => [...prev, ...newAtts]); } }; input.click(); }}><CloudUpload className="w-3.5 h-3.5 mr-1 text-green-500" /> Upload</Button>
+                                    <Button variant="outline" size="sm" className="h-7 text-[10px] font-bold border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800" onClick={() => { const input = document.createElement('input'); input.type = 'file'; input.multiple = true; input.onchange = (e) => { const files = (e.target as HTMLInputElement).files; if (files) { const newAtts = Array.from(files).map((f, fIdx) => { const isAnomaly = findingType === 'Anomaly'; const isFinding = findingType === 'Finding'; const prefix = isAnomaly ? 'Anomaly - ' : (isFinding ? 'Findings - ' : ''); const refNo = anomalyData.referenceNo || 'Pending'; const sortOrder = pendingAttachments.length + fIdx + 1; return { id: Math.random().toString(36).substr(2, 9), file: f, name: f.name, type: f.type.startsWith('video') ? 'VIDEO' as const : (f.type.startsWith('image') ? 'PHOTO' as const : 'DOCUMENT' as const), title: prefix ? `${prefix}${refNo}` : f.name, description: '', source: 'UPLOAD', sort_order: sortOrder, meta: { sort_order: sortOrder }, previewUrl: URL.createObjectURL(f) }; }); setPendingAttachments((prev: any[]) => [...prev, ...newAtts]); } }; input.click(); }}><CloudUpload className="w-3.5 h-3.5 mr-1 text-green-500" /> Upload</Button>
                                 </div>
                             </div>
                             {pendingAttachments.length > 0 && (
@@ -2556,7 +2627,14 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                         const resolvedPreview = att.previewUrl || (att.id ? `/api/attachment/url?id=${encodeURIComponent(att.id)}${att.path ? `&path=${encodeURIComponent(att.path)}` : ''}` : (att.path ? `/api/attachment/download?path=${encodeURIComponent(att.path)}` : ''));
                                         return (
                                             <div key={att.id || `att-${attIdx}`} className="relative group bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-md p-1.5 flex gap-2 overflow-hidden shadow-sm hover:border-blue-300 dark:hover:border-blue-700 transition-all">
-                                                <div className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all flex items-center justify-center" onClick={() => setEditingAttachment(att)}>
+                                                <div 
+                                                    className="w-12 h-12 bg-slate-100 dark:bg-slate-800 rounded overflow-hidden flex-shrink-0 relative cursor-pointer hover:ring-2 hover:ring-blue-400 transition-all flex items-center justify-center" 
+                                                    onClick={() => setEditingAttachment({ ...att, recordAttachments: pendingAttachments })}
+                                                    title={`Click to preview & edit (Order #${attIdx + 1})`}
+                                                >
+                                                    <span className="absolute top-0.5 left-0.5 z-10 text-[8px] font-black bg-slate-900/80 text-white px-1 py-0.2 rounded shadow">
+                                                        #{attIdx + 1}
+                                                    </span>
                                                     {isPhoto && resolvedPreview ? (
                                                         <>
                                                             <img 
@@ -2592,11 +2670,41 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                         </div>
                                                     )}
                                                 </div>
-                                                <div className="flex-1 min-w-0 pr-6 flex flex-col gap-0.5">
+                                                <div className="flex-1 min-w-0 pr-12 flex flex-col gap-0.5">
                                                     <Input value={att.title} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, title: e.target.value } : a))} className="h-5 text-[10px] font-black border-none bg-slate-50/50 dark:bg-slate-950/50 rounded-sm px-1 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-800 dark:text-slate-200" placeholder="Title..." />
                                                     <Input value={att.description} onChange={(e) => setPendingAttachments((prev: any[]) => prev.map(a => a.id === att.id ? { ...a, description: e.target.value } : a))} className="h-4 text-[9px] font-medium italic border-none bg-transparent p-0 shadow-none focus-visible:ring-0 focus-visible:ring-offset-0 text-slate-500" placeholder="Remark..." />
                                                 </div>
-                                                <button onClick={() => { if (att.isExisting) setDeletedAttachmentIds(prev => [...prev, att.id]); setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id)); }} className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"><X className="w-3 h-3" /></button>
+                                                <div className="absolute top-1 right-1 flex items-center gap-0.5">
+                                                    {pendingAttachments.length > 1 && (
+                                                        <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-100 dark:bg-slate-800 rounded border border-slate-200 dark:border-slate-700">
+                                                            <button
+                                                                type="button"
+                                                                disabled={attIdx === 0}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleMoveAttachment(attIdx, -1);
+                                                                }}
+                                                                title="Move earlier (Order up)"
+                                                                className="p-0.5 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-25 disabled:pointer-events-none"
+                                                            >
+                                                                <ChevronUp className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                type="button"
+                                                                disabled={attIdx === pendingAttachments.length - 1}
+                                                                onClick={(e) => {
+                                                                    e.stopPropagation();
+                                                                    handleMoveAttachment(attIdx, 1);
+                                                                }}
+                                                                title="Move later (Order down)"
+                                                                className="p-0.5 text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 disabled:opacity-25 disabled:pointer-events-none"
+                                                            >
+                                                                <ChevronDown className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <button onClick={() => { if (att.isExisting) setDeletedAttachmentIds(prev => [...prev, att.id]); setPendingAttachments((prev: any[]) => prev.filter(a => a.id !== att.id)); }} className="opacity-0 group-hover:opacity-100 p-0.5 rounded bg-red-50 dark:bg-red-900/30 text-red-500 dark:text-red-400 hover:bg-red-500 hover:text-white transition-all shadow-sm"><X className="w-3 h-3" /></button>
+                                                </div>
                                             </div>
                                         );
                                     })}

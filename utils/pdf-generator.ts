@@ -47,9 +47,7 @@ const loadImage = async (url: string, id?: number | string): Promise<string> => 
   }
 
   const cacheKey = `${id || ''}::${cleanUrl}`;
-  if (pdfImageCache.has(cacheKey)) {
-    return pdfImageCache.get(cacheKey)!;
-  }
+  // Always fetch fresh each time as requested (no memory cache)
 
   // Helper: convert a Blob to a base64 data URL string
   const blobToDataUrl = (blob: Blob): Promise<string | null> => {
@@ -151,6 +149,24 @@ const formatDisplayDate = (val?: string | null): string => {
   return str.split("T")[0];
 };
 
+// Helper to format comment dates cleanly for reports
+const formatCommentDate = (val?: string | null): string => {
+  if (!val) return "N/A";
+  const str = String(val).trim();
+  if (!str) return "N/A";
+  try {
+    const d = new Date(str.includes("T") ? str : `${str}T00:00:00`);
+    if (!isNaN(d.getTime())) {
+      const day = String(d.getDate()).padStart(2, '0');
+      const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      const mon = monthNames[d.getMonth()];
+      const year = d.getFullYear();
+      return `${day} ${mon} ${year}`;
+    }
+  } catch (_) {}
+  return formatDisplayDate(val);
+};
+
 interface StructureData {
   str_id: string | number;
   str_name: string;
@@ -249,7 +265,8 @@ export interface ReportConfig {
 interface Draw3SectionHeaderOptions {
   pageWidth: number;
   companySettings?: CompanySettings;
-  config?: ReportConfig;
+  config?: ReportConfig | any;
+  contractorLogoUrl?: string;
   reportTitle: string;
   reportNo?: string;
   structureName?: string;
@@ -287,8 +304,109 @@ const draw3SectionHeader = async (
   const titleTextColor: [number, number, number] = isPrintFriendly ? [7, 78, 136] : [255, 255, 255];
   const titleSubTextColor: [number, number, number] = isPrintFriendly ? [51, 65, 85] : [219, 234, 254];
 
-  // Resolve Contractor Logo
-  const contractorLogoUrl = config?.contractorLogoUrl || (config as any)?.contractorLogo;
+  // Resolve Contractor Logo with full fallback chain (only if showContractorLogo !== false)
+  let contractorLogoUrl = "";
+  if (config?.showContractorLogo !== false) {
+    contractorLogoUrl =
+      options.contractorLogoUrl ||
+      config?.contractorLogoUrl ||
+      (config as any)?.contractorLogo ||
+      (config as any)?.headerData?.contractorLogoUrl ||
+      (config as any)?.headerData?.contrLogoUrl ||
+      (companySettings as any)?.contractorLogoUrl ||
+      (companySettings as any)?.contractor_logo_url ||
+      "";
+
+    // 1. If not yet found, check jobPack passed in config or headerData
+    const jobPackObj = (config as any)?.jobPack || (config as any)?.headerData?.jobPack || (config as any)?.headerData?.jobpack;
+    const contractorId = (config as any)?.contractorId || (config as any)?.headerData?.contractorId || jobPackObj?.metadata?.contrac || (jobPackObj as any)?.contractor_id;
+
+    if (!contractorLogoUrl && contractorId) {
+      try {
+        const contrRes = await fetch(`/api/libraries/contractors?id=${contractorId}`);
+        if (contrRes.ok) {
+          const contrData = await contrRes.json();
+          if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+        }
+      } catch (_) {}
+      if (!contractorLogoUrl) {
+        try {
+          const cRes = await fetch(`/api/library/CONTR_NAM`);
+          if (cRes.ok) {
+            const cJson = await cRes.json();
+            const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+            const cLow = String(contractorId).toLowerCase();
+            const found = cList.find((c: any) =>
+              String(c.lib_id).toLowerCase() === cLow ||
+              String(c.id).toLowerCase() === cLow ||
+              String(c.code || "").toLowerCase() === cLow ||
+              String(c.lib_desc || "").toLowerCase() === cLow
+            );
+            if (found?.logo_url) contractorLogoUrl = found.logo_url;
+          }
+        } catch (_) {}
+      }
+    }
+
+    // 2. If still not found and jobPackId is available, fetch jobpack to get contractor ID
+    const jobPackId = (config as any)?.jobPackId || (config as any)?.headerData?.jobPackId;
+    if (!contractorLogoUrl && jobPackId) {
+      try {
+        const jpRes = await fetch(`/api/jobpack/${jobPackId}`);
+        if (jpRes.ok) {
+          const jpData = await jpRes.json();
+          const jp = jpData?.data || jpData;
+          const cId = jp?.metadata?.contrac || jp?.contractor_id;
+          if (cId) {
+            const contrRes = await fetch(`/api/libraries/contractors?id=${cId}`);
+            if (contrRes.ok) {
+              const contrData = await contrRes.json();
+              if (contrData?.logo_url) contractorLogoUrl = contrData.logo_url;
+            }
+            if (!contractorLogoUrl) {
+              const cRes = await fetch(`/api/library/CONTR_NAM`);
+              if (cRes.ok) {
+                const cJson = await cRes.json();
+                const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+                const cLow = String(cId).toLowerCase();
+                const found = cList.find((c: any) =>
+                  String(c.lib_id).toLowerCase() === cLow ||
+                  String(c.id).toLowerCase() === cLow ||
+                  String(c.code || "").toLowerCase() === cLow
+                );
+                if (found?.logo_url) contractorLogoUrl = found.logo_url;
+              }
+            }
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Fallback: fetch any active contractor with a valid logo from library
+    if (!contractorLogoUrl) {
+      try {
+        const contrRes = await fetch('/api/libraries/contractors');
+        if (contrRes.ok) {
+          const contrJson = await contrRes.json();
+          const contrList = Array.isArray(contrJson) ? contrJson : (contrJson?.data || []);
+          const found = contrList.find((c: any) => Boolean(c.logo_url));
+          if (found?.logo_url) contractorLogoUrl = found.logo_url;
+        }
+      } catch (_) {}
+    }
+    if (!contractorLogoUrl) {
+      try {
+        const cRes = await fetch('/api/library/CONTR_NAM');
+        if (cRes.ok) {
+          const cJson = await cRes.json();
+          const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
+          const found = cList.find((c: any) => Boolean(c.logo_url));
+          if (found?.logo_url) contractorLogoUrl = found.logo_url;
+        }
+      } catch (_) {}
+    }
+  }
+
   let contractorLogoData: any = null;
   if (config?.showContractorLogo !== false && contractorLogoUrl) {
     try {
@@ -433,11 +551,36 @@ const generatePipelineReport = async (
   const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
+  // Ensure pipeline discussions/comments are fetched if not present
+  if (!structure.discussions || structure.discussions.length === 0) {
+    const rawId = (structure as any)?.id || structure.str_id || (structure as any)?.pipe_id || (structure as any)?.structure_id;
+    if (rawId) {
+      const cleanId = String(rawId).replace(/^(platform|pipeline)-/, "").trim();
+      try {
+        const commentRes = await fetch(`/api/comment/pipeline/${cleanId}`);
+        if (commentRes.ok) {
+          const commentJson = await commentRes.json();
+          if (commentJson.data && Array.isArray(commentJson.data)) {
+            structure.discussions = commentJson.data;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch pipeline structure comments:", err);
+      }
+    }
+  }
+
+  // Contractor logo is printed by default (including when printing/attaching to Final DOC) unless explicitly disabled
+  const showContractorLogo = (config as any)?.showContractorLogo !== false;
+
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
   await draw3SectionHeader(doc, {
     pageWidth,
     companySettings,
-    config,
+    config: {
+      ...config,
+      showContractorLogo,
+    } as any,
     reportTitle: "Pipeline Specifications Report",
     isPrintFriendly,
     headerBlue,
@@ -587,78 +730,71 @@ const generatePipelineReport = async (
   // ===== DISCUSSIONS / COMMENTS =====
   const pipeDiscussions = (structure.discussions || []).filter((d) => !d.is_deleted);
   if (pipeDiscussions.length > 0) {
-    if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
+    if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
 
-    drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (${pipeDiscussions.length})`, 12, yPos + 3.5);
-    yPos += 9;
-
-    // Sort discussions by created_at ascending
+    // Sort discussions by created_at descending (latest comment first)
     const sortedPipeDiscussions = [...pipeDiscussions].sort((a: any, b: any) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateA - dateB;
+      if (dateB !== dateA) return dateB - dateA;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
-    for (const disc of sortedPipeDiscussions) {
-      // Check if we need a new page
-      if (yPos > pageHeight - 25) {
-        doc.addPage();
-        yPos = 15;
-        drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (continued)`, 12, yPos + 3.5);
-        yPos += 9;
-      }
+    const hasUser = sortedPipeDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
 
-      // Format date
-      const createdAt = disc.created_at ? new Date(disc.created_at) : null;
-      const dateStr = createdAt
-        ? createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-        : "Unknown Date";
+    autoTable(doc, {
+      startY: yPos,
+      head: [
+        [{
+          content: 'COMMENTS',
+          colSpan: hasUser ? 3 : 2,
+          styles: {
+            halign: 'left',
+            fontStyle: 'bold',
+            fontSize: 8,
+            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          }
+        }],
+        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
+      ],
+      body: sortedPipeDiscussions.map((disc: any) => {
+        const dateStr = formatCommentDate(disc.created_at);
+        const userName = disc.user_name || disc.user_id || "N/A";
+        const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
+        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
+      }),
+      theme: 'grid',
+      styles: {
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+        cellPadding: 1.8,
+        valign: 'top',
+        fontSize: 7,
+      },
+      headStyles: {
+        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+        fontSize: 7,
+        halign: 'left',
+        fontStyle: 'bold',
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
+      columnStyles: hasUser ? {
+        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 32, fontStyle: 'bold' },
+        2: { cellWidth: 'auto', halign: 'left' }
+      } : {
+        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 'auto', halign: 'left' }
+      },
+      margin: { left: 10, right: 10 },
+      tableWidth: pageWidth - 20,
+    });
 
-      // Posted by user
-      const userName = disc.user_name || disc.user_id || "Unknown";
-
-      // Date & user line (small font, gray)
-      doc.setFontSize(5.5);
-      doc.setFont("helvetica", "italic");
-      doc.setTextColor(120, 120, 120);
-      doc.text(`${dateStr}  \u2014  ${userName}`, 12, yPos);
-      yPos += 3;
-
-      // Comment text
-      const commentText = disc.text || disc.content || disc.message || "";
-      if (commentText) {
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(30, 30, 30);
-        const textLines = doc.splitTextToSize(commentText, pageWidth - 28);
-        const linesToRender = textLines.slice(0, 6); // Cap at 6 lines per comment
-        doc.text(linesToRender, 12, yPos);
-        yPos += linesToRender.length * 3;
-      }
-
-      // Separator line between comments
-      doc.setDrawColor(220, 220, 220);
-      doc.setLineWidth(0.2);
-      doc.line(12, yPos, pageWidth - 12, yPos);
-      yPos += 3;
-    }
-
-    yPos += 2;
-  } else if ((structure.comments || structure.description) && yPos < pageHeight - 20) {
-    // Fallback: legacy single comment field
-    drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
-
-    yPos += 4;
-    const commentText = structure.comments || structure.description || "";
-    const textLines = doc.splitTextToSize(commentText, pageWidth - 26);
-    const boxHeight = Math.min(15, textLines.length * 3 + 4);
-
-    doc.setDrawColor(200, 200, 200);
-    doc.rect(10, yPos, pageWidth - 20, boxHeight);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(6);
-    doc.text(textLines.slice(0, 4), 12, yPos + 3);
+    yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
   // ===== SIGNATURES =====
@@ -744,12 +880,38 @@ const generatePlatformReport = async (
   const navy: [number, number, number] = [7, 78, 136];
   const isPrintFriendly = config?.printFriendly === true;
 
+  // Ensure discussions/comments are fetched if not present
+  if (!structure.discussions || structure.discussions.length === 0) {
+    const rawId = (structure as any)?.id || structure.str_id || (structure as any)?.plat_id || (structure as any)?.structure_id;
+    if (rawId) {
+      const cleanId = String(rawId).replace(/^(platform|pipeline)-/, "").trim();
+      const strType = (structure.str_type || "platform").toLowerCase();
+      try {
+        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
+        if (commentRes.ok) {
+          const commentJson = await commentRes.json();
+          if (commentJson.data && Array.isArray(commentJson.data)) {
+            structure.discussions = commentJson.data;
+          }
+        }
+      } catch (err) {
+        console.warn("Could not fetch structure comments:", err);
+      }
+    }
+  }
+
+  // Contractor logo is printed by default (including when printing/attaching to Final DOC) unless explicitly disabled
+  const showContractorLogo = (config as any)?.showContractorLogo !== false;
+
   // ===== HEADER (3 SECTIONS: Contractor Logo | Middle Info | Client Logo) =====
   const sowReportNo = (config as any)?.sowReportNo || (config as any)?.sow_report_no || (structure as any)?.sow_report_no || (structure as any)?.sowReportNo;
   await draw3SectionHeader(doc, {
     pageWidth,
     companySettings,
-    config,
+    config: {
+      ...config,
+      showContractorLogo,
+    } as any,
     reportTitle: "Platform Specifications Report",
     reportNo: sowReportNo,
     isPrintFriendly,
@@ -1472,73 +1634,71 @@ const generatePlatformReport = async (
   // ===== DISCUSSIONS / COMMENTS =====
   const discussions = (structure.discussions || []).filter((d) => !d.is_deleted);
   if (discussions.length > 0) {
-    if (yPos > pageHeight - 40) { doc.addPage(); yPos = 15; }
+    if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
 
-    drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (${discussions.length})`, 12, yPos + 3.5);
-    yPos += 9;
-
-    // Sort discussions by created_at ascending
+    // Sort discussions by created_at descending (latest comment first)
     const sortedDiscussions = [...discussions].sort((a: any, b: any) => {
       const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
       const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      return dateA - dateB;
+      if (dateB !== dateA) return dateB - dateA;
+      return (Number(b.id) || 0) - (Number(a.id) || 0);
     });
 
-    for (const disc of sortedDiscussions) {
-      // Check if we need a new page
-      if (yPos > pageHeight - 25) {
-        doc.addPage();
-        yPos = 15;
-        drawSectionBar(10, yPos, pageWidth - 20, 5, `COMMENTS (continued)`, 12, yPos + 3.5);
-        yPos += 9;
-      }
+    const hasUser = sortedDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
 
-      // Format date
-      const createdAt = disc.created_at ? new Date(disc.created_at) : null;
-      const dateStr = createdAt
-        ? createdAt.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })
-        : "Unknown Date";
+    autoTable(doc, {
+      startY: yPos,
+      head: [
+        [{
+          content: 'COMMENTS',
+          colSpan: hasUser ? 3 : 2,
+          styles: {
+            halign: 'left',
+            fontStyle: 'bold',
+            fontSize: 8,
+            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          }
+        }],
+        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
+      ],
+      body: sortedDiscussions.map((disc: any) => {
+        const dateStr = formatCommentDate(disc.created_at);
+        const userName = disc.user_name || disc.user_id || "N/A";
+        const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
+        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
+      }),
+      theme: 'grid',
+      styles: {
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+        cellPadding: 1.8,
+        valign: 'top',
+        fontSize: 7,
+      },
+      headStyles: {
+        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+        fontSize: 7,
+        halign: 'left',
+        fontStyle: 'bold',
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
+      columnStyles: hasUser ? {
+        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 32, fontStyle: 'bold' },
+        2: { cellWidth: 'auto', halign: 'left' }
+      } : {
+        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
+        1: { cellWidth: 'auto', halign: 'left' }
+      },
+      margin: { left: 10, right: 10 },
+      tableWidth: pageWidth - 20,
+    });
 
-      // Posted by user
-      const userName = disc.user_name || disc.user_id || "Unknown";
-
-      // Date & user line (small font, gray)
-      doc.setFontSize(5.5);
-      doc.setFont("helvetica", "italic");
-      doc.setTextColor(120, 120, 120);
-      doc.text(`${dateStr}  \u2014  ${userName}`, 12, yPos);
-      yPos += 3;
-
-      // Comment text
-      const commentText = disc.text || disc.content || disc.message || "";
-      if (commentText) {
-        doc.setFontSize(7);
-        doc.setFont("helvetica", "normal");
-        doc.setTextColor(30, 30, 30);
-        const textLines = doc.splitTextToSize(commentText, pageWidth - 28);
-        const linesToRender = textLines.slice(0, 6); // Cap at 6 lines per comment
-        doc.text(linesToRender, 12, yPos);
-        yPos += linesToRender.length * 3;
-      }
-
-      // Separator line between comments
-      doc.setDrawColor(220, 220, 220);
-      doc.setLineWidth(0.2);
-      doc.line(12, yPos, pageWidth - 12, yPos);
-      yPos += 3;
-    }
-
-    yPos += 2;
-  } else if ((structure.comments || structure.description) && yPos < pageHeight - 30) {
-    // Fallback: legacy single comment field
-    drawSectionBar(10, yPos, pageWidth - 20, 4, "COMMENTS", 12, yPos + 3);
-
-    yPos += 4;
-    const commentText = structure.comments || structure.description || "";
-    const textLines = doc.splitTextToSize(commentText, pageWidth - 26);
-    const boxHeight = Math.min(15, textLines.length * 3 + 4);
-
-    yPos += boxHeight + 4;
+    yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
   // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos beyond Page 1) =====
@@ -1856,14 +2016,19 @@ const generatePipelineHTML = (
         </div>
 
         <!-- Comments -->
-        <div>
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Additional Comments
-          </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
-            ${structure.comments || structure.description || "No additional comments provided."}
-          </div>
-        </div>
+        ${(() => {
+          const discList = (structure.discussions || []).filter((d: any) => !d.is_deleted);
+          if (!discList.length) return "";
+          return `
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Comments
+            </div>
+            <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
+              ${discList.map((d: any) => `<div><strong>${formatCommentDate(d.created_at)}</strong>: ${d.text || d.comment_details || ""}</div>`).join("")}
+            </div>
+          </div>`;
+        })()}
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
@@ -2220,14 +2385,19 @@ const generatePlatformHTML = (
         </div>
 
         <!-- Comments -->
-        <div>
-          <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
-            Additional Comments
-          </div>
-          <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
-            ${structure.comments || structure.description || "No additional comments provided."}
-          </div>
-        </div>
+        ${(() => {
+          const discList = (structure.discussions || []).filter((d: any) => !d.is_deleted);
+          if (!discList.length) return "";
+          return `
+          <div>
+            <div style="background-color: #074e88; color: white; padding: 6px 10px; font-size: 10px; font-weight: bold; text-transform: uppercase;">
+              Comments
+            </div>
+            <div style="border: 1px solid #cbd5e0; border-top: none; padding: 10px; font-size: 9px; color: #2d3748; background: #fdfdfd; min-height: 30px;">
+              ${discList.map((d: any) => `<div><strong>${formatCommentDate(d.created_at)}</strong>: ${d.text || d.comment_details || ""}</div>`).join("")}
+            </div>
+          </div>`;
+        })()}
 
         <!-- Footer -->
         <div style="margin-top: 20px; border-top: 2px solid #e2e8f0; padding-top: 10px; font-size: 9px; color: #718096; display: flex; justify-content: space-between; align-items: center;">
