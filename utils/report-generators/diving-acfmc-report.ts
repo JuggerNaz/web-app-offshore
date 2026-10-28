@@ -27,7 +27,7 @@ interface ReportConfig {
 /**
  * Diving ACFMC Inspection Report (ACFMC) — Landscape
  *
- * Columns: Item No. | QID | Elevation (m) | Dive No. | Chord / Weld / Brace | Direction of Travel | Clock Position | Page | Probe No. | Findings
+ * Columns: No. | QID | Elevation (m) | Dive No. | Chord / Weld / Brace | Direction of Travel | Clock Position | Page | Probe No. | Findings
  */
 export const generateDivingACFMCReport = async (
     records: any[],
@@ -145,7 +145,7 @@ export const generateDivingACFMCReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "QID",                   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",              styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

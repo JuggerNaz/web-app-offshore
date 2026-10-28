@@ -38,21 +38,34 @@ function getInspectionTaskName(code?: string | null): string {
     return cleanCode;
 }
 
+const MAX_TAPE_HOURS = 12;
+const MAX_TAPE_SECONDS = MAX_TAPE_HOURS * 3600;
+
 function parseTimecodeToSeconds(tc: any): number {
     if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return -1;
-    if (typeof tc === "number") return tc;
+    if (typeof tc === "number") {
+        if (tc > MAX_TAPE_SECONDS) return -1;
+        return tc;
+    }
     const str = String(tc).trim();
     if (str.includes(":")) {
         const parts = str.split(":").map(Number);
         if (parts.length === 3 && parts.every(p => !isNaN(p))) {
-            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            const sec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            if (sec > MAX_TAPE_SECONDS) return -1;
+            return sec;
         }
         if (parts.length === 2 && parts.every(p => !isNaN(p))) {
-            return parts[0] * 60 + parts[1];
+            const sec = parts[0] * 60 + parts[1];
+            if (sec > MAX_TAPE_SECONDS) return -1;
+            return sec;
         }
     }
     const num = Number(str);
-    if (!isNaN(num)) return num;
+    if (!isNaN(num)) {
+        if (num > MAX_TAPE_SECONDS) return -1;
+        return num;
+    }
     return -1;
 }
 
@@ -62,11 +75,16 @@ function formatTimecode(tc: any): string {
     if (str.includes(":")) {
         const parts = str.split(":");
         if (parts.length === 2) return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
-        if (parts.length === 3) return parts.map(p => p.padStart(2, "0")).join(":");
+        if (parts.length === 3) {
+            const h = Number(parts[0]);
+            if (!isNaN(h) && h > MAX_TAPE_HOURS) return "—";
+            return parts.map(p => p.padStart(2, "0")).join(":");
+        }
         return str;
     }
     const num = Number(str);
     if (!isNaN(num) && num >= 0) {
+        if (num > MAX_TAPE_SECONDS) return "—";
         const hrs = Math.floor(num / 3600);
         const mins = Math.floor((num % 3600) / 60);
         const secs = Math.floor(num % 60);

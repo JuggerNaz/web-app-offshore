@@ -289,7 +289,7 @@ export const generateDivingMEASUReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + headerH + 6, bottom: 20 },
             head: [
-                ['Item No.', 'Type', 'Unit', 'Result']
+                ['No.', 'Type', 'Unit', 'Result']
             ],
             body: bodyForAutoTable,
             theme: 'grid',

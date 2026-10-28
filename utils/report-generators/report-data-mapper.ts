@@ -1,4 +1,4 @@
-import { normalizeReportRecords , applyRecordCellStyling, formatReportFindingText } from "./shared-logo";
+import { normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, isPurelyIncompleteRecord } from "./shared-logo";
 import { format } from "date-fns";
 import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
@@ -209,7 +209,7 @@ export const mapInspectionDataForDocx = async (
     activeTemplateTags?: Set<string> | null,
     onProgress?: (info: DocxMappingProgress) => void
 ) => {
-    records = normalizeReportRecords(records);
+    records = normalizeReportRecords(records, { allowPurelyIncomplete: true });
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
 
@@ -713,7 +713,7 @@ export const mapInspectionDataForDocx = async (
                 return (r.description && r.description !== "N/A") && !(r.has_anomaly === 1 || r.has_anomaly === true);
             }
             if (templateId === 'inspection-report') {
-                return true;
+                return !isPurelyIncompleteRecord(r);
             }
             if (templateId === 'work-scope-incomplete') {
                 return r.status && !['COMPLETED', 'APPROVED', 'CLOSE', 'CLOSED'].includes(r.status.toUpperCase());
@@ -723,6 +723,11 @@ export const mapInspectionDataForDocx = async (
             }
             if (templateId === 'inspection-schedule' || templateId === 'planning-overview') {
                 return true;
+            }
+
+            // Exclude purely incomplete records from standard inspection report templates
+            if (isPurelyIncompleteRecord(r)) {
+                return false;
             }
 
             // Photography reports explicit routing

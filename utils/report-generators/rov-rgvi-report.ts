@@ -198,7 +198,7 @@ export const isExcludedFromRGVI = (r: any, compMap?: Map<string | number, any>):
 
 /**
  * ROV General Visual Inspection (RGVI) Report (Portrait)
- * Columns: Item No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
+ * Columns: No. | Component QID | Elevation | Dive No. | Tape No. | CP (mV) | Findings
  */
 export const generateROVRGVIReport = async (
     records: any[],
@@ -389,7 +389,7 @@ export const generateROVRGVIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component\nQID",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

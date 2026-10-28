@@ -645,6 +645,167 @@ if (typeof window !== "undefined") {
  * - If blank or null, fallback to the inspection finding value.
  * - Never prints both.
  */
+export const getRecordIncompleteReason = (r: any): string => {
+    if (!r) return "";
+    const d = r.inspection_data || r.inspection_dat || {};
+    const raw = (
+        r.incomplete_reason ||
+        r.incompleteReason ||
+        r.incomplete_findings ||
+        r.incomplete_remarks ||
+        r.incomplete_comments ||
+        d.incomplete_reason ||
+        d.incompleteReason ||
+        d.incomplete_findings ||
+        d.incomplete_remarks ||
+        d.incomplete_comments ||
+        r.inspection_dat?.incomplete_reason ||
+        ""
+    ).toString().trim();
+    if (raw === "-" || raw === "—" || raw === "–") return "";
+    return raw;
+};
+
+export const isStatusIncomplete = (r: any): boolean => {
+    if (!r) return false;
+    const d = r.inspection_data || r.inspection_dat || {};
+    const status = String(r.status || "").trim().toUpperCase();
+    const dataStatus = String(d.status || "").trim().toUpperCase();
+    const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
+    const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
+
+    // 1. Explicit COMPLETED/CLOSED/APPROVED check:
+    if (status === "COMPLETED" || dataStatus === "COMPLETED" || status === "CLOSED" || dataStatus === "CLOSED" || status === "APPROVED" || dataStatus === "APPROVED") {
+        if (status !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
+            return false;
+        }
+    }
+
+    // 2. Explicit INCOMPLETE status / finding type
+    if (status === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
+        return true;
+    }
+
+    // 3. Boolean flag
+    if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
+        return true;
+    }
+
+    // 4. Incomplete reason provided
+    const incompleteReason = getRecordIncompleteReason(r);
+    if (incompleteReason && incompleteReason.length > 0) {
+        return true;
+    }
+
+    // 5. Explicit prefix in description
+    const desc = String(r.description || "").trim().toUpperCase();
+    if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) {
+        return true;
+    }
+
+    return false;
+};
+
+const NON_SUBSTANTIVE_FINDINGS = new Set([
+    "",
+    "-",
+    "—",
+    "–",
+    "n/a",
+    "na",
+    "none",
+    "nil",
+    "null",
+    "undefined",
+    "no findings",
+    "no significant findings",
+    "no significant finding",
+    "no defect",
+    "no defects",
+    "incomplete",
+    "task incomplete",
+    "status: incomplete",
+    "incomplete — task could not be fully executed",
+    "incomplete - task could not be fully executed"
+]);
+
+const normalizeFindingText = (str: string): string => {
+    return str
+        .toLowerCase()
+        .replace(/^(incomplete(\s+reason)?|reason|finding(\s+description)?|description|remarks?)\s*:\s*/i, "")
+        .replace(/[\s\-_—–]+/g, " ")
+        .trim();
+};
+
+export const hasSubstantiveInspectionFindings = (r: any, explicitFindings?: string | null): boolean => {
+    if (!r) return false;
+
+    const d = r.inspection_data || r.inspection_dat || {};
+    const incReason = getRecordIncompleteReason(r);
+    const normInc = normalizeFindingText(incReason);
+
+    // 1. Check base finding/description
+    const rawDesc = explicitFindings !== undefined && explicitFindings !== null 
+        ? explicitFindings 
+        : (r.findings ?? r.description ?? r.remarks ?? d.findings ?? d.finding ?? d.description ?? d.remarks ?? "");
+    
+    const cleanDesc = typeof rawDesc === "string" ? rawDesc.trim() : (rawDesc ? String(rawDesc).trim() : "");
+    if (cleanDesc) {
+        const lines = cleanDesc.split("\n").map(l => l.trim()).filter(Boolean);
+        for (const line of lines) {
+            const low = line.toLowerCase();
+            if (NON_SUBSTANTIVE_FINDINGS.has(low)) continue;
+            const normLine = normalizeFindingText(line);
+            if (!normLine || normLine === "incomplete" || NON_SUBSTANTIVE_FINDINGS.has(normLine)) continue;
+            if (normInc && (normLine === normInc || normLine.startsWith(normInc) || normInc.startsWith(normLine))) continue;
+            return true;
+        }
+    }
+
+    // 2. Check linked anomalies / defects
+    const anomList = Array.isArray(r.insp_anomalies) ? r.insp_anomalies : (Array.isArray(r.anomalies) ? r.anomalies : []);
+    const linkedAnom = anomList[0] || r.insp_anomaly || r.anomaly_details || d.anomaly || null;
+    const defectDesc = String(
+        linkedAnom?.defect_description || 
+        linkedAnom?.description || 
+        linkedAnom?.remarks || 
+        linkedAnom?.anomaly_description || 
+        d.defect_description || 
+        d.anomaly_description || 
+        r.defect_description || 
+        r.anomaly_description || 
+        ""
+    ).trim();
+    if (defectDesc) {
+        const normDefect = normalizeFindingText(defectDesc);
+        if (normDefect && !NON_SUBSTANTIVE_FINDINGS.has(normDefect) && normDefect !== "incomplete") {
+            if (!normInc || (normDefect !== normInc && !normDefect.startsWith(normInc) && !normInc.startsWith(normDefect))) {
+                return true;
+            }
+        }
+    }
+
+    // 3. Check additional CP or UT measurements
+    const addCP = d.cp_rdg_additional || d.cp_additional || d.cp_readings || r.additional_cp || r.cp_additional;
+    if (Array.isArray(addCP) && addCP.length > 0) return true;
+    const addUT = d.ut_readings_additional || d.ut_readings || d.ut_additional || d.additional_ut || r.additional_ut || r.ut_additional;
+    if (Array.isArray(addUT) && addUT.length > 0) return true;
+
+    return false;
+};
+
+/**
+ * Checks whether an inspection record is completely incomplete ("complete incomplete status"):
+ * It has status INCOMPLETE, and does NOT have substantive inspection findings
+ * (or its findings are identical to the incomplete reason/findings).
+ * These records must be filtered out of standard inspection reports, as dedicated incomplete reports handle them.
+ */
+export const isPurelyIncompleteRecord = (r: any, explicitFindings?: string | null): boolean => {
+    if (!r) return false;
+    if (!isStatusIncomplete(r)) return false;
+    return !hasSubstantiveInspectionFindings(r, explicitFindings);
+};
+
 export const getEffectiveFindings = (r: any, explicitFindings?: string | null): string => {
     if (!r) return "";
 
@@ -656,34 +817,30 @@ export const getEffectiveFindings = (r: any, explicitFindings?: string | null): 
     
     const cleanDesc = typeof rawDesc === "string" ? rawDesc.trim() : (rawDesc ? String(rawDesc).trim() : "");
 
-    const isStatusIncomplete = 
-        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
-        String(d.status || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(d.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+    const isStatusIncompleteVal = isStatusIncomplete(r);
+    const incReason = getRecordIncompleteReason(r);
 
-    const incReason = (
-        r.incomplete_reason || 
-        r.incompleteReason || 
-        d.incomplete_reason || 
-        d.incompleteReason || 
-        r.inspection_dat?.incomplete_reason ||
-        ""
-    ).toString().trim();
+    if (isStatusIncompleteVal) {
+        const hasSubstantiveDesc = hasSubstantiveInspectionFindings(r, explicitFindings);
+        const formattedInc = incReason 
+            ? (incReason.match(/^(incomplete(\s+reason)?|reason)\s*:/i) ? incReason : `Incomplete Reason: ${incReason}`)
+            : "Incomplete";
 
-    if (isStatusIncomplete) {
-        const hasSubstantiveDesc = Boolean(cleanDesc && cleanDesc !== "No significant findings" && cleanDesc !== "N/A" && cleanDesc !== "—" && cleanDesc !== "-" && cleanDesc !== "None");
-        if (hasSubstantiveDesc && incReason) {
-            return `${cleanDesc}\nIncomplete Reason: ${incReason}`;
-        }
-        if (incReason) {
-            return `Incomplete Reason: ${incReason}`;
-        }
         if (hasSubstantiveDesc) {
-            return cleanDesc;
+            const lines = cleanDesc.split("\n").map(l => l.trim()).filter(Boolean);
+            const pureLines = lines.filter(l => {
+                const low = l.toLowerCase();
+                if (low === "incomplete" || low === "task incomplete" || low === "status: incomplete") return false;
+                if (incReason) {
+                    const incLow = incReason.toLowerCase();
+                    if (low === incLow || low === `incomplete reason: ${incLow}` || low === `reason: ${incLow}` || low === `incomplete: ${incLow}`) return false;
+                }
+                return true;
+            });
+            const pureDesc = pureLines.join("\n") || cleanDesc;
+            return `${pureDesc}\n\n${formattedInc}`;
         }
-        return "Incomplete";
+        return formattedInc;
     }
 
     return cleanDesc;
@@ -800,28 +957,17 @@ export const normalizeRecordFindings = (r: any): any => {
     }
 
     // 2. Incomplete Reason for findings/description (priority: incomplete_reason, fallback: inspection finding)
-    const isStatusIncomplete = 
-        String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
-        String(inspData.status || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(inspData.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(r.finding_type || "").trim().toUpperCase() === "INCOMPLETE" ||
-        String(r.findingType || "").trim().toUpperCase() === "INCOMPLETE";
+    const isStatusIncompleteVal = isStatusIncomplete(r);
+    const incReason = getRecordIncompleteReason(r);
 
-    const incReason = (
-        r.incomplete_reason || 
-        r.incompleteReason || 
-        inspData.incomplete_reason || 
-        inspData.incompleteReason || 
-        r.inspection_dat?.incomplete_reason ||
-        ""
-    ).toString().trim();
-
-    if (isStatusIncomplete) {
-        const desc = (r.description ?? r.findings ?? r.remarks ?? inspData.findings ?? inspData.description ?? "").toString().trim();
-        const hasSubstantiveDesc = Boolean(desc && desc !== "No significant findings" && desc !== "N/A" && desc !== "—" && desc !== "-" && desc !== "None");
+    if (isStatusIncompleteVal) {
+        const hasSubstantiveDesc = hasSubstantiveInspectionFindings(r);
+        const formattedInc = incReason 
+            ? (incReason.match(/^(incomplete(\s+reason)?|reason)\s*:/i) ? incReason : `Incomplete Reason: ${incReason}`)
+            : "Incomplete";
 
         if (!hasSubstantiveDesc) {
-            const effectiveText = incReason || "Incomplete";
+            const effectiveText = formattedInc;
             inspData.description = effectiveText;
             inspData.findings = effectiveText;
             inspData.remarks = effectiveText;
@@ -841,12 +987,31 @@ export const normalizeRecordFindings = (r: any): any => {
     return r;
 };
 
+export interface NormalizeReportRecordsOptions {
+    allowPurelyIncomplete?: boolean;
+}
+
 /**
  * Normalizes an array of inspection records for all report templates.
+ * Filters out purely incomplete records (records with status INCOMPLETE and no substantive findings, or same findings info as incomplete)
+ * unless allowPurelyIncomplete is true (used by dedicated incomplete reports).
+ * Retains partially incomplete records (status INCOMPLETE, but has substantive findings) formatted with findings, blank line, and incomplete reason.
  */
-export const normalizeReportRecords = (records: any[]): any[] => {
+export const normalizeReportRecords = (
+    records: any[],
+    options?: NormalizeReportRecordsOptions | boolean
+): any[] => {
     if (!Array.isArray(records)) return [];
-    return records.map(normalizeRecordFindings);
+
+    const allowPurelyIncomplete = typeof options === "boolean" 
+        ? options 
+        : Boolean(options?.allowPurelyIncomplete);
+
+    const filtered = allowPurelyIncomplete
+        ? records
+        : records.filter(r => !isPurelyIncompleteRecord(r));
+
+    return filtered.map(normalizeRecordFindings);
 };
 
 export { getInspectionDateRange, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments } from "./date-range-utils";

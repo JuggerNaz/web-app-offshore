@@ -43,7 +43,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "QID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "CP Reading\n(-mV)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Wall Thickness (mm) (o'clock)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -79,7 +79,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item\nNo.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Component\nQID", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation\n(m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dive No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -113,7 +113,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Primary CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -141,7 +141,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "QID / Location", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", rowSpan: 2, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "UT Readings (mm)", colSpan: 4, styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -176,7 +176,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Anode QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -202,7 +202,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Member / Weld QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Direction of Travel", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -234,7 +234,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Surface Condition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -264,7 +264,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 10,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Anode QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -298,7 +298,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -327,7 +327,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 12,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -360,7 +360,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -385,7 +385,7 @@ function getTemplateTableSpec(templateId: string): {
                 sampleRowCount: 14,
                 head: [
                     [
-                        { content: "Item No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Component QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "CP Reading (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },

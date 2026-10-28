@@ -291,7 +291,7 @@ export const generateDivingDCASNTSReport = async (
                 autoTable(doc, {
                     startY: currentY,
                     margin: { left: margin, right: margin },
-                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Marine Growth %", "Findings"]],
+                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Marine Growth %", "Findings"]],
                     body: recsGVINS.map((r, i) => {
                         const d = r.inspection_data || {};
                         const el = r.elevation ?? d.elevation ?? "—";
@@ -334,7 +334,7 @@ export const generateDivingDCASNTSReport = async (
                 autoTable(doc, {
                     startY: currentY,
                     margin: { left: margin, right: margin },
-                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Debris / Corrosion", "Findings"]],
+                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Debris / Corrosion", "Findings"]],
                     body: recsCVINS.map((r, i) => {
                         const d = r.inspection_data || {};
                         const el = r.elevation ?? d.elevation ?? "—";
@@ -377,7 +377,7 @@ export const generateDivingDCASNTSReport = async (
                 autoTable(doc, {
                     startY: currentY,
                     margin: { left: margin, right: margin },
-                    head: [["Item No.", "QID", "Elevation (m)", "Dive No.", "CP Reading", "Anode Condition", "Marine Growth %", "Findings"]],
+                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "CP Reading", "Anode Condition", "Marine Growth %", "Findings"]],
                     body: recsCPSURV.map((r, i) => {
                         const d = r.inspection_data || {};
                         const el = r.elevation ?? d.elevation ?? "—";
@@ -423,7 +423,7 @@ export const generateDivingDCASNTSReport = async (
                     margin: { left: margin, right: margin },
                     head: [
                         [
-                            { content: "Item No.", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                            { content: "No.", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                             { content: "QID", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                             { content: "Elevation (m)", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                             { content: "Dive No.", rowSpan: 2, styles: {valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

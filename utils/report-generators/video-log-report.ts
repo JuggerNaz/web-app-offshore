@@ -74,21 +74,34 @@ export function getInspectionTaskName(code?: string | null): string {
     return cleanCode;
 }
 
+export const MAX_TAPE_HOURS = 12;
+export const MAX_TAPE_SECONDS = MAX_TAPE_HOURS * 3600; // 43,200 seconds
+
 export function parseTimecodeToSeconds(tc: any): number {
     if (tc === null || tc === undefined || tc === "" || tc === "—" || tc === "-") return -1;
-    if (typeof tc === "number") return tc;
+    if (typeof tc === "number") {
+        if (tc > MAX_TAPE_SECONDS) return -1;
+        return tc;
+    }
     const str = String(tc).trim();
     if (str.includes(":")) {
         const parts = str.split(":").map(Number);
         if (parts.length === 3 && parts.every(p => !isNaN(p))) {
-            return parts[0] * 3600 + parts[1] * 60 + parts[2];
+            const sec = parts[0] * 3600 + parts[1] * 60 + parts[2];
+            if (sec > MAX_TAPE_SECONDS) return -1;
+            return sec;
         }
         if (parts.length === 2 && parts.every(p => !isNaN(p))) {
-            return parts[0] * 60 + parts[1];
+            const sec = parts[0] * 60 + parts[1];
+            if (sec > MAX_TAPE_SECONDS) return -1;
+            return sec;
         }
     }
     const num = Number(str);
-    if (!isNaN(num)) return num;
+    if (!isNaN(num)) {
+        if (num > MAX_TAPE_SECONDS) return -1;
+        return num;
+    }
     return -1;
 }
 
@@ -98,11 +111,16 @@ export function formatTimecode(tc: any): string {
     if (str.includes(":")) {
         const parts = str.split(":");
         if (parts.length === 2) return `00:${parts[0].padStart(2, "0")}:${parts[1].padStart(2, "0")}`;
-        if (parts.length === 3) return parts.map(p => p.padStart(2, "0")).join(":");
+        if (parts.length === 3) {
+            const h = Number(parts[0]);
+            if (!isNaN(h) && h > MAX_TAPE_HOURS) return "—";
+            return parts.map(p => p.padStart(2, "0")).join(":");
+        }
         return str;
     }
     const num = Number(str);
     if (!isNaN(num) && num >= 0) {
+        if (num > MAX_TAPE_SECONDS) return "—";
         const hrs = Math.floor(num / 3600);
         const mins = Math.floor((num % 3600) / 60);
         const secs = Math.floor(num % 60);
@@ -141,20 +159,22 @@ export function calculateTapeDurationSeconds(logs: any[]): number {
     if (!logs || logs.length === 0) return 0;
     const validSeconds = logs
         .map(l => parseTimecodeToSeconds(l.timecode_start ?? l.tape_counter_start))
-        .filter(s => s >= 0);
+        .filter(s => s >= 0 && s <= MAX_TAPE_SECONDS);
 
     if (validSeconds.length >= 2) {
-        return Math.max(0, Math.max(...validSeconds) - Math.min(...validSeconds));
+        const dur = Math.max(...validSeconds) - Math.min(...validSeconds);
+        return Math.min(MAX_TAPE_SECONDS, Math.max(0, dur));
     }
     if (validSeconds.length === 1 && validSeconds[0] > 0) {
-        return validSeconds[0];
+        return Math.min(MAX_TAPE_SECONDS, validSeconds[0]);
     }
 
     const validTimes = logs
         .map(l => l.event_time ? new Date(l.event_time).getTime() : 0)
         .filter(t => t > 0 && !isNaN(t));
     if (validTimes.length >= 2) {
-        return Math.max(0, Math.round((Math.max(...validTimes) - Math.min(...validTimes)) / 1000));
+        const diffSec = Math.round((Math.max(...validTimes) - Math.min(...validTimes)) / 1000);
+        return Math.min(MAX_TAPE_SECONDS, Math.max(0, diffSec));
     }
     return 0;
 }
@@ -497,13 +517,18 @@ export function compileVideoLogAnalytics(tapes: any[], meta?: any): VideoLogExec
     });
 
     // Sort tapesBreakdown naturally ascending by tapeNo (e.g. V001R, V002R, ..., V014R)
+    // Clamp individual tape durations to normal operational max (12 hours)
     const tapesBreakdown: VideoLogTapeAnalytics[] = Array.from(tapeMap.values()).map(t => {
         const count = t.chapterNos.length > 0 ? t.chapterNos.length : (t.chapterBreakdown.length > 0 ? t.chapterBreakdown.length : 1);
+        const cappedDuration = Math.min(MAX_TAPE_SECONDS, t.durationSeconds);
         return {
             ...t,
+            durationSeconds: cappedDuration,
             chapterCount: count,
         };
     }).sort((a, b) => a.tapeNo.localeCompare(b.tapeNo, undefined, { numeric: true, sensitivity: 'base' }));
+
+    grandTotalDuration = tapesBreakdown.reduce((sum, t) => sum + t.durationSeconds, 0);
 
     const totalTapesCount = tapesBreakdown.length;
     const totalChaptersCount = tapesBreakdown.reduce((sum, t) => sum + t.chapterCount, 0);
@@ -616,7 +641,7 @@ export const generateVideoLogReport = async (
         const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ''}` : jobPack?.name;
 
         draw3SectionHeader(d, {
-            reportTitle: "Video Log Report",
+            reportTitle: "Video Log & Tape Summary Report",
             reportNo: reportNoDisplay,
             structureName: structName,
             companySettings,
@@ -979,13 +1004,7 @@ export const generateVideoLogReport = async (
         doc.setFont("helvetica", "bold");
         doc.text("VIDEO LOG EXECUTIVE SUMMARY & TAPE ANALYTICS", margin + 3, currentY + 3.8);
 
-        doc.setFontSize(5.8);
-        doc.setFont("helvetica", "normal");
-        if (!isPrintFriendly) doc.setTextColor(220, 230, 242);
-        const sowBanner = summary.sowScope ? `SOW: ${summary.sowScope.completed}/${summary.sowScope.total} (${summary.sowScope.completionPct}%)   |   ` : "";
-        const subheaderRight = `TOTAL TAPES: ${summary.totalTapesCount}   |   TOTAL CHAPTERS: ${summary.totalChaptersCount}   |   ${sowBanner}ANOMALIES: ${summary.totalAnomaliesCount}   |   RECORDED TIME: ${formatDurationHMS(summary.totalDurationSeconds)}`;
-        doc.text(subheaderRight, margin + contentWidth - 3, currentY + 3.8, { align: "right" });
-
+        // Subheader title maintains title only (summary info removed per user request)
         currentY += sumBannerH + 2;
 
         // 2. Top 6 KPI Scorecard Cards
@@ -1028,31 +1047,31 @@ export const generateVideoLogReport = async (
             doc.text(subtext, x + 3.2, y + 11.4);
         };
 
-        // Card 1: Total Video Tapes
+        // Card 1: Total Video Tapes (figure only)
         drawKpiCard(
             margin,
             currentY,
             cardW,
             cardH,
             "Total Video Tapes",
-            `${summary.totalTapesCount} Tape${summary.totalTapesCount > 1 ? "s" : ""}`,
+            `${summary.totalTapesCount}`,
             "Recorded Media Volumes",
             colors.navy
         );
 
-        // Card 2: Total Chapters
+        // Card 2: Total Chapters (figure only)
         drawKpiCard(
             margin + (cardW + cardGap),
             currentY,
             cardW,
             cardH,
             "Total Chapters",
-            `${summary.totalChaptersCount} Chaps`,
+            `${summary.totalChaptersCount}`,
             `Avg ${summary.avgChaptersPerTape} Ch / Tape`,
             colors.blue
         );
 
-        // Card 3: Recorded Duration
+        // Card 3: Recorded Duration (maintains units e.g. 90h 17m)
         drawKpiCard(
             margin + (cardW + cardGap) * 2,
             currentY,
@@ -1064,38 +1083,38 @@ export const generateVideoLogReport = async (
             colors.teal
         );
 
-        // Card 4: Logged Inspections (showing completed & incomplete record totals)
+        // Card 4: Logged Inspections (figure only)
         drawKpiCard(
             margin + (cardW + cardGap) * 3,
             currentY,
             cardW,
             cardH,
             "Logged Inspections",
-            `${summary.totalInspectionsCount} Insps`,
+            `${summary.totalInspectionsCount}`,
             `${summary.completedInspectionsCount} Complete · ${summary.incompleteInspectionsCount} Incomp`,
             colors.lightNavy
         );
 
-        // Card 5: Anomalies (Highlighted in Red)
+        // Card 5: Anomalies (figure only)
         drawKpiCard(
             margin + (cardW + cardGap) * 4,
             currentY,
             cardW,
             cardH,
             "Anomalies",
-            `${summary.totalAnomaliesCount} Flagged`,
+            `${summary.totalAnomaliesCount}`,
             summary.uniqueAnomalyRefsCount > 0 ? `${summary.uniqueAnomalyRefsCount} Unique Ref No(s)` : "All Clear (0 Flagged)",
             colors.red
         );
 
-        // Card 6: Deployments (ROV & Diving Operations)
+        // Card 6: Deployments (figure only)
         drawKpiCard(
             margin + (cardW + cardGap) * 5,
             currentY,
             cardW,
             cardH,
             "Deployments",
-            `${summary.totalDivesCount} Deployment${summary.totalDivesCount > 1 ? "s" : ""}`,
+            `${summary.totalDivesCount}`,
             "ROV Operations",
             colors.purple
         );

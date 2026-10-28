@@ -538,7 +538,7 @@ export const generateROVPhotographyLogReport = async (
             startY: startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 12 },
             head: [
-                ['Item No.', 'Inspection Date', 'Photo Title', 'Details']
+                ['No.', 'Inspection Date', 'Photo Title', 'Details']
             ],
             body: tableBody,
             theme: 'grid',

@@ -555,7 +555,7 @@ export const generateROVNavigReport = async (
         margin: { left: margin, right: margin },
         head: [
             [
-                { content: "Item No.", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Date", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Time", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Easting\n(m)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },

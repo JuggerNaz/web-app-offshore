@@ -784,7 +784,7 @@ export const generateDivingRRISIReport = async (
                 margin: { left: dX, right: margin, top: margin + headerH + 6, bottom: 20 },
                 tableWidth: dW,
                 head: [
-                    ['Item No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
+                    ['No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
                 ],
                 body: tableRows.map(tr => tr.rowCells),
                 theme: 'grid',

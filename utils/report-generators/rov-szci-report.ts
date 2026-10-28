@@ -164,7 +164,7 @@ export const generateROVSZCIReport = async (
         };
 
         const topHeader: any[] = [
-            { content: 'Item No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: 'No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'Elevation (m)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
@@ -266,7 +266,7 @@ export const generateROVSZCIReport = async (
                 }
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: 'center' }, // Item No.
+                0: { cellWidth: 10, halign: 'center' }, // No.
                 1: { cellWidth: 26 },                   // Component QID
                 2: { cellWidth: 16, halign: 'center' }, // Elevation (m)
                 3: { cellWidth: 15, halign: 'center' }, // CP (mV)

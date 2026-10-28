@@ -27,7 +27,7 @@ interface ReportConfig {
 /**
  * Diving UT Calibration Report (UTCLB) — Portrait
  *
- * Columns: Item No. | Dive No. | Equipment Type | Serial no. | Calibration Block | [Labels 1-6] | Probe
+ * Columns: No. | Dive No. | Equipment Type | Serial no. | Calibration Block | [Labels 1-6] | Probe
  */
 export const generateDivingUTCLBReport = async (
     records: any[],
@@ -167,7 +167,7 @@ export const generateDivingUTCLBReport = async (
 
         // ── Header definitions ──────────────────────────────────────────────────
         const headerRow: any[] = [
-            { content: "Item\nNo.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+            { content: "No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             { content: "Equipment\nType",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             { content: "Serial No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
@@ -182,7 +182,7 @@ export const generateDivingUTCLBReport = async (
 
         // Calculate dynamic column widths
         const baseColumns = {
-            0: { cellWidth: 10,  halign: "center" }, // Item No
+            0: { cellWidth: 10,  halign: "center" }, // No.
             1: { cellWidth: 16,  halign: "center" }, // Dive No
             2: { cellWidth: 18,  halign: "center" }, // Eq Type
             3: { cellWidth: 18,  halign: "center" }, // S/N

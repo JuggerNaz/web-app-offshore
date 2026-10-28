@@ -38,6 +38,9 @@ describe("video-log-report helpers", () => {
         expect(parseTimecodeToSeconds(398)).toBe(398);
         expect(parseTimecodeToSeconds(null)).toBe(-1);
         expect(parseTimecodeToSeconds("—")).toBe(-1);
+        // Rogue counters (>12h) return -1
+        expect(parseTimecodeToSeconds("762:05:25")).toBe(-1);
+        expect(parseTimecodeToSeconds(2186626)).toBe(-1);
     });
 
     it("formats timecode into HH:MM:SS properly", () => {
@@ -48,6 +51,9 @@ describe("video-log-report helpers", () => {
         expect(formatTimecode("6:38")).toBe("00:06:38");
         expect(formatTimecode(null)).toBe("—");
         expect(formatTimecode("")).toBe("—");
+        // Rogue counters (>12h) return "—"
+        expect(formatTimecode("762:05:25")).toBe("—");
+        expect(formatTimecode(2186626)).toBe("—");
     });
 
     it("formats inspection date and time into DD/MM/YYYY, HH:MM", () => {
@@ -66,7 +72,7 @@ describe("video-log-report helpers", () => {
         expect(getInspectionTaskName("")).toBe("");
     });
 
-    it("calculates tape duration from timecodes and timestamps correctly", () => {
+    it("calculates tape duration from timecodes and timestamps correctly with 12h max cap", () => {
         const logsWithTc = [
             { timecode_start: "00:00:00" },
             { timecode_start: "00:15:30" },
@@ -82,6 +88,21 @@ describe("video-log-report helpers", () => {
             { event_time: "2026-08-24T10:15:00Z" },
         ];
         expect(calculateTapeDurationSeconds(logsWithDates)).toBe(4500);
+
+        // Clamps multi-day spans to 12 hours max (43200 seconds)
+        const multiDayLogs = [
+            { event_time: "2026-08-01T09:00:00Z" },
+            { event_time: "2026-08-25T10:15:00Z" },
+        ];
+        expect(calculateTapeDurationSeconds(multiDayLogs)).toBe(43200);
+
+        // Ignores rogue timecodes (>12h)
+        const rogueTcLogs = [
+            { timecode_start: "00:00:00" },
+            { timecode_start: "00:30:00" },
+            { timecode_start: "762:05:25" },
+        ];
+        expect(calculateTapeDurationSeconds(rogueTcLogs)).toBe(1800);
 
         expect(calculateTapeDurationSeconds([])).toBe(0);
     });

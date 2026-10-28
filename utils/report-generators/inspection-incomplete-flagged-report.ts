@@ -9,7 +9,10 @@ import {
     getInspectionDateRange, 
     REPORT_FOOTER_APP_TEXT, 
     draw3SectionHeader, 
-    drawStandardContextRow 
+    drawStandardContextRow,
+    isStatusIncomplete,
+    getRecordIncompleteReason,
+    hasSubstantiveInspectionFindings
 } from "./shared-logo";
 import { formatInspectionTypeName, INSPECTION_TYPE_NAMES } from "@/utils/inspection-utils";
 
@@ -47,54 +50,7 @@ export interface ReportConfig {
     recordsSummary?: any;
 }
 
-/**
- * Checks whether an inspection record is flagged as Incomplete.
- */
-export const isStatusIncomplete = (r: any): boolean => {
-    if (!r) return false;
-    const d = r.inspection_data || r.inspection_dat || {};
-    const status = String(r.status || "").trim().toUpperCase();
-    const dataStatus = String(d.status || "").trim().toUpperCase();
-    const metaStatus = String(d._meta_status || d.meta_status || "").trim().toUpperCase();
-    const findingType = String(r.finding_type || r.findingType || d.finding_type || d.findingType || "").trim().toUpperCase();
-
-    // 1. Explicit COMPLETED/CLOSED/APPROVED check:
-    if (status === "COMPLETED" || dataStatus === "COMPLETED" || status === "CLOSED" || dataStatus === "CLOSED" || status === "APPROVED" || dataStatus === "APPROVED") {
-        if (status !== "INCOMPLETE" && dataStatus !== "INCOMPLETE" && metaStatus !== "INCOMPLETE" && findingType !== "INCOMPLETE") {
-            return false;
-        }
-    }
-
-    // 2. Explicit INCOMPLETE status / finding type
-    if (status === "INCOMPLETE" || dataStatus === "INCOMPLETE" || metaStatus === "INCOMPLETE" || findingType === "INCOMPLETE") {
-        return true;
-    }
-
-    // 3. Boolean flag
-    if (r.is_incomplete === true || r.is_incomplete === 1 || r.incomplete === true || r.incomplete === 1 || d.is_incomplete === true || d.is_incomplete === 1) {
-        return true;
-    }
-
-    // 4. Incomplete reason provided
-    const incompleteReason = String(
-        r.incomplete_reason || 
-        r.incompleteReason || 
-        d.incomplete_reason || 
-        d.incompleteReason || 
-        ""
-    ).trim();
-    if (incompleteReason && incompleteReason.length > 0 && incompleteReason !== "-" && incompleteReason !== "—") {
-        return true;
-    }
-
-    // 5. Explicit prefix in description
-    const desc = String(r.description || "").trim().toUpperCase();
-    if (desc.startsWith("INCOMPLETE:") || desc.startsWith("STATUS: INCOMPLETE")) {
-        return true;
-    }
-
-    return false;
-};
+export { isStatusIncomplete };
 
 /**
  * Resolves the effective comments / reason for an incomplete inspection record.
@@ -102,20 +58,23 @@ export const isStatusIncomplete = (r: any): boolean => {
 export const getIncompleteReasonOrComments = (r: any): string => {
     if (!r) return "Incomplete";
     const d = r.inspection_data || r.inspection_dat || {};
-    const reason = (
-        r.incomplete_reason || 
-        r.incompleteReason || 
-        d.incomplete_reason || 
-        d.incompleteReason || 
-        ""
-    ).toString().trim();
+    const reason = getRecordIncompleteReason(r);
 
-    if (reason && reason !== "-" && reason !== "—") {
+    const desc = (r.description ?? d.description ?? r.findings ?? d.findings ?? d.remarks ?? "").toString().trim();
+    const hasSubstantive = hasSubstantiveInspectionFindings(r);
+
+    if (hasSubstantive && reason) {
+        if (desc.toLowerCase().includes(reason.toLowerCase())) {
+            return desc;
+        }
+        return `${desc}\n\nIncomplete Reason: ${reason}`;
+    }
+
+    if (reason) {
         return reason;
     }
 
-    const desc = (r.description ?? d.description ?? r.findings ?? d.findings ?? d.remarks ?? "").toString().trim();
-    if (desc && desc !== "-" && desc !== "—" && desc !== "No significant findings" && desc !== "N/A") {
+    if (hasSubstantive) {
         return desc;
     }
 
@@ -230,7 +189,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
     config: ReportConfig
 ): Promise<Blob | void | null> => {
     try {
-        records = normalizeReportRecords(records || []);
+        records = normalizeReportRecords(records || [], { allowPurelyIncomplete: true });
         
         // Filter strictly to incomplete records unless blank report is requested
         let incompleteRecords = config.isBlankReport ? [] : records.filter(isStatusIncomplete);
@@ -289,7 +248,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
             const reportNo = baseReportNo.includes("/ INC") ? baseReportNo : `${baseReportNo} / INC`;
 
             draw3SectionHeader(d, {
-                reportTitle: "INSPECTION INCOMPLETE FLAGGED DETAIL LIST",
+                reportTitle: "Inspection Incomplete Summary Report",
                 reportNo,
                 structureName: headerData.platformName 
                     ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` 
@@ -347,7 +306,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
                 startY: subY + subH + 2,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 38 : 15 },
                 head: [[
-                    { content: "Item No.",              styles: { halign: "center", valign: "middle" } },
+                    { content: "No.",              styles: { halign: "center", valign: "middle" } },
                     { content: "QID",                   styles: { halign: "center", valign: "middle" } },
                     { content: "Elevation (m)",         styles: { halign: "center", valign: "middle" } },
                     { content: "Inspection Date",       styles: { halign: "center", valign: "middle" } },
@@ -815,19 +774,21 @@ export const generateInspectionIncompleteFlaggedReport = async (
             doc.circle(centerX, centerY, outerRadius, "S");
 
             // Center text inside donut
+            const fontSize1 = innerRadius < 6 ? 6.2 : 7.5;
+            const fontSize2 = innerRadius < 6 ? 4.0 : 4.8;
             if (centerTextLine1) {
-                doc.setFontSize(7.5);
+                doc.setFontSize(fontSize1);
                 doc.setFont("helvetica", "bold");
                 const cColor = centerTextColor || colors.incompleteRed;
                 doc.setTextColor(...cColor);
-                doc.text(centerTextLine1, centerX, centerY - (centerTextLine2 ? 0.7 : -1.2), { align: "center" });
+                doc.text(centerTextLine1, centerX, centerY - (centerTextLine2 ? 0.5 : -1.0), { align: "center" });
             }
             if (centerTextLine2) {
-                doc.setFontSize(4.8);
+                doc.setFontSize(fontSize2);
                 doc.setFont("helvetica", "bold");
                 const cColor = centerTextColor || colors.incompleteRed;
                 doc.setTextColor(...cColor);
-                doc.text(centerTextLine2, centerX, centerY + 2.5, { align: "center" });
+                doc.text(centerTextLine2, centerX, centerY + (innerRadius < 6 ? 2.0 : 2.5), { align: "center" });
             }
         };
 
@@ -851,12 +812,6 @@ export const generateInspectionIncompleteFlaggedReport = async (
         doc.setFontSize(7.5);
         doc.setFont("helvetica", "bold");
         doc.text("INSPECTION INCOMPLETE EXECUTIVE SUMMARY & SCOPE ANALYTICS", margin + 3, currentY + 3.8);
-
-        doc.setFontSize(5.5);
-        doc.setFont("helvetica", "normal");
-        if (!isPF) doc.setTextColor(220, 230, 242);
-        const subheaderRight = `TOTAL INCOMPLETE: ${incompleteSow} TASKS (${sowIncompletePct}% SOW)  |  COMPLETED: ${completedSow} TASKS (${sowCompletedPct}%)  |  PLANNED SOW: ${totalPlannedSow} TASKS`;
-        doc.text(subheaderRight, margin + contentWidth - 3, currentY + 3.8, { align: "right" });
 
         currentY += sumBannerH + 2;
 
@@ -951,7 +906,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         currentY += cardH + 2.5;
 
         // ── 3. Visual Analytics (Donut Chart + Reason Distribution Chart) ────────
-        const chartBoxH = 43;
+        const chartBoxH = 40;
         const leftBoxW = 91;
         const rightBoxW = contentWidth - leftBoxW - 3; // 96mm
         const leftBoxX = margin;
@@ -976,7 +931,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
 
         // Donut Chart on Left Side of Box
         const donutCenterX = leftBoxX + 19;
-        const donutCenterY = currentY + 24;
+        const donutCenterY = currentY + 22.5;
         const donutOuterR = 13.5;
         const donutInnerR = 7.5;
 
@@ -1002,7 +957,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
 
         // Legend & Key Metrics on Right Side of Box
         const legX = leftBoxX + 36;
-        let legY = currentY + 9.2;
+        let legY = currentY + 8.5;
 
         // Completed SOW row
         doc.setFillColor(...colors.completedTeal);
@@ -1015,7 +970,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         doc.text(`${completedSow} Tasks (${sowCompletedPct}%)`, legX + 26, legY);
 
         // Incomplete SOW row
-        legY += 5.0;
+        legY += 4.8;
         doc.setFillColor(...colors.incompleteRed);
         doc.rect(legX, legY - 2.2, 2.5, 2.5, "F");
         doc.setFontSize(5.8);
@@ -1028,7 +983,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
 
         // Pending SOW row (if applicable)
         if (pendingSow > 0) {
-            legY += 5.0;
+            legY += 4.8;
             doc.setFillColor(...colors.pendingSlate);
             doc.rect(legX, legY - 2.2, 2.5, 2.5, "F");
             doc.setFontSize(5.8);
@@ -1041,11 +996,11 @@ export const generateInspectionIncompleteFlaggedReport = async (
         }
 
         // Thin divider
-        legY += 4.0;
+        legY += 3.8;
         doc.setDrawColor(...colors.cardBorder);
         doc.setLineWidth(0.1);
         doc.line(legX, legY, leftBoxX + leftBoxW - 3, legY);
-        legY += 3.6;
+        legY += 3.4;
 
         // Total SOW
         doc.setFontSize(5.6);
@@ -1056,7 +1011,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         doc.text(`${totalPlannedSow} Tasks (100%)`, legX + 26, legY);
 
         // Total Records
-        legY += 4.0;
+        legY += 3.8;
         doc.setFontSize(5.6);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...colors.text);
@@ -1066,7 +1021,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         doc.text(`${totalRecords} (${completedRecords} Comp · ${incompleteRecordsCount} Incomp)`, legX + 26, legY);
 
         // Inspection Mode Breakdown
-        legY += 4.0;
+        legY += 3.8;
         doc.setFontSize(5.4);
         doc.setFont("helvetica", "normal");
         doc.setTextColor(...colors.textMuted);
@@ -1092,8 +1047,8 @@ export const generateInspectionIncompleteFlaggedReport = async (
         // Render Horizontal Bars with Values & Percentages (Consolidated 1 to 4 bars)
         const barTrackMaxW = 56;
         const numBars = reasonsToDisplay.length;
-        const barRowH = numBars <= 3 ? 7.6 : 6.3;
-        let barY = currentY + (numBars <= 3 ? 8.6 : 7.6);
+        const barRowH = numBars <= 3 ? 7.2 : 5.8;
+        let barY = currentY + (numBars <= 3 ? 8.2 : 7.0);
 
         reasonsToDisplay.forEach((item, rIdx) => {
             // Label line
@@ -1129,7 +1084,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         // Dominant Root Cause Insight Box
         const topReason = reasonsToDisplay[0];
         if (topReason) {
-            const insightY = currentY + chartBoxH - 5.8;
+            const insightY = currentY + chartBoxH - 5.5;
             const insightW = rightBoxW - 5;
             doc.setFillColor(...colors.incompleteBg);
             doc.setDrawColor(...colors.incompleteBorder);
@@ -1152,33 +1107,156 @@ export const generateInspectionIncompleteFlaggedReport = async (
 
         currentY += chartBoxH + 2.5;
 
-        // ── 4. Inspection Type Breakdown Summary Strip ──────────────────────────
-        const stripH = 4.8;
-        doc.setFillColor(isPF ? 255 : 241, isPF ? 255 : 245, isPF ? 255 : 249);
+        // ── 4. Inspection Task Type Distribution & Graph Chart ──────────────────
+        const typePalette: [number, number, number][] = [
+            colors.lightNavy,
+            colors.coral,
+            colors.blue,
+            colors.purple,
+            colors.amber,
+            colors.completedTeal,
+        ];
+
+        const getSliceColor = (idx: number): [number, number, number] => {
+            if (isPF) {
+                const pfShades: [number, number, number][] = [
+                    [80, 80, 80],
+                    [130, 130, 130],
+                    [170, 170, 170],
+                    [100, 100, 100],
+                    [150, 150, 150],
+                ];
+                return pfShades[idx % pfShades.length];
+            }
+            return typePalette[idx % typePalette.length];
+        };
+
+        const numTypeRows = sortedGroups.length <= 2 ? 1 : Math.ceil(sortedGroups.length / 2);
+        const typeCardH = Math.max(24, 13 + numTypeRows * 6.5);
+
+        doc.setFillColor(isPF ? 255 : 248, isPF ? 255 : 250, isPF ? 255 : 252);
         doc.setDrawColor(...colors.border);
         doc.setLineWidth(0.15);
-        doc.roundedRect(margin, currentY, contentWidth, stripH, 0.8, 0.8, "FD");
+        doc.roundedRect(margin, currentY, contentWidth, typeCardH, 1, 1, "FD");
 
-        doc.setFontSize(5.8);
+        // Title Bar
+        doc.setFillColor(isPF ? 255 : 241, isPF ? 255 : 245, isPF ? 255 : 249);
+        doc.roundedRect(margin, currentY, contentWidth, 5.2, 1, 1, "F");
+        doc.setDrawColor(...colors.border);
+        doc.line(margin, currentY + 5.2, margin + contentWidth, currentY + 5.2);
+
+        doc.setFontSize(6.8);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(...colors.navy);
-        doc.text("INCOMPLETE BY TYPE:", margin + 2.5, currentY + 3.3);
+        doc.text("INSPECTION TASK TYPE DISTRIBUTION & SCOPE SHARE", margin + 3, currentY + 3.6);
 
-        const typeBreakdownText = sortedGroups
-            .map(g => `${g.name} (${g.code}): ${g.records.length} Items (${Math.round((g.records.length / incompleteCount) * 100)}%)`)
-            .join("   |   ");
-
+        doc.setFontSize(5.2);
         doc.setFont("helvetica", "normal");
-        doc.setTextColor(...colors.text);
-        let visibleTypeBreakdown = typeBreakdownText;
-        if (doc.getTextWidth(visibleTypeBreakdown) > contentWidth - 42) {
-            visibleTypeBreakdown = sortedGroups
-                .map(g => `${g.code}: ${g.records.length} (${Math.round((g.records.length / incompleteCount) * 100)}%)`)
-                .join("  |  ");
-        }
-        doc.text(visibleTypeBreakdown, margin + 32, currentY + 3.3);
+        doc.setTextColor(...colors.textMuted);
+        doc.text(
+            `Scope Breakdown: ${sortedGroups.length} Task Types  |  ${incompleteCount} Incomplete Items`,
+            margin + contentWidth - 3,
+            currentY + 3.6,
+            { align: "right" }
+        );
 
-        currentY += stripH + 3.5;
+        // 1. Donut Chart on Left Side of Card
+        const typeDonutCenterX = margin + 14.5;
+        const typeDonutCenterY = currentY + 5.2 + (typeCardH - 5.2) / 2;
+        const typeDonutOuterR = 8.5;
+        const typeDonutInnerR = 4.8;
+
+        const typeSlices = sortedGroups.map((g, idx) => ({
+            value: g.records.length,
+            color: getSliceColor(idx),
+        }));
+
+        drawDonutChart(
+            typeDonutCenterX,
+            typeDonutCenterY,
+            typeDonutOuterR,
+            typeDonutInnerR,
+            typeSlices,
+            `${sortedGroups.length}`,
+            "TYPES",
+            colors.navy
+        );
+
+        // 2. Segmented Stacked Proportional Share Bar on Right Side
+        const rightAreaX = margin + 30;
+        const rightAreaW = contentWidth - 33; // 157mm
+        let rightY = currentY + 7.2;
+
+        // Stacked distribution bar background
+        const stackedBarH = 2.4;
+        doc.setFillColor(...colors.barTrack);
+        doc.roundedRect(rightAreaX, rightY, rightAreaW, stackedBarH, 0.5, 0.5, "F");
+
+        // Colored segments
+        let segX = rightAreaX;
+        sortedGroups.forEach((g, idx) => {
+            const segRatio = incompleteCount > 0 ? (g.records.length / incompleteCount) : 0;
+            const segW = Math.max(1.5, segRatio * rightAreaW);
+            const color = getSliceColor(idx);
+            doc.setFillColor(...color);
+            if (idx === 0 && sortedGroups.length === 1) {
+                doc.roundedRect(segX, rightY, segW, stackedBarH, 0.5, 0.5, "F");
+            } else {
+                doc.rect(segX, rightY, segW, stackedBarH, "F");
+            }
+            segX += segW;
+        });
+
+        // 3. Detailed Horizontal Progress Bars for each Task Type
+        rightY += stackedBarH + 2.5;
+
+        const colCount = sortedGroups.length <= 2 ? sortedGroups.length : 2;
+        const colW = (rightAreaW - ((colCount - 1) * 4)) / colCount;
+
+        sortedGroups.forEach((g, idx) => {
+            const colIdx = idx % colCount;
+            const rowIdx = Math.floor(idx / colCount);
+            const itemX = rightAreaX + colIdx * (colW + 4);
+            const itemY = rightY + rowIdx * 6.5;
+
+            const color = getSliceColor(idx);
+            const pct = incompleteCount > 0 ? parseFloat(((g.records.length / incompleteCount) * 100).toFixed(1)) : 0;
+
+            // Color square badge
+            doc.setFillColor(...color);
+            doc.roundedRect(itemX, itemY, 2.5, 2.5, 0.4, 0.4, "F");
+
+            // Task Type Name & Code
+            doc.setFontSize(5.6);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...colors.text);
+            let label = `${g.name} (${g.code})`;
+            if (doc.getTextWidth(label) > colW - 40) {
+                label = `${g.code} - ${g.name}`;
+                if (doc.getTextWidth(label) > colW - 40) {
+                    label = `${g.code} (${g.records.length})`;
+                }
+            }
+            doc.text(label, itemX + 3.6, itemY + 2.0);
+
+            // Mini bar track & fill
+            const miniBarTrackW = 28;
+            const miniBarX = itemX + colW - miniBarTrackW - 22;
+            const miniBarW = Math.max(1.5, (pct / 100) * miniBarTrackW);
+
+            doc.setFillColor(...colors.barTrack);
+            doc.roundedRect(miniBarX, itemY + 0.3, miniBarTrackW, 1.8, 0.4, 0.4, "F");
+            doc.setFillColor(...color);
+            doc.roundedRect(miniBarX, itemY + 0.3, miniBarW, 1.8, 0.4, 0.4, "F");
+
+            // Count & Percentage in bold
+            doc.setFontSize(5.4);
+            doc.setFont("helvetica", "bold");
+            doc.setTextColor(...colors.text);
+            doc.text(`${g.records.length} (${pct}%)`, itemX + colW, itemY + 1.9, { align: "right" });
+        });
+
+        currentY += typeCardH + 3.5;
 
         // ── 5. Detailed Tables (Grouped By Inspection Type) ─────────────────────
         const buildRowData = (r: any, idx: number): string[] => {
@@ -1251,7 +1329,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 38 : 15 },
                 head: [[
-                    { content: "Item No.",              styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                    { content: "No.",              styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
                     { content: "QID",                   styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
                     { content: "Elevation (m)",         styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
                     { content: "Inspection Date",       styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
@@ -1400,7 +1478,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
         }
 
         const reportNoClean = (config?.reportNoPrefix || headerData?.sowReportNo || "INC").replace(/[^a-zA-Z0-9_-]/g, "_");
-        doc.save(`Inspection_Incomplete_Flagged_Detail_List_${reportNoClean}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`Inspection_Incomplete_Summary_Report_${reportNoClean}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Inspection Incomplete Flagged Report] Error:", err);
         throw err;

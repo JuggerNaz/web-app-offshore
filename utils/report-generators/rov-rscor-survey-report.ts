@@ -28,7 +28,7 @@ interface ReportConfig {
 /**
  * ROV Scour Survey Report (RSCOUR / RSCOR) — Portrait Standard
  *
- * Columns: Item No. | Component QID | Elevation (m) | Dive No. | Tape No. | Findings
+ * Columns: No. | Component QID | Elevation (m) | Dive No. | Tape No. | Findings
  */
 export const generateROVRSCORSurveyReport = async (
     records: any[],
@@ -389,7 +389,7 @@ export const generateROVRSCORSurveyReport = async (
         autoTable(doc, {
             startY,
             head: [[
-                { content: "Item No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component QID",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation (m)",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

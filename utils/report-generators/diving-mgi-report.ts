@@ -267,7 +267,7 @@ export const generateDivingMGIReport = async (
             rowPageBreak: 'avoid',
             head: [
                 [
-                    { content: "Item\nNo.", rowSpan: 2 },
+                    { content: "No.", rowSpan: 2 },
                     { content: "Elev\n(m)", rowSpan: 2 },
                     { content: "Thickness Profile (mm)", rowSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Coverage %", colSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },

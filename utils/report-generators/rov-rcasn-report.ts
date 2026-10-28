@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV Caisson Survey Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
+ * Columns: No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
  *
  * Data is grouped by Caisson (CS). Each CS group starts on a new page.
  * Associated components are clubbed with their parent CS QID.
@@ -287,7 +287,7 @@ export const generateROVCasnReport = async (
                 startY: (doc as any)._tableStartY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: config.showSignatures !== false ? 35 : 15 },
                 head: [[
-                    { content: "Item\nNo.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

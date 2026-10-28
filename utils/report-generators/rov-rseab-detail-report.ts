@@ -220,7 +220,7 @@ export const generateROVRSEABDetailReport = async (
             margin: { left: margin, right: margin, top: margin + HEADER_H + 6 },
             head: [
                 [
-                    { content: "Item No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID" },
                     { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
@@ -238,7 +238,7 @@ export const generateROVRSEABDetailReport = async (
             headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
             styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
             columnStyles: {
-                0: { cellWidth: 12 }, // Item No.
+                0: { cellWidth: 12 }, // No.
                 1: { cellWidth: 42 }, // QID
                 2: { cellWidth: 18 }, // Dive No.
                 3: { cellWidth: 38 }, // Tape No.

@@ -28,7 +28,7 @@ interface ReportConfig {
 /**
  * ROV Marine Growth Inspection Report (RMGI) — Portrait Standard
  *
- * Columns: Item No. | Elevation (m) | Dive No. | Tape No. | Findings
+ * Columns: No. | Elevation (m) | Dive No. | Tape No. | Findings
  */
 export const generateROVRMGIReport = async (
     records: any[],
@@ -173,7 +173,7 @@ export const generateROVRMGIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "Item No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component QID",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Elevation",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

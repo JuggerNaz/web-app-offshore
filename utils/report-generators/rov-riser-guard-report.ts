@@ -27,7 +27,7 @@ interface ReportConfig {
 
 /**
  * ROV Riser Guard Inspection Report (Portrait)
- * Columns: Item No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
+ * Columns: No. | QID | Elevation | Dive No. | Tape No. | CP | Findings
  *
  * Data is grouped by Riser Guard (RG). Each RG group starts on a new page.
  * Associated components (like anodes, clamps attached to RG) are clubbed with their parent RG QID.
@@ -358,7 +358,7 @@ export const generateROVRiserGuardReport = async (
                 startY: currentY,
                 margin: { left: margin, right: margin, top: margin + HEADER_H + 4, bottom: 35 },
                 head: [[
-                    { content: "Item No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "No.",       styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "QID",             styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Elevation\n(m)",  styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },

@@ -147,7 +147,7 @@ export const generateROVAnodeRSANIReport = async (
         };
 
         const topHeader = [
-            { content: 'Item No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'QID', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Elevation (m)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Depletion (%)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },

@@ -3184,8 +3184,8 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={incompleteFlaggedPreviewOpen || false} 
                 onOpenChange={setIncompleteFlaggedPreviewOpen || (() => {})} 
-                title="Inspection Incomplete Flagged Detail List Report Preview" 
-                fileName={`Inspection_Incomplete_Flagged_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
+                title="Inspection Incomplete Summary Report Preview" 
+                fileName={`Inspection_Incomplete_Summary_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateIncompleteFlaggedReportBlob as any} 
             />
 

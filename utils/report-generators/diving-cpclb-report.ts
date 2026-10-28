@@ -27,7 +27,7 @@ interface ReportConfig {
 /**
  * Diving CP Calibration Report (CPCLB) — Portrait
  *
- * Columns: Item No. | Dive No. | Calibration Block | Pre-Dive | In Water 1 | In Water 2 | In Water 3 | Post Dive | Findings
+ * Columns: No. | Dive No. | Calibration Block | Pre-Dive | In Water 1 | In Water 2 | In Water 3 | Post Dive | Findings
  */
 export const generateDivingCPCLBReport = async (
     records: any[],
@@ -137,7 +137,7 @@ export const generateDivingCPCLBReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "Item\nNo.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Calibration\nBlock",styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Pre-Dive",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },

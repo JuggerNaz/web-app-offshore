@@ -134,14 +134,26 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         String(r.status || "").trim().toUpperCase() === "INCOMPLETE" || 
         String(d.status || "").trim().toUpperCase() === "INCOMPLETE" ||
         findingType === "INCOMPLETE" ||
-        metaStatus === "incomplete"
+        metaStatus === "incomplete" ||
+        r.is_incomplete === true ||
+        r.is_incomplete === 1 ||
+        r.incomplete === true ||
+        r.incomplete === 1 ||
+        d.is_incomplete === true ||
+        d.is_incomplete === 1
     );
 
     const incompleteReason = (
         r.incomplete_reason || 
         r.incompleteReason || 
+        r.incomplete_findings ||
+        r.incomplete_remarks ||
+        r.incomplete_comments ||
         d.incomplete_reason || 
         d.incompleteReason || 
+        d.incomplete_findings ||
+        d.incomplete_remarks ||
+        d.incomplete_comments ||
         r.inspection_dat?.incomplete_reason ||
         ""
     ).toString().trim();
@@ -325,16 +337,22 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
     // Split initialFinding into lines if multiline, and filter out any line matching cleanInc
     if (initialFinding) {
         const findingLines = initialFinding.split("\n").map(l => l.trim()).filter(Boolean);
-        const filteredLines = cleanInc 
-            ? findingLines.filter(l => {
-                const lower = l.toLowerCase();
+        const filteredLines = findingLines.filter(l => {
+            const lower = l.toLowerCase();
+            if (info.isIncomplete && (lower === "incomplete" || lower === "task incomplete" || lower === "status: incomplete")) {
+                return false;
+            }
+            if (cleanInc) {
                 const incLower = cleanInc.toLowerCase();
-                return lower !== incLower && 
-                       lower !== `incomplete reason: ${incLower}` && 
-                       lower !== `reason: ${incLower}` &&
-                       lower !== `incomplete: ${incLower}`;
-            })
-            : findingLines;
+                if (lower === incLower ||
+                    lower === `incomplete reason: ${incLower}` ||
+                    lower === `reason: ${incLower}` ||
+                    lower === `incomplete: ${incLower}`) {
+                    return false;
+                }
+            }
+            return true;
+        });
 
         // If not incomplete and defectDescription is identical to single initialFinding, avoid back-to-back exact duplicate
         if (!cleanInc && !info.isIncomplete && info.defectDescription && filteredLines.length === 1 && filteredLines[0] === info.defectDescription) {
@@ -370,8 +388,14 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
                 }
                 lines.push(formattedInc);
             }
-        } else if (info.isIncomplete && lines.length === 0) {
-            lines.push("Incomplete");
+        } else if (info.isIncomplete) {
+            const incText = "Incomplete";
+            if (!lines.includes(incText)) {
+                if (lines.length > 0 && lines[lines.length - 1] !== "") {
+                    lines.push("");
+                }
+                lines.push(incText);
+            }
         }
     }
 
