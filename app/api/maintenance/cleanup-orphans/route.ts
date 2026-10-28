@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { withRole } from "@/utils/role-auth";
 
-export async function GET(req: NextRequest) {
+/**
+ * GET /api/maintenance/cleanup-orphans
+ * Dry-run scan for orphaned anomalies/attachments/media and SOW inconsistencies.
+ * Restricted to company admins and super admins (heavy full-table scans).
+ */
+export const GET = withRole(["company_admin", "super_admin"], async (req: NextRequest) => {
   try {
     const supabase = await createClient();
 
@@ -222,11 +228,25 @@ export async function GET(req: NextRequest) {
     console.error("[Cleanup API GET Error]", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
-}
+});
 
-export async function POST(req: NextRequest) {
+/**
+ * POST /api/maintenance/cleanup-orphans
+ * DESTRUCTIVE: permanently deletes orphaned records and storage objects and rewrites SOW counters.
+ * Restricted to company admins and super admins, and requires an explicit { "confirm": true } body.
+ */
+export const POST = withRole(["company_admin", "super_admin"], async (req: NextRequest) => {
   try {
     const supabase = await createClient();
+
+    // Require explicit confirmation for this destructive operation
+    const body: any = await req.json().catch(() => ({}));
+    if (body?.confirm !== true) {
+      return NextResponse.json(
+        { success: false, error: "Confirmation required. Resend with { \"confirm\": true } in the request body to run destructive cleanup." },
+        { status: 400 }
+      );
+    }
 
     // 1. Fetch valid inspection records
     let allInspIds = new Set<number>();
@@ -515,4 +535,4 @@ export async function POST(req: NextRequest) {
     console.error("[Cleanup API POST Error]", error);
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
-}
+});

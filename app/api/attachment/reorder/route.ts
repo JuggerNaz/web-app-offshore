@@ -41,7 +41,8 @@ export const POST = withTenant(async (request: NextRequest, { companyId }) => {
         return (supabase as any)
           .from("insp_media")
           .update({ meta: updatedMeta })
-          .eq("media_id", mediaId);
+          .eq("media_id", mediaId)
+          .eq("company_id", companyId);
       }
 
       // 2. attachment record
@@ -59,7 +60,8 @@ export const POST = withTenant(async (request: NextRequest, { companyId }) => {
         return (supabase as any)
           .from("attachment")
           .update({ meta: updatedMeta })
-          .eq("id", attId);
+          .eq("id", attId)
+          .eq("company_id", companyId);
       }
     });
 

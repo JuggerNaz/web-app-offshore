@@ -1,10 +1,16 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUser } from "@/utils/with-auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);

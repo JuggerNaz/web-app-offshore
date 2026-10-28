@@ -1,6 +1,7 @@
 
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/utils/supabase/server";
+import { getCurrentUser } from "@/utils/with-auth";
 
 const TASK_NAME_FALLBACKS: Record<string, string> = {
     NAVIG: "Pipeline Navigation Inspection",
@@ -112,6 +113,11 @@ function formatInspectionDateTime(dateStr?: string | null, timeStr?: string | nu
 }
 
 export async function GET(request: NextRequest) {
+    const authUser = await getCurrentUser();
+    if (!authUser) {
+        return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+    }
+
     try {
         const supabase = await createClient();
         const { searchParams } = new URL(request.url);

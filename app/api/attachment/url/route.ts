@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { getStorageHandler } from "@/utils/storage-factory";
+import { getCurrentUser } from "@/utils/with-auth";
 import fs from "fs";
 import path from "path";
 
@@ -521,6 +522,11 @@ async function tryRetrieveWithStorageProvider({
  * 3. NO CACHING: Always fetch each attachment fresh without storing or reusing in-memory/CDN cache.
  */
 export async function GET(request: NextRequest) {
+  const authUser = await getCurrentUser();
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
   const { searchParams } = new URL(request.url);
   const rawId = searchParams.get("id");
   const rawPath = searchParams.get("path");
@@ -533,7 +539,7 @@ export async function GET(request: NextRequest) {
 
   let supabase: any;
   try {
-    supabase = process.env.SUPABASE_SERVICE_ROLE_KEY ? createAdminClient() : await createClient();
+    supabase = await createClient();
   } catch {
     supabase = createAdminClient();
   }

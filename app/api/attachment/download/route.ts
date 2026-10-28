@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createAdminClient, createClient } from "@/utils/supabase/server";
 import { getStorageHandler } from "@/utils/storage-factory";
+import { getCurrentUser } from "@/utils/with-auth";
 import fs from "fs";
 import path from "path";
 
@@ -102,6 +103,11 @@ function resolveLocalPath(dirOrPath: string): string | null {
 }
 
 export async function GET(request: NextRequest) {
+  const authUser = await getCurrentUser();
+  if (!authUser) {
+    return NextResponse.json({ error: "Authentication required" }, { status: 401 });
+  }
+
   const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
   const supabase = useAdmin ? createAdminClient() : createClient();
   const { searchParams } = new URL(request.url);
