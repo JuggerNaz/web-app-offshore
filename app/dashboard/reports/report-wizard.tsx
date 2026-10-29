@@ -2678,6 +2678,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             return await generateDefectAnomalyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
         }
 
+        // Debris Location Report (debris flagged on elevation / plan sketches of each member QID)
+        if (currentTemplateId === "debris-location-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            const { generateDebrisLocationReport } = await import("@/utils/report-generators/debris-location-report");
+            return await generateDebrisLocationReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig as any);
+        }
+
         // Diver Log Report
         if (currentTemplateId === "diver-log-report") {
             let jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();

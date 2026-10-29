@@ -41,6 +41,7 @@ export const REPORT_TEMPLATES = {
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
         { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "debris-location-report", name: "Debris Location Report", icon: FileCheck, description: "Debris found on structure members, flagged on elevation and plan sketches of each component by QID", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", icon: FileCheck, description: "Detailed list of all incomplete flagged inspection records grouped by inspection type with QID, elevation and comments", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -235,6 +236,7 @@ export const TOC_SECTIONS = [
       { id: "defect-summary", name: "Defect Summary Report", mode: "General" },
       { id: "findings-summary", name: "Findings Summary Report", mode: "General" },
       { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
+      { id: "debris-location-report", name: "Debris Location Report", mode: "General" },
       { id: "findings-report", name: "Findings Report", mode: "General" }
   ]}
 ];

@@ -119,6 +119,7 @@ export const DEFAULT_SUB_REPORT_ALIASES: Record<string, string[]> = {
     'diving-photo-report': ['DPHOTO', 'DPHOTO_REPORT', 'DIVING_PHOTO', 'DIVING_PHOTO_REPORT', 'DPHOTO_PAGES'],
     'diving-photo-log-report': ['DPHOTO_LOG', 'DPHOTO_LOG_REPORT', 'DIVING_PHOTO_LOG', 'DIVING_PHOTO_LOG_REPORT', 'DPHOTO_LOG_PAGES'],
     'defect-anomaly-report': ['DFT_REPORT', 'DFT_ANOMALY', 'DEFECT_ANOMALY', 'DEFECT_ANOMALY_REPORT', 'ANOMALY_REPORT', 'DEFECT_REPORT', 'ANOMALIES_REPORT', 'DFT_REPORT_PAGES', 'ANOMALY_REPORT_PAGES'],
+    'debris-location-report': ['DEBRIS_LOCATION_REPORT', 'DEBRIS_REPORT', 'DEBRIS_LOCATION', 'DEBRIS_LOC_REPORT'],
     'findings-report': ['FND_REPORT', 'FINDINGS_REPORT', 'FINDINGS_DETAIL_REPORT', 'FND_REPORT_PAGES', 'FINDINGS_REPORT_PAGES'],
     'defect-summary': ['DEFECT_SUMMARY', 'ANOMALIES_SUMMARY_REPORT', 'DFT_SUMMARY', 'DEFECT_SUMMARY_PAGES'],
     'findings-summary': ['FINDINGS_SUMMARY', 'FND_SUMMARY', 'FINDINGS_SUMMARY_PAGES'],
@@ -736,7 +737,7 @@ export const mapInspectionDataForDocx = async (
             }
 
             // Defect / Anomaly reports explicit routing
-            if (['defect-anomaly-report', 'findings-report', 'dft_report', 'dft-report', 'defect-report', 'anomaly-report'].includes(templateId)) {
+            if (['defect-anomaly-report', 'debris-location-report', 'findings-report', 'dft_report', 'dft-report', 'defect-report', 'anomaly-report'].includes(templateId)) {
                 return true;
             }
 
@@ -840,6 +841,7 @@ export const mapInspectionDataForDocx = async (
             'defect-summary',
             'findings-summary',
             'defect-anomaly-report',
+            'debris-location-report',
             'findings-report',
             'dft_report',
             'dft-report',
@@ -884,6 +886,15 @@ export const mapInspectionDataForDocx = async (
                     sowReportNo || "",
                     companySettings || {},
                     { ...sharedConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport } as any
+                ) as any;
+            } else if (templateId === 'debris-location-report') {
+                const { generateDebrisLocationReport } = await import("./debris-location-report");
+                pdfBlob = await generateDebrisLocationReport(
+                    jobPack,
+                    structure,
+                    sowReportNo || "",
+                    companySettings || {},
+                    sharedConfig as any
                 ) as any;
             } else if (templateId === 'defect-criteria-report') {
                 const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
