@@ -2829,7 +2829,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cpPreviewOpen} 
                 onOpenChange={setCpPreviewOpen} 
-                title="ROV CP Survey Report Preview" 
+                title="ROV Cathodic Protection Survey Report Preview" 
                 fileName={`ROV_CP_Report_${headerData.sowReportNo}`} 
                 generateReport={generateCPReportBlob} 
             />
@@ -3100,7 +3100,7 @@ export function WorkspaceDialogs({
                 initialPrintFriendly={wizardPrintFriendly}
                 open={cpsurvDivingPreviewOpen} 
                 onOpenChange={setCpsurvDivingPreviewOpen} 
-                title="Diving CP Survey Report Preview" 
+                title="Diving Cathodic Protection Survey Report Preview" 
                 fileName={`Diving_CP_Survey_Report_${headerData.sowReportNo}_${format(new Date(), 'yyyyMMdd')}`} 
                 generateReport={generateDivingCPSURVReportBlob} 
             />

@@ -51,9 +51,9 @@ const TOC_SECTIONS = [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" }
   ]},
-  { id: 5, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
-      { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
+  { id: 5, name: "Cathodic Protection Survey", templates: [
+      { id: "rov-cp-report", name: "Cathodic Protection Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "Cathodic Protection Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 6, name: "Flooded Member Detection Survey", templates: [

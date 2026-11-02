@@ -68,7 +68,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-scour-v2-report", name: "Scour Survey Sketch Report v2 (ROV)", icon: FileBarChart, description: "Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-report", name: "General Visual Anode Inspection Report (RGANI / GANI)", icon: FileBarChart, description: "Detailed ROV General Visual Anode Inspection summary (GANI) with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (RSANI / SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (SANI) summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-cp-report",    name: "CP Survey Report (ROV)",         icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-cp-report",    name: "Cathodic Protection Survey Report (ROV)", icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-ricmi-report", name: "Inclinometer Survey Report (ROV)", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "General Visual Inspection Report (ROV)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -91,7 +91,7 @@ export const REPORT_TEMPLATES = {
         { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", icon: FileBarChart, description: "Detailed magnetic particle inspection (MPINS) report with clock readings and segmentation.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", icon: FileBarChart, description: "UT Wall Thickness Inspection (UTWTK) report with clock readings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with grouped clock positions", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", icon: FileBarChart, description: "Landscape CP survey report (Diving) with pre/post dive calibration and CP potential readings", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "diving-cpsurv-report", name: "Cathodic Protection Survey Report (Diving)", icon: FileBarChart, description: "Landscape CP survey report (Diving) with pre/post dive calibration and CP potential readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", icon: FileBarChart, description: "CP calibration in water survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", icon: FileBarChart, description: "UT calibration survey data and validation", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", icon: FileBarChart, description: "Diving marine growth thickness vs allowable thresholds with graphical elevation profile", requires: ["jobpack", "structure", "sow_report"] },
@@ -140,9 +140,9 @@ export const TOC_SECTIONS = [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" }
   ]},
-  { id: 5, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
-      { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
+  { id: 5, name: "Cathodic Protection Survey", templates: [
+      { id: "rov-cp-report", name: "Cathodic Protection Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "Cathodic Protection Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 6, name: "Flooded Member Detection Survey", templates: [

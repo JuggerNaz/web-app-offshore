@@ -525,9 +525,9 @@ async function main() {
         },
         {
             id: 4,
-            name: "Cathodic Protection Potential Survey",
+            name: "Cathodic Protection Survey",
             reports: [
-                { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV", doc: docCp, pageCount: docCp.getPageCount() },
+                { id: "rov-cp-report", name: "Cathodic Protection Survey Report (ROV)", mode: "ROV", doc: docCp, pageCount: docCp.getPageCount() },
             ]
         },
         {

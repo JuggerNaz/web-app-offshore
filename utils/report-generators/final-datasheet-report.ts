@@ -583,7 +583,7 @@ export const generateInspectionSummaryCoverPage = async (options: FinalDatasheet
             badge: "DEFECTS"
         },
         {
-            title: "Cathodic Protection Potential (CP)",
+            title: "Cathodic Protection Survey (CP)",
             desc: "Structural polarization measurements and sacrificial anode health evaluation.",
             badge: "CP SURVEY"
         },
@@ -707,11 +707,21 @@ export const generateSectionDividerPage = async (sectionName: string, options: F
     doc.rect(12.5, 12.5, pw - 25, ph - 25);
 
     // Main Section Title - Aligned to exact centre of the page vertically and horizontally!
-    // Subheaders above ("FINAL DATASHEET SECTION") and below ("Detailed Inspection Sheets...") are removed.
+    // Normalize Section Name for CATHODIC PROTECTION SURVEY
+    let displayName = sectionName;
+    const normUpper = (sectionName || "").trim().toUpperCase();
+    if (
+        normUpper === "CATHODIC PROTECTION" ||
+        normUpper === "CATHODIC PROTECTION POTENTIAL" ||
+        normUpper === "CATHODIC PROTECTION POTENTIAL SURVEY"
+    ) {
+        displayName = "Cathodic Protection Survey";
+    }
+
     doc.setTextColor(15, 23, 42); // slate-900
     doc.setFontSize(26);
     doc.setFont("helvetica", "bold");
-    const splitTitle = doc.splitTextToSize(sectionName.toUpperCase(), pw - 60);
+    const splitTitle = doc.splitTextToSize(displayName.toUpperCase(), pw - 60);
     const lineHeight = 12; // mm
     const totalH = splitTitle.length * lineHeight;
     const centerY = (ph / 2) - (totalH / 2) + (lineHeight * 0.7);

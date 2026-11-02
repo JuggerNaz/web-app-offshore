@@ -55,8 +55,23 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
     }
 
     const d = r.inspection_data || r.inspection_dat || {};
-    const anomList = Array.isArray(r.insp_anomalies) ? r.insp_anomalies : (Array.isArray(r.anomalies) ? r.anomalies : []);
-    const linkedAnom = anomList[0] || r.insp_anomaly || r.anomaly_details || d.anomaly || null;
+    const anomList = Array.isArray(r.insp_anomalies) 
+        ? r.insp_anomalies 
+        : (Array.isArray(r.anomalies) 
+            ? r.anomalies 
+            : (Array.isArray(r.anomalies_json) ? r.anomalies_json : []));
+    const linkedAnom = anomList[0] || r.insp_anomaly || r.anomaly_details || d.anomaly || (r.primary_anomaly_id ? {
+        anomaly_id: r.primary_anomaly_id,
+        anomaly_ref_no: r.primary_anomaly_ref_no,
+        defect_description: r.primary_defect_description,
+        status: r.primary_anomaly_status,
+        defect_type_code: r.primary_defect_type_code,
+        defect_category_code: r.primary_defect_category_code,
+        priority_code: r.primary_priority_code,
+        is_rectified: r.primary_is_rectified,
+        rectified_remarks: r.primary_rectified_remarks,
+        rectified_date: r.primary_rectified_date
+    } : null);
 
     const metaStatus = String(d._meta_status || r._meta_status || r.meta_status || "").toLowerCase();
     const findingType = String(r.finding_type || d.finding_type || r.findingType || "").toUpperCase();
@@ -65,9 +80,10 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         linkedAnom?.anomaly_ref_no || 
         linkedAnom?.reference_no || 
         linkedAnom?.anomaly_ref || 
+        r.primary_anomaly_ref_no ||
+        d.primary_anomaly_ref_no ||
         r.anomaly_ref_no || 
         r.anomaly_no || 
-        r.ref_no || 
         d.anomaly_ref_no || 
         d._meta_ref_no || 
         ""
@@ -166,6 +182,8 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         linkedAnom?.anomaly_description || 
         linkedAnom?.defect_desc || 
         linkedAnom?.anom_desc || 
+        r.primary_defect_description ||
+        d.primary_defect_description ||
         d.defect_description || 
         d.anomaly_description || 
         d.defect_desc || 
@@ -264,9 +282,35 @@ export function getRecordStatusInfo(r: any): RecordStatusInfo {
         textColor = REPORT_COLORS.rectified;
         hexColor = '#16A34A';
     } else if (hasAnomaly) {
-        type = 'ANOMALY';
-        textColor = REPORT_COLORS.anomaly;
-        hexColor = '#DC2626';
+        // Validation: verify this is not a false-positive anomaly where the findings/description
+        // is explicitly non-substantive (e.g. "No significant findings" or empty) and has no actual anomaly details
+        const rawFinding = String(r.findings ?? r.description ?? r.remarks ?? d.findings ?? d.finding ?? d.description ?? d.remarks ?? "").trim().toLowerCase();
+        const isExplicitNoFindings = rawFinding === "no significant findings" || 
+                                     rawFinding === "no significant finding" || 
+                                     rawFinding === "no defect" || 
+                                     rawFinding === "no defects" || 
+                                     rawFinding === "no findings" || 
+                                     rawFinding === "n/a" || 
+                                     rawFinding === "na" || 
+                                     rawFinding === "none" || 
+                                     rawFinding === "nil";
+
+        const hasSubstantiveAnomalyDetails = Boolean(
+            defectDescription || 
+            (refNo && !isFinding) || 
+            (anomList.length > 0 && anomList.some((a: any) => (a.defect_description || a.anomaly_ref_no || a.description))) ||
+            (linkedAnom && (linkedAnom.defect_description || linkedAnom.anomaly_ref_no || linkedAnom.description))
+        );
+
+        if (!hasSubstantiveAnomalyDetails && (isExplicitNoFindings || rawFinding === "")) {
+            type = 'NORMAL';
+            textColor = REPORT_COLORS.text;
+            hexColor = '#1E293B';
+        } else {
+            type = 'ANOMALY';
+            textColor = REPORT_COLORS.anomaly;
+            hexColor = '#DC2626';
+        }
     } else if (isFinding) {
         type = 'FINDING';
         textColor = REPORT_COLORS.finding;
@@ -454,17 +498,32 @@ export function formatReportFindingText(r: any, baseFinding?: string): string {
 export function applyRecordCellStyling(cell: any, r: any, _isPrintFriendly?: boolean) {
     if (!cell || !cell.styles || !r) return;
     const status = getRecordStatusInfo(r);
+    const cellRaw = String(cell.raw?.content ?? cell.raw ?? '').trim().toLowerCase();
+    const isNoFindingsCell = cellRaw === "no significant findings" || 
+                             cellRaw === "no significant finding" || 
+                             cellRaw === "no findings" || 
+                             cellRaw === "no defect" || 
+                             cellRaw === "no defects" || 
+                             cellRaw === "none" || 
+                             cellRaw === "n/a" || 
+                             cellRaw === "na" || 
+                             cellRaw === "-" || 
+                             cellRaw === "—";
+
     if (status.type === 'INCOMPLETE') {
         cell.styles.textColor = REPORT_COLORS.incomplete;
         cell.styles.fontStyle = 'bold';
     } else if (status.type === 'RECTIFIED') {
         cell.styles.textColor = REPORT_COLORS.rectified;
         cell.styles.fontStyle = 'bold';
-    } else if (status.type === 'FINDING') {
+    } else if (status.type === 'FINDING' && !isNoFindingsCell) {
         cell.styles.textColor = REPORT_COLORS.finding;
         cell.styles.fontStyle = 'bold';
-    } else if (status.type === 'ANOMALY') {
+    } else if (status.type === 'ANOMALY' && !isNoFindingsCell) {
         cell.styles.textColor = REPORT_COLORS.anomaly;
         cell.styles.fontStyle = 'bold';
+    } else {
+        cell.styles.textColor = REPORT_COLORS.text;
+        cell.styles.fontStyle = 'normal';
     }
 }

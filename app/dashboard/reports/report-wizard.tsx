@@ -3096,7 +3096,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .select(`
                     *,
                     inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code)
+                    structure_components:component_id!left(q_id, code),
+                    insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id)
                 `)
                 .eq('structure_id', structId);
 

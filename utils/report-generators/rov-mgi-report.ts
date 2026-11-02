@@ -138,35 +138,37 @@ export const generateROVMGIGraphReport = async (
             return tableY + (rowH * 2) + 5;
         };
 
-        const parseMG = (mg: string) => {
-            if (!mg || typeof mg !== 'string') return { h: '0', s: '0' };
-            const lower = mg.toLowerCase();
-            const rawVal = mg.split(':').pop()?.replace(/coverage/i, '').trim() || '0';
-            let val = rawVal.replace('%', '');
-            
-            if (val.toLowerCase() === 'all over') val = '100';
+        const extractCoverage = (d: any) => {
+            let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage;
+            let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage;
 
-            const getHighest = (v: string) => {
-                if (v.includes('-')) {
-                    const parts = v.split('-');
-                    return parts[parts.length - 1].trim();
-                }
-                return v;
-            };
+            if ((rawH === undefined || rawH === null || rawS === undefined || rawS === null) && d.marine_growth) {
+                const mg = String(d.marine_growth).trim();
+                const hardMatch = mg.match(/(?:hard|h)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+                const softMatch = mg.match(/(?:soft|s)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+                if (hardMatch && (rawH === undefined || rawH === null)) rawH = hardMatch[1];
+                if (softMatch && (rawS === undefined || rawS === null)) rawS = softMatch[1];
 
-            if (lower.startsWith('hard:')) return { h: getHighest(val), s: '0' };
-            if (lower.startsWith('soft:')) return { h: '0', s: getHighest(val) };
-            
-            if (lower.startsWith('hard and soft:') || lower.startsWith('mgi:')) {
-                if (val.includes('-')) {
-                    const parts = val.split('-');
+                if ((rawH === undefined || rawH === null) && (rawS === undefined || rawS === null) && mg.includes('/')) {
+                    const parts = mg.split('/');
                     if (parts.length === 2) {
-                        return { h: parts[0].trim(), s: parts[1].trim() };
+                        rawH = parts[0].trim();
+                        rawS = parts[1].trim();
                     }
                 }
-                return { h: val, s: val };
             }
-            return { h: '0', s: '0' };
+
+            const formatCov = (val: any) => {
+                if (val === null || val === undefined || val === '' || val === '-' || val === '—') return '—';
+                const str = String(val).trim();
+                if (str === '0' || str === '0%') return '0%';
+                return str.endsWith('%') ? str : `${str}%`;
+            };
+
+            return {
+                h: formatCov(rawH),
+                s: formatCov(rawS)
+            };
         };
 
         for (let i = 0; i < renderQids.length; i++) {
@@ -176,7 +178,7 @@ export const generateROVMGIGraphReport = async (
             const tableY = drawPremiumContext(doc, margin + HEADER_H + 2, qid);
 
             const qidRecords = (recordsByQid[qid] || []).sort((a,b) => resolveDepth(b.elevation) - resolveDepth(a.elevation));
-            const plotPoints: { page: number; x: number; y: number; h: number; limitX: number; actualX: number }[] = [];
+            const plotPoints: { page: number; x: number; y: number; h: number; limitX: number; actualX: number; etX: number; val: number }[] = [];
             const pagesRulerDrawn = new Set<number>();
 
             const tableData = qidRecords.map(r => {
@@ -194,31 +196,49 @@ export const generateROVMGIGraphReport = async (
                 if (limit === 0 && d.mgi_profile) {
                     limit = parseFloat(String(d.mgi_profile).replace(/[^\d.]/g, '')) || 0;
                 }
-                const hList = ['mgi_hard_thickness_at_12','mgi_hard_thickness_at_3','mgi_hard_thickness_at_6','mgi_hard_thickness_at_9'];
-                const sList = ['mgi_soft_thickness_at_12','mgi_soft_thickness_at_3','mgi_soft_thickness_at_6','mgi_soft_thickness_at_9'];
-                const hVals = hList.map(v => parseFloat(d[v]) || (v === 'mgi_hard_thickness_at_12' ? parseFloat(d.mgi_hard_thickness) : 0) || 0);
-                const sVals = sList.map(v => parseFloat(d[v]) || (v === 'mgi_soft_thickness_at_12' ? parseFloat(d.mgi_soft_thickness) : 0) || 0);
-                
-                const mgData = parseMG(d.marine_growth);
-                const cleanCov = (v: any) => {
-                    if (v === null || v === undefined) return undefined;
-                    return String(v).replace('%', '').trim();
-                };
-                const hCov = cleanCov(d.marine_growth_hard) ?? d.mgi_hard_coverage ?? mgData.h;
-                const sCov = cleanCov(d.marine_growth_soft) ?? d.mgi_soft_coverage ?? mgData.s;
 
+                const getHardVal = (pos: string) => {
+                    const val = d[`mgi_hard_thickness_at_${pos}`] ?? d[`hard_thk${pos}`] ?? (pos === '12' ? d.mgi_hard_thickness : null);
+                    if (val === null || val === undefined || val === '') return 0;
+                    const num = parseFloat(String(val));
+                    return isNaN(num) ? 0 : num;
+                };
+                const getSoftVal = (pos: string) => {
+                    const val = d[`mgi_soft_thickness_at_${pos}`] ?? d[`soft_thk${pos}`] ?? (pos === '12' ? d.mgi_soft_thickness : null);
+                    if (val === null || val === undefined || val === '') return 0;
+                    const num = parseFloat(String(val));
+                    return isNaN(num) ? 0 : num;
+                };
+
+                const hVals = ['12', '3', '6', '9'].map(getHardVal);
+                const sVals = ['12', '3', '6', '9'].map(getSoftVal);
+
+                // Always take maximum of MG Hard thickness out of the 4 clock positions for the graph
+                const maxHard = Math.max(...hVals);
+
+                // ET (Effective Thickness) - if present
+                const etRaw = d.effective_thickness ?? d.et;
+                const et = etRaw !== undefined && etRaw !== null && etRaw !== '' ? (parseFloat(String(etRaw)) || 0) : 0;
+
+                const { h: hCov, s: sCov } = extractCoverage(d);
                 const findings = formatReportFindingText(r);
 
                 return {
-                    depth: elev, limit, 
-                    maxInRow: Math.max(...hVals, ...sVals),
-                    maxHard: Math.max(...hVals),
-                    hCov, sCov,
-                    h: hVals.map(v => v || '-'), s: sVals.map(v => v || '-'),
+                    depth: elev,
+                    limit, 
+                    maxHard,
+                    et: !isNaN(et) && et > 0 ? et : 0,
+                    hCov,
+                    sCov,
+                    h: hVals.map(v => v > 0 ? v : '-'),
+                    s: sVals.map(v => v > 0 ? v : '-'),
                     findings,
                     record: r
                 };
             });
+
+            // Check if any record in this section has a valid positive ET value
+            const hasEtValues = tableData.some(row => row.et > 0);
 
             const isPF = config.printFriendly;
 
@@ -228,26 +248,28 @@ export const generateROVMGIGraphReport = async (
                 rowPageBreak: 'avoid',
                 head: [
                     [
-                        { content: 'Depth (m)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'Integrated Profile (mm)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'Coverage % (H/S)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: {halign: 'center', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'Max Allowable (mm)', rowSpan: 3, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'Inspection Findings', rowSpan: 3, styles: {halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: colors.border} }
+                        { content: 'Depth (m)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'Coverage %', colSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [240,240,240] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'MGI READINGS (mm) - CLOCK POSITIONS', colSpan: 8, styles: { halign: 'center', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'Max Allowable (mm)', rowSpan: 3, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'Inspection Findings', rowSpan: 3, styles: { halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: colors.border } }
                     ],
                     [
-                        { content: 'HARD', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border} },
-                        { content: 'SOFT', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border} }
+                        { content: 'HARD', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [248,248,248] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 6, cellPadding: 1, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'SOFT', rowSpan: 2, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [248,248,248] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 6, cellPadding: 1, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'HARD', colSpan: 4, styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border } },
+                        { content: 'SOFT', colSpan: 4, styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 5.5, cellPadding: 0.5, fontStyle: 'bold', lineWidth: 0.1, lineColor: colors.border } }
                     ],
                     [
-                        { content: '12H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '3H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '6H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '9H', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '12S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '3S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '6S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} },
-                        { content: '9S', styles: {halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border} }
+                        { content: '12H', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '3H', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '6H', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '9H', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '12S', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '3S', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '6S', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } },
+                        { content: '9S', styles: { halign: 'center', fillColor: config?.printFriendly ? [248,248,248] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, fontSize: 6, cellPadding: 1, lineWidth: 0.1, lineColor: colors.border } }
                     ]
                 ],
                 body: tableData.length > 0 ? tableData.map(row => {
@@ -255,7 +277,8 @@ export const generateROVMGIGraphReport = async (
                     return [
                         `${row.depth.toFixed(1)}m`,
                         '',
-                        `${row.hCov}% / ${row.sCov}%`,
+                        row.hCov,
+                        row.sCov,
                         ...row.h.map(v => formatReading(v)),
                         ...row.s.map(v => formatReading(v)),
                         `${row.limit}mm`,
@@ -265,8 +288,8 @@ export const generateROVMGIGraphReport = async (
                     ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No marine growth profile observations recorded."]
                 ],
                 theme: 'grid',
-                styles: {fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border, lineWidth: 0.1},
-                headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.teal, textColor: config?.printFriendly ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
+                styles: { fontSize: 6.5, cellPadding: 1.5, textColor: [0, 0, 0], lineColor: colors.border, lineWidth: 0.1 },
+                headStyles: { fillColor: config?.printFriendly ? [255,255,255] : colors.teal, textColor: config?.printFriendly ? colors.navy : 255, fontStyle: 'bold', halign: 'center', valign: 'middle', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255] },
                 didParseCell: (data) => {
                     if (data.section === 'body') {
                         const row = tableData[data.row.index];
@@ -276,10 +299,11 @@ export const generateROVMGIGraphReport = async (
                             const cellText = String(rawCell?.content ?? rawCell ?? '').trim();
                             const numericVal = parseFloat(cellText);
 
-                            // MGI Clock Position Reading Columns (Columns 3 to 10)
-                            if (colIdx >= 3 && colIdx <= 10) {
-                                if (!isNaN(numericVal) && numericVal > 0 && numericVal === row.maxInRow) {
-                                    // Highlight the exact reading used for the Teal graph line!
+                            // MGI HARD Clock Position Reading Columns (Columns 4 to 7: 12H, 3H, 6H, 9H)
+                            // Requirement 4: Take maximum of MG Hard thickness out of the 4 clock positions; highlight those values only
+                            if (colIdx >= 4 && colIdx <= 7) {
+                                if (!isNaN(numericVal) && numericVal > 0 && numericVal === row.maxHard) {
+                                    // Highlight the exact MG Hard reading used for the Teal graph line
                                     data.cell.styles.fillColor = [204, 251, 241]; // Light Teal Mint background
                                     data.cell.styles.textColor = [15, 118, 110];   // Dark Teal text
                                     data.cell.styles.fontStyle = 'bold';
@@ -288,31 +312,85 @@ export const generateROVMGIGraphReport = async (
                                     data.cell.styles.fontStyle = 'normal';
                                 }
                             }
-                            // Max Allowable Column (Column 11)
-                            else if (colIdx === 11) {
-                                // Match the Maroon Max Allowable graph line!
-                                data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon/Red background
-                                data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
-                                data.cell.styles.fontStyle = 'bold';
+                            // MGI SOFT Clock Position Reading Columns (Columns 8 to 11: 12S, 3S, 6S, 9S) - never highlighted for graph
+                            else if (colIdx >= 8 && colIdx <= 11) {
+                                data.cell.styles.textColor = colors.text;
+                                data.cell.styles.fontStyle = 'normal';
                             }
-                            // Other Columns: Depth (0), Coverage (2), Findings (12)
-                            else {
-                                applyRecordCellStyling(data.cell, row.record, isPF);
+                            // Max Allowable Column (Column 12)
+                            else if (colIdx === 12) {
+                                // Only highlight with maroon/red warning if the reading actually exceeds max allowable
+                                if (row.maxHard > 0 && row.limit > 0 && row.maxHard > row.limit) {
+                                    data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon/Red background
+                                    data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else {
+                                    data.cell.styles.textColor = colors.text;
+                                    data.cell.styles.fontStyle = 'normal';
+                                }
+                            }
+                            // Other Columns: Depth (0), Coverage HARD (2), Coverage SOFT (3), Findings (13)
+                            else if (colIdx !== 1) {
+                                const statusInfo = getRecordStatusInfo(row.record);
+                                const findingsText = (row.findings || "").trim().toLowerCase();
+                                const isNoSignificantFindings = findingsText === "no significant findings" || 
+                                                                findingsText === "no significant finding" || 
+                                                                findingsText === "no findings" || 
+                                                                findingsText === "no defect" || 
+                                                                findingsText === "no defects" || 
+                                                                findingsText === "none" || 
+                                                                findingsText === "n/a" || 
+                                                                findingsText === "na" || 
+                                                                findingsText === "-" || 
+                                                                findingsText === "—" || 
+                                                                findingsText === "";
+
+                                // If the inspection record got anomaly, set red color.
+                                // For records where status is not anomaly (e.g. height value within allowable), do not highlight in red.
+                                const hasGenuineAnomaly = statusInfo.type === 'ANOMALY' && !isNoSignificantFindings;
+
+                                if (hasGenuineAnomaly) {
+                                    data.cell.styles.textColor = colors.anomaly;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (statusInfo.type === 'RECTIFIED') {
+                                    data.cell.styles.textColor = colors.rectified;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (statusInfo.type === 'FINDING' && !isNoSignificantFindings) {
+                                    data.cell.styles.textColor = REPORT_COLORS.finding;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else if (statusInfo.type === 'INCOMPLETE') {
+                                    data.cell.styles.textColor = REPORT_COLORS.incomplete;
+                                    data.cell.styles.fontStyle = 'bold';
+                                } else {
+                                    // Normal record, or record with height value where status is not anomaly:
+                                    // No need to highlight that record (standard text color)
+                                    data.cell.styles.textColor = colors.text;
+                                    data.cell.styles.fontStyle = 'normal';
+                                }
                             }
                         }
                     }
                 },
                 columnStyles: {
-                    0: { cellWidth: 15, halign: 'center' }, 1: { cellWidth: 80 }, 2: { cellWidth: 15, halign: 'center' },
-                    3: { cellWidth: 8, halign: 'center' }, 4: { cellWidth: 8, halign: 'center' }, 5: { cellWidth: 8, halign: 'center' }, 6: { cellWidth: 8, halign: 'center' },
-                    7: { cellWidth: 8, halign: 'center' }, 8: { cellWidth: 8, halign: 'center' }, 9: { cellWidth: 8, halign: 'center' }, 10: { cellWidth: 8, halign: 'center' },
-                    11: { cellWidth: 20, halign: 'center' }, 12: { cellWidth: 'auto' }
+                    0: { cellWidth: 14, halign: 'center' },  // Depth (m)
+                    1: { cellWidth: 72 },                   // Graph Area
+                    2: { cellWidth: 14, halign: 'center' },  // Coverage HARD %
+                    3: { cellWidth: 14, halign: 'center' },  // Coverage SOFT %
+                    4: { cellWidth: 7.5, halign: 'center' }, // 12H
+                    5: { cellWidth: 7.5, halign: 'center' }, // 3H
+                    6: { cellWidth: 7.5, halign: 'center' }, // 6H
+                    7: { cellWidth: 7.5, halign: 'center' }, // 9H
+                    8: { cellWidth: 7.5, halign: 'center' }, // 12S
+                    9: { cellWidth: 7.5, halign: 'center' }, // 3S
+                    10: { cellWidth: 7.5, halign: 'center' },// 6S
+                    11: { cellWidth: 7.5, halign: 'center' },// 9S
+                    12: { cellWidth: 18, halign: 'center' }, // Max Allowable (mm)
+                    13: { cellWidth: 'auto' }                // Inspection Findings
                 },
                 didDrawCell: (data) => {
                     if (data.section === 'head' && data.column.index === 1 && data.row.index === 0) {
                         const { x, y, width, height } = data.cell;
                         const xRatio = width / GRAPH_MAX_MM;
-                        doc.setFontSize(4.5);
                         doc.setFont("helvetica", "bold");
                         if (isPF) {
                             doc.setTextColor(colors.text[0], colors.text[1], colors.text[2]);
@@ -320,32 +398,63 @@ export const generateROVMGIGraphReport = async (
                             doc.setTextColor(255, 255, 255);
                         }
 
-                        // Legend at top of graph header cell
-                        const legY = y + 2.5;
-                        doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
-                        doc.line(x + 2, legY, x + 7, legY);
-                        doc.setFillColor(...colors.limit); doc.circle(x + 4.5, legY, 0.35, 'F');
-                        doc.text("Max Allow", x + 8.5, legY + 1);
+                        // 1. Legend at top of graph header cell
+                        const legY = y + 2.8;
+                        doc.setFontSize(4.8);
 
-                        doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
-                        doc.line(x + 26, legY, x + 31, legY);
-                        doc.setFillColor(...colors.actual); doc.circle(x + 29.5, legY, 0.35, 'F');
-                        doc.text("Max Growth", x + 32.5, legY + 1);
+                        // Requirement 3: If no ET value in ROV MGI inspection, don't show ET in legend
+                        if (hasEtValues) {
+                            doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
+                            doc.line(x + 2, legY, x + 7, legY);
+                            doc.setFillColor(...colors.limit); doc.circle(x + 4.5, legY, 0.35, 'F');
+                            doc.text("Max Allow", x + 8.5, legY + 0.8);
 
-                        doc.setDrawColor(...colors.etLine); doc.setLineWidth(0.5);
-                        doc.setLineDashPattern([1, 1], 0);
-                        doc.line(x + 52, legY, x + 57, legY);
-                        doc.setLineDashPattern([], 0);
-                        doc.setFillColor(...colors.etLine); doc.circle(x + 54.5, legY, 0.35, 'F');
-                        doc.text("ET (Dashed)", x + 58.5, legY + 1);
+                            doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
+                            doc.line(x + 25, legY, x + 30, legY);
+                            doc.setFillColor(...colors.actual); doc.circle(x + 27.5, legY, 0.35, 'F');
+                            doc.text("Max Growth", x + 31.5, legY + 0.8);
 
+                            doc.setDrawColor(...colors.etLine); doc.setLineWidth(0.5);
+                            doc.setLineDashPattern([1, 1], 0);
+                            doc.line(x + 50, legY, x + 55, legY);
+                            doc.setLineDashPattern([], 0);
+                            doc.setFillColor(...colors.etLine); doc.circle(x + 52.5, legY, 0.35, 'F');
+                            doc.text("ET (Dashed)", x + 56.5, legY + 0.8);
+                        } else {
+                            // Centered, well-spaced 2-item legend (Max Allow & Max Hard Growth)
+                            doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
+                            doc.line(x + 8, legY, x + 14, legY);
+                            doc.setFillColor(...colors.limit); doc.circle(x + 11, legY, 0.35, 'F');
+                            doc.text("Max Allow", x + 16, legY + 0.8);
+
+                            doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
+                            doc.line(x + 38, legY, x + 44, legY);
+                            doc.setFillColor(...colors.actual); doc.circle(x + 41, legY, 0.35, 'F');
+                            doc.text("Max Hard Growth", x + 46, legY + 0.8);
+                        }
+
+                        // 2. Requirement 1: Dedicated middle title row preventing any overlap with scale measurements
+                        doc.setFontSize(5.5);
+                        doc.setFont("helvetica", "bold");
+                        if (isPF) {
+                            doc.setTextColor(colors.navy[0], colors.navy[1], colors.navy[2]);
+                        } else {
+                            doc.setTextColor(255, 255, 255);
+                        }
+                        doc.text("Integrated Profile (mm)", x + (width / 2), y + 6.8, { align: 'center' });
+
+                        // 3. Requirement 1: Clear, crisp tick marks and scale measurements at 50mm intervals
+                        doc.setFontSize(4.5);
                         for (let g = 0; g <= GRAPH_MAX_MM; g += 50) {
                             const gx = x + (g * xRatio);
                             const isMajor = g % 100 === 0;
                             doc.setDrawColor(config?.printFriendly ? 100 : 255);
                             doc.setLineWidth(isMajor ? 0.2 : 0.1);
                             doc.line(gx, y + height - (isMajor ? 2.5 : 1.5), gx, y + height);
-                            doc.text(`${g}`, gx, y + height - (isMajor ? 3 : 2), { align: 'center' });
+                            
+                            const align = g === 0 ? 'left' : (g === GRAPH_MAX_MM ? 'right' : 'center');
+                            const textX = g === 0 ? gx + 0.5 : (g === GRAPH_MAX_MM ? gx - 0.5 : gx);
+                            doc.text(`${g}`, textX, y + height - (isMajor ? 3 : 2), { align });
                         }
                         doc.setFont("helvetica", "normal");
                     } else if (data.section === 'body' && data.column.index === 1) {
@@ -353,8 +462,10 @@ export const generateROVMGIGraphReport = async (
                         const row = tableData[data.row.index];
                         if (row) {
                             const xRatio = width / GRAPH_MAX_MM;
-                            doc.setLineWidth(0.05); doc.setDrawColor(245);
-                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) { if (g % 50 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height); }
+                            doc.setLineWidth(0.05); doc.setDrawColor(245, 245, 245);
+                            for (let g = 0; g <= GRAPH_MAX_MM; g += 10) {
+                                if (g % 50 !== 0) doc.line(x + (g * xRatio), y, x + (g * xRatio), y + height);
+                            }
                             doc.setLineWidth(0.08); doc.setDrawColor(220, 220, 220);
                             for (let g = 50; g <= GRAPH_MAX_MM; g += 100) {
                                 const gx = x + (g * xRatio); doc.line(gx, y, gx, y + height);
@@ -364,7 +475,16 @@ export const generateROVMGIGraphReport = async (
                                 const gx = x + (g * xRatio); 
                                 doc.line(gx, y, gx, y + height);
                             }
-                            plotPoints.push({ page: data.pageNumber, x, y: y + (height / 2), h: height, limitX: x + (row.limit * xRatio), actualX: x + (row.maxInRow * xRatio) });
+                            plotPoints.push({
+                                page: data.pageNumber,
+                                x,
+                                y: y + (height / 2),
+                                h: height,
+                                limitX: x + (row.limit * xRatio),
+                                actualX: x + (row.maxHard * xRatio), // Requirement 4: Always use MG Hard thickness
+                                etX: x + (row.et * xRatio),
+                                val: row.maxHard
+                            });
                         }
                     }
                 },
@@ -391,14 +511,39 @@ export const generateROVMGIGraphReport = async (
                         doc.lineTo(last.limitX, last.y + (last.h / 2));
                         doc.stroke();
 
-                        // 2. Actual Reading (Teal)
+                        // 2. Actual Reading (Teal) - Based on Maximum MG HARD thickness
                         doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
                         doc.moveTo(startActualX, first.y - (first.h / 2));
                         for (let p = 0; p < pagePoints.length; p++) doc.lineTo(pagePoints[p].actualX, pagePoints[p].y);
                         doc.lineTo(last.actualX, last.y + (last.h / 2));
                         doc.stroke();
 
-                        pagePoints.forEach(p => { doc.setFillColor(...colors.actual); doc.circle(p.actualX, p.y, 0.4, 'F'); });
+                        // Point circles on actual hard reading line
+                        pagePoints.forEach(p => {
+                            doc.setFillColor(...colors.actual);
+                            doc.circle(p.actualX, p.y, 0.4, 'F');
+                        });
+
+                        // 3. Optional ET line - only rendered if ET values actually exist
+                        if (hasEtValues) {
+                            const validEtPoints = pagePoints.filter(p => p.etX > p.x);
+                            if (validEtPoints.length > 0) {
+                                const etFirst = validEtPoints[0];
+                                const etLast = validEtPoints[validEtPoints.length - 1];
+                                doc.setDrawColor(...colors.etLine);
+                                doc.setLineWidth(0.4);
+                                doc.setLineDashPattern([1, 1], 0);
+                                doc.moveTo(etFirst.etX, etFirst.y - (etFirst.h / 2));
+                                for (let p = 0; p < validEtPoints.length; p++) doc.lineTo(validEtPoints[p].etX, validEtPoints[p].y);
+                                doc.lineTo(etLast.etX, etLast.y + (etLast.h / 2));
+                                doc.stroke();
+                                doc.setLineDashPattern([], 0);
+                                validEtPoints.forEach(p => {
+                                    doc.setFillColor(...colors.etLine);
+                                    doc.circle(p.etX, p.y, 0.35, 'F');
+                                });
+                            }
+                        }
                     }
                 }
             });

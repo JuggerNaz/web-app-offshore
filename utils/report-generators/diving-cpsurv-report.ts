@@ -24,6 +24,7 @@ interface ReportConfig {
     showPageNumbers?: boolean;
     showSignatures?: boolean;
     isBlankReport?: boolean;
+    reportTitle?: string;
 }
 
 /**
@@ -165,7 +166,7 @@ export const generateDivingCPSURVReport = async (
         // ── Synchronous page header ─────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `Cathodic Protection Survey Report (Diving) - ${extraTitleInfo}` : "Cathodic Protection Survey Report (Diving)",
+                reportTitle: config?.reportTitle || (extraTitleInfo ? `Cathodic Protection Survey Report (Diving) - ${extraTitleInfo}` : "Cathodic Protection Survey Report (Diving)"),
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,
@@ -396,7 +397,7 @@ export const generateDivingCPSURVReport = async (
 
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
-        doc.save(`Diving_CP_Survey_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`Cathodic_Protection_Survey_Report_Diving_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
         console.error("[Diving CPSURV Report] Error:", err);
         throw err;
