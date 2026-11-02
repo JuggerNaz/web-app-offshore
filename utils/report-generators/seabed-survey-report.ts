@@ -14,6 +14,119 @@ export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     isBlankReport?: boolean;
 }
 
+const cleanSeabedDescription = (rawDesc: string, debrisDesc: string, sizeDisplay: string, hasDistance: boolean): string => {
+    const strippedRecordDesc = (rawDesc || '')
+        .replace(/^(Debris|Gas Seepage|Crater|Seabed Debris)(:\s*|\s*$)/i, '')
+        .trim();
+    const strippedDebrisDesc = (debrisDesc || '').trim();
+    let cleanDesc = strippedDebrisDesc || strippedRecordDesc;
+
+    if (cleanDesc && sizeDisplay && sizeDisplay !== 'N/A' && sizeDisplay !== '-') {
+        // Strip dimension expressions from description since Dimensions column already displays them
+        cleanDesc = cleanDesc
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?(?:\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?)?/gi, '')
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\s*(?:in\s+)?(?:length|width|height|depth|diameter|dia\.?)\b/gi, '')
+            .replace(/\b(?:length|width|height|depth|diameter|dia\.?|L|W|H|Dia)\s*[:=]?\s*(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\b/gi, '')
+            .replace(/\(\s*(?:[,;xX×\s]|and)*\s*\)/g, '');
+    }
+
+    if (cleanDesc && hasDistance) {
+        cleanDesc = cleanDesc
+            .replace(/(?:located\s+)?(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*m\s+from\s+leg\s+[A-Z0-9]+/gi, '');
+    }
+
+    if (cleanDesc) {
+        // Expand common short forms in description
+        cleanDesc = cleanDesc
+            .replace(/\bapprox\.(?=\s|$)/gi, 'approximately')
+            .replace(/\bdia\.(?=\s|$)/gi, 'diameter')
+            .replace(/\bdist\.(?=\s|$)/gi, 'distance');
+
+        // Deduplicate repeated clauses or sentences
+        const segments = cleanDesc
+            .split(/(?:\s*;\s*|\s*\.\s+|\s*,\s*|\r?\n)+/)
+            .map((s: string) => s.replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '').trim())
+            .filter(Boolean);
+        const uniqueSegments: string[] = [];
+        for (const seg of segments) {
+            const lower = seg.toLowerCase();
+            if (!uniqueSegments.some(existing => existing.toLowerCase() === lower || existing.toLowerCase().includes(lower))) {
+                const containedIdx = uniqueSegments.findIndex(existing => lower.includes(existing.toLowerCase()));
+                if (containedIdx !== -1) {
+                    uniqueSegments[containedIdx] = seg;
+                } else {
+                    uniqueSegments.push(seg);
+                }
+            }
+        }
+        cleanDesc = uniqueSegments.join(', ').replace(/\s{2,}/g, ' ').trim();
+    }
+
+    return cleanDesc || '-';
+};
+
+const formatSeabedDimensions = (cat: string, idraw: any): { sizeDisplay: string; matDisplay: string } => {
+    let sizeDisplay = 'N/A';
+    let matDisplay = 'N/A';
+
+    if (cat === 'Gas Seepage') {
+        matDisplay = 'N/A';
+        const intensity = idraw.seepage_intensity || idraw.intensity || '';
+        sizeDisplay = intensity ? `Intensity: ${intensity}` : 'N/A';
+    } else if (cat === 'Crater') {
+        matDisplay = 'N/A';
+        const cDia = idraw.crater_diameter || idraw.craterDiameter || '';
+        const cDiaUnit = idraw.crater_diameter_unit || idraw.craterDiameterUnit || 'm';
+        const cDep = idraw.crater_depth || idraw.craterDepth || '';
+        const cDepUnit = idraw.crater_depth_unit || idraw.craterDepthUnit || 'm';
+        if (cDia || cDep) {
+            const parts: string[] = [];
+            if (cDia) parts.push(`Diameter: ${cDia}${cDiaUnit}`);
+            if (cDep) parts.push(`Depth: ${cDep}${cDepUnit}`);
+            sizeDisplay = parts.join(', ');
+        } else {
+            const rawCraterSize = idraw.size_dimensions || idraw.dimension_1 || idraw.size || '';
+            sizeDisplay = rawCraterSize && rawCraterSize !== 'm x m' && rawCraterSize !== ' x '
+                ? String(rawCraterSize).replace(/\bDia:\s*/gi, 'Diameter: ')
+                : 'N/A';
+        }
+    } else {
+        // Debris
+        matDisplay = idraw.material || idraw.debris_material || 'Unknown';
+        const l = idraw.size_length || idraw.length || '';
+        const lu = idraw.size_length_unit || idraw.lengthUnit || 'm';
+        const w = idraw.size_width || idraw.width || '';
+        const wu = idraw.size_width_unit || idraw.widthUnit || 'm';
+        const h = idraw.size_height || idraw.height || '';
+        const hu = idraw.size_height_unit || idraw.heightUnit || 'm';
+        const d = idraw.size_diameter || idraw.diameter || '';
+        const du = idraw.size_diameter_unit || idraw.diameterUnit || 'm';
+
+        const parts: string[] = [];
+        if (l) parts.push(`Length: ${l}${lu}`);
+        if (w) parts.push(`Width: ${w}${wu}`);
+        if (h) parts.push(`Height: ${h}${hu}`);
+        if (d) parts.push(`Diameter: ${d}${du}`);
+
+        if (parts.length > 0) {
+            sizeDisplay = parts.join(', ');
+        } else {
+            const rawSize = idraw.size_dimensions || idraw.dimension_1 || idraw.size;
+            if (rawSize && rawSize !== 'm x m' && rawSize !== ' x ') {
+                sizeDisplay = String(rawSize)
+                    .replace(/\bL:\s*/gi, 'Length: ')
+                    .replace(/\bW:\s*/gi, 'Width: ')
+                    .replace(/\bH:\s*/gi, 'Height: ')
+                    .replace(/\bDia:\s*/gi, 'Diameter: ');
+            } else {
+                sizeDisplay = 'N/A';
+            }
+        }
+    }
+
+    return { sizeDisplay, matDisplay };
+};
+
 export const generateSeabedSurveyReport = async (
     jobPack: any,
     structure: any,
@@ -58,53 +171,9 @@ export const generateSeabedSurveyReport = async (
             const allMapped = data.map((r: any) => {
                 const idraw = r.inspection_data || {};
                 const cat = idraw.category || idraw.type || (r.description?.includes('Gas Seepage') ? 'Gas Seepage' : r.description?.includes('Crater') ? 'Crater' : 'Debris');
-                
-                // Formulate category-specific info string or dimensions/material
-                let sizeDisplay = 'N/A';
-                let matDisplay = 'N/A';
-
-                if (cat === 'Gas Seepage') {
-                    matDisplay = 'N/A';
-                    const intensity = idraw.seepage_intensity || idraw.intensity || '';
-                    sizeDisplay = intensity ? `Intensity: ${intensity}` : 'N/A';
-                } else if (cat === 'Crater') {
-                    matDisplay = 'N/A';
-                    const cDia = idraw.crater_diameter || idraw.craterDiameter || '';
-                    const cDiaUnit = idraw.crater_diameter_unit || idraw.craterDiameterUnit || 'm';
-                    const cDep = idraw.crater_depth || idraw.craterDepth || '';
-                    const cDepUnit = idraw.crater_depth_unit || idraw.craterDepthUnit || 'm';
-                    if (cDia || cDep) {
-                        const parts: string[] = [];
-                        if (cDia) parts.push(`Dia: ${cDia}${cDiaUnit}`);
-                        if (cDep) parts.push(`Depth: ${cDep}${cDepUnit}`);
-                        sizeDisplay = parts.join(', ');
-                    } else {
-                        sizeDisplay = idraw.size_dimensions || idraw.dimension_1 || 'N/A';
-                    }
-                } else {
-                    // Debris
-                    matDisplay = idraw.material || idraw.debris_material || 'Unknown';
-                    const rawSize = idraw.size_dimensions || idraw.dimension_1;
-                    if (rawSize && rawSize !== 'm x m') {
-                        sizeDisplay = rawSize;
-                    } else {
-                        const l = idraw.size_length || idraw.length || '';
-                        const lu = idraw.size_length_unit || idraw.lengthUnit || 'm';
-                        const w = idraw.size_width || idraw.width || '';
-                        const wu = idraw.size_width_unit || idraw.widthUnit || 'm';
-                        const h = idraw.size_height || idraw.height || '';
-                        const hu = idraw.size_height_unit || idraw.heightUnit || 'm';
-                        const d = idraw.size_diameter || idraw.diameter || '';
-                        const du = idraw.size_diameter_unit || idraw.diameterUnit || 'm';
-                        
-                        const parts: string[] = [];
-                        if (l) parts.push(`L:${l}${lu}`);
-                        if (w) parts.push(`W:${w}${wu}`);
-                        if (h) parts.push(`H:${h}${hu}`);
-                        if (d) parts.push(`Dia:${d}${du}`);
-                        sizeDisplay = parts.length > 0 ? parts.join(' x ') : 'N/A';
-                    }
-                }
+                const { sizeDisplay, matDisplay } = formatSeabedDimensions(cat, idraw);
+                const distVal = parseFloat(idraw.distance_from_leg || idraw.distance) || 0;
+                const cleanDesc = cleanSeabedDescription(r.description || '', idraw.debris_desc || '', sizeDisplay, distVal > 0);
 
                 return {
                     id: r.insp_id,
@@ -113,11 +182,11 @@ export const generateSeabedSurveyReport = async (
                     label: '',
                     qid: r.structure_components?.q_id || r.insp_id,
                     face: idraw.face || '',
-                    distance: parseFloat(idraw.distance_from_leg || idraw.distance) || 0,
+                    distance: distVal,
                     northing: idraw.northing || '',
                     easting: idraw.easting || '',
                     type: cat,
-                    description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/i, '') || idraw.debris_desc || '-',
+                    description: cleanDesc,
                     size: sizeDisplay,
                     material: matDisplay,
                     isMetallic: (idraw.material || idraw.debris_material) === 'Metallic'
@@ -133,9 +202,20 @@ export const generateSeabedSurveyReport = async (
     // Process comparison dataset if present
     let compRecords: any[] = [];
     if (config.comparisonRecords && config.comparisonRecords.length > 0) {
-        compRecords = config.comparisonRecords.filter(r => 
-            itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || r.type.toLowerCase().includes(itemTypeFilter.toLowerCase())
-        );
+        compRecords = config.comparisonRecords
+            .filter(r => itemTypeFilter === '' || itemTypeFilter.toLowerCase() === 'all' || (r.type || '').toLowerCase().includes(itemTypeFilter.toLowerCase()))
+            .map(r => {
+                const cat = r.type || 'Debris';
+                const { sizeDisplay, matDisplay } = formatSeabedDimensions(cat, r);
+                const distVal = parseFloat(r.distance) || 0;
+                return {
+                    ...r,
+                    distance: distVal,
+                    material: r.material || matDisplay,
+                    size: sizeDisplay,
+                    description: cleanSeabedDescription(r.description || '', r.debrisDesc || '', sizeDisplay, distVal > 0)
+                };
+            });
     }
 
     if (!config.isBlankReport && (!records || records.length === 0) && (!compRecords || compRecords.length === 0)) {
@@ -180,7 +260,7 @@ export const generateSeabedSurveyReport = async (
         const reportNo = sowReportNo || config.headerData?.sowReportNo || (config as any)?.reportNoPrefix || "N/A";
 
         draw3SectionHeader(d, {
-            reportTitle: `Seabed Survey Multi-Drop Sketch Report (${titleType})`,
+            reportTitle: `Seabed Survey Sketch Report (${titleType})`,
             reportNo,
             structureName: structName,
             companySettings,
@@ -323,7 +403,7 @@ export const generateSeabedSurveyReport = async (
 
         if (compItems.length > 0) {
             doc.setFillColor(245, 158, 11); doc.circle(legX, legY - 1, 1.2, "F");
-            doc.text("Previous Survey (Ref)", legX + 2.5, legY, { align: "left" });
+            doc.text("Previous Survey (Reference)", legX + 2.5, legY, { align: "left" });
         }
 
         // Draw Map Border
@@ -442,7 +522,6 @@ export const generateSeabedSurveyReport = async (
         const tableBody = items.map(item => [
             String(item.label),
             item.qid,
-            item.face,
             `${item.distance}m`,
             item.material,
             item.size || '-',
@@ -451,7 +530,7 @@ export const generateSeabedSurveyReport = async (
 
         autoTable(doc, {
             startY: tableY,
-            head: [["ID", "QID", "Face", "Dist.", "Material", "Dimensions", "Description"]],
+            head: [["No.", "QID", "Distance", "Material", "Dimensions", "Description"]],
             body: tableBody,
             theme: "grid",
             tableLineWidth: 0.1,
@@ -475,9 +554,9 @@ export const generateSeabedSurveyReport = async (
             const compTableBody = compItems.map(item => [
                 `R${item.label}`,
                 item.qid || '-',
-                item.face || '-',
                 `${item.distance}m`,
                 item.material || '-',
+                item.size && item.size !== 'm x m' && item.size !== ' x ' ? item.size : '-',
                 item.description || '-'
             ]);
 
@@ -488,7 +567,7 @@ export const generateSeabedSurveyReport = async (
 
             autoTable(doc, {
                 startY: compTableY,
-                head: [["Ref ID", "QID", "Face", "Dist.", "Material", "Description"]],
+                head: [["No.", "QID", "Distance", "Material", "Dimensions", "Description"]],
                 body: compTableBody,
                 theme: "grid",
                 tableLineWidth: 0.1,

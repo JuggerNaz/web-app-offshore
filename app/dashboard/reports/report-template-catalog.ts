@@ -56,7 +56,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", icon: FileBarChart, description: "Marine Growth Inspection Report (ROV) RMGI Standard Table", requires: ["jobpack", "structure", "sow_report"] },
         { id: "fmd-report", name: "FMD Survey Report (ROV)", icon: FileText, description: "Flooded Member Detection summary report with QID, Elevation, Dive and Tape details", requires: ["jobpack", "structure", "sow_report"] },
         { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", icon: FileBarChart, description: "Splash zone wall thickness and CP inspection summary with clock positions", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "utwt-report", name: "UT Thickness Report (ROV)", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "utwt-report", name: "UT Wall Thickness Inspection Report (ROV)", icon: FileText, description: "Detailed ROV UT wall thickness report with 4 clock positions and elevation reference", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV riser structural integrity inspection with tabular data, anomaly logs and CP readings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-jtisi-report", name: "J-Tube Survey Inspection Sketch Report (ROV)", icon: FileBarChart, description: "Detailed ROV J-Tube structural integrity inspection with graphical elevation profiles", requires: ["jobpack", "structure", "sow_report"] },
@@ -70,7 +70,7 @@ export const REPORT_TEMPLATES = {
         { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (RSANI / SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (SANI) summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "Cathodic Protection Survey Report (ROV)", icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-ricmi-report", name: "Inclinometer Survey Report (ROV)", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", icon: FileText, description: "Portrait Selected Node Report (RSWNI) with QID, Elevation, CP, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-selected-node-report", name: "Selected Node Inspection Report (ROV)", icon: FileText, description: "Landscape Selected Node Inspection Report (RSWNI) with QID, Elevation, CP, Hard/Soft Growth, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rgvi-report",  name: "General Visual Inspection Report (ROV)",        icon: FileBarChart, description: "Portrait General Visual Inspection report — marine growth, condition, CP, debris and anomaly findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcasn-report", name: "Caisson Survey Report (ROV)",    icon: FileBarChart, description: "Portrait Caisson Survey report — grouped by Caisson with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-rcond-report", name: "Conductor Survey Report (ROV)",  icon: FileBarChart, description: "Portrait Conductor Survey report — grouped by Conductor (CD) with CP, condition, and findings", requires: ["jobpack", "structure", "sow_report"] },
@@ -125,7 +125,19 @@ export const REPORT_TEMPLATES = {
     ],
 };
 
-export const TOC_SECTIONS = [
+export interface TocTemplateItem {
+  id: string;
+  name: string;
+  mode?: string;
+}
+
+export interface TocSectionItem {
+  id: number | string;
+  name: string;
+  templates: TocTemplateItem[];
+}
+
+export const TOC_SECTIONS: TocSectionItem[] = [
   { id: 1, name: "Structure Details", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
       { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
@@ -206,13 +218,13 @@ export const TOC_SECTIONS = [
       { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 14, name: "Specified Node Inspection", templates: [
-      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" },
+      { id: "rov-selected-node-report", name: "Selected Node Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
       { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", mode: "Diving" },
       { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", mode: "Diving" }
   ] },
   { id: 15, name: "Additional Wall Thickness Inspection", templates: [
-      { id: "utwt-report", name: "UT Thickness Report (ROV)", mode: "ROV" },
+      { id: "utwt-report", name: "UT Wall Thickness Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
       { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", mode: "Diving" }
   ]},
@@ -234,6 +246,77 @@ export const TOC_SECTIONS = [
   { id: 20, name: "Anomaly", templates: [
       { id: "defect-summary", name: "Defect Summary Report", mode: "General" },
       { id: "findings-summary", name: "Findings Summary Report", mode: "General" },
+      { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
+      { id: "findings-report", name: "Findings Report", mode: "General" }
+  ]}
+];
+
+export const PIPELINE_TOC_SECTIONS: TocSectionItem[] = [
+  { id: 101, name: "Pipeline Details", templates: [
+      { id: "structure-summary", name: "Pipeline Summary Report", mode: "General" },
+      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
+  ]},
+  { id: 102, name: "Inspection Summary", templates: [
+      { id: "inspection-summary-graph", name: "Inspection Summary by Graph", mode: "General" },
+      { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", mode: "General" }
+  ]},
+  { id: 103, name: "Pipeline Visual & Event Survey", templates: [
+      { id: "rov-navig-report", name: "Pipeline Visual Inspection Report (NAVIG)", mode: "ROV" },
+      { id: "pipeline-event-sketch-report", name: "Pipeline Event List Sketch Report", mode: "ROV" },
+      { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 104, name: "Cathodic Protection Survey", templates: [
+      { id: "rov-cp-report", name: "Cathodic Protection Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "Cathodic Protection Survey Report (Diving)", mode: "Diving" },
+      { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 105, name: "Riser & Tie-in Inspection", templates: [
+      { id: "rrisi-report", name: "Riser Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rrisi-detail-report", name: "Riser Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-rrisi-report", name: "Riser Inspection (Sketch) Report (Diving)", mode: "Diving" },
+      { id: "diving-rrisi-detail-report", name: "Riser Inspection Report (Diving)", mode: "Diving" },
+      { id: "szci-report", name: "Splash Zone Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" }
+  ]},
+  { id: 106, name: "Anode Inspection", templates: [
+      { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", mode: "ROV" },
+      { id: "diving-anode-report", name: "Selected Anode Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 107, name: "Marine Growth Survey", templates: [
+      { id: "mgi-report", name: "Marine Growth Graph Report (ROV)", mode: "ROV" },
+      { id: "rov-rmgi-report", name: "Marine Growth Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-mgi-report", name: "Marine Growth Inspection Graph Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 108, name: "Base Level & Scour Survey", templates: [
+      { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", mode: "ROV" },
+      { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-rwdi-report", name: "Water Depth Measurement Survey Report (ROV)", mode: "ROV" }
+  ]},
+  { id: 109, name: "Seabed Survey", templates: [
+      { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-gas", name: "Seabed Survey Gas Seepage Sketch Report (ROV)", mode: "General" },
+      { id: "seabed-survey-crater", name: "Seabed Survey Crater Sketch Report (ROV)", mode: "General" },
+      { id: "rov-seabed-report", name: "Seabed Survey Inspection Sketch Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-detail-report", name: "Seabed Survey Debris Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-gas-detail-report", name: "Seabed Survey Gas Seepage Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
+  ]},
+  { id: 110, name: "Wall Thickness Inspection", templates: [
+      { id: "utwt-report", name: "UT Wall Thickness Inspection Report (ROV)", mode: "ROV" },
+      { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
+      { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", mode: "Diving" }
+  ]},
+  { id: 111, name: "Photography & Video Records", templates: [
+      { id: "rov-photo-report", name: "Photography Report (ROV)", mode: "ROV" },
+      { id: "rov-photo-log-report", name: "Photography Log Report (ROV)", mode: "ROV" },
+      { id: "video-log-report", name: "Video Log & Tape Summary Report", mode: "General" },
+      { id: "diver-log-report", name: "Diver Log Report", mode: "Diving" }
+  ]},
+  { id: 112, name: "Pipeline Anomaly & Findings", templates: [
+      { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", mode: "General" },
+      { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", mode: "General" },
       { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
       { id: "findings-report", name: "Findings Report", mode: "General" }
   ]}

@@ -27,14 +27,21 @@ import {
     ChevronUp,
     Sparkles,
     Filter,
-    CheckCheck
+    CheckCheck,
+    Plus,
+    Trash2,
+    Edit2,
+    Save,
+    ArrowUp,
+    ArrowDown,
+    Building2
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isBLRecord, isSGRecord, isCURecord, isRGRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
-import { REPORT_TEMPLATES, TOC_SECTIONS } from "./report-template-catalog";
+import { REPORT_TEMPLATES, TOC_SECTIONS, PIPELINE_TOC_SECTIONS, type TocSectionItem } from "./report-template-catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -131,6 +138,45 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         printBlankReport: false,
     });
 
+    // Fetch real company settings from API to identify Client and saved TOC configuration
+    const { data: companySettingsRes, mutate: mutateCompanySettings } = useSWR("/api/company-settings", fetcher);
+    const companySettings = companySettingsRes?.data;
+    const clientName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+    const clientShort = companySettings?.client_short || "";
+    const companyId = companySettings?.company_id || "default";
+
+    // Data Fetching for Structures
+    const { data: structuresData } = useSWR("/api/structures", fetcher);
+    const structures = structuresData?.data || [];
+
+    // Detect Structure Type (Platform vs Pipeline)
+    const cleanStructureId = selections.structureId ? String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim() : "";
+    const selectedStructureObj = useMemo(() => {
+        return structures.find((s: any) => String(s.id) === String(cleanStructureId) || String(s.str_name) === String(cleanStructureId));
+    }, [structures, cleanStructureId]);
+
+    const detectedStructureType: "PLATFORM" | "PIPELINE" = useMemo(() => {
+        return (selectedStructureObj?.str_type?.toUpperCase() === "PIPELINE" || 
+                selections.structureId?.startsWith("pipeline-") || 
+                selectedStructureObj?.type === "pipeline" || 
+                selections.category?.toLowerCase() === "pipeline") 
+            ? "PIPELINE" 
+            : "PLATFORM";
+    }, [selectedStructureObj, selections.structureId, selections.category]);
+
+    const [structureTypeForToc, setStructureTypeForToc] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
+
+    // Dynamic TOC Sections State (Customizable per client & structure type)
+    const [tocSections, setTocSections] = useState<TocSectionItem[]>(TOC_SECTIONS);
+    const [isSavingToc, setIsSavingToc] = useState(false);
+    const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
+    const [editingSectionId, setEditingSectionId] = useState<string | number | null>(null);
+    const [editingSectionName, setEditingSectionName] = useState("");
+    const [isAddingSection, setIsAddingSection] = useState(false);
+    const [newSectionName, setNewSectionName] = useState("");
+    const [addingTemplateToSecId, setAddingTemplateToSecId] = useState<string | number | null>(null);
+    const [templateSearchTerm, setTemplateSearchTerm] = useState("");
+
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
         const allIds: string[] = [];
         TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
@@ -141,6 +187,71 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [tocSearch, setTocSearch] = useState("");
     const [tocModeFilter, setTocModeFilter] = useState<"all" | "ROV" | "Diving" | "General" | "selected">("all");
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+    // Load Client's Saved TOC configuration for specific structure type
+    const loadTocForStructureType = useCallback((type: "PLATFORM" | "PIPELINE", settingsObj: any) => {
+        const isPipe = type === "PIPELINE";
+        const defaultSections = isPipe ? PIPELINE_TOC_SECTIONS : TOC_SECTIONS;
+        const defaultIds: string[] = [];
+        defaultSections.forEach(s => s.templates.forEach(t => defaultIds.push(t.id)));
+
+        // 1. Check backend storage_config.toc_config
+        const backendTocConfig = settingsObj?.storage_config?.toc_config;
+        const typeConfig = isPipe ? backendTocConfig?.pipeline_toc : backendTocConfig?.platform_toc;
+        if (typeConfig && Array.isArray(typeConfig.sections) && typeConfig.sections.length > 0) {
+            setTocSections(typeConfig.sections);
+            if (Array.isArray(typeConfig.selectedTemplates)) {
+                setSelectedTemplates(typeConfig.selectedTemplates);
+            }
+            return;
+        }
+
+        // 2. Check legacy backend config (if platform)
+        if (!isPipe && backendTocConfig && Array.isArray(backendTocConfig.sections) && backendTocConfig.sections.length > 0) {
+            setTocSections(backendTocConfig.sections);
+            if (Array.isArray(backendTocConfig.selectedTemplates)) {
+                setSelectedTemplates(backendTocConfig.selectedTemplates);
+            }
+            return;
+        }
+
+        // 3. Check localStorage cache for this client and structure type
+        if (typeof window !== "undefined") {
+            const cacheKey = `toc_config_${settingsObj?.company_id || 'default'}_${type.toLowerCase()}`;
+            const localSaved = localStorage.getItem(cacheKey);
+            if (localSaved) {
+                try {
+                    const parsed = JSON.parse(localSaved);
+                    if (Array.isArray(parsed?.sections) && parsed.sections.length > 0) {
+                        setTocSections(parsed.sections);
+                        if (Array.isArray(parsed?.selectedTemplates)) {
+                            setSelectedTemplates(parsed.selectedTemplates);
+                        }
+                        return;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // 4. Default standard fallback
+        setTocSections(defaultSections);
+        setSelectedTemplates(defaultIds);
+    }, []);
+
+    // Auto-sync TOC to detected structure type when user selects a structure
+    useEffect(() => {
+        if (selections.structureId) {
+            setStructureTypeForToc(detectedStructureType);
+            loadTocForStructureType(detectedStructureType, companySettings);
+        }
+    }, [selections.structureId, detectedStructureType, companySettings, loadTocForStructureType]);
+
+    // Initial load when companySettings arrives (if no structure selected yet)
+    useEffect(() => {
+        if (companySettings && !selections.structureId) {
+            loadTocForStructureType(structureTypeForToc, companySettings);
+        }
+    }, [companySettings, selections.structureId, structureTypeForToc, loadTocForStructureType]);
 
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
@@ -160,10 +271,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             (window as any).__reportConfig = config;
         }
     }, [config]);
-
-    // Data Fetching
-    const { data: structuresData } = useSWR("/api/structures", fetcher);
-    const structures = structuresData?.data || [];
 
     // Inspection-specific categories that should only show jobpacks with inspection data
     const INSPECTION_CATEGORIES = ["inspection", "final_report"];
@@ -1160,8 +1267,221 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const allTocTemplates = useMemo(() => {
-        return TOC_SECTIONS.flatMap(sec => sec.templates);
+        return tocSections.flatMap(sec => sec.templates);
+    }, [tocSections]);
+
+    // Flat catalog of all available templates to allow adding to any section
+    const catalogTemplates = useMemo(() => {
+        const list: Array<{ id: string; name: string; mode: string }> = [];
+        const seen = new Set<string>();
+
+        // Default TOC_SECTIONS templates (Platform)
+        TOC_SECTIONS.forEach(s => {
+            s.templates.forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    list.push({ id: t.id, name: t.name, mode: t.mode || "General" });
+                }
+            });
+        });
+
+        // Pipeline TOC templates
+        PIPELINE_TOC_SECTIONS.forEach(s => {
+            s.templates.forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    list.push({ id: t.id, name: t.name, mode: t.mode || "General" });
+                }
+            });
+        });
+
+        // Other templates from catalog
+        Object.entries(REPORT_TEMPLATES).forEach(([_, tList]) => {
+            (tList as any[]).forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    const isROV = t.id.startsWith("rov-") || t.id.includes("rov");
+                    const isDiving = t.id.startsWith("diving-") || t.id.includes("diving");
+                    const mode = isROV ? "ROV" : (isDiving ? "Diving" : "General");
+                    list.push({ id: t.id, name: t.name, mode });
+                }
+            });
+        });
+
+        return list.sort((a, b) => a.name.localeCompare(b.name));
     }, []);
+
+    // Save Client's Default TOC (Scoped by Structure Type: Platform or Pipeline)
+    const handleSaveClientTOC = async () => {
+        setIsSavingToc(true);
+        setSaveSuccessMsg("");
+        try {
+            const isPipe = structureTypeForToc === "PIPELINE";
+            const existingConfig = companySettings?.storage_config?.toc_config || {};
+            const typePayload = {
+                structure_type: structureTypeForToc,
+                sections: tocSections,
+                selectedTemplates: selectedTemplates,
+                updated_at: new Date().toISOString()
+            };
+
+            const tocConfigToSave = {
+                ...existingConfig,
+                client_name: clientName,
+                client_short: clientShort,
+                company_id: companyId,
+                [isPipe ? "pipeline_toc" : "platform_toc"]: typePayload,
+                // Fallback root for backwards compatibility
+                sections: tocSections,
+                selectedTemplates: selectedTemplates,
+                updated_at: new Date().toISOString()
+            };
+
+            // 1. Save in localStorage
+            if (typeof window !== "undefined") {
+                const cacheKey = `toc_config_${companyId}_${structureTypeForToc.toLowerCase()}`;
+                localStorage.setItem(cacheKey, JSON.stringify(typePayload));
+                localStorage.setItem(`toc_config_${companyId}`, JSON.stringify(tocConfigToSave));
+                localStorage.setItem(`toc_config_${clientName}`, JSON.stringify(tocConfigToSave));
+            }
+
+            // 2. Persist to company settings backend
+            const res = await fetch("/api/company-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    company_name: companySettings?.company_name,
+                    client_short: companySettings?.client_short,
+                    department_name: companySettings?.department_name,
+                    def_unit: companySettings?.def_unit,
+                    storage_provider: companySettings?.storage_provider,
+                    storage_config: {
+                        ...(companySettings?.storage_config || {}),
+                        toc_config: tocConfigToSave
+                    }
+                })
+            });
+
+            const typeLabel = structureTypeForToc === "PIPELINE" ? "Pipeline" : "Platform";
+            if (res.ok) {
+                mutateCompanySettings();
+                setSaveSuccessMsg(`Table of Contents saved as default for ${clientName} (${typeLabel})!`);
+            } else {
+                setSaveSuccessMsg(`Saved to local workspace for ${clientName} (${typeLabel})!`);
+            }
+            setTimeout(() => setSaveSuccessMsg(""), 5000);
+        } catch (err) {
+            console.error("Error saving Client TOC:", err);
+            const typeLabel = structureTypeForToc === "PIPELINE" ? "Pipeline" : "Platform";
+            setSaveSuccessMsg(`Saved to local workspace for ${clientName} (${typeLabel})!`);
+            setTimeout(() => setSaveSuccessMsg(""), 5000);
+        } finally {
+            setIsSavingToc(false);
+        }
+    };
+
+    // Reset back to Master catalog (Platform 20 sections or Pipeline 12 sections)
+    const handleResetToMasterTOC = () => {
+        const isPipe = structureTypeForToc === "PIPELINE";
+        const typeLabel = isPipe ? "Pipeline" : "Platform";
+        const defaultCatalog = isPipe ? PIPELINE_TOC_SECTIONS : TOC_SECTIONS;
+        const count = isPipe ? "12 sections" : "20 sections";
+
+        if (confirm(`Reset ${typeLabel} Table of Contents for "${clientName}" back to the standard master catalog (${count})?`)) {
+            setTocSections(defaultCatalog);
+            const allIds: string[] = [];
+            defaultCatalog.forEach(s => s.templates.forEach(t => allIds.push(t.id)));
+            setSelectedTemplates(allIds);
+            if (typeof window !== "undefined") {
+                localStorage.removeItem(`toc_config_${companyId}_${structureTypeForToc.toLowerCase()}`);
+            }
+            setSaveSuccessMsg(`Reset ${typeLabel} TOC to standard master catalog.`);
+            setTimeout(() => setSaveSuccessMsg(""), 4000);
+        }
+    };
+
+    // Add New Custom Section
+    const handleAddSection = () => {
+        if (!newSectionName.trim()) return;
+        const newSec: TocSectionItem = {
+            id: `sec-${Date.now()}`,
+            name: newSectionName.trim(),
+            templates: []
+        };
+        setTocSections(prev => [...prev, newSec]);
+        setNewSectionName("");
+        setIsAddingSection(false);
+    };
+
+    // Rename Section
+    const handleStartRenameSection = (secId: string | number, currentName: string) => {
+        setEditingSectionId(secId);
+        setEditingSectionName(currentName);
+    };
+
+    const handleSaveRenameSection = (secId: string | number) => {
+        if (!editingSectionName.trim()) return;
+        setTocSections(prev => prev.map(s => s.id === secId ? { ...s, name: editingSectionName.trim() } : s));
+        setEditingSectionId(null);
+        setEditingSectionName("");
+    };
+
+    // Delete Section
+    const handleDeleteSection = (secId: string | number, secName: string) => {
+        if (confirm(`Are you sure you want to delete section "${secName}"?`)) {
+            setTocSections(prev => {
+                const secToDelete = prev.find(s => s.id === secId);
+                const templateIdsToDelete = (secToDelete?.templates || []).map(t => t.id);
+                setSelectedTemplates(st => st.filter(id => !templateIdsToDelete.includes(id)));
+                return prev.filter(s => s.id !== secId);
+            });
+        }
+    };
+
+    // Move Section Up/Down
+    const handleMoveSection = (index: number, direction: "up" | "down") => {
+        setTocSections(prev => {
+            const next = [...prev];
+            const targetIndex = direction === "up" ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= next.length) return prev;
+            const temp = next[index];
+            next[index] = next[targetIndex];
+            next[targetIndex] = temp;
+            return next;
+        });
+    };
+
+    // Add Template into Section
+    const handleAddTemplateToSection = (secId: string | number, templateId: string) => {
+        const templateMeta = catalogTemplates.find(t => t.id === templateId);
+        if (!templateMeta) return;
+
+        setTocSections(prev => prev.map(s => {
+            if (s.id !== secId) return s;
+            if (s.templates.some(t => t.id === templateId)) return s;
+            return {
+                ...s,
+                templates: [...s.templates, { id: templateMeta.id, name: templateMeta.name, mode: templateMeta.mode }]
+            };
+        }));
+
+        setSelectedTemplates(prev => Array.from(new Set([...prev, templateId])));
+        setAddingTemplateToSecId(null);
+        setTemplateSearchTerm("");
+    };
+
+    // Remove Template from Section
+    const handleRemoveTemplateFromSection = (secId: string | number, templateId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setTocSections(prev => prev.map(s => {
+            if (s.id !== secId) return s;
+            return {
+                ...s,
+                templates: s.templates.filter(t => t.id !== templateId)
+            };
+        }));
+        setSelectedTemplates(prev => prev.filter(id => id !== templateId));
+    };
 
     const toggleTemplate = (id: string) => {
         setSelectedTemplates(prev => 
@@ -1170,7 +1490,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const toggleSectionAll = (sectionIndex: number, checked: boolean) => {
-        const secTemplates = TOC_SECTIONS[sectionIndex].templates.map(t => t.id);
+        const targetSec = tocSections[sectionIndex];
+        if (!targetSec) return;
+        const secTemplates = targetSec.templates.map(t => t.id);
         if (checked) {
             setSelectedTemplates(prev => Array.from(new Set([...prev, ...secTemplates])));
         } else {
@@ -1207,7 +1529,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     const collapseAllSections = () => {
         const allCollapsed: Record<string, boolean> = {};
-        TOC_SECTIONS.forEach(s => {
+        tocSections.forEach(s => {
             allCollapsed[String(s.id)] = true;
         });
         setCollapsedSections(allCollapsed);
@@ -1222,16 +1544,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const divingCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "diving").length;
         const generalCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "general").length;
 
-        const selectedRovCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "rov" && selectedTemplates.includes(t.id)).length;
-        const selectedDivingCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "diving" && selectedTemplates.includes(t.id)).length;
-
         // Filter sections and templates based on search & mode filter
-        const filteredSections = TOC_SECTIONS.map((sec, secIdx) => {
+        const filteredSections = tocSections.map((sec, secIdx) => {
             const matchesSearch = (text: string) => 
                 !tocSearch.trim() || text.toLowerCase().includes(tocSearch.trim().toLowerCase());
 
             const matchingTemplates = sec.templates.filter(t => {
-                const matchesText = matchesSearch(t.name) || matchesSearch(t.mode) || matchesSearch(sec.name) || matchesSearch(t.id);
+                const matchesText = matchesSearch(t.name) || matchesSearch(t.mode || "") || matchesSearch(sec.name) || matchesSearch(t.id);
                 if (!matchesText) return false;
 
                 if (tocModeFilter === "all") return true;
@@ -1247,8 +1566,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
         }).filter(sec => sec.hasMatches);
 
-        const totalVisibleTemplates = filteredSections.reduce((sum, sec) => sum + sec.filteredTemplates.length, 0);
-
         return (
             <div className="space-y-6 max-w-5xl mx-auto pb-6">
                 {/* Header Section */}
@@ -1263,6 +1580,174 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <p className="text-sm text-slate-500 max-w-lg mx-auto">
                         Select which inspection report sections and datasheets should be compiled into the final document.
                     </p>
+                </div>
+
+                {/* Client Standard TOC Header Card */}
+                <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl p-5 text-white shadow-lg space-y-4 border border-blue-800/40">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-blue-400" />
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-300">
+                                    Client Standard Table of Contents
+                                </span>
+                                {clientShort && (
+                                    <Badge variant="outline" className="text-[10px] text-blue-200 border-blue-400/40 bg-blue-500/10">
+                                        {clientShort}
+                                    </Badge>
+                                )}
+                            </div>
+                            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                                {clientName}
+                            </h3>
+                            <p className="text-xs text-blue-200/80 max-w-xl">
+                                All datasheets and reports under this client workspace follow this customized TOC list and sequence.
+                            </p>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                onClick={handleSaveClientTOC}
+                                disabled={isSavingToc}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs h-9 gap-1.5 shadow-sm"
+                            >
+                                {isSavingToc ? (
+                                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Save className="w-3.5 h-3.5" />
+                                )}
+                                Save as Client Default TOC
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setIsAddingSection(prev => !prev)}
+                                className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs h-9 gap-1.5"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add Section
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleResetToMasterTOC}
+                                className="text-blue-200 hover:text-white hover:bg-white/10 text-xs h-9 gap-1.5"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Reset Master
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Structure Type Selector Tabs */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-semibold text-blue-200 uppercase tracking-wider">
+                                Asset Type TOC:
+                            </span>
+                            <div className="inline-flex p-1 rounded-xl bg-slate-900/60 border border-white/10 gap-1">
+                                <button
+                                    onClick={() => {
+                                        if (structureTypeForToc !== "PLATFORM") {
+                                            setStructureTypeForToc("PLATFORM");
+                                            loadTocForStructureType("PLATFORM", companySettings);
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                        structureTypeForToc === "PLATFORM"
+                                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/40"
+                                            : "text-slate-300 hover:text-white hover:bg-white/10"
+                                    }`}
+                                >
+                                    <Building2 className="w-3.5 h-3.5" />
+                                    Platform (Jacket / Topsides)
+                                    {detectedStructureType === "PLATFORM" && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-200 font-normal">
+                                            Detected
+                                        </span>
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if (structureTypeForToc !== "PIPELINE") {
+                                            setStructureTypeForToc("PIPELINE");
+                                            loadTocForStructureType("PIPELINE", companySettings);
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                        structureTypeForToc === "PIPELINE"
+                                            ? "bg-amber-600 text-white shadow-sm ring-1 ring-amber-400/40"
+                                            : "text-slate-300 hover:text-white hover:bg-white/10"
+                                    }`}
+                                >
+                                    <Layers className="w-3.5 h-3.5" />
+                                    Subsea Pipeline
+                                    {detectedStructureType === "PIPELINE" && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 font-normal">
+                                            Detected
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {selectedStructureObj && (
+                            <span className="text-xs text-blue-200/90 italic">
+                                Active Asset: <strong className="text-white not-italic font-semibold">{selectedStructureObj.str_name}</strong> ({selectedStructureObj.str_type || detectedStructureType})
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Success Notification */}
+                    {saveSuccessMsg && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-medium">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{saveSuccessMsg}</span>
+                        </div>
+                    )}
+
+                    {/* Inline Add Section Form */}
+                    {isAddingSection && (
+                        <div className="p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 space-y-2">
+                            <Label className="text-xs font-semibold text-blue-200">
+                                New Section Title:
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    placeholder="e.g. 'Pipeline Free Span Survey' or 'Riser Clamps Survey'..."
+                                    value={newSectionName}
+                                    onChange={(e) => setNewSectionName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                                    className="h-9 text-xs bg-slate-900/80 border-blue-400/30 text-white placeholder:text-slate-400"
+                                    autoFocus
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={handleAddSection}
+                                    disabled={!newSectionName.trim()}
+                                    className="h-9 px-3 text-xs bg-blue-600 hover:bg-blue-500 text-white"
+                                >
+                                    Add Section
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setIsAddingSection(false);
+                                        setNewSectionName("");
+                                    }}
+                                    className="h-9 px-2 text-xs text-slate-300 hover:text-white hover:bg-white/10"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Top Control Dashboard */}
@@ -1476,12 +1961,22 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {filteredSections.map((sec) => {
+                        {filteredSections.map((sec, secIdx) => {
                             const secTemplates = sec.templates.map(t => t.id);
                             const secSelectedTemplates = sec.templates.filter(t => selectedTemplates.includes(t.id));
                             const allSelected = secTemplates.length > 0 && secSelectedTemplates.length === secTemplates.length;
                             const someSelected = secSelectedTemplates.length > 0 && !allSelected;
                             const isCollapsed = !!collapsedSections[sec.id];
+                            const isEditingThisSection = editingSectionId === sec.id;
+                            const isAddingTemplateToThisSec = addingTemplateToSecId === sec.id;
+
+                            // Filter catalog for templates not already in this section
+                            const availableToAdd = catalogTemplates.filter(ct => 
+                                !sec.templates.some(st => st.id === ct.id) &&
+                                (!templateSearchTerm.trim() || 
+                                 ct.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) || 
+                                 ct.id.toLowerCase().includes(templateSearchTerm.toLowerCase()))
+                            );
 
                             return (
                                 <div
@@ -1490,7 +1985,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 >
                                     {/* Section Header */}
                                     <div className="p-4 bg-slate-50/70 dark:bg-slate-900/90 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 select-none">
-                                        <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
                                             <input
                                                 type="checkbox"
                                                 id={`sec-${sec.id}`}
@@ -1502,15 +1997,44 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 onChange={(e) => toggleSectionAll(sec.originalIndex, e.target.checked)}
                                                 disabled={sec.templates.length === 0}
                                             />
-                                            <label
-                                                htmlFor={`sec-${sec.id}`}
-                                                className="font-bold text-slate-900 dark:text-slate-100 text-sm md:text-base cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 truncate"
-                                            >
-                                                <span>{sec.name}</span>
-                                            </label>
+
+                                            {isEditingThisSection ? (
+                                                <div className="flex items-center gap-2 flex-1 max-w-md">
+                                                    <Input
+                                                        value={editingSectionName}
+                                                        onChange={(e) => setEditingSectionName(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveRenameSection(sec.id)}
+                                                        className="h-8 text-sm"
+                                                        autoFocus
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => handleSaveRenameSection(sec.id)}
+                                                        className="h-8 px-2.5 bg-blue-600 text-white"
+                                                    >
+                                                        <Check className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => setEditingSectionId(null)}
+                                                        className="h-8 px-2 text-slate-400"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <label
+                                                    htmlFor={`sec-${sec.id}`}
+                                                    className="font-bold text-slate-900 dark:text-slate-100 text-sm md:text-base cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 truncate"
+                                                >
+                                                    <span>{sec.name}</span>
+                                                </label>
+                                            )}
+
                                             <Badge
                                                 variant="secondary"
-                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                                                     allSelected
                                                         ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                                                         : someSelected
@@ -1522,7 +2046,55 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             </Badge>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5 shrink-0">
+                                        {/* Section Control Tools */}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            {/* Reorder Buttons */}
+                                            <button
+                                                onClick={() => handleMoveSection(sec.originalIndex, "up")}
+                                                disabled={sec.originalIndex === 0}
+                                                title="Move Section Up"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                            >
+                                                <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleMoveSection(sec.originalIndex, "down")}
+                                                disabled={sec.originalIndex === tocSections.length - 1}
+                                                title="Move Section Down"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                            >
+                                                <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Rename Section Button */}
+                                            {!isEditingThisSection && (
+                                                <button
+                                                    onClick={() => handleStartRenameSection(sec.id, sec.name)}
+                                                    title="Rename Section"
+                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+
+                                            {/* Add Template to Section Button */}
+                                            <button
+                                                onClick={() => {
+                                                    setAddingTemplateToSecId(prev => prev === sec.id ? null : sec.id);
+                                                    setTemplateSearchTerm("");
+                                                }}
+                                                title="Add Report Template to this Section"
+                                                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                                                    isAddingTemplateToThisSec 
+                                                        ? "bg-blue-600 text-white" 
+                                                        : "text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                                                }`}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span className="hidden lg:inline text-xs">Add Report</span>
+                                            </button>
+
+                                            {/* Clear / Select All in Section */}
                                             {sec.templates.length > 0 && (
                                                 <button
                                                     onClick={() => toggleSectionAll(sec.originalIndex, !allSelected)}
@@ -1532,9 +2104,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 </button>
                                             )}
 
+                                            {/* Delete Section Button */}
+                                            <button
+                                                onClick={() => handleDeleteSection(sec.id, sec.name)}
+                                                title="Delete this Section"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Collapse Chevron */}
                                             <button
                                                 onClick={() => toggleCollapseSection(sec.id)}
-                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors ml-1"
                                                 title={isCollapsed ? "Expand section" : "Collapse section"}
                                             >
                                                 {isCollapsed ? (
@@ -1546,13 +2128,76 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         </div>
                                     </div>
 
+                                    {/* Inline Template Picker for Adding to this Section */}
+                                    {isAddingTemplateToThisSec && (
+                                        <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-900/40 space-y-2 animate-fadeIn">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                                                    Add Report Template to "{sec.name}":
+                                                </span>
+                                                <button
+                                                    onClick={() => setAddingTemplateToSecId(null)}
+                                                    className="text-slate-400 hover:text-slate-600 text-xs"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                            <Input
+                                                placeholder="Filter templates from master catalog..."
+                                                value={templateSearchTerm}
+                                                onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                                                className="h-8 text-xs bg-white dark:bg-slate-900"
+                                            />
+                                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                                                {availableToAdd.length === 0 ? (
+                                                    <p className="text-xs text-slate-400 italic py-1">
+                                                        No matching templates available to add.
+                                                    </p>
+                                                ) : (
+                                                    availableToAdd.slice(0, 15).map((at) => (
+                                                        <div
+                                                            key={at.id}
+                                                            onClick={() => handleAddTemplateToSection(sec.id, at.id)}
+                                                            className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 hover:bg-blue-100/60 dark:hover:bg-blue-900/50 cursor-pointer border border-slate-200/70 dark:border-slate-800 transition-colors"
+                                                        >
+                                                            <div className="flex items-center gap-2 truncate">
+                                                                <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                                                    {at.name}
+                                                                </span>
+                                                                <span className="text-[10px] uppercase font-bold text-slate-500">
+                                                                    ({at.mode})
+                                                                </span>
+                                                            </div>
+                                                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-blue-600 font-semibold">
+                                                                + Add
+                                                            </Button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Section Item Cards */}
                                     {!isCollapsed && (
                                         <div className="p-4">
                                             {sec.templates.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground italic py-2">
-                                                    No templates configured for this section yet.
-                                                </p>
+                                                <div className="text-center py-4 space-y-2 border border-dashed rounded-xl border-slate-200 dark:border-slate-800">
+                                                    <p className="text-xs text-muted-foreground italic">
+                                                        No templates in this section yet.
+                                                    </p>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setAddingTemplateToSecId(sec.id);
+                                                            setTemplateSearchTerm("");
+                                                        }}
+                                                        className="text-xs h-7 gap-1"
+                                                    >
+                                                        <Plus className="w-3 h-3" /> Add Report Template
+                                                    </Button>
+                                                </div>
                                             ) : sec.filteredTemplates.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground italic py-2">
                                                     No reports in this section match the current search or filter.
@@ -1595,17 +2240,28 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                                         }`}>
                                                                             {t.name}
                                                                         </span>
-                                                                        <span
-                                                                            className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md shrink-0 ${
-                                                                                isROV
-                                                                                    ? "bg-amber-100 text-amber-800 border border-amber-200/70 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900/50"
-                                                                                    : isDiving
-                                                                                    ? "bg-indigo-100 text-indigo-800 border border-indigo-200/70 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-900/50"
-                                                                                    : "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
-                                                                            }`}
-                                                                        >
-                                                                            {t.mode}
-                                                                        </span>
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            <span
+                                                                                className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${
+                                                                                    isROV
+                                                                                        ? "bg-amber-100 text-amber-800 border border-amber-200/70 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900/50"
+                                                                                        : isDiving
+                                                                                        ? "bg-indigo-100 text-indigo-800 border border-indigo-200/70 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-900/50"
+                                                                                        : "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                                                                                }`}
+                                                                            >
+                                                                                {t.mode}
+                                                                            </span>
+
+                                                                            {/* Remove Template from Section Button */}
+                                                                            <button
+                                                                                onClick={(e) => handleRemoveTemplateFromSection(sec.id, t.id, e)}
+                                                                                title="Remove template from this section"
+                                                                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition-opacity"
+                                                                            >
+                                                                                <X className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
 
                                                                     {t.id && (
@@ -2106,7 +2762,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Universal Blank Report Interceptor — guarantees ALL report templates produce an authentic blank report
         if (selections.printBlankReport) {
             const { generateBlankInspectionReport } = await import("@/utils/report-generators/blank-inspection-report");
-            const targetT = getCurrentTemplate() || TOC_SECTIONS.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
+            const targetT = getCurrentTemplate() || tocSections.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
             const templateTitle = targetT?.name || currentTemplateId;
             return await generateBlankInspectionReport(currentTemplateId, templateTitle, companySettings, reportConfig as any);
         }
@@ -2115,7 +2771,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
-            const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
+            const selectedTOC = tocSections.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
             if (previewMode === "individual") {
                 const targetId = activePreviewTemplate || (selectedTOC[0]?.id || "");
@@ -2248,22 +2904,22 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     } = await import("@/utils/report-generators/final-datasheet-report");
 
                     const collectedSections: Array<{
-                        section: typeof TOC_SECTIONS[0];
+                        section: typeof tocSections[0];
                         dividerDonorDoc: any;
                         reports: Array<{
-                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            template: typeof tocSections[0]["templates"][0];
                             donorDoc: any;
                             pageCount: number;
                         }>;
                     }> = [];
 
                     let count = 0;
-                    for (const s of TOC_SECTIONS) {
+                    for (const s of tocSections) {
                         const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
                         if (sectionTemplates.length === 0) continue;
 
                         const activeReports: Array<{
-                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            template: typeof tocSections[0]["templates"][0];
                             donorDoc: any;
                             pageCount: number;
                         }> = [];
@@ -4288,7 +4944,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV Selected Node Report
+        // ROV Selected Node Inspection Report
         if (currentTemplateId === "rov-selected-node-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
@@ -4354,7 +5010,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { ...reportConfig, returnBlob } as any
                 );
             } catch (error) {
-                console.error("Selected Node Report Generator Error:", error);
+                console.error("Selected Node Inspection Report Generator Error:", error);
                 throw error;
             }
         }
@@ -7851,7 +8507,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     const renderPreview = () => {
         const isFinalDatasheet = selections.templateId === "final-inspection-datasheet";
-        const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
+        const selectedTOC = tocSections.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
         return (
             <div className="h-full flex flex-col space-y-4">

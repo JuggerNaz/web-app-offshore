@@ -24,8 +24,60 @@ interface ReportConfig {
     isBlankReport?: boolean;
 }
 
+export const formatCoverage = (val: any): string => {
+    if (val === null || val === undefined || val === '' || val === '-' || val === '—') return '—';
+    const str = String(val).trim();
+    if (str === '0' || str === '0%') return '0%';
+    if (/^[0-9]+(?:\.[0-9]+)?$/.test(str)) return `${str}%`;
+    if (str.endsWith('%')) return str;
+    return str;
+};
+
+export const buildROVUTWTRow = (r: any, idx: number): (string | number)[] => {
+    const d = r.inspection_data || r.inspection_dat || {};
+    const qid = r.structure_components?.q_id || r.component?.q_id || 'N/A';
+    const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
+                   r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
+                   r.rov_job_id || r.dive_job_id || 'N/A';
+
+    // Marine Growth Hard / Soft coverage extraction
+    let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.hard_growth ?? r.marine_growth_hard;
+    let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.soft_growth ?? r.marine_growth_soft;
+
+    if ((rawH === undefined || rawH === null || rawS === undefined || rawS === null) && (d.marine_growth || r.marine_growth)) {
+        const mg = String(d.marine_growth || r.marine_growth).trim();
+        const hardMatch = mg.match(/(?:hard|h)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        const softMatch = mg.match(/(?:soft|s)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        if (hardMatch && (rawH === undefined || rawH === null)) rawH = hardMatch[1];
+        if (softMatch && (rawS === undefined || rawS === null)) rawS = softMatch[1];
+    }
+
+    const ut12 = d.ut_12_o_clock ?? d.ut_12 ?? d['12_o_clock'] ?? d.ut_reading_12 ?? '-';
+    const ut3  = d.ut_3_o_clock ?? d.ut_3 ?? d['3_o_clock'] ?? d.ut_reading_3 ?? '-';
+    const ut6  = d.ut_6_o_clock ?? d.ut_6 ?? d['6_o_clock'] ?? d.ut_reading_6 ?? '-';
+    const ut9  = d.ut_9_o_clock ?? d.ut_9 ?? d['9_o_clock'] ?? d.ut_reading_9 ?? '-';
+
+    // Construct findings
+    const findings = formatReportFindingText(r);
+
+    return [
+        idx + 1,
+        qid,
+        r.elevation || d.elevation || '-',
+        diveNo,
+        formatCoverage(rawH),
+        formatCoverage(rawS),
+        ut12,
+        ut3,
+        ut6,
+        ut9,
+        getRecordNominalThickness(r),
+        findings
+    ];
+};
+
 /**
- * ROV UT Wall Thickness Report (RUTWT)
+ * ROV UT Wall Thickness Inspection Report (RUTWT)
  */
 export const generateROVUTWTReport = async (
     records: any[],
@@ -70,7 +122,7 @@ export const generateROVUTWTReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `UT Thickness Report (ROV) - ${extraTitleInfo}` : "UT Thickness Report (ROV)",
+                reportTitle: extraTitleInfo ? `UT Wall Thickness Inspection Report (ROV) - ${extraTitleInfo}` : "UT Wall Thickness Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,
@@ -102,41 +154,13 @@ export const generateROVUTWTReport = async (
         // --- 2. Sorting & Mapping ---
         const safeRecords = records || [];
         const sortedRecords = [...safeRecords].sort((a, b) => {
-            const elevA = parseFloat(a.elevation) || 0;
-            const elevB = parseFloat(b.elevation) || 0;
+            const elevA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
+            const elevB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
             return elevB - elevA; // Top to bottom
         });
 
-        const bodyRows = sortedRecords.length > 0 ? sortedRecords.map((r, idx) => {
-            const d = r.inspection_data || r.inspection_dat || {};
-            const qid = r.structure_components?.q_id || 'N/A';
-            const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || 
-                           r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || 
-                           r.rov_job_id || r.dive_job_id || 'N/A';
-            
-            const linkedAnom = r.insp_anomalies && r.insp_anomalies.length > 0 ? r.insp_anomalies[0] : null;
-            const isAnomaly = r.has_anomaly || !!linkedAnom || (r.description && r.description.toLowerCase().includes('anomaly'));
-            const isRectified = linkedAnom ? linkedAnom.is_rectified : (r.rectified || (r.description && r.description.toLowerCase().includes('rectified')));
-            const anomRef = linkedAnom?.anomaly_ref_no || r.anomaly_ref_no || '';
-            const rectRem = linkedAnom?.rectified_remarks || r.rectified_comments || '';
-
-            // Construct findings
-            const findings = formatReportFindingText(r);
-            
-            return [
-                idx + 1,
-                qid,
-                r.elevation || '-',
-                diveNo,
-                d.ut_12_o_clock || '-',
-                d.ut_3_o_clock || '-',
-                d.ut_6_o_clock || '-',
-                d.ut_9_o_clock || '-',
-                getRecordNominalThickness(r),
-                findings
-            ];
-        }) : [
-            ["-", "-", "-", "-", "-", "-", "-", "-", "-", "No UT wall thickness observations recorded for this scope."]
+        const bodyRows = sortedRecords.length > 0 ? sortedRecords.map(buildROVUTWTRow) : [
+            ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No UT wall thickness observations recorded for this scope."]
         ];
 
         autoTable(doc, {
@@ -144,12 +168,14 @@ export const generateROVUTWTReport = async (
             margin: { left: margin, right: margin, top: margin + headerH + 6 },
             head: [
                 [
-                    { content: 'No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Item No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
                     { content: 'Component QID', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                    { content: 'Elevation (m)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Elevation\n(m)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
                     { content: 'Dive No.', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
-                    { content: 'Wall Thickness Readings (mm)', colSpan: 4, styles: {halign: 'center', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, lineWidth: 0.1, lineColor: colors.border} },
-                    { content: 'Nominal (mm)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Hard Growth\n(%)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Soft Growth\n(%)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Wall Thickness Readings (mm)', colSpan: 4, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [240,240,240] : colors.teal, textColor: config?.printFriendly ? colors.text : 255, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: 'Nominal\n(mm)', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} },
                     { content: 'Findings', rowSpan: 2, styles: {halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, lineWidth: 0.1, lineColor: colors.border} }
                 ],
                 [
@@ -169,16 +195,18 @@ export const generateROVUTWTReport = async (
                 applyRecordCellStyling(data.cell, r, isPF);
             },
             columnStyles: {
-                0: { cellWidth: 15, halign: 'center' },
-                1: { cellWidth: 35 },
-                2: { cellWidth: 25, halign: 'center' },
-                3: { cellWidth: 30, halign: 'center' },
+                0: { cellWidth: 14, halign: 'center' },
+                1: { cellWidth: 32 },
+                2: { cellWidth: 20, halign: 'center' },
+                3: { cellWidth: 20, halign: 'center' },
                 4: { cellWidth: 20, halign: 'center' },
                 5: { cellWidth: 20, halign: 'center' },
-                6: { cellWidth: 20, halign: 'center' },
-                7: { cellWidth: 20, halign: 'center' },
-                8: { cellWidth: 20, halign: 'center' },
-                9: { cellWidth: 'auto' }
+                6: { cellWidth: 17, halign: 'center' },
+                7: { cellWidth: 17, halign: 'center' },
+                8: { cellWidth: 17, halign: 'center' },
+                9: { cellWidth: 17, halign: 'center' },
+                10: { cellWidth: 20, halign: 'center' },
+                11: { cellWidth: 'auto' }
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawHeader(doc);
@@ -235,7 +263,7 @@ export const generateROVUTWTReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_UTWT_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
+        doc.save(`ROV_UT_Wall_Thickness_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo)}_${format(new Date(), 'yyyyMMdd')}.pdf`);
         return;
 
     } catch (e) {

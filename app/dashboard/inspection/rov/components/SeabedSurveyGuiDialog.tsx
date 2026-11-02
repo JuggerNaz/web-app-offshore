@@ -240,9 +240,9 @@ export function SeabedSurveyGuiInline({
                         label: (index + 1).toString(),
                         type: cat,
                         isMetallic: idraw.material === 'Metallic' || idraw.debris_material === 'Metallic',
-                        description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris):\s*/, '') || '',
+                        description: r.description?.replace(/^(Debris|Gas Seepage|Crater|Seabed Debris)(:\s*|\s*$)/i, '') || idraw.debris_desc || '',
                         material: idraw.material || idraw.debris_material || 'Unknown',
-                        size: idraw.size_dimensions || idraw.dimension_1 || `${idraw.size_length || ''}${idraw.size_length_unit || ''} x ${idraw.size_width || ''}${idraw.size_width_unit || ''}`,
+                        size: idraw.size_dimensions || idraw.dimension_1 || (idraw.size_length || idraw.size_width ? `${idraw.size_length || ''}${idraw.size_length_unit || ''} x ${idraw.size_width || ''}${idraw.size_width_unit || ''}` : ''),
                         length: idraw.size_length || '',
                         lengthUnit: idraw.size_length_unit || 'm',
                         width: idraw.size_width || '',
@@ -679,7 +679,7 @@ export function SeabedSurveyGuiInline({
                 inspection_type_code: 'RSEAB',
                 inspection_type_id: inspTypeId,
                 sow_report_no: sowReportNo || rovJob?.raw?.sow_report_no || 'Unknown',
-                description: formData.category === 'Debris' ? formData.category : (formData.description ? `${formData.category}: ${formData.description}` : formData.category),
+                description: formData.category === 'Debris' ? (formData.debrisDesc ? `Debris: ${formData.debrisDesc}` : 'Debris') : (formData.description ? `${formData.category}: ${formData.description}` : formData.category),
                 inspection_data: inspectionData,
                 status: 'COMPLETED',
                 tape_id: typeof tapeId === 'string' && tapeId !== 'undefined' ? (parseInt(tapeId, 10) || null) : (typeof tapeId === 'number' ? tapeId : null),
@@ -1011,7 +1011,7 @@ export function SeabedSurveyGuiInline({
                 .update({ 
                     inspection_data: newData,
                     component_id: componentId,
-                    description: editFormData.category === 'Debris' ? editFormData.category : (editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category),
+                    description: editFormData.category === 'Debris' ? (editFormData.debrisDesc ? `Debris: ${editFormData.debrisDesc}` : 'Debris') : (editFormData.description ? `${editFormData.category}: ${editFormData.description}` : editFormData.category),
                     md_user: authData?.user?.id || null,
                     md_date: new Date().toISOString()
                 })
@@ -1841,7 +1841,7 @@ export function SeabedSurveyGuiInline({
         <ReportPreviewDialog
             open={reportPreviewOpen}
             onOpenChange={setReportPreviewOpen}
-            title="Seabed Survey Multi-Drop Sketch Report"
+            title="Seabed Survey Sketch Report"
             fileName={`Seabed_Survey_Report_${sowReportNo || 'Draft'}`}
             generateReport={async (isPrintFriendly, showSignatures) => {
                 const numJpId = Number(jobpackId);

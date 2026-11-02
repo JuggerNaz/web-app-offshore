@@ -24,6 +24,94 @@ interface ReportConfig {
     isBlankReport?: boolean;
 }
 
+export const formatCoverage = (val: any): string => {
+    if (val === null || val === undefined || val === '' || val === '-' || val === '—') return '—';
+    const str = String(val).trim();
+    if (str === '0' || str === '0%') return '0%';
+    if (/^[0-9]+(?:\.[0-9]+)?$/.test(str)) return `${str}%`;
+    if (str.endsWith('%')) return str;
+    return str;
+};
+
+export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: string } => {
+    let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.hard_growth ?? r?.marine_growth_hard;
+    let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.soft_growth ?? r?.marine_growth_soft;
+
+    if ((rawH === undefined || rawH === null || rawS === undefined || rawS === null) && (d.marine_growth || r?.marine_growth)) {
+        const mg = String(d.marine_growth || r?.marine_growth).trim();
+        const hardMatch = mg.match(/(?:hard|h)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        const softMatch = mg.match(/(?:soft|s)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        if (hardMatch && (rawH === undefined || rawH === null)) rawH = hardMatch[1];
+        if (softMatch && (rawS === undefined || rawS === null)) rawS = softMatch[1];
+    }
+
+    return {
+        hard: formatCoverage(rawH),
+        soft: formatCoverage(rawS),
+    };
+};
+
+/**
+ * Builds the 2-row representation for a Diving GVINS record:
+ * Row 1: No. (rowSpan: 2) | Component QID | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding (label at 2nd col) | Findings Text (merged across 3rd through 8th col)
+ */
+export const buildDivingGVINSRows = (r: any, idx: number, isPrintFriendly?: boolean): any[][] => {
+    const d   = r.inspection_data || {};
+    const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
+    const elevation = r.elevation ?? d.elevation ?? "—";
+
+    const diveNo =
+        r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
+        r.dive_job_id || "—";
+
+    const compCond  = d.component_condition ?? d.general_condition ?? d.condition ?? "—";
+    const coatCond  = d.coating_condition ?? d.coating ?? "—";
+    const { hard, soft } = extractHardSoftGrowth(d, r);
+
+    // Finding text excludes marine growth and condition values (now in dedicated columns)
+    const mainDesc = r.description?.trim() || d.description?.trim() || r.findings?.trim() || d.findings?.trim() || r.remarks?.trim() || d.remarks?.trim();
+    const findings = formatReportFindingText(r, mainDesc || undefined);
+
+    const row1 = [
+        { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+        qid,
+        String(elevation),
+        String(diveNo),
+        String(compCond),
+        String(coatCond),
+        hard,
+        soft
+    ];
+
+    const row2 = [
+        { 
+            content: "Finding", 
+            styles: { 
+                halign: "center", 
+                valign: "middle", 
+                fontStyle: "bold",
+                fillColor: isPrintFriendly ? [248, 248, 248] : [240, 244, 248]
+            } 
+        },
+        { 
+            content: findings, 
+            colSpan: 6, 
+            styles: { 
+                halign: "left", 
+                valign: "middle" 
+            } 
+        }
+    ];
+
+    return [row1, row2];
+};
+
+/**
+ * Diving General Visual Inspection (GVINS) Report (Portrait)
+ * Row 1: No. | Component QID | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding (2nd col) | Merged finding observations (3rd through 8th col)
+ */
 export const generateDivingGVINSReport = async (
     records: any[],
     headerData: any,
@@ -93,7 +181,7 @@ export const generateDivingGVINSReport = async (
             }, config.printFriendly, margin);
         };
 
-        // ── Build each table row ────────────────────────────────────────────────
+        // ── Sort records ────────────────────────────────────────────────────────
         const sorted = [...records].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
@@ -110,80 +198,75 @@ export const generateDivingGVINSReport = async (
 
         const isPF = config.printFriendly;
 
-        const buildRow = (r: any, idx: number): string[] => {
-            const d   = r.inspection_data || {};
-            const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
-            const elevation = r.elevation ?? d.elevation ?? "—";
-
-            const diveNo =
-                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
-                r.dive_job_id || "—";
-
-            const coatingCond   = d.coating_condition ?? "—";
-            const componentCond = d.component_condition ?? "—";
-            const mgPercent     = (d.marine_growth ?? [
-                d.marine_growth_hard ? `Hard: ${d.marine_growth_hard}` : '',
-                d.marine_growth_soft ? `Soft: ${d.marine_growth_soft}` : ''
-            ].filter(Boolean).join(', ')) || "—";
-
-            const findings = formatReportFindingText(r, r.description);
-            return [
-                String(idx + 1),
-                qid,
-                String(elevation),
-                String(diveNo),
-                String(coatingCond),
-                String(componentCond),
-                String(mgPercent),
-                findings,
-            ];
-        };
-
         // ── Draw ────────────────────────────────────────────────────────────────
         drawPageHeader(doc);
         const startY = drawContextRow(doc, margin + HEADER_H + 2);
 
+        const bodyRows = sorted.length > 0
+            ? sorted.flatMap((r, idx) => buildDivingGVINSRows(r, idx, isPF))
+            : [
+                [
+                    { content: "—", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                    "—", "—", "—", "—", "—", "—", "—"
+                ],
+                [
+                    { content: "Finding", styles: { halign: "center", valign: "middle", fontStyle: "bold" } },
+                    { content: "No inspection observations recorded for this scope.", colSpan: 6, styles: { halign: "left", valign: "middle" } }
+                ]
+            ];
+
         autoTable(doc, {
             startY,
-            margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
+            margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "No.",       styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "QID",             styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Elevation\n(m)",   styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dive No.",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Coating\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Component\nQID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Elevation\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Marine\nGrowth %", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Findings",         styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Coating\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Hard Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Soft Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
-            body: sorted.map(buildRow),
+            body: bodyRows,
             theme: "grid",
-            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+            headStyles: {
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
-                fontSize: 7.5,
+                fontSize: 7.2,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
-            styles: {fontSize: 7,
-                cellPadding: 2,
+                cellPadding: 1.8,
+                minCellHeight: 8,
+                lineWidth: 0.1,
+                lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
+            },
+            styles: {
+                fontSize: 6.8,
+                cellPadding: 1.8,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak", lineWidth: 0.1,},
+                overflow: "linebreak",
+                lineWidth: 0.1,
+            },
             columnStyles: {
-                0: { cellWidth: 10,  halign: "center" },
-                1: { cellWidth: 22 },
-                2: { cellWidth: 16,  halign: "center" },
-                3: { cellWidth: 18,  halign: "center" },
-                4: { cellWidth: 20,  halign: "center" },
-                5: { cellWidth: 20,  halign: "center" },
-                6: { cellWidth: 16,  halign: "center" },
-                7: { cellWidth: "auto" },
+                0: { cellWidth: 10, halign: "center" },
+                1: { cellWidth: 32, halign: "center" },
+                2: { cellWidth: 18, halign: "center" },
+                3: { cellWidth: 18, halign: "center" },
+                4: { cellWidth: 32, halign: "center" },
+                5: { cellWidth: 32, halign: "center" },
+                6: { cellWidth: 24, halign: "center" },
+                7: { cellWidth: 24, halign: "center" },
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;
-                const r = sorted[data.row.index];
-                applyRecordCellStyling(data.cell, r, isPF);
+                const recordIdx = Math.floor(data.row.index / 2);
+                const r = sorted[recordIdx];
+                if (r) {
+                    applyRecordCellStyling(data.cell, r, isPF);
+                }
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
@@ -202,20 +285,15 @@ export const generateDivingGVINSReport = async (
             },
         });
 
+        const finalY = (doc as any).lastAutoTable?.finalY ?? startY;
         if (config.showSignatures !== false) {
-            const sigH   = 20;
-            const sigW   = contentWidth / 3;
-            let finalY   = (doc as any).lastAutoTable?.finalY ?? (margin + HEADER_H + 20);
-            
-            // If not enough space for signature (sigH + margin), add new page
-            if (finalY + sigH + 15 > pageHeight) {
+            let sigY = pageHeight - 38;
+            if (finalY > sigY - 10) {
                 doc.addPage();
                 drawPageHeader(doc);
-                finalY = margin + HEADER_H + 10;
+                sigY = pageHeight - 38;
             }
-
-            const sigY = pageHeight - 35; // Fixed position near bottom
-
+            const sigW = contentWidth / 3;
             const drawSig = (label: string, lx: number, person?: { name?: string; date?: string }) => {
                 doc.setDrawColor(...colors.navy); doc.setLineWidth(0.1);
                 doc.rect(lx, sigY, sigW - 4, 18);
