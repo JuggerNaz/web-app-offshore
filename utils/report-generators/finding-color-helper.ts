@@ -19,6 +19,31 @@ export interface RecordStatusInfo {
     additionalUtEntries: string[];
 }
 
+export const formatCoverage = (val: any): string => {
+    if (val === undefined || val === null) return "—";
+    const s = String(val).trim();
+    if (s === "" || s === "-" || s === "—" || s.toLowerCase() === "null" || s.toLowerCase() === "undefined" || s.toLowerCase() === "none" || s.toLowerCase() === "n/a") return "—";
+    return s.endsWith("%") ? s : `${s}%`;
+};
+
+export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: string } => {
+    let rawH = d?.marine_growth_hard ?? d?.mgi_hard_growth ?? d?.mgi_hard_coverage ?? d?.hard_coverage ?? d?.hard_growth ?? r?.marine_growth_hard;
+    let rawS = d?.marine_growth_soft ?? d?.mgi_soft_growth ?? d?.mgi_soft_coverage ?? d?.soft_coverage ?? d?.soft_growth ?? r?.marine_growth_soft;
+
+    if ((rawH === undefined || rawH === null || rawS === undefined || rawS === null) && (d?.marine_growth || r?.marine_growth)) {
+        const mg = String(d?.marine_growth || r?.marine_growth).trim();
+        const hardMatch = mg.match(/(?:hard|h)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        const softMatch = mg.match(/(?:soft|s)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        if (hardMatch && (rawH === undefined || rawH === null)) rawH = hardMatch[1];
+        if (softMatch && (rawS === undefined || rawS === null)) rawS = softMatch[1];
+    }
+
+    return {
+        hard: formatCoverage(rawH),
+        soft: formatCoverage(rawS),
+    };
+};
+
 export const REPORT_COLORS = {
     navy: [7, 78, 136] as [number, number, number],
     teal: [20, 184, 166] as [number, number, number],

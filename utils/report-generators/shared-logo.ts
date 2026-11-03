@@ -1020,6 +1020,8 @@ export {
     getRecordStatusInfo,
     formatReportFindingText,
     applyRecordCellStyling,
+    extractHardSoftGrowth,
+    formatCoverage,
     REPORT_COLORS,
     type RecordStatusType,
     type RecordStatusInfo

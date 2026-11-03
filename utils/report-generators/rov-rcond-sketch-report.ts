@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -53,7 +53,8 @@ export const generateROVCondSketchReport = async (
             mudline: [145, 123, 76] as [number, number, number],
         };
 
-        const supabase = createClient();
+        let supabase: any = null;
+        try { supabase = createClient(); } catch (_) {}
 
         // 1. Context & Fetching
         if (!config.isBlankReport && (!records || records.length === 0)) {
@@ -61,7 +62,7 @@ export const generateROVCondSketchReport = async (
         }
 
         const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
-        const { data: platform } = effectiveStructureId 
+        const { data: platform } = (effectiveStructureId && supabase) 
             ? await supabase.from('u_platform').select('water_depth').eq('id', effectiveStructureId).maybeSingle()
             : { data: null };
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
@@ -69,7 +70,7 @@ export const generateROVCondSketchReport = async (
         const compRegistry = new Map<string, any>();
 
         // Preload all components for the structure to ensure complete hierarchy & metadata
-        if (effectiveStructureId) {
+        if (effectiveStructureId && supabase) {
             try {
                 const { data: allComps } = await supabase
                     .from('structure_components')
@@ -126,7 +127,7 @@ export const generateROVCondSketchReport = async (
 
         const identifierList = Array.from(parentIdSet).filter(id => !compRegistry.has(String(id)) && !compRegistry.has(String(id).toUpperCase()));
         
-        if (identifierList.length > 0) {
+        if (identifierList.length > 0 && supabase) {
             // Path 1: Resolve by numeric IDs
             const numericIds = identifierList.map(v => Number(v)).filter(v => !isNaN(v));
             if (numericIds.length > 0) {
@@ -178,7 +179,7 @@ export const generateROVCondSketchReport = async (
                               regMeta.associated_id || null;
             }
             
-            const rawId = String(associateId || comp.id || "");
+            const rawId = String(associateId || comp.id || comp.q_id || comp.qid || r.q_id || r.qid || "");
             if (rawId) {
                 if (!rawGroups[rawId]) rawGroups[rawId] = [];
                 rawGroups[rawId].push(r);
@@ -192,7 +193,7 @@ export const generateROVCondSketchReport = async (
             let resolved = compRegistry.get(rawId) || compRegistry.get(rawId.toUpperCase());
             
             // AGGRESSIVE LATE-BINDING FETCH
-            if (!resolved && !isNaN(Number(rawId))) {
+            if (!resolved && !isNaN(Number(rawId)) && supabase) {
                 try {
                     const { data: late } = await supabase.from('structure_components').select('id, q_id, code, metadata').eq('id', Number(rawId)).maybeSingle();
                     if (late) {
@@ -495,7 +496,41 @@ export const generateROVCondSketchReport = async (
                     const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                    const findings = formatReportFindingText(r);
+                    const findingParts: string[] = [];
+                    const rDesc = r.description?.trim();
+                    const rdFindings = (typeof rd.findings === 'string' && rd.findings.trim()) ? rd.findings.trim() : '';
+                    const rdDesc = (typeof rd.description === 'string' && rd.description.trim()) ? rd.description.trim() : '';
+
+                    if (rDesc) findingParts.push(rDesc);
+                    if (rdFindings && !findingParts.includes(rdFindings)) findingParts.push(rdFindings);
+                    if (rdDesc && !findingParts.includes(rdDesc)) findingParts.push(rdDesc);
+
+                    const compCond = (rd.component_condition || rd.comp_cond || rd.general_condition || r.component_condition || "").toString().trim();
+                    if (compCond && compCond !== "—" && compCond !== "-" && compCond.toLowerCase() !== "null" && compCond.toLowerCase() !== "undefined") {
+                        findingParts.push(`Component Condition: ${compCond}`);
+                    }
+
+                    const coatCond = (rd.coating_condition || rd.coat_cond || r.coating_condition || "").toString().trim();
+                    if (coatCond && coatCond !== "—" && coatCond !== "-" && coatCond.toLowerCase() !== "null" && coatCond.toLowerCase() !== "undefined") {
+                        findingParts.push(`Coating Condition: ${coatCond}`);
+                    }
+
+                    const { hard, soft } = extractHardSoftGrowth(rd, r);
+                    const mgParts: string[] = [];
+                    if (hard && hard !== "—") mgParts.push(`Hard: ${hard}`);
+                    if (soft && soft !== "—") mgParts.push(`Soft: ${soft}`);
+                    if (mgParts.length > 0) {
+                        findingParts.push(`Marine Growth: ${mgParts.join(", ")}`);
+                    } else if (rd.marine_growth && String(rd.marine_growth).trim() !== "—" && String(rd.marine_growth).trim() !== "-") {
+                        findingParts.push(`Marine Growth: ${String(rd.marine_growth).trim()}`);
+                    }
+
+                    if (rd.debris) {
+                        findingParts.push(`Debris: ${rd.debris}${rd.debris_material ? ' (' + rd.debris_material + ')' : ''}`);
+                    }
+
+                    const baseFinding = findingParts.join('\n');
+                    const findings = formatReportFindingText(r, baseFinding || undefined);
 
                     return [
                         { content: String(itemNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },

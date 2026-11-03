@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -214,10 +214,11 @@ export const generateROVCondReport = async (
 
             const compCond = d.component_condition || d.comp_cond || d.general_condition || r.component_condition || "—";
             const coatCond = d.coating_condition || d.coat_cond || r.coating_condition || "—";
+            const { hard, soft } = extractHardSoftGrowth(d, r);
 
             const baseFinding = [
                 r.description?.trim(),
-                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
+
                 d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
             ].filter(Boolean).join('\n');
             const findings = formatReportFindingText(r, baseFinding);
@@ -230,6 +231,8 @@ export const generateROVCondReport = async (
                 cpDisplay,
                 String(compCond),
                 String(coatCond),
+                hard,
+                soft,
                 findings,
             ];
         };
@@ -275,15 +278,17 @@ export const generateROVCondReport = async (
                     { content: "CP\n(mV)",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Component\nCondition", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Coating\nCondition",   styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Hard Growth\n(%)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Soft Growth\n(%)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Findings",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 body: groupRecords.length > 0
                     ? groupRecords.map(buildRow)
-                    : [["-", "-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
+                    : [["-", "-", "-", "-", "-", "-", "-", "—", "—", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255],
-                    fontSize: 7.5, cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
+                    fontSize: 7.2, cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
                     fontStyle: "bold",
                     minCellHeight: 10,
                     valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
@@ -294,12 +299,14 @@ export const generateROVCondReport = async (
                 columnStyles: {
                     0: { cellWidth: 8,   halign: "center" },
                     1: { cellWidth: 20 },
-                    2: { cellWidth: 20,   halign: "center" },
-                    3: { cellWidth: 16,   halign: "center" },
+                    2: { cellWidth: 18,   halign: "center" },
+                    3: { cellWidth: 15,   halign: "center" },
                     4: { cellWidth: 15,   halign: "center" },
-                    5: { cellWidth: 22,   halign: "center" },
-                    6: { cellWidth: 22,   halign: "center" },
-                    7: { cellWidth: "auto" },
+                    5: { cellWidth: 20,   halign: "center" },
+                    6: { cellWidth: 20,   halign: "center" },
+                    7: { cellWidth: 17,   halign: "center" },
+                    8: { cellWidth: 17,   halign: "center" },
+                    9: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
                     if (data.section !== "body") return;

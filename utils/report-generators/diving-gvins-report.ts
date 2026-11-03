@@ -126,7 +126,7 @@ export const buildDivingGVINSRows = (r: any, idx: number, isPrintFriendly?: bool
         : "Finding: —";
 
     const row1 = [
-        { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+        { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "top" } },
         { content: String(qid), rowSpan: 2, styles: { halign: "left", valign: "top" } },
         String(elevation),
         String(diveNo),
@@ -249,7 +249,7 @@ export const generateDivingGVINSReport = async (
             ? sorted.flatMap((r, idx) => buildDivingGVINSRows(r, idx, isPF))
             : [
                 [
-                    { content: "—", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                    { content: "—", rowSpan: 2, styles: { halign: "center", valign: "top" } },
                     { content: "—", rowSpan: 2, styles: { halign: "left", valign: "top" } },
                     "—", "—", "N/A", "N/A", "—", "—"
                 ],
@@ -294,7 +294,7 @@ export const generateDivingGVINSReport = async (
                 lineWidth: 0.1,
             },
             columnStyles: {
-                0: { cellWidth: 10, halign: "center" },
+                0: { cellWidth: 10, halign: "center", valign: "top" },
                 1: { cellWidth: 30, halign: "left", valign: "top" },
                 2: { cellWidth: 20, halign: "center" },
                 3: { cellWidth: 18, halign: "center" },
@@ -309,6 +309,10 @@ export const generateDivingGVINSReport = async (
                 const r = sorted[recordIdx];
                 if (r) {
                     applyRecordCellStyling(data.cell, r, isPF);
+                }
+                if (data.column.index === 0) {
+                    data.cell.styles.halign = "center";
+                    data.cell.styles.valign = "top";
                 }
                 if (data.column.index === 1) {
                     data.cell.styles.halign = "left";

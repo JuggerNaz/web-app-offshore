@@ -94,7 +94,7 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
 
             // Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
             expect(row1).toHaveLength(10);
-            expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2 });
+            expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2, styles: { halign: "center", valign: "top" } });
             expect(row1[1]).toMatchObject({ content: "VDM N3-N11", rowSpan: 2, styles: { halign: "left", valign: "top" } });
             expect(row1[2]).toBe("0");
             expect(row1[3]).toBe("R001");
@@ -190,7 +190,7 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
 
             // Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
             expect(row1).toHaveLength(8);
-            expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2 });
+            expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2, styles: { halign: "center", valign: "top" } });
             expect(row1[1]).toMatchObject({ content: "LEG A1-EL-15", rowSpan: 2, styles: { halign: "left", valign: "top" } });
             expect(row1[2]).toBe("-15");
             expect(row1[3]).toBe("D003");
@@ -235,6 +235,65 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             const rows = buildDivingGVINSRows(emptyCondRecord, 0);
             expect(rows[0][4]).toBe("N/A"); // Component Condition is "N/A"
             expect(rows[0][5]).toBe("N/A"); // Coating Condition is "N/A"
+        });
+    });
+
+    describe("Attachment Sketch Reports (ROV Caisson & Conductor)", () => {
+        it("generates Caisson and Conductor sketch reports with appended conditions and marine growth in findings", async () => {
+            const { generateROVCasnSketchReport } = await import("./rov-rcasn-sketch-report");
+            const { generateROVCondSketchReport } = await import("./rov-rcond-sketch-report");
+
+            const caissonRecord = {
+                id: 10,
+                elevation: "-12",
+                inspection_type_code: "RCASN",
+                structure_components: { id: 10, q_id: "CS-01", code: "CS", name: "Caisson 1" },
+                inspection_data: {
+                    elevation: "-12",
+                    dive_no: "R005",
+                    cp_rdg: "-980",
+                    component_condition: "Good",
+                    coating_condition: "Intact",
+                    marine_growth_hard: "15%",
+                    marine_growth_soft: "35%",
+                    description: "Inspected member surface",
+                },
+                insp_rov_jobs: { job_no: "R005" },
+                has_anomaly: false,
+            };
+
+            const condRecord = {
+                id: 20,
+                elevation: "-12",
+                inspection_type_code: "RCOND",
+                structure_components: { id: 20, q_id: "CD-01", code: "CD", name: "Conductor 1" },
+                inspection_data: {
+                    elevation: "-12",
+                    dive_no: "R005",
+                    cp_rdg: "-980",
+                    component_condition: "Good",
+                    coating_condition: "Intact",
+                    marine_growth_hard: "15%",
+                    marine_growth_soft: "35%",
+                    description: "Inspected member surface",
+                },
+                insp_rov_jobs: { job_no: "R005" },
+                has_anomaly: false,
+            };
+
+            const caissonBlob = await generateROVCasnSketchReport([caissonRecord], headerData, companySettings, {
+                returnBlob: true,
+                reportNoPrefix: "2026-01A",
+            });
+            expect(caissonBlob).toBeTruthy();
+            expect(caissonBlob).toBeInstanceOf(Blob);
+
+            const condBlob = await generateROVCondSketchReport([condRecord], headerData, companySettings, {
+                returnBlob: true,
+                reportNoPrefix: "2026-01A",
+            });
+            expect(condBlob).toBeTruthy();
+            expect(condBlob).toBeInstanceOf(Blob);
         });
     });
 });

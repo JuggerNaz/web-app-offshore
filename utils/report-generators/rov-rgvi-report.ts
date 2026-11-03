@@ -27,7 +27,7 @@ interface ReportConfig {
 
 const EXCLUDED_RGVI_COMP_CODES = new Set([
     "AN", "FD", "BL", "CS", "SG", "CD", "CG", "CU", "RS", "RG", "BB",
-    "ANODE", "ANOD", "RISG", "RGRD", "RISER GUARD", "SEAG", "SEA GUARD", 
+    "ANODE", "ANOD", "RISG", "RGRD", "RISER GUARD", "SEAG", "SEA GUARD",
     "CAIS", "CAISSON GUARD", "COND", "CONDUCTOR GUARD", "BOATLANDING", "BOAT LANDING",
     "FEND", "FND", "FENDER", "BOAT BUMPER", "BOATBUMPER", "BOAT BUMBER", "BOATBUMBER"
 ]);
@@ -103,7 +103,7 @@ export const isExcludedFromRGVI = (r: any, compMap?: Map<string | number, any>):
 
     // 3. Resolve associations in structure components
     let currId = comp.associated_comp_id || comp.parent_id || comp.comp_id_parent || comp.parent_comp_id || comp.associated_id ||
-                 metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id || null;
+        metadata.associated_comp_id || metadata.parent_id || metadata.comp_id_parent || metadata.parent_comp_id || metadata.associated_id || null;
 
     if (compMap && currId) {
         let depth = 0;
@@ -184,13 +184,13 @@ export const formatDash = (val: any): string => {
     if (val === null || val === undefined) return "—";
     const str = String(val).trim();
     if (
-        str === "" || 
-        str === "-" || 
-        str === "—" || 
+        str === "" ||
+        str === "-" ||
+        str === "—" ||
         str === "--" ||
-        str.toLowerCase() === "null" || 
-        str.toLowerCase() === "undefined" || 
-        str.toLowerCase() === "none" || 
+        str.toLowerCase() === "null" ||
+        str.toLowerCase() === "undefined" ||
+        str.toLowerCase() === "none" ||
         str.toLowerCase() === "n/a"
     ) {
         return "—";
@@ -202,13 +202,13 @@ export const formatCondition = (val: any): string => {
     if (val === null || val === undefined) return "N/A";
     const str = String(val).trim();
     if (
-        str === "" || 
-        str === "-" || 
-        str === "—" || 
+        str === "" ||
+        str === "-" ||
+        str === "—" ||
         str === "--" ||
-        str.toLowerCase() === "null" || 
-        str.toLowerCase() === "undefined" || 
-        str.toLowerCase() === "none" || 
+        str.toLowerCase() === "null" ||
+        str.toLowerCase() === "undefined" ||
+        str.toLowerCase() === "none" ||
         str.toUpperCase() === "N/A"
     ) {
         return "N/A";
@@ -250,12 +250,12 @@ export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: st
  * Row 2: Finding: <text> (merged across 3rd through 10th col, colSpan: 8)
  */
 export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean): any[][] => {
-    const d   = r.inspection_data || {};
+    const d = r.inspection_data || {};
     const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
     const elevation = formatDash(r.elevation ?? d.elevation);
 
     const rawDiveNo =
-        r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.name  ||
+        r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.name ||
         r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name ||
         r.dive_no || d.dive_no || d.deployment_no ||
         r.rov_job_id || r.dive_job_id;
@@ -267,13 +267,13 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
         if (val === null || val === undefined) return "";
         const s = String(val).trim();
         if (
-            s === "" || 
-            s === "-" || 
-            s === "—" || 
+            s === "" ||
+            s === "-" ||
+            s === "—" ||
             s === "--" ||
-            s.toLowerCase() === "null" || 
-            s.toLowerCase() === "undefined" || 
-            s.toLowerCase() === "none" || 
+            s.toLowerCase() === "null" ||
+            s.toLowerCase() === "undefined" ||
+            s.toLowerCase() === "none" ||
             s.toLowerCase() === "n/a"
         ) return "";
         return s;
@@ -312,7 +312,7 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
         : "Finding: —";
 
     const row1 = [
-        { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+        { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "top" } },
         { content: String(qid), rowSpan: 2, styles: { halign: "left", valign: "top" } },
         String(elevation),
         String(diveNo),
@@ -325,13 +325,13 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
     ];
 
     const row2 = [
-        { 
-            content: finalFinding, 
-            colSpan: 8, 
-            styles: { 
-                halign: "left", 
-                valign: "middle" 
-            } 
+        {
+            content: finalFinding,
+            colSpan: 8,
+            styles: {
+                halign: "left",
+                valign: "middle"
+            }
         }
     ];
 
@@ -387,20 +387,20 @@ export const generateROVRGVIReport = async (
         }
 
         const doc = new jsPDF({ orientation: "portrait" });
-        const pageWidth  = doc.internal.pageSize.getWidth();
+        const pageWidth = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 10;
         const contentWidth = pageWidth - margin * 2;
 
         const colors = {
-            navy: [7, 78, 136]  as [number, number, number],
-            teal:      [20,  184, 166] as [number, number, number],
+            navy: [7, 78, 136] as [number, number, number],
+            teal: [20, 184, 166] as [number, number, number],
             lightGray: [248, 250, 252] as [number, number, number],
-            border:    [203, 213, 225] as [number, number, number],
-            text:      [30,  41,  59]  as [number, number, number],
-            anomaly:   [220, 38,  38]  as [number, number, number],
-            rectified: [22,  163, 74]  as [number, number, number],
-            finding:   [124, 58,  237] as [number, number, number],
+            border: [203, 213, 225] as [number, number, number],
+            text: [30, 41, 59] as [number, number, number],
+            anomaly: [220, 38, 38] as [number, number, number],
+            rectified: [22, 163, 74] as [number, number, number],
+            finding: [124, 58, 237] as [number, number, number],
         };
 
         const dateRangeStr = getInspectionDateRange(records, headerData, config);
@@ -411,10 +411,10 @@ export const generateROVRGVIReport = async (
         let companyLogo: any = null;
         let contractorLogo: any = null;
         if (companySettings.logo_url) {
-            try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) {}
+            try { companyLogo = await loadLogoWithTransparency(companySettings.logo_url); } catch (_) { }
         }
         if (headerData.contractorLogoUrl) {
-            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) {}
+            try { contractorLogo = await loadLogoWithTransparency(headerData.contractorLogoUrl); } catch (_) { }
         }
 
         // ── Synchronous page header ─────────────────────────────────────────────
@@ -465,11 +465,11 @@ export const generateROVRGVIReport = async (
         drawPageHeader(doc);
         const startY = drawContextRow(doc, margin + HEADER_H + 2);
 
-        const bodyRows = sorted.length > 0 
+        const bodyRows = sorted.length > 0
             ? sorted.flatMap((r, idx) => buildROVRGVIRows(r, idx, isPF))
             : [
                 [
-                    { content: "—", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
+                    { content: "—", rowSpan: 2, styles: { halign: "center", valign: "top" } },
                     { content: "—", rowSpan: 2, styles: { halign: "left", valign: "top" } },
                     "—", "—", "—", "—", "N/A", "N/A", "—", "—"
                 ],
@@ -483,16 +483,16 @@ export const generateROVRGVIReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 4 },
             head: [[
-                { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Component\nQID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Elevation\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Tape No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "CP\n(mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Component\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Coating\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Hard Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Soft Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Component\nQID", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Elevation\n(m)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Dive No.", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Tape No.", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "CP\n(mV)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Component\nCondition", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Coating\nCondition", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Hard Growth\n(%)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Soft Growth\n(%)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
             ]],
             body: bodyRows,
             theme: "grid",
@@ -517,7 +517,7 @@ export const generateROVRGVIReport = async (
                 lineWidth: 0.1,
             },
             columnStyles: {
-                0: { cellWidth: 8, halign: "center" },
+                0: { cellWidth: 8, halign: "center", valign: "top" },
                 1: { cellWidth: 23, halign: "left", valign: "top" },
                 2: { cellWidth: 17, halign: "center" },
                 3: { cellWidth: 14, halign: "center" },
@@ -534,6 +534,10 @@ export const generateROVRGVIReport = async (
                 const r = sorted[recordIdx];
                 if (r) {
                     applyRecordCellStyling(data.cell, r, isPF);
+                }
+                if (data.column.index === 0) {
+                    data.cell.styles.halign = "center";
+                    data.cell.styles.valign = "top";
                 }
                 if (data.column.index === 1) {
                     data.cell.styles.halign = "left";

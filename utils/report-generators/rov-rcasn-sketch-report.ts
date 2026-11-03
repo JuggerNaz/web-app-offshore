@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -52,10 +52,11 @@ export const generateROVCasnSketchReport = async (
             mudline: [145, 123, 76] as [number, number, number],
         };
 
-        const supabase = createClient();
+        let supabase: any = null;
+        try { supabase = createClient(); } catch (_) {}
 
         // 1. Context & Grouping
-        const { data: platform } = await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle();
+        const { data: platform } = (supabase && config.structureId) ? await supabase.from('u_platform').select('water_depth').eq('id', config.structureId).maybeSingle() : { data: null };
         const platformDepth = platform?.water_depth ? -Math.abs(platform.water_depth) : -35;
 
         // Filter records by inspection code RCASN and component code CS
@@ -72,7 +73,7 @@ export const generateROVCasnSketchReport = async (
         }
 
         const effectiveStructureId = config.structureId || records.find(r => r.structure_id)?.structure_id;
-        const { data: allComps } = effectiveStructureId 
+        const { data: allComps } = (effectiveStructureId && supabase) 
             ? await supabase.from('structure_components').select('id, q_id, code, metadata').eq('structure_id', effectiveStructureId)
             : { data: null };
         // 1. Context & Grouping
@@ -518,7 +519,41 @@ export const generateROVCasnSketchReport = async (
                     const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
                     const cpDisplay = cpList.length > 0 ? cpList.map(val => String(val)).join('\n') : '-';
 
-                    const findings = formatReportFindingText(r);
+                    const findingParts: string[] = [];
+                    const rDesc = r.description?.trim();
+                    const rdFindings = (typeof rd.findings === 'string' && rd.findings.trim()) ? rd.findings.trim() : '';
+                    const rdDesc = (typeof rd.description === 'string' && rd.description.trim()) ? rd.description.trim() : '';
+
+                    if (rDesc) findingParts.push(rDesc);
+                    if (rdFindings && !findingParts.includes(rdFindings)) findingParts.push(rdFindings);
+                    if (rdDesc && !findingParts.includes(rdDesc)) findingParts.push(rdDesc);
+
+                    const compCond = (rd.component_condition || rd.comp_cond || rd.general_condition || r.component_condition || "").toString().trim();
+                    if (compCond && compCond !== "—" && compCond !== "-" && compCond.toLowerCase() !== "null" && compCond.toLowerCase() !== "undefined") {
+                        findingParts.push(`Component Condition: ${compCond}`);
+                    }
+
+                    const coatCond = (rd.coating_condition || rd.coat_cond || r.coating_condition || "").toString().trim();
+                    if (coatCond && coatCond !== "—" && coatCond !== "-" && coatCond.toLowerCase() !== "null" && coatCond.toLowerCase() !== "undefined") {
+                        findingParts.push(`Coating Condition: ${coatCond}`);
+                    }
+
+                    const { hard, soft } = extractHardSoftGrowth(rd, r);
+                    const mgParts: string[] = [];
+                    if (hard && hard !== "—") mgParts.push(`Hard: ${hard}`);
+                    if (soft && soft !== "—") mgParts.push(`Soft: ${soft}`);
+                    if (mgParts.length > 0) {
+                        findingParts.push(`Marine Growth: ${mgParts.join(", ")}`);
+                    } else if (rd.marine_growth && String(rd.marine_growth).trim() !== "—" && String(rd.marine_growth).trim() !== "-") {
+                        findingParts.push(`Marine Growth: ${String(rd.marine_growth).trim()}`);
+                    }
+
+                    if (rd.debris) {
+                        findingParts.push(`Debris: ${rd.debris}${rd.debris_material ? ' (' + rd.debris_material + ')' : ''}`);
+                    }
+
+                    const baseFinding = findingParts.join('\n');
+                    const findings = formatReportFindingText(r, baseFinding || undefined);
 
                     return [
                         { content: String(itemNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },

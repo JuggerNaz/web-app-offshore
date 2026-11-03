@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, enrichRecordsWithTapesAndDeployments, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -216,10 +216,11 @@ export const generateROVConductorGuardReport = async (
                 ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
                 : "—";
 
+            const { hard, soft } = extractHardSoftGrowth(d, r);
             const baseFinding = [
                 r.description?.trim(),
                 d.findings?.trim(),
-                (d.marine_growth || d.marine_growth_hard || d.marine_growth_soft) ? `Marine Growth: ${d.marine_growth || [d.marine_growth_hard ? 'Hard: ' + d.marine_growth_hard : '', d.marine_growth_soft ? 'Soft: ' + d.marine_growth_soft : ''].filter(Boolean).join(', ')}` : '',
+                // Marine growth in dedicated columns
                 (d.component_condition || d.general_condition) ? `Component Condition: ${d.component_condition || d.general_condition}` : '',
                 d.coating_condition ? `Coating Condition: ${d.coating_condition}` : '',
                 d.debris ? `Debris: ${d.debris}${d.debris_material ? ' (' + d.debris_material + ')' : ''}` : ''
@@ -233,6 +234,8 @@ export const generateROVConductorGuardReport = async (
                 String(diveNo),
                 String(tapeNo),
                 cpDisplay,
+                hard,
+                soft,
                 findings,
             ];
         };
@@ -277,16 +280,18 @@ export const generateROVConductorGuardReport = async (
                     { content: "Dive No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Tape No.",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "CP (mV)",         styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Hard Growth\n(%)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Soft Growth\n(%)", styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Findings",        styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} }
                 ]],
                 body: groupRecords.length > 0
                     ? groupRecords.map(buildRow)
-                    : [["-", "-", "-", "-", "-", "-", "No observations recorded for this scope."]],
+                    : [["-", "-", "-", "-", "-", "-", "—", "—", "No observations recorded for this scope."]],
                 theme: "grid",
                 headStyles: {fillColor: config.printFriendly ? [255, 255, 255] : colors.navy,
                     textColor: config.printFriendly ? colors.navy : [255, 255, 255],
-                    fontSize: 7.5,
-                    cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
+                    fontSize: 7.2,
+                    cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
                     fontStyle: "bold",
                     minCellHeight: 10,
                     valign: "middle", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
@@ -295,13 +300,15 @@ export const generateROVConductorGuardReport = async (
                     textColor: colors.text,
                     lineColor: colors.border, lineWidth: 0.1,},
                 columnStyles: {
-                    0: { cellWidth: 12,   halign: "center" },
-                    1: { cellWidth: 25 },
+                    0: { cellWidth: 8,    halign: "center" },
+                    1: { cellWidth: 22 },
                     2: { cellWidth: 18,   halign: "center" },
-                    3: { cellWidth: 18,   halign: "center" },
+                    3: { cellWidth: 15,   halign: "center" },
                     4: { cellWidth: 18,   halign: "center" },
-                    5: { cellWidth: 18,   halign: "center" },
-                    6: { cellWidth: "auto" },
+                    5: { cellWidth: 15,   halign: "center" },
+                    6: { cellWidth: 17,   halign: "center" },
+                    7: { cellWidth: 17,   halign: "center" },
+                    8: { cellWidth: "auto" },
                 },
                 didParseCell: (data) => {
                 if (data.section !== "body") return;
