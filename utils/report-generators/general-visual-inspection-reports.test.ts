@@ -3,13 +3,19 @@ import {
     generateROVRGVIReport,
     buildROVRGVIRows,
     extractHardSoftGrowth as extractROVHardSoftGrowth,
-    formatCoverage as formatROVCoverage
+    formatCoverage as formatROVCoverage,
+    formatCondition as formatROVCondition,
+    extractComponentCondition as extractROVCompCondition,
+    extractCoatingCondition as extractROVCoatCondition,
 } from "./rov-rgvi-report";
 import {
     generateDivingGVINSReport,
     buildDivingGVINSRows,
     extractHardSoftGrowth as extractDivingHardSoftGrowth,
-    formatCoverage as formatDivingCoverage
+    formatCoverage as formatDivingCoverage,
+    formatCondition as formatDivingCondition,
+    extractComponentCondition as extractDivingCompCondition,
+    extractCoatingCondition as extractDivingCoatCondition,
 } from "./diving-gvins-report";
 
 describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
@@ -38,6 +44,27 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
         });
     });
 
+    describe("Condition Formatting & Fallback", () => {
+        it("returns 'N/A' when condition is null, undefined, empty, whitespace, '-', or 'None'", () => {
+            expect(formatROVCondition(null)).toBe("N/A");
+            expect(formatROVCondition(undefined)).toBe("N/A");
+            expect(formatROVCondition("")).toBe("N/A");
+            expect(formatROVCondition("   ")).toBe("N/A");
+            expect(formatROVCondition("-")).toBe("N/A");
+            expect(formatROVCondition("--")).toBe("N/A");
+            expect(formatROVCondition("None")).toBe("N/A");
+            expect(formatROVCondition("null")).toBe("N/A");
+            expect(formatROVCondition("N/A")).toBe("N/A");
+            expect(formatROVCondition("Good")).toBe("Good");
+            expect(formatROVCondition("Intact")).toBe("Intact");
+
+            expect(formatDivingCondition("")).toBe("N/A");
+            expect(formatDivingCondition("  ")).toBe("N/A");
+            expect(formatDivingCondition(null)).toBe("N/A");
+            expect(formatDivingCondition("Damaged")).toBe("Damaged");
+        });
+    });
+
     describe("ROV General Visual Inspection (RGVI)", () => {
         const record = {
             id: 1,
@@ -59,16 +86,16 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             has_anomaly: false,
         };
 
-        it("builds 2 rows per record with separate Hard and Soft Growth columns and Finding on second row", () => {
+        it("builds 2 rows per record with merged QID across two rows and Finding data on second row", () => {
             const rows = buildROVRGVIRows(record, 0);
             expect(rows).toHaveLength(2);
 
             const [row1, row2] = rows;
 
-            // Row 1: No. (rowSpan: 2) | Component QID | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+            // Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
             expect(row1).toHaveLength(10);
             expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2 });
-            expect(row1[1]).toBe("VDM N3-N11");
+            expect(row1[1]).toMatchObject({ content: "VDM N3-N11", rowSpan: 2, styles: { halign: "left", valign: "top" } });
             expect(row1[2]).toBe("0");
             expect(row1[3]).toBe("R001");
             expect(row1[4]).toBe("2026-01/PLAT-C/V001R");
@@ -78,13 +105,13 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             expect(row1[8]).toBe("10%");
             expect(row1[9]).toBe("20%");
 
-            // Row 2: Finding label in second column, merged observations across 3rd through 10th column (colSpan: 8)
-            expect(row2).toHaveLength(2);
-            expect(row2[0]).toMatchObject({ content: "Finding" });
-            expect(row2[1]).toMatchObject({ colSpan: 8 });
+            // Row 2: Finding data merged across remaining columns (colSpan: 8) with "Finding: " prefix
+            expect(row2).toHaveLength(1);
+            expect(row2[0]).toMatchObject({ colSpan: 8 });
 
-            // Ensure marine growth and conditions are NOT in the Finding text
-            const findingText = row2[1].content;
+            // Ensure finding text begins with "Finding: " and excludes marine growth and conditions
+            const findingText = row2[0].content;
+            expect(findingText).toMatch(/^Finding:\s+/);
             expect(findingText).toContain("Debris is in contact");
             expect(findingText).toContain("Debris: Metallic clamp");
             expect(findingText).not.toContain("Component Condition:");
@@ -101,6 +128,41 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             expect(blob).toBeTruthy();
             expect(blob).toBeInstanceOf(Blob);
             expect((blob as Blob).size).toBeGreaterThan(1000);
+        });
+
+        it("handles long tape numbers (e.g., AM26-016-02/BODP-A/V010R) cleanly in ROV RGVI", async () => {
+            const longTapeRecord = {
+                ...record,
+                inspection_data: {
+                    ...record.inspection_data,
+                    tape_no: "AM26-016-02/BODP-A/V010R",
+                },
+            };
+            const rows = buildROVRGVIRows(longTapeRecord, 0);
+            expect(rows[0][4]).toBe("AM26-016-02/BODP-A/V010R");
+
+            const blob = await generateROVRGVIReport([longTapeRecord], headerData, companySettings, {
+                returnBlob: true,
+                reportNoPrefix: "AM26-016-02",
+            });
+            expect(blob).toBeTruthy();
+            expect(blob).toBeInstanceOf(Blob);
+        });
+
+        it("displays 'N/A' when Component Condition or Coating Condition are empty strings in ROV RGVI", () => {
+            const emptyCondRecord = {
+                ...record,
+                inspection_data: {
+                    ...record.inspection_data,
+                    component_condition: "",
+                    coating_condition: "   ",
+                    cp_rdg: "",
+                },
+            };
+            const rows = buildROVRGVIRows(emptyCondRecord, 0);
+            expect(rows[0][5]).toBe("—"); // CP stays "—"
+            expect(rows[0][6]).toBe("N/A"); // Component Condition is "N/A"
+            expect(rows[0][7]).toBe("N/A"); // Coating Condition is "N/A"
         });
     });
 
@@ -120,16 +182,16 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             has_anomaly: false,
         };
 
-        it("builds 2 rows per record for Diving with separate Hard and Soft Growth columns and Finding on second row", () => {
+        it("builds 2 rows per record for Diving with merged QID across two rows and Finding data on second row", () => {
             const rows = buildDivingGVINSRows(divingRecord, 0);
             expect(rows).toHaveLength(2);
 
             const [row1, row2] = rows;
 
-            // Row 1: No. (rowSpan: 2) | Component QID | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+            // Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
             expect(row1).toHaveLength(8);
             expect(row1[0]).toMatchObject({ content: "1", rowSpan: 2 });
-            expect(row1[1]).toBe("LEG A1-EL-15");
+            expect(row1[1]).toMatchObject({ content: "LEG A1-EL-15", rowSpan: 2, styles: { halign: "left", valign: "top" } });
             expect(row1[2]).toBe("-15");
             expect(row1[3]).toBe("D003");
             expect(row1[4]).toBe("Minor pitting");
@@ -137,13 +199,13 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             expect(row1[6]).toBe("15%");
             expect(row1[7]).toBe("40%");
 
-            // Row 2: Finding label in second column, merged observations across remaining columns (colSpan: 6)
-            expect(row2).toHaveLength(2);
-            expect(row2[0]).toMatchObject({ content: "Finding" });
-            expect(row2[1]).toMatchObject({ colSpan: 6 });
+            // Row 2: Finding data merged across remaining columns (colSpan: 6) with "Finding: " prefix
+            expect(row2).toHaveLength(1);
+            expect(row2[0]).toMatchObject({ colSpan: 6 });
 
-            // Ensure marine growth and conditions are NOT in Finding text
-            const findingText = row2[1].content;
+            // Ensure finding text begins with "Finding: " and excludes marine growth and conditions
+            const findingText = row2[0].content;
+            expect(findingText).toMatch(/^Finding:\s+/);
             expect(findingText).toContain("Minor surface pitting noted on east face");
             expect(findingText).not.toContain("Component Condition:");
             expect(findingText).not.toContain("Coating Condition:");
@@ -159,6 +221,20 @@ describe("General Visual Inspection Report Templates (ROV & Diving)", () => {
             expect(blob).toBeTruthy();
             expect(blob).toBeInstanceOf(Blob);
             expect((blob as Blob).size).toBeGreaterThan(1000);
+        });
+
+        it("displays 'N/A' when Component Condition or Coating Condition are empty strings in Diving GVINS", () => {
+            const emptyCondRecord = {
+                ...divingRecord,
+                inspection_data: {
+                    ...divingRecord.inspection_data,
+                    component_condition: "",
+                    coating_condition: "   ",
+                },
+            };
+            const rows = buildDivingGVINSRows(emptyCondRecord, 0);
+            expect(rows[0][4]).toBe("N/A"); // Component Condition is "N/A"
+            expect(rows[0][5]).toBe("N/A"); // Coating Condition is "N/A"
         });
     });
 });

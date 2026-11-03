@@ -33,6 +33,52 @@ export const formatCoverage = (val: any): string => {
     return str;
 };
 
+export const formatDash = (val: any): string => {
+    if (val === null || val === undefined) return "—";
+    const str = String(val).trim();
+    if (
+        str === "" || 
+        str === "-" || 
+        str === "—" || 
+        str === "--" ||
+        str.toLowerCase() === "null" || 
+        str.toLowerCase() === "undefined" || 
+        str.toLowerCase() === "none" || 
+        str.toLowerCase() === "n/a"
+    ) {
+        return "—";
+    }
+    return str;
+};
+
+export const formatCondition = (val: any): string => {
+    if (val === null || val === undefined) return "N/A";
+    const str = String(val).trim();
+    if (
+        str === "" || 
+        str === "-" || 
+        str === "—" || 
+        str === "--" ||
+        str.toLowerCase() === "null" || 
+        str.toLowerCase() === "undefined" || 
+        str.toLowerCase() === "none" || 
+        str.toUpperCase() === "N/A"
+    ) {
+        return "N/A";
+    }
+    return str;
+};
+
+export const extractComponentCondition = (d: any, r?: any): string => {
+    const raw = d?.component_condition ?? d?.general_condition ?? d?.condition ?? d?.comp_condition ?? r?.component_condition ?? r?.general_condition ?? r?.condition;
+    return formatCondition(raw);
+};
+
+export const extractCoatingCondition = (d: any, r?: any): string => {
+    const raw = d?.coating_condition ?? d?.coating ?? d?.coat_condition ?? r?.coating_condition ?? r?.coating;
+    return formatCondition(raw);
+};
+
 export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: string } => {
     let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.hard_growth ?? r?.marine_growth_hard;
     let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.soft_growth ?? r?.marine_growth_soft;
@@ -53,29 +99,35 @@ export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: st
 
 /**
  * Builds the 2-row representation for a Diving GVINS record:
- * Row 1: No. (rowSpan: 2) | Component QID | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
- * Row 2: Finding (label at 2nd col) | Findings Text (merged across 3rd through 8th col)
+ * Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding: <text> (merged across remaining columns, colSpan: 6)
  */
 export const buildDivingGVINSRows = (r: any, idx: number, isPrintFriendly?: boolean): any[][] => {
     const d   = r.inspection_data || {};
     const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
-    const elevation = r.elevation ?? d.elevation ?? "—";
+    const elevation = formatDash(r.elevation ?? d.elevation);
 
-    const diveNo =
+    const rawDiveNo =
         r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
-        r.dive_job_id || "—";
+        r.dive_no || d.dive_no ||
+        r.dive_job_id;
+    const diveNo = formatDash(rawDiveNo);
 
-    const compCond  = d.component_condition ?? d.general_condition ?? d.condition ?? "—";
-    const coatCond  = d.coating_condition ?? d.coating ?? "—";
+    const compCond  = extractComponentCondition(d, r);
+    const coatCond  = extractCoatingCondition(d, r);
     const { hard, soft } = extractHardSoftGrowth(d, r);
 
     // Finding text excludes marine growth and condition values (now in dedicated columns)
     const mainDesc = r.description?.trim() || d.description?.trim() || r.findings?.trim() || d.findings?.trim() || r.remarks?.trim() || d.remarks?.trim();
     const findings = formatReportFindingText(r, mainDesc || undefined);
+    const rawFinding = (findings || "").trim();
+    const finalFinding = rawFinding && rawFinding !== "—"
+        ? (/^finding\s*:/i.test(rawFinding) ? rawFinding : `Finding: ${rawFinding}`)
+        : "Finding: —";
 
     const row1 = [
         { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-        qid,
+        { content: String(qid), rowSpan: 2, styles: { halign: "left", valign: "top" } },
         String(elevation),
         String(diveNo),
         String(compCond),
@@ -86,16 +138,7 @@ export const buildDivingGVINSRows = (r: any, idx: number, isPrintFriendly?: bool
 
     const row2 = [
         { 
-            content: "Finding", 
-            styles: { 
-                halign: "center", 
-                valign: "middle", 
-                fontStyle: "bold",
-                fillColor: isPrintFriendly ? [248, 248, 248] : [240, 244, 248]
-            } 
-        },
-        { 
-            content: findings, 
+            content: finalFinding, 
             colSpan: 6, 
             styles: { 
                 halign: "left", 
@@ -109,8 +152,8 @@ export const buildDivingGVINSRows = (r: any, idx: number, isPrintFriendly?: bool
 
 /**
  * Diving General Visual Inspection (GVINS) Report (Portrait)
- * Row 1: No. | Component QID | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
- * Row 2: Finding (2nd col) | Merged finding observations (3rd through 8th col)
+ * Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding: <text> (merged across remaining columns, colSpan: 6)
  */
 export const generateDivingGVINSReport = async (
     records: any[],
@@ -207,11 +250,11 @@ export const generateDivingGVINSReport = async (
             : [
                 [
                     { content: "—", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    "—", "—", "—", "—", "—", "—", "—"
+                    { content: "—", rowSpan: 2, styles: { halign: "left", valign: "top" } },
+                    "—", "—", "N/A", "N/A", "—", "—"
                 ],
                 [
-                    { content: "Finding", styles: { halign: "center", valign: "middle", fontStyle: "bold" } },
-                    { content: "No inspection observations recorded for this scope.", colSpan: 6, styles: { halign: "left", valign: "middle" } }
+                    { content: "Finding: No inspection observations recorded for this scope.", colSpan: 6, styles: { halign: "left", valign: "middle" } }
                 ]
             ];
 
@@ -237,14 +280,14 @@ export const generateDivingGVINSReport = async (
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                cellPadding: 1.8,
+                cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
                 minCellHeight: 8,
                 lineWidth: 0.1,
                 lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
             },
             styles: {
                 fontSize: 6.8,
-                cellPadding: 1.8,
+                cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
                 textColor: colors.text,
                 lineColor: colors.border,
                 overflow: "linebreak",
@@ -252,8 +295,8 @@ export const generateDivingGVINSReport = async (
             },
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },
-                1: { cellWidth: 32, halign: "center" },
-                2: { cellWidth: 18, halign: "center" },
+                1: { cellWidth: 30, halign: "left", valign: "top" },
+                2: { cellWidth: 20, halign: "center" },
                 3: { cellWidth: 18, halign: "center" },
                 4: { cellWidth: 32, halign: "center" },
                 5: { cellWidth: 32, halign: "center" },
@@ -266,6 +309,10 @@ export const generateDivingGVINSReport = async (
                 const r = sorted[recordIdx];
                 if (r) {
                     applyRecordCellStyling(data.cell, r, isPF);
+                }
+                if (data.column.index === 1) {
+                    data.cell.styles.halign = "left";
+                    data.cell.styles.valign = "top";
                 }
             },
             didDrawPage: (data) => {

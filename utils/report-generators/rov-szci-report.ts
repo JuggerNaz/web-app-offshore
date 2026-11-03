@@ -166,7 +166,7 @@ export const generateROVSZCIReport = async (
         const topHeader: any[] = [
             { content: 'No.', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'Component QID', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
-            { content: 'Elevation (m)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
+            { content: 'Elevation\n(m)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'CP (mV)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
             { content: 'Wall Thickness (mm)', colSpan: 4, styles: { halign: 'center', valign: 'middle', fillColor: config?.printFriendly ? colors.pfTealBg : colors.teal, textColor: config?.printFriendly ? colors.text : 255, lineWidth: 0.1, lineColor: colors.border } },
             { content: 'Nominal (mm)', rowSpan: 2, styles: { halign: 'center', valign: 'middle' } },
@@ -252,7 +252,8 @@ export const generateROVSZCIReport = async (
             headStyles: {
                 fillColor: config?.printFriendly ? colors.white : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : 255,
-                fontSize: 8,
+                fontSize: 7.5,
+                cellPadding: { top: 1.5, bottom: 1.5, left: 1, right: 1 },
                 fontStyle: 'bold',
                 halign: 'center',
                 lineWidth: 0.1,
@@ -267,8 +268,8 @@ export const generateROVSZCIReport = async (
             },
             columnStyles: {
                 0: { cellWidth: 10, halign: 'center' }, // No.
-                1: { cellWidth: 26 },                   // Component QID
-                2: { cellWidth: 16, halign: 'center' }, // Elevation (m)
+                1: { cellWidth: 24 },                   // Component QID
+                2: { cellWidth: 18, halign: 'center' }, // Elevation (m)
                 3: { cellWidth: 15, halign: 'center' }, // CP (mV)
                 4: { cellWidth: 13, halign: 'center' }, // 12 o'clock
                 5: { cellWidth: 13, halign: 'center' }, // 3 o'clock

@@ -208,6 +208,7 @@ export const generateDivingITMAINReport = async (
             headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
+                cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
@@ -220,7 +221,7 @@ export const generateDivingITMAINReport = async (
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },  // No.
                 1: { cellWidth: 20 },                     // QID
-                2: { cellWidth: 16, halign: "center" },   // Elevation
+                2: { cellWidth: 18, halign: "center" },   // Elevation
                 3: { cellWidth: 16, halign: "center" },   // Dive No.
                 4: { cellWidth: 16, halign: "center" },   // Angle
                 5: { cellWidth: 16, halign: "center" },   // Dim 1

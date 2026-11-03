@@ -180,6 +180,52 @@ export const formatCoverage = (val: any): string => {
     return str;
 };
 
+export const formatDash = (val: any): string => {
+    if (val === null || val === undefined) return "—";
+    const str = String(val).trim();
+    if (
+        str === "" || 
+        str === "-" || 
+        str === "—" || 
+        str === "--" ||
+        str.toLowerCase() === "null" || 
+        str.toLowerCase() === "undefined" || 
+        str.toLowerCase() === "none" || 
+        str.toLowerCase() === "n/a"
+    ) {
+        return "—";
+    }
+    return str;
+};
+
+export const formatCondition = (val: any): string => {
+    if (val === null || val === undefined) return "N/A";
+    const str = String(val).trim();
+    if (
+        str === "" || 
+        str === "-" || 
+        str === "—" || 
+        str === "--" ||
+        str.toLowerCase() === "null" || 
+        str.toLowerCase() === "undefined" || 
+        str.toLowerCase() === "none" || 
+        str.toUpperCase() === "N/A"
+    ) {
+        return "N/A";
+    }
+    return str;
+};
+
+export const extractComponentCondition = (d: any, r?: any): string => {
+    const raw = d?.component_condition ?? d?.general_condition ?? d?.condition ?? d?.comp_condition ?? r?.component_condition ?? r?.general_condition ?? r?.condition;
+    return formatCondition(raw);
+};
+
+export const extractCoatingCondition = (d: any, r?: any): string => {
+    const raw = d?.coating_condition ?? d?.coating ?? d?.coat_condition ?? r?.coating_condition ?? r?.coating;
+    return formatCondition(raw);
+};
+
 export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: string } => {
     let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.hard_growth ?? r?.marine_growth_hard;
     let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.soft_growth ?? r?.marine_growth_soft;
@@ -200,35 +246,52 @@ export const extractHardSoftGrowth = (d: any, r?: any): { hard: string; soft: st
 
 /**
  * Builds the 2-row representation for an ROV RGVI record:
- * Row 1: No. (rowSpan: 2) | Component QID | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
- * Row 2: Finding (label at 2nd col) | Findings Text (merged across 3rd through 10th col)
+ * Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding: <text> (merged across 3rd through 10th col, colSpan: 8)
  */
 export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean): any[][] => {
     const d   = r.inspection_data || {};
     const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
-    const elevation = r.elevation ?? d.elevation ?? "—";
+    const elevation = formatDash(r.elevation ?? d.elevation);
 
-    const diveNo =
+    const rawDiveNo =
         r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.deployment_no || r.insp_rov_jobs?.name  ||
         r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.dive_no || r.insp_dive_jobs?.name ||
         r.dive_no || d.dive_no || d.deployment_no ||
-        r.rov_job_id || r.dive_job_id || "—";
+        r.rov_job_id || r.dive_job_id;
+    const diveNo = formatDash(rawDiveNo);
 
-    const tapeNo = extractRecordTapeNo(r);
+    const tapeNo = formatDash(extractRecordTapeNo(r));
 
-    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
+    const cleanCPValue = (val: any): string => {
+        if (val === null || val === undefined) return "";
+        const s = String(val).trim();
+        if (
+            s === "" || 
+            s === "-" || 
+            s === "—" || 
+            s === "--" ||
+            s.toLowerCase() === "null" || 
+            s.toLowerCase() === "undefined" || 
+            s.toLowerCase() === "none" || 
+            s.toLowerCase() === "n/a"
+        ) return "";
+        return s;
+    };
+
+    const primaryCP = cleanCPValue(d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? r?.cp_rdg ?? r?.cp);
     const addCPs: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
     const additionalCPs = addCPs
-        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
-        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+        .map((a: any) => cleanCPValue(a.reading ?? a.cp_rdg ?? ""))
+        .filter((val: string) => val !== "");
 
-    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+    const cpList = [primaryCP, ...additionalCPs].filter((val: string) => val !== "");
     const cpDisplay = cpList.length > 0
-        ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
+        ? cpList.map((val: string) => val.toLowerCase().includes("mv") ? val : `${val} mV`).join("\n")
         : "—";
 
-    const compCond = d.component_condition ?? d.general_condition ?? d.condition ?? "—";
-    const coatCond = d.coating_condition ?? d.coating ?? "—";
+    const compCond = extractComponentCondition(d, r);
+    const coatCond = extractCoatingCondition(d, r);
     const { hard, soft } = extractHardSoftGrowth(d, r);
 
     // Finding text excludes marine growth and condition values (now in dedicated columns)
@@ -243,10 +306,14 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
 
     const baseFinding = parts.join("\n");
     const findingDisplay = formatReportFindingText(r, baseFinding || undefined);
+    const rawFinding = (findingDisplay || "").trim();
+    const finalFinding = rawFinding && rawFinding !== "—"
+        ? (/^finding\s*:/i.test(rawFinding) ? rawFinding : `Finding: ${rawFinding}`)
+        : "Finding: —";
 
     const row1 = [
         { content: String(idx + 1), rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-        qid,
+        { content: String(qid), rowSpan: 2, styles: { halign: "left", valign: "top" } },
         String(elevation),
         String(diveNo),
         String(tapeNo),
@@ -259,16 +326,7 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
 
     const row2 = [
         { 
-            content: "Finding", 
-            styles: { 
-                halign: "center", 
-                valign: "middle", 
-                fontStyle: "bold",
-                fillColor: isPrintFriendly ? [248, 248, 248] : [240, 244, 248]
-            } 
-        },
-        { 
-            content: findingDisplay, 
+            content: finalFinding, 
             colSpan: 8, 
             styles: { 
                 halign: "left", 
@@ -282,8 +340,8 @@ export const buildROVRGVIRows = (r: any, idx: number, isPrintFriendly?: boolean)
 
 /**
  * ROV General Visual Inspection (RGVI) Report (Portrait)
- * Row 1: No. | Component QID | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
- * Row 2: Finding (2nd col) | Merged finding observations (3rd through 10th col)
+ * Row 1: No. (rowSpan: 2) | Component QID (rowSpan: 2) | Elevation (m) | Dive No. | Tape No. | CP (mV) | Component Condition | Coating Condition | Hard Growth (%) | Soft Growth (%)
+ * Row 2: Finding: <text> (merged across 3rd through 10th col, colSpan: 8)
  */
 export const generateROVRGVIReport = async (
     records: any[],
@@ -412,11 +470,11 @@ export const generateROVRGVIReport = async (
             : [
                 [
                     { content: "—", rowSpan: 2, styles: { halign: "center", valign: "middle" } },
-                    "—", "—", "—", "—", "—", "—", "—", "—", "—"
+                    { content: "—", rowSpan: 2, styles: { halign: "left", valign: "top" } },
+                    "—", "—", "—", "—", "N/A", "N/A", "—", "—"
                 ],
                 [
-                    { content: "Finding", styles: { halign: "center", valign: "middle", fontStyle: "bold" } },
-                    { content: "No inspection observations recorded for this scope.", colSpan: 8, styles: { halign: "left", valign: "middle" } }
+                    { content: "Finding: No inspection observations recorded for this scope.", colSpan: 8, styles: { halign: "left", valign: "middle" } }
                 ]
             ];
 
@@ -445,14 +503,14 @@ export const generateROVRGVIReport = async (
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                cellPadding: 1.5,
+                cellPadding: { top: 1.5, bottom: 1.5, left: 0.8, right: 0.8 },
                 minCellHeight: 8,
                 lineWidth: 0.1,
                 lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
             },
             styles: {
                 fontSize: 6.5,
-                cellPadding: 1.5,
+                cellPadding: { top: 1.5, bottom: 1.5, left: 0.8, right: 0.8 },
                 textColor: colors.text,
                 lineColor: colors.border,
                 overflow: "linebreak",
@@ -460,13 +518,13 @@ export const generateROVRGVIReport = async (
             },
             columnStyles: {
                 0: { cellWidth: 8, halign: "center" },
-                1: { cellWidth: 26, halign: "center" },
-                2: { cellWidth: 15, halign: "center" },
-                3: { cellWidth: 16, halign: "center" },
-                4: { cellWidth: 25, halign: "center" },
-                5: { cellWidth: 16, halign: "center" },
-                6: { cellWidth: 24, halign: "center" },
-                7: { cellWidth: 24, halign: "center" },
+                1: { cellWidth: 23, halign: "left", valign: "top" },
+                2: { cellWidth: 17, halign: "center" },
+                3: { cellWidth: 14, halign: "center" },
+                4: { cellWidth: 36, halign: "center" },
+                5: { cellWidth: 14, halign: "center" },
+                6: { cellWidth: 21, halign: "center" },
+                7: { cellWidth: 21, halign: "center" },
                 8: { cellWidth: 18, halign: "center" },
                 9: { cellWidth: 18, halign: "center" },
             },
@@ -476,6 +534,21 @@ export const generateROVRGVIReport = async (
                 const r = sorted[recordIdx];
                 if (r) {
                     applyRecordCellStyling(data.cell, r, isPF);
+                }
+                if (data.column.index === 1) {
+                    data.cell.styles.halign = "left";
+                    data.cell.styles.valign = "top";
+                }
+                // Auto-fit font size and padding for Tape No. (col 4, top row of each record) so it stays on one line
+                if (data.column.index === 4 && data.row.index % 2 === 0) {
+                    const rawVal = String(data.cell.raw ?? (Array.isArray(data.cell.text) ? data.cell.text.join("") : data.cell.text) ?? "");
+                    if (rawVal.length > 26) {
+                        data.cell.styles.fontSize = 5.2;
+                        data.cell.styles.cellPadding = 0.8;
+                    } else if (rawVal.length > 20) {
+                        data.cell.styles.fontSize = 5.8;
+                        data.cell.styles.cellPadding = 1.0;
+                    }
                 }
             },
             didDrawPage: (data) => {
