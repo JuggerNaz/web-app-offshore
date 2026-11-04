@@ -22,7 +22,9 @@ import {
     FileCheck,
     BookOpen,
     BarChart3,
-    Loader2
+    FileUp,
+    Loader2,
+    History
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,7 @@ import { fetcher } from "@/utils/utils";
 import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { EXECUTIVE_SUMMARY_TOC, isItemMatchingSection } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
+import { interpolateAllVariables, evaluateActiveCondition } from "./template-utils";
 // Heavy dialogs are lazy-loaded client-side; Radix Dialog renders nothing while
 // closed, so their chunks still background-preload on mount without blocking first paint.
 const ReportSettingsDialog = dynamic(
@@ -54,6 +57,26 @@ const SummaryTemplatesDialog = dynamic(
 );
 const InspectionAnalyticsDialog = dynamic(
     () => import("./InspectionAnalyticsDialog").then((m) => m.InspectionAnalyticsDialog),
+    { ssr: false }
+);
+const ExecutiveRichEditor = dynamic(
+    () => import("./ExecutiveRichEditor").then((m) => m.ExecutiveRichEditor),
+    {
+        ssr: false,
+        loading: () => (
+            <div className="flex-1 flex items-center justify-center p-8 text-sm text-slate-400">
+                <Loader2 className="h-5 w-5 animate-spin mr-2 text-blue-500" />
+                Loading Executive Editor...
+            </div>
+        ),
+    }
+);
+const ImportDocumentDialog = dynamic(
+    () => import("./ImportDocumentDialog").then((m) => m.ImportDocumentDialog),
+    { ssr: false }
+);
+const ImportHistoricalDialog = dynamic(
+    () => import("./ImportHistoricalDialog").then((m) => m.ImportHistoricalDialog),
     { ssr: false }
 );
 
@@ -87,6 +110,13 @@ export default function ExecutiveSummaryPage() {
     const [isSettingsOpen, setIsSettingsOpen] = useState(false);
     const [isGenerating, setIsGenerating] = useState(false);
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
+    const [isImportHistoryOpen, setIsImportHistoryOpen] = useState(false);
+    const [isImportDocOpen, setIsImportDocOpen] = useState(false);
+    const [oldDataDismissed, setOldDataDismissed] = useState(false);
+
+    useEffect(() => {
+        setOldDataDismissed(false);
+    }, [selections.structureId, selections.sowReportNo]);
     const [exportProgress, setExportProgress] = useState<{
         isOpen: boolean;
         percent: number;
@@ -343,10 +373,10 @@ export default function ExecutiveSummaryPage() {
         return availableSowReports.map((no: string) => ({ value: no, label: no }));
     }, [availableSowReports]);
 
-    // Fetch existing summary
+    // Fetch existing summary (with auto-import fallback for historical/old data)
     const { data: summaryData, mutate: refreshSummary } = useSWR(
-        selections.jobpackId && cleanStructureId && selections.sowReportNo
-            ? `/api/executive-summary?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}&sow_report_no=${selections.sowReportNo}`
+        selections.jobpackId && cleanStructureId
+            ? `/api/executive-summary?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}${selections.sowReportNo ? `&sow_report_no=${encodeURIComponent(selections.sowReportNo)}` : ""}`
             : null,
         fetcher
     );
@@ -423,17 +453,40 @@ export default function ExecutiveSummaryPage() {
         refreshSummary();
     };
 
+    // Robust extractor for sections in array, object, or string format
+    const extractSectionsMap = useCallback((sections: any): Record<string, string> => {
+        const result: Record<string, string> = {};
+        if (!sections) return result;
+        let parsed = sections;
+        if (typeof parsed === "string") {
+            try { parsed = JSON.parse(parsed); } catch {}
+        }
+        if (Array.isArray(parsed)) {
+            parsed.forEach((s: any) => {
+                if (s && s.id) {
+                    result[s.id] = s.content ?? s.findings ?? s.text ?? s.value ?? "";
+                }
+            });
+        } else if (parsed && typeof parsed === "object") {
+            Object.entries(parsed).forEach(([k, v]) => {
+                result[k] = typeof v === "string" ? v : (v as any)?.content ?? (v as any)?.text ?? "";
+            });
+        }
+        return result;
+    }, []);
+
     useEffect(() => {
         if (summaryData?.data?.sections) {
-            const data: Record<string, string> = {};
-            summaryData.data.sections.forEach((s: any) => {
-                data[s.id] = s.content;
-            });
+            const data = extractSectionsMap(summaryData.data.sections);
+            const count = Object.values(data).filter(v => v && v.trim()).length;
             setSectionsData(data);
+            if (count > 0 && selections.sowReportNo) {
+                toast.success(`Loaded saved executive summary for SOW ${selections.sowReportNo} (${count} section${count > 1 ? "s" : ""})`);
+            }
         } else {
             setSectionsData({});
         }
-    }, [summaryData]);
+    }, [summaryData?.data, extractSectionsMap, selections.sowReportNo]);
 
     const activeSection = useMemo(() => 
         EXECUTIVE_SUMMARY_TOC.find(s => s.id === activeSectionId), 
@@ -476,6 +529,56 @@ export default function ExecutiveSummaryPage() {
             setIsSaving(false);
         }
     };
+
+    
+    const editorStatsContext = useMemo(() => {
+        const jp = jobpacks.find((j: any) => j.id.toString() === selections.jobpackId);
+        const str = structures.find((s: any) => s.id.toString() === selections.structureId);
+        const clientName = companySettings?.data?.company_name || jp?.metadata?.contrac || "PETRONAS Carigali Sdn Bhd";
+        const contractor = jp?.metadata?.contrac || "Alam Maritim (M) Sdn. Bhd.";
+        const vessel = jp?.metadata?.vessel || "DSV Resolution";
+        const startDate = jp?.metadata?.istart ? new Date(jp.metadata.istart).toLocaleDateString("en-GB") : (jp?.start_date || "N/A");
+        const endDate = jp?.metadata?.iend ? new Date(jp.metadata.iend).toLocaleDateString("en-GB") : (jp?.end_date || "N/A");
+        const reportNo = selections.sowReportNo || "N/A";
+        const anomalies = insightData?.data?.anomalies || {};
+
+        return {
+            PLATFORM_NAME: str?.str_name || "Bokor-A Drilling (BODP-A)",
+            PLATFORM_TITLE: str?.str_name || "Bokor-A Drilling (BODP-A)",
+            FIELD_NAME: str?.field_name || "Bokor Field",
+            LOCATION: (str as any)?.location || "Sarawak",
+            JOB_PACK_NAME: jp?.name || selections.jobpackId || "N/A",
+            REPORT_NO: reportNo,
+            SOW_REPORT_NO: reportNo,
+            START_DATE: startDate,
+            END_DATE: endDate,
+            VESSEL_NAME: vessel,
+            VESSELS_INVOLVED: vessel,
+            CLIENT_NAME: clientName,
+            CLIENT_SHORT: companySettings?.data?.client_short || "PCSB",
+            CONTRACTOR: contractor,
+            CONTRACT_NO: jp?.metadata?.contract_ref || jp?.metadata?.inspno || "RFP-000000050052",
+            CONTRACT_REF: jp?.metadata?.contract_ref || "RFP-000000050052",
+            COMPANY_REP: jp?.metadata?.comprep || "N/A",
+            TODAY_SHORT: new Date().toLocaleDateString("en-GB"),
+            INSPECTION_YEAR: new Date().getFullYear().toString(),
+            TOTAL_ANOMALIES: anomalies.total ?? 0,
+            P1_ANOMALIES: anomalies.byPriority?.P1 ?? 0,
+            P2_ANOMALIES: anomalies.byPriority?.P2 ?? 0,
+            P3_ANOMALIES: anomalies.byPriority?.P3 ?? 0,
+            OPEN_ANOMALIES: anomalies.open ?? 0,
+            RECTIFIED_ANOMALIES: anomalies.rectified ?? 0,
+            SOW_COMPLETION: "100%",
+            TOTAL_RECORDS: insightData?.data?.records?.total || 0,
+            CP_MIN: insightData?.data?.cp?.minVal || "-850",
+            CP_MAX: insightData?.data?.cp?.maxVal || "-1020",
+            MGI_MAX: insightData?.data?.mgi?.max || "65",
+            MGI_AVG: insightData?.data?.mgi?.avg ? Math.round(insightData.data.mgi.avg) : "38",
+            SCOUR_EXPOSED: insightData?.data?.scour?.exposed || "0",
+            insightData: insightData?.data || {},
+            ...customVariables
+        };
+    }, [jobpacks, structures, selections, companySettings, insightData, customVariables]);
 
     const handleExportDocx = async () => {
         if (!selections.jobpackId || !selections.structureId || !selections.sowReportNo) return;
@@ -2274,6 +2377,51 @@ export default function ExecutiveSummaryPage() {
                 };
             });
 
+            // Helper to interpolate dynamic variables in user text
+            const interpolateTags = (text: string, dataObj: Record<string, any>) => {
+                if (!text || typeof text !== "string") return "";
+                return text.replace(/\{\{?([A-Za-z0-9_]+)\}?\}/g, (match, tag) => {
+                    const upper = tag.toUpperCase();
+                    if (dataObj[upper] !== undefined && dataObj[upper] !== null && dataObj[upper] !== "") {
+                        return String(dataObj[upper]);
+                    }
+                    if (dataObj[tag] !== undefined && dataObj[tag] !== null && dataObj[tag] !== "") {
+                        return String(dataObj[tag]);
+                    }
+                    return match;
+                });
+            };
+
+            const htmlToCleanDocxText = (html: string) => {
+                if (!html) return "";
+                if (!/<[a-z][\s\S]*>/i.test(html)) return html;
+                let t = html;
+                t = t.replace(/<br\s*[\/]?>/gi, "\n");
+                t = t.replace(/<\/(p|div|h[1-6]|tr|li)>/gi, "\n");
+                t = t.replace(/<li\b[^>]*>/gi, "• ");
+                t = t.replace(/<[^>]+>/g, "");
+                t = t.replace(/&nbsp;/g, " ")
+                     .replace(/&amp;/g, "&")
+                     .replace(/&lt;/g, "<")
+                     .replace(/&gt;/g, ">")
+                     .replace(/&quot;/g, '"')
+                     .replace(/&#39;/g, "'");
+                return t.replace(/\n{3,}/g, "\n\n").trim();
+            };
+
+            const finalEnrichedSections = enrichedSections.map((sec) => {
+                const raw = sec.content || "";
+                const interpolated = interpolateTags(raw, editorStatsContext);
+                const docxText = htmlToCleanDocxText(interpolated);
+                return {
+                    ...sec,
+                    content: docxText,
+                    raw_content: raw,
+                    html_content: interpolated,
+                    text_content: docxText,
+                };
+            });
+
             reportData = {
                 STRUCTURE_VISUALS: structureVisuals,
                 HAS_VISUALS: structureVisuals.length > 0,
@@ -2558,8 +2706,8 @@ export default function ExecutiveSummaryPage() {
                 SCOUR_MAX_QID: insightData?.data?.scour?.maxDepthQid || "N/A",
 
                 // Sections (User-Written)
-                sections: enrichedSections,
-                SECTIONS: enrichedSections,
+                sections: finalEnrichedSections,
+                SECTIONS: finalEnrichedSections,
                 PARENT_SECTION_NO: activeParentPrefix,
                 PARENT_PARAGRAPH_NO: activeParentPrefix,
                 NEXT_PARAGRAPH_NO: `${activeParentPrefix}.${sections.length + 1}`,
@@ -3662,11 +3810,14 @@ export default function ExecutiveSummaryPage() {
         }
 
         const data = insightData.data;
+        const evalResult = evaluateActiveCondition(activeSectionId, insightData);
         
         // Evaluate condition for the active section
         let selectedTemplateText = "";
         
-        if (existingRules) {
+        if (existingRules && existingRules[evalResult.conditionKey]) {
+            selectedTemplateText = existingRules[evalResult.conditionKey];
+        } else if (existingRules) {
             // Helper to check if a component type exists in the SOW
             const isComponentTypeRegistered = (codes: string[]) => {
                 if (!data.componentSummary) return false;
@@ -3883,8 +4034,8 @@ export default function ExecutiveSummaryPage() {
             finalWording = finalWording.replaceAll(k, v);
         });
 
-        setSectionsData(prev => ({ ...prev, [activeSectionId]: finalWording }));
-        toast.info(`Auto-populated ${activeSection?.title}`);
+        setSectionsData(prev => ({ ...prev, [activeSectionId]: interpolateAllVariables(finalWording, { ...editorStatsContext, ...vars }) }));
+        toast.success(`Auto-populated ${activeSection?.title} (${evalResult.conditionLabel}) with live data!`);
     };
 
     return (
@@ -3907,13 +4058,23 @@ export default function ExecutiveSummaryPage() {
                             <TabsTrigger value="preliminary" className="text-[10px] uppercase font-bold">Prelim</TabsTrigger>
                             <TabsTrigger value="final" className="text-[10px] uppercase font-bold">Final</TabsTrigger>
                         </TabsList>
-                    </Tabs>
+                    </Tabs> <Separator orientation="vertical" className="h-6 mx-1" /> {/*
 
                     <Separator orientation="vertical" className="h-6 mx-1" />
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setIsImportDocOpen(true)} 
+                        className="gap-2 h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-semibold shadow-2xs"
+                        title="Import executive summary sections from PDF or Word (.docx) document"
+                    >
+                        <FileUp className="h-4 w-4" />
+                        <span className="hidden sm:inline">Import PDF / Word</span>
+                    </Button>
 
                     <div className="flex items-center gap-2">
                         <SearchableSelect 
-                            options={structureOptions}
+                            */} <div className="flex items-center gap-2"><SearchableSelect options={structureOptions}
                             value={selections.structureId}
                             onValueChange={(v) => setSelections({ structureId: v, jobpackId: "", sowReportNo: "" })}
                             placeholder="Select Structure"
@@ -3947,6 +4108,16 @@ export default function ExecutiveSummaryPage() {
                     </div>
 
                     <Separator orientation="vertical" className="h-6 mx-1" />
+                    <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={() => setIsImportDocOpen(true)} 
+                        className="gap-2 h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-semibold shadow-2xs"
+                        title="Import executive summary sections from PDF or Word (.docx) document"
+                    >
+                        <FileUp className="h-4 w-4" />
+                        <span className="hidden sm:inline">Import PDF / Word</span>
+                    </Button>
 
                     <Button variant="outline" size="sm" onClick={() => setIsAnalyticsOpen(true)} disabled={!selections.sowReportNo} className="gap-2 h-9 border-blue-200 text-blue-700 hover:bg-blue-50">
                         <BarChart3 className="h-4 w-4" />
@@ -4028,6 +4199,18 @@ export default function ExecutiveSummaryPage() {
                                     <p className="text-xs text-slate-500">Section Summary and Findings</p>
                                 </div>
                                 <div className="flex items-center gap-2">
+                                    {summaryData?.historicalRecords?.length > 0 && (
+                                        <Button 
+                                            variant="outline" 
+                                            size="sm" 
+                                            onClick={() => setIsImportHistoryOpen(true)} 
+                                            className="gap-2 border-indigo-200 text-indigo-700 hover:bg-indigo-50 dark:border-indigo-800 dark:text-indigo-400"
+                                            title="Import findings from previously saved executive summaries"
+                                        >
+                                            <History className="h-3.5 w-3.5" />
+                                            Import Saved Data
+                                        </Button>
+                                    )}
                                     <Button variant="outline" size="sm" onClick={() => setIsTemplatesOpen(true)} className="gap-2 border-blue-200 text-blue-700 hover:bg-blue-50">
                                         <BookOpen className="h-3.5 w-3.5" />
                                         Templates
@@ -4041,22 +4224,56 @@ export default function ExecutiveSummaryPage() {
                                     </Button>
                                 </div>
                             </div>
-                            
-                            <div className="grow p-6 flex flex-col">
-                                <Label className="mb-2 text-slate-500 font-medium">Summary Content</Label>
-                                <Textarea
-                                    value={sectionsData[activeSectionId] || ""}
-                                    onChange={(e) => setSectionsData(prev => ({ ...prev, [activeSectionId]: e.target.value }))}
-                                    placeholder={`Enter summary for ${activeSection?.title}...`}
-                                    className="grow resize-none text-base p-4 focus-visible:ring-blue-500 border-slate-200 dark:border-slate-800"
-                                />
-                                <div className="mt-4 flex items-center justify-between text-xs text-slate-400">
-                                    <div className="flex items-center gap-2">
-                                        <Info className="h-3.5 w-3.5" />
-                                        <span>Use the right panel to pull specific inspection metrics.</span>
+
+                            {summaryData?.fallbackData && !summaryData?.data && !oldDataDismissed && (
+                                <div className="mx-6 mt-4 p-3 bg-amber-50/90 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl flex items-center justify-between gap-4 text-xs">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="p-1.5 bg-amber-100 dark:bg-amber-900/60 rounded-lg text-amber-800 dark:text-amber-300">
+                                            <Database className="h-4 w-4" />
+                                        </div>
+                                        <div>
+                                            <span className="font-semibold text-amber-900 dark:text-amber-200">
+                                                Previous Saved Summary Available
+                                            </span>
+                                            <span className="text-amber-700 dark:text-amber-400 ml-1">
+                                                — Found saved executive summary for this structure from SOW Report <strong>{summaryData.fallbackData.sow_report_no}</strong> ({new Date(summaryData.fallbackData.updated_at).toLocaleDateString()}).
+                                            </span>
+                                        </div>
                                     </div>
-                                    <span>Character count: {sectionsData[activeSectionId]?.length || 0}</span>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <Button
+                                            size="sm"
+                                            variant="ghost"
+                                            onClick={() => setOldDataDismissed(true)}
+                                            className="h-7 text-xs text-amber-700 hover:text-amber-900 dark:text-amber-400"
+                                        >
+                                            Dismiss
+                                        </Button>
+                                        <Button
+                                            size="sm"
+                                            onClick={() => {
+                                                const imported = extractSectionsMap(summaryData.fallbackData.sections);
+                                                setSectionsData(imported);
+                                                toast.success(`Imported previous executive summary from SOW ${summaryData.fallbackData.sow_report_no}`);
+                                                setOldDataDismissed(true);
+                                            }}
+                                            className="h-7 text-xs bg-amber-600 hover:bg-amber-700 text-white font-medium"
+                                        >
+                                            Import This Data
+                                        </Button>
+                                    </div>
                                 </div>
+                            )}
+                            
+                            <div className="grow p-4 flex flex-col min-h-0 overflow-hidden">
+                                <ExecutiveRichEditor
+                                    value={sectionsData[activeSectionId] || ""}
+                                    onChange={(newVal) => setSectionsData(prev => ({ ...prev, [activeSectionId]: newVal }))}
+                                    placeholder={`Enter summary for ${activeSection?.title}...`}
+                                    sectionTitle={activeSection?.title}
+                                    statsContext={editorStatsContext}
+                                    showDynamicFields={false}
+                                />
                             </div>
                         </>
                     )}
@@ -4187,6 +4404,7 @@ export default function ExecutiveSummaryPage() {
                 sectionTitle={activeSection?.title || ""}
                 currentContent={sectionsData[activeSectionId] || ""}
                 onSelect={(content) => setSectionsData(prev => ({ ...prev, [activeSectionId]: content }))}
+                statsContext={editorStatsContext}
                 projectContext={{
                     platform: structures.find(s => s.id.toString() === selections.structureId)?.str_name,
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
@@ -4244,6 +4462,44 @@ export default function ExecutiveSummaryPage() {
                     jobpack: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.name,
                     reportNo: selections.sowReportNo,
                     vessel: jobpacks.find(j => j.id.toString() === selections.jobpackId)?.metadata?.vessel
+                }}
+            />
+
+            <ImportDocumentDialog
+                open={isImportDocOpen}
+                onOpenChange={setIsImportDocOpen}
+                currentSectionsData={sectionsData}
+                onApplyToSummary={(newSections, count) => {
+                    setSectionsData(newSections);
+                    toast.success(`Imported ${count} section(s) into Executive Summary. Click 'Save Changes' to commit to database.`);
+                }}
+            />
+
+            <ImportHistoricalDialog
+                open={isImportHistoryOpen}
+                onOpenChange={setIsImportHistoryOpen}
+                records={summaryData?.historicalRecords || []}
+                currentSectionId={activeSectionId}
+                currentSectionTitle={activeSection?.title}
+                currentSowReportNo={selections.sowReportNo}
+                onImportAll={(record) => {
+                    const imported = extractSectionsMap(record.sections);
+                    const count = Object.values(imported).filter(v => v && v.trim()).length;
+                    setSectionsData(prev => ({ ...prev, ...imported }));
+                    toast.success(`Imported ${count} section(s) from SOW ${record.sow_report_no}`);
+                    setIsImportHistoryOpen(false);
+                    setOldDataDismissed(true);
+                }}
+                onImportSection={(record, secId) => {
+                    const imported = extractSectionsMap(record.sections);
+                    const content = imported[secId] || "";
+                    if (content) {
+                        setSectionsData(prev => ({ ...prev, [secId]: content }));
+                        toast.success(`Imported ${activeSection?.title} from SOW ${record.sow_report_no}`);
+                    } else {
+                        toast.info(`No text found for ${activeSection?.title} in SOW ${record.sow_report_no}`);
+                    }
+                    setIsImportHistoryOpen(false);
                 }}
             />
 
