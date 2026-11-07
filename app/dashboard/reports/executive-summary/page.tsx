@@ -26,7 +26,7 @@ import {
     Loader2,
     History
 } from "lucide-react";
-import dynamic from "next/dynamic";
+
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -45,8 +45,8 @@ import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { EXECUTIVE_SUMMARY_TOC, isItemMatchingSection } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
 import { interpolateAllVariables, evaluateActiveCondition } from "./template-utils";
-// Heavy dialogs are lazy-loaded client-side; Radix Dialog renders nothing while
-// closed, so their chunks still background-preload on mount without blocking first paint.
+import dynamic from "next/dynamic";
+
 const ReportSettingsDialog = dynamic(
     () => import("./ReportSettingsDialog").then((m) => m.ReportSettingsDialog),
     { ssr: false }
@@ -80,7 +80,17 @@ const ImportHistoricalDialog = dynamic(
     { ssr: false }
 );
 
+
+
 export default function ExecutiveSummaryPage() {
+    const [isMounted, setIsMounted] = useState(false);
+    const [enableInsightFetch, setEnableInsightFetch] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+        const timer = setTimeout(() => setEnableInsightFetch(true), 1200);
+        return () => clearTimeout(timer);
+    }, []);
     const [selections, setSelections] = useState({
         jobpackId: "",
         structureId: "",
@@ -112,6 +122,7 @@ export default function ExecutiveSummaryPage() {
     const [isTemplatesOpen, setIsTemplatesOpen] = useState(false);
     const [isImportHistoryOpen, setIsImportHistoryOpen] = useState(false);
     const [isImportDocOpen, setIsImportDocOpen] = useState(false);
+    const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
     const [oldDataDismissed, setOldDataDismissed] = useState(false);
 
     useEffect(() => {
@@ -132,7 +143,7 @@ export default function ExecutiveSummaryPage() {
     });
 
     // Fetch context data
-    const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher);
+    const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
     // Fallback fetch fires only after the primary list has resolved empty,
     // instead of doubling the /api/jobpack load on every mount.
     const allJobpackList = allJobpacksRes?.data;
@@ -140,12 +151,13 @@ export default function ExecutiveSummaryPage() {
         allJobpacksRes !== undefined && (!allJobpackList || allJobpackList.length === 0)
             ? "/api/jobpack?limit=1000&has_inspection=true"
             : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
-    const { data: companySettings } = useSWR("/api/company-settings", fetcher);
-    const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
-    const { data: structuresRes } = useSWR("/api/structures", fetcher);
-    const { data: contractorsRes } = useSWR("/api/jobpack/utils/contractors", fetcher);
+    const { data: companySettings } = useSWR("/api/company-settings", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+    const { data: templatesRes } = useSWR("/api/report-templates", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+    const { data: structuresRes } = useSWR("/api/structures", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
+    const { data: contractorsRes } = useSWR("/api/jobpack/utils/contractors", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
     const contractors = useMemo(() => contractorsRes?.data || [], [contractorsRes]);
 
     const jobpacks = useMemo(() => {
@@ -171,12 +183,14 @@ export default function ExecutiveSummaryPage() {
     // Fetch distinct inspection records combinations (jobpack_id, structure_id, sow_report_no)
     const { data: structureInspectionFiltersRes } = useSWR(
         cleanStructureId ? `/api/reports/inspection-filters?structure_id=${cleanStructureId}` : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
 
     const { data: sowsForStructureData } = useSWR(
         cleanStructureId ? `/api/sow?structure_id=${cleanStructureId}` : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
 
     const checkJobPackMatchesStructureFast = (
@@ -283,14 +297,16 @@ export default function ExecutiveSummaryPage() {
         selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/reports/inspection-filters?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}`
             : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
 
     const { data: sowsData } = useSWR(
         selections.jobpackId && cleanStructureId && !hasSowReportsFromStructure
             ? `/api/sow?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}` 
             : null, 
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
 
     const getSowReportsForJobpack = useCallback((jpId: string) => {
@@ -378,25 +394,26 @@ export default function ExecutiveSummaryPage() {
         selections.jobpackId && cleanStructureId
             ? `/api/executive-summary?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}${selections.sowReportNo ? `&sow_report_no=${encodeURIComponent(selections.sowReportNo)}` : ""}`
             : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
 
     // Fetch insight data (Live stats)
     const { data: insightData, isLoading: isLoadingInsight } = useSWR(
-        selections.jobpackId && cleanStructureId && selections.sowReportNo
+        (showInsight || isAnalyticsOpen || enableInsightFetch) && selections.jobpackId && cleanStructureId && selections.sowReportNo
             ? `/api/inspection-summary?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId}&sow_report_no=${selections.sowReportNo}`
             : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
-
-    const [isAnalyticsOpen, setIsAnalyticsOpen] = useState(false);
 
     // Fetch templates for the active section to evaluate conditional rules
     const { data: sectionTemplatesRes, mutate: refreshSectionTemplates } = useSWR(
         selections.sowReportNo
             ? `/api/executive-summary/templates?section_id=${activeSectionId}`
             : null,
-        fetcher
+        fetcher,
+        { revalidateOnFocus: false, dedupingInterval: 60000 }
     );
     const sectionTemplates = sectionTemplatesRes?.data || [];
     const conditionalTemplate = sectionTemplates.find((t: any) => t.metadata?.template_type === "conditional");
@@ -563,9 +580,11 @@ export default function ExecutiveSummaryPage() {
             TODAY_SHORT: new Date().toLocaleDateString("en-GB"),
             INSPECTION_YEAR: new Date().getFullYear().toString(),
             TOTAL_ANOMALIES: anomalies.total ?? 0,
-            P1_ANOMALIES: anomalies.byPriority?.P1 ?? 0,
-            P2_ANOMALIES: anomalies.byPriority?.P2 ?? 0,
-            P3_ANOMALIES: anomalies.byPriority?.P3 ?? 0,
+            P1_ANOMALIES: anomalies.byPriority?.["Priority 1"] ?? anomalies.byPriority?.P1 ?? 0,
+            P2_ANOMALIES: anomalies.byPriority?.["Priority 2"] ?? anomalies.byPriority?.P2 ?? 0,
+            P3_ANOMALIES: anomalies.byPriority?.["Priority 3"] ?? anomalies.byPriority?.P3 ?? 0,
+            P4_ANOMALIES: anomalies.byPriority?.["Priority 4"] ?? anomalies.byPriority?.P4 ?? 0,
+            OBS_ANOMALIES: anomalies.byPriority?.["Observation"] ?? anomalies.byPriority?.OBS ?? 0,
             OPEN_ANOMALIES: anomalies.open ?? 0,
             RECTIFIED_ANOMALIES: anomalies.rectified ?? 0,
             SOW_COMPLETION: "100%",
@@ -575,6 +594,9 @@ export default function ExecutiveSummaryPage() {
             MGI_MAX: insightData?.data?.mgi?.max || "65",
             MGI_AVG: insightData?.data?.mgi?.avg ? Math.round(insightData.data.mgi.avg) : "38",
             SCOUR_EXPOSED: insightData?.data?.scour?.exposed || "0",
+            incomplete_records: insightData?.data?.incomplete_records || [],
+            outstanding_tasks: insightData?.data?.outstanding_tasks || [],
+            sow_summary: insightData?.data?.sow_summary || insightData?.data?.sowSummary || [],
             insightData: insightData?.data || {},
             ...customVariables
         };
@@ -621,6 +643,7 @@ export default function ExecutiveSummaryPage() {
                 detail: `Inspecting ${template.name || "template"} tags...`
             }));
 
+            const { PizZip, normalizeDelimiters, generateTemplateReport, mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
             const activeTemplateTags = new Set<string>();
 
             try {
@@ -629,9 +652,9 @@ export default function ExecutiveSummaryPage() {
                 const tRes = await fetch(tUrl, { cache: "no-store" });
                 if (tRes.ok) {
                     preloadedTemplateBuffer = await tRes.arrayBuffer();
-                    const PizZip = (await import("pizzip")).default || (await import("pizzip"));
+
                     const zip = new PizZip(preloadedTemplateBuffer);
-                    const { normalizeDelimiters } = await import("@/utils/report-generators/template-report-generator");
+
                     normalizeDelimiters(zip);
                     preloadedTemplateBuffer = zip.generate({ type: "arraybuffer" });
                     const docFiles = zip.file(/word\/(document|header\d*|footer\d*)\.xml/);
@@ -689,7 +712,7 @@ export default function ExecutiveSummaryPage() {
                 console.warn("[ExecutiveSummary] Could not preload/analyze template tags:", tErr);
             }
 
-            const { mapInspectionDataForDocx, generateMgiProfileImage, generateSeabedMapImage } = await import("@/utils/report-generators/report-data-mapper");
+
             
             const activeParentPrefix = (template as any)?._detectedParentPrefix || "1";
 
@@ -2411,7 +2434,7 @@ export default function ExecutiveSummaryPage() {
 
             const finalEnrichedSections = enrichedSections.map((sec) => {
                 const raw = sec.content || "";
-                const interpolated = interpolateTags(raw, editorStatsContext);
+                const interpolated = interpolateAllVariables(raw, editorStatsContext, sec.id, sec.title);
                 const docxText = htmlToCleanDocxText(interpolated);
                 return {
                     ...sec,
@@ -2431,18 +2454,18 @@ export default function ExecutiveSummaryPage() {
                 has_findings: totalFindingsCount > 0,
 
                 // Global ROV vs Diver Anomalies & Findings
-                ANOMALIES_ROV: rawAnomalies.filter(isROV).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
-                ANOMALIES_DIVE: rawAnomalies.filter(isDiving).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
+                ANOMALIES_ROV: rawAnomalies.filter(isROV).map((a: any, i: any) => ({ ...a, no: i + 1, id: i + 1 })),
+                ANOMALIES_DIVE: rawAnomalies.filter(isDiving).map((a: any, i: any) => ({ ...a, no: i + 1, id: i + 1 })),
                 HAS_ANOMALIES_ROV: rawAnomalies.some(isROV),
                 HAS_ANOMALIES_DIVE: rawAnomalies.some(isDiving),
 
-                RECTIFIED_ANOMALIES: rawAnomalies.filter((a: any) => a.is_rectified).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
-                NOT_RECTIFIED_ANOMALIES: rawAnomalies.filter((a: any) => !a.is_rectified).map((a, i) => ({ ...a, no: i + 1, id: i + 1 })),
+                RECTIFIED_ANOMALIES: rawAnomalies.filter((a: any) => a.is_rectified).map((a: any, i: any) => ({ ...a, no: i + 1, id: i + 1 })),
+                NOT_RECTIFIED_ANOMALIES: rawAnomalies.filter((a: any) => !a.is_rectified).map((a: any, i: any) => ({ ...a, no: i + 1, id: i + 1 })),
                 HAS_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => a.is_rectified),
                 HAS_NOT_RECTIFIED_ANOMALIES: rawAnomalies.some((a: any) => !a.is_rectified),
 
-                FINDINGS_ROV: rawFindings.filter(isROV).map((f, i) => ({ ...f, no: i + 1, id: i + 1 })),
-                FINDINGS_DIVE: rawFindings.filter(isDiving).map((f, i) => ({ ...f, no: i + 1, id: i + 1 })),
+                FINDINGS_ROV: rawFindings.filter(isROV).map((f: any, i: any) => ({ ...f, no: i + 1, id: i + 1 })),
+                FINDINGS_DIVE: rawFindings.filter(isDiving).map((f: any, i: any) => ({ ...f, no: i + 1, id: i + 1 })),
                 HAS_FINDINGS_ROV: rawFindings.some(isROV),
                 HAS_FINDINGS_DIVE: rawFindings.some(isDiving),
 
@@ -3742,7 +3765,7 @@ export default function ExecutiveSummaryPage() {
                 detail: "Finalizing data structures for Word template"
             }));
 
-            const { generateTemplateReport } = await import("@/utils/report-generators/template-report-generator");
+
             await generateTemplateReport({
                 templateUrl: template.storage_path,
                 preloadedTemplate: preloadedTemplateBuffer || undefined,
@@ -4034,52 +4057,42 @@ export default function ExecutiveSummaryPage() {
             finalWording = finalWording.replaceAll(k, v);
         });
 
-        setSectionsData(prev => ({ ...prev, [activeSectionId]: interpolateAllVariables(finalWording, { ...editorStatsContext, ...vars }) }));
+        setSectionsData(prev => ({ ...prev, [activeSectionId]: interpolateAllVariables(finalWording, { ...editorStatsContext, ...vars }, activeSectionId, activeSection?.title) }));
         toast.success(`Auto-populated ${activeSection?.title} (${evalResult.conditionLabel}) with live data!`);
     };
 
     return (
         <div className="flex flex-col h-full bg-slate-50/50 dark:bg-slate-950/50">
             {/* Header / Context Selection */}
-            <header className="flex items-center justify-between px-6 py-4 bg-white dark:bg-slate-900 border-b shadow-sm z-10">
-                <div className="flex items-center gap-4">
-                    <div className="bg-blue-600 p-2 rounded-lg text-white shadow-blue-500/20 shadow-lg">
+            <header className="flex flex-wrap lg:flex-nowrap items-center justify-between gap-3 px-4 sm:px-6 py-2.5 sm:py-3.5 bg-white dark:bg-slate-900 border-b shadow-sm z-10 min-w-0">
+                <div className="flex items-center gap-3 shrink-0">
+                    <div className="bg-blue-600 p-2 rounded-lg text-white shadow-blue-500/20 shadow-md shrink-0">
                         <FileText className="h-5 w-5" />
                     </div>
                     <div>
-                        <h1 className="text-xl font-bold tracking-tight">Executive Summary Builder</h1>
-                        <p className="text-xs text-slate-500 font-medium uppercase tracking-wider">Reports & Aggregates</p>
+                        <h1 className="text-base sm:text-lg font-bold tracking-tight whitespace-nowrap">Executive Summary</h1>
+                        <p className="text-[10px] text-slate-500 font-medium uppercase tracking-wider hidden sm:block">Reports & Aggregates</p>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-3">
-                    <Tabs value={reportType} onValueChange={setReportType} className="w-[200px]">
-                        <TabsList className="grid w-full grid-cols-2 h-9">
-                            <TabsTrigger value="preliminary" className="text-[10px] uppercase font-bold">Prelim</TabsTrigger>
-                            <TabsTrigger value="final" className="text-[10px] uppercase font-bold">Final</TabsTrigger>
+                <div className="flex items-center gap-2 sm:gap-2.5 flex-wrap justify-end min-w-0 flex-1">
+                    <Tabs value={reportType} onValueChange={setReportType} className="w-[130px] sm:w-[140px] shrink-0">
+                        <TabsList className="grid w-full grid-cols-2 h-9 p-0.5">
+                            <TabsTrigger value="preliminary" className="text-[10px] uppercase font-bold px-1">Prelim</TabsTrigger>
+                            <TabsTrigger value="final" className="text-[10px] uppercase font-bold px-1">Final</TabsTrigger>
                         </TabsList>
-                    </Tabs> <Separator orientation="vertical" className="h-6 mx-1" /> {/*
+                    </Tabs>
 
-                    <Separator orientation="vertical" className="h-6 mx-1" />
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setIsImportDocOpen(true)} 
-                        className="gap-2 h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-semibold shadow-2xs"
-                        title="Import executive summary sections from PDF or Word (.docx) document"
-                    >
-                        <FileUp className="h-4 w-4" />
-                        <span className="hidden sm:inline">Import PDF / Word</span>
-                    </Button>
+                    <Separator orientation="vertical" className="h-6 mx-0.5 hidden sm:block shrink-0" />
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                         <SearchableSelect 
-                            */} <div className="flex items-center gap-2"><SearchableSelect options={structureOptions}
+                            options={structureOptions}
                             value={selections.structureId}
                             onValueChange={(v) => setSelections({ structureId: v, jobpackId: "", sowReportNo: "" })}
-                            placeholder="Select Structure"
+                            placeholder="Structure"
                             searchPlaceholder="Search Structure..."
-                            className="w-[240px]"
+                            className="w-[120px] sm:w-[150px] md:w-[170px] lg:w-[185px] xl:w-[210px] shrink-1"
                         />
 
                         <SearchableSelect 
@@ -4091,9 +4104,9 @@ export default function ExecutiveSummaryPage() {
                                 setSelections(s => ({ ...s, jobpackId: v, sowReportNo: autoReport }));
                             }}
                             disabled={!selections.structureId}
-                            placeholder="Select Job Pack"
+                            placeholder="Job Pack"
                             searchPlaceholder="Search Job Pack..."
-                            className="w-[240px]"
+                            className="w-[130px] sm:w-[160px] md:w-[180px] lg:w-[195px] xl:w-[220px] shrink-1"
                         />
 
                         <SearchableSelect 
@@ -4101,48 +4114,75 @@ export default function ExecutiveSummaryPage() {
                             value={selections.sowReportNo}
                             onValueChange={(v) => setSelections(s => ({...s, sowReportNo: v}))}
                             disabled={!selections.jobpackId}
-                            placeholder="SOW Report No"
+                            placeholder="SOW Report"
                             searchPlaceholder="Search Report No..."
-                            className="w-[180px]"
+                            className="w-[110px] sm:w-[130px] md:w-[140px] lg:w-[150px] shrink-1"
                         />
                     </div>
 
-                    <Separator orientation="vertical" className="h-6 mx-1" />
-                    <Button 
-                        variant="outline" 
-                        size="sm" 
-                        onClick={() => setIsImportDocOpen(true)} 
-                        className="gap-2 h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-semibold shadow-2xs"
-                        title="Import executive summary sections from PDF or Word (.docx) document"
-                    >
-                        <FileUp className="h-4 w-4" />
-                        <span className="hidden sm:inline">Import PDF / Word</span>
-                    </Button>
+                    <Separator orientation="vertical" className="h-6 mx-0.5 hidden md:block shrink-0" />
 
-                    <Button variant="outline" size="sm" onClick={() => setIsAnalyticsOpen(true)} disabled={!selections.sowReportNo} className="gap-2 h-9 border-blue-200 text-blue-700 hover:bg-blue-50">
-                        <BarChart3 className="h-4 w-4" />
-                        <span className="hidden xl:inline">Live Analytics</span>
-                    </Button>
+                    <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setIsImportDocOpen(true)} 
+                            className="gap-1.5 h-9 border-emerald-300 text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 font-semibold shadow-2xs shrink-0 px-2.5"
+                            title="Import executive summary sections from PDF or Word (.docx) document"
+                        >
+                            <FileUp className="h-4 w-4 shrink-0" />
+                            <span className="hidden 2xl:inline">Import PDF / Word</span>
+                            <span className="hidden md:inline 2xl:hidden">Import</span>
+                        </Button>
 
-                    <Button variant="outline" size="icon" onClick={() => setIsSettingsOpen(true)} className="h-9 w-9">
-                        <Settings className="h-4 w-4" />
-                    </Button>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={() => setIsAnalyticsOpen(true)} 
+                            disabled={!selections.sowReportNo} 
+                            className="gap-1.5 h-9 border-blue-200 text-blue-700 hover:bg-blue-50 shrink-0 px-2.5"
+                            title="Live Analytics"
+                        >
+                            <BarChart3 className="h-4 w-4 shrink-0" />
+                            <span className="hidden 2xl:inline">Live Analytics</span>
+                            <span className="hidden xl:inline 2xl:hidden">Analytics</span>
+                        </Button>
 
-                    <Button variant="outline" size="sm" onClick={handleSave} disabled={isSaving || !selections.sowReportNo} className="gap-2 h-9">
-                        {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                        <span className="hidden lg:inline">Save</span>
-                    </Button>
+                        <Button 
+                            variant="outline" 
+                            size="icon" 
+                            onClick={() => setIsSettingsOpen(true)} 
+                            className="h-9 w-9 shrink-0"
+                            title="Templates & Settings"
+                        >
+                            <Settings className="h-4 w-4" />
+                        </Button>
 
-                    <Button 
-                        variant="default" 
-                        size="sm" 
-                        onClick={handleExportDocx} 
-                        disabled={isGenerating || !selections.sowReportNo}
-                        className="bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 gap-2 h-9 min-w-[120px]"
-                    >
-                        {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                        {reportType === "final" ? "Final DOCX" : "Prelim DOCX"}
-                    </Button>
+                        <Button 
+                            variant="outline" 
+                            size="sm" 
+                            onClick={handleSave} 
+                            disabled={isSaving || !selections.sowReportNo} 
+                            className="gap-1.5 h-9 shrink-0 px-2.5"
+                            title="Save Summary"
+                        >
+                            {isSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                            <span className="hidden sm:inline">Save</span>
+                        </Button>
+
+                        <Button 
+                            variant="default" 
+                            size="sm" 
+                            onClick={handleExportDocx} 
+                            disabled={isGenerating || !selections.sowReportNo}
+                            className="bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-500/20 gap-1.5 h-9 shrink-0 px-3 whitespace-nowrap min-w-fit"
+                            title={reportType === "final" ? "Export Final DOCX" : "Export Prelim DOCX"}
+                        >
+                            {isGenerating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4 shrink-0" />}
+                            <span className="hidden sm:inline">{reportType === "final" ? "Final DOCX" : "Prelim DOCX"}</span>
+                            <span className="sm:hidden">{reportType === "final" ? "Final" : "Prelim"}</span>
+                        </Button>
+                    </div>
                 </div>
             </header>
 
@@ -4266,14 +4306,25 @@ export default function ExecutiveSummaryPage() {
                             )}
                             
                             <div className="grow p-4 flex flex-col min-h-0 overflow-hidden">
+                                {isMounted ? (
                                 <ExecutiveRichEditor
+                                    key={activeSectionId}
                                     value={sectionsData[activeSectionId] || ""}
                                     onChange={(newVal) => setSectionsData(prev => ({ ...prev, [activeSectionId]: newVal }))}
                                     placeholder={`Enter summary for ${activeSection?.title}...`}
                                     sectionTitle={activeSection?.title}
+                                    sectionId={activeSectionId}
                                     statsContext={editorStatsContext}
                                     showDynamicFields={false}
+                                    isTemplateMode={false}
                                 />
+                                ) : (
+                                    <div className="flex-1 flex items-center justify-center p-8 text-sm text-slate-400">
+                                        <Loader2 className="h-5 w-5 animate-spin mr-2 text-blue-500" />
+                                        Loading Executive Editor...
+                                    </div>
+                                )}
+
                             </div>
                         </>
                     )}

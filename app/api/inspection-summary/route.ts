@@ -3406,6 +3406,25 @@ export const GET = withTenant(async (request, { companyId }) => {
                     date: r.inspection_data?.date || new Date().toLocaleDateString("en-GB")
                 })),
                 outstanding_tasks: outstandingTasks,
+                incomplete_records: rawRecords.filter(isRecIncomplete).map((r: any) => {
+                    const d = r.inspection_data || r.inspection_dat || {};
+                    const comp = r.structure_components || {};
+                    const qid = comp.q_id || d.q_id || (r.component_id ? `ID: ${r.component_id}` : "N/A");
+                    const compType = comp.code || r.component_type || "Structure Component";
+                    const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
+                    const inspName = formatInspectionTypeName(r.inspection_type?.name || inspCode);
+                    const reason = r.incomplete_reason || d.incomplete_reason || r.description || d.description || d.comments || "Incomplete — task could not be fully executed";
+                    const elv = r.elevation || d.elevation || comp.metadata?.elv_1 || "-";
+                    return {
+                        qid,
+                        component_type: compType,
+                        elevation: elv,
+                        inspection_type: inspName,
+                        inspection_code: inspCode,
+                        reason: String(reason).trim(),
+                        status: "Incomplete"
+                    };
+                }),
             },
         });
     } catch (error: any) {

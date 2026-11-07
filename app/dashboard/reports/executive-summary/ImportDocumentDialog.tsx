@@ -70,6 +70,7 @@ export function ImportDocumentDialog({
     currentSectionsData = {},
     onApplyToSummary
 }: ImportDocumentDialogProps) {
+    if (!open) return null;
     // File upload state
     const [isUploading, setIsUploading] = useState(false);
     const [uploadedFile, setUploadedFile] = useState<{ name: string; size: number; type: string } | null>(null);

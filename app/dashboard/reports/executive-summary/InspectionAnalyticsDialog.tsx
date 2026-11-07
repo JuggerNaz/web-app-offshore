@@ -47,6 +47,7 @@ export function InspectionAnalyticsDialog({
     insightData,
     projectContext
 }: InspectionAnalyticsDialogProps) {
+    if (!open) return null;
     const [activeTab, setActiveTab] = useState("cp");
 
     if (!insightData || !insightData.data) {

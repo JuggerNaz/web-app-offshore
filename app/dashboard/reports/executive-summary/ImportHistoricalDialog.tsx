@@ -47,6 +47,7 @@ export function ImportHistoricalDialog({
     onImportAll,
     onImportSection,
 }: ImportHistoricalDialogProps) {
+    if (!open) return null;
     const [selectedRecordId, setSelectedRecordId] = useState<number | string | null>(null);
 
     const selectedRecord = records.find(r => r.id === selectedRecordId) || records[0];

@@ -327,7 +327,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             })
             .catch(err => {
                 if (!isCurrent) return;
-                console.error("Error fetching inspection filters for structure:", err);
+                console.warn("Error fetching inspection filters for structure:", err);
                 setStructureInspectionFilters([]);
             })
             .finally(() => {
@@ -357,7 +357,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     }
                 })
                 .catch(err => {
-                    console.error("Error fetching inspection filters:", err);
+                    console.warn("Error fetching inspection filters:", err);
                     setInspectionFilters([]);
                 });
         } else {
@@ -379,7 +379,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .then(data => {
                     if (data.data) setAvailableComponents(data.data);
                 })
-                .catch(err => console.error(err))
+                .catch(err => console.warn(err))
                 .finally(() => setIsLoadingComponents(false));
         }
     }, [selections.structureId, selections.templateId]);
@@ -439,7 +439,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 })
                 .catch(err => {
                     if (!isCurrent) return;
-                    console.error("Error fetching inspection filters:", err);
+                    console.warn("Error fetching inspection filters:", err);
                     setAvailableSowReports([]);
                     setSelections(prev => ({ ...prev, sowReportNo: "" }));
                 })
@@ -467,7 +467,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 })
                 .catch(err => {
                     if (!isCurrent) return;
-                    console.error("Error fetching SOW reports:", err);
+                    console.warn("Error fetching SOW reports:", err);
                     setAvailableSowReports([]);
                     setSelections(prev => ({ ...prev, sowReportNo: "" }));
                 })

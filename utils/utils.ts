@@ -36,7 +36,13 @@ const parseResponse = async (response: Response): Promise<any> => {
 };
 
 export const fetcher = async (...args: FetcherArgs): Promise<any> => {
-  let response = await fetch(...args);
+  let response: Response;
+  try {
+    response = await fetch(...args);
+  } catch (err) {
+    await new Promise((r) => setTimeout(r, 300));
+    response = await fetch(...args);
+  }
 
   // The proxy no longer refreshes sessions on /api/* requests. If the access
   // token expired mid-session, refresh it client-side and retry once.

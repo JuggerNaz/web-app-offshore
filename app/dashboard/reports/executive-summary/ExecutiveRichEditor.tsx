@@ -13,6 +13,7 @@ import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
 import Link from "@tiptap/extension-link";
+import { CellSelection, TableMap } from "@tiptap/pm/tables";
 
 import {
     Bold,
@@ -39,6 +40,8 @@ import {
     MicOff,
     PenTool,
     BarChart3,
+    TrendingUp,
+    Activity,
     ChevronDown,
     Maximize2,
     Minimize2,
@@ -56,6 +59,9 @@ import {
     CheckCircle2,
     Zap,
     FileText,
+    Merge,
+    SquareSplitHorizontal,
+    SquareSplitVertical,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -67,12 +73,29 @@ import { Separator } from "@/components/ui/separator";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import {
+    interpolateAllVariables,
     getAnomalyZonePriorityTableTemplate,
     getIncompleteScopeTableTemplate,
     getCompletedScopeTableTemplate,
     getAnodeDepletionTableTemplate,
-    getAnomalyDefectTypeTableTemplate
+    getAnomalyDefectTypeTableTemplate,
+    getAnomalyPriorityChartTemplate,
+    getScopeCompletionChartTemplate,
+    getCpHealthChartTemplate,
+    getAnodeDepletionChartTemplate,
+    getDefectDistributionChartTemplate,
+    buildLiveAnomalyZoneTable,
+    buildLiveIncompleteScopeTable,
+    buildLiveCompletedScopeTable,
+    buildLiveAnodeDepletionTable,
+    buildLiveAnomalyDefectTypeTable,
+    buildLiveAnomalyPriorityChart,
+    buildLiveScopeCompletionChart,
+    buildLiveCpHealthChart,
+    buildLiveAnodeDepletionChart,
+    buildLiveDefectDistributionChart
 } from "./template-utils";
+import { EXECUTIVE_SUMMARY_TOC, normalizeSectionId } from "./constants";
 
 // Custom Table with Width and Alignment Attributes
 const CustomTable = Table.extend({
@@ -236,6 +259,16 @@ const DYNAMIC_VARIABLES = [
             { tag: "{{TABLE_ANODE_DEPLETION}}", label: "4. Anode Depletion Status Table (<25%, 26-50%, etc.)" },
             { tag: "{{TABLE_ANOMALY_BY_DEFECT_TYPE}}", label: "5. Anomaly Defect Type Matrix Table" },
         ]
+    },
+    {
+        category: "Smart Inspection Charts (Live Auto-Generated)",
+        items: [
+            { tag: "{{CHART_ANOMALY_PRIORITY}}", label: "1. Anomaly Priority Distribution Bar Chart" },
+            { tag: "{{CHART_SCOPE_COMPLETION}}", label: "2. SOW Completion & Scope Progress Chart" },
+            { tag: "{{CHART_CP_STATUS}}", label: "3. CP Potential Integrity Health Chart" },
+            { tag: "{{CHART_ANODE_DEPLETION}}", label: "4. Anode Depletion Distribution Chart" },
+            { tag: "{{CHART_DEFECT_BREAKDOWN}}", label: "5. Defect Severity & Category Breakdown Chart" },
+        ]
     }
 ];
 
@@ -244,9 +277,11 @@ interface ExecutiveRichEditorProps {
     onChange: (value: string) => void;
     placeholder?: string;
     sectionTitle?: string;
+    sectionId?: string;
     readOnly?: boolean;
     statsContext?: any;
     showDynamicFields?: boolean;
+    isTemplateMode?: boolean;
     minHeight?: string;
     className?: string;
 }
@@ -256,12 +291,16 @@ export function ExecutiveRichEditor({
     onChange,
     placeholder = "Enter executive summary findings...",
     sectionTitle = "",
+    sectionId = "",
     readOnly = false,
     statsContext,
     showDynamicFields = true,
+    isTemplateMode = false,
     minHeight = "240px",
     className = "",
 }: ExecutiveRichEditorProps) {
+    const effectiveSectionId = normalizeSectionId(sectionId || sectionTitle);
+
     const [isFullScreen, setIsFullScreen] = useState(false);
     const [isPreviewMode, setIsPreviewMode] = useState(false);
 
@@ -278,7 +317,7 @@ export function ExecutiveRichEditor({
 
     // Chart insert modal state
     const [chartModalOpen, setChartModalOpen] = useState(false);
-    const [chartType, setChartType] = useState<"priority" | "status" | "metrics">("priority");
+    const [chartType, setChartType] = useState<number>(1);
 
     // Speech-to-text state
     const [isListening, setIsListening] = useState(false);
@@ -295,6 +334,8 @@ export function ExecutiveRichEditor({
                 heading: {
                     levels: [1, 2, 3],
                 },
+                link: false,
+                underline: false,
             }),
             Underline,
             TextAlign.configure({
@@ -421,6 +462,103 @@ export function ExecutiveRichEditor({
         editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run();
     };
 
+    // Smart Inspection Tables Insertion:
+    // If isTemplateMode is true -> inserts template with dynamic tags ({{P1_ANOMALIES}}, {{REPORT_NO}}, etc.)
+    // If isTemplateMode is false (Summary Section) -> inserts table populated with live real campaign data
+    const insertSmartTable = (tableIndex: 1 | 2 | 3 | 4 | 5) => {
+        if (!editor) return;
+
+        let content = "";
+        let tableName = "";
+
+        if (isTemplateMode) {
+            // Template creation page: paste with dynamic variables & tags ({{...}})
+            switch (tableIndex) {
+                case 1:
+                    content = getAnomalyZonePriorityTableTemplate();
+                    tableName = "1. Anomaly Breakdown Template (Dynamic Tags)";
+                    break;
+                case 2:
+                    content = getIncompleteScopeTableTemplate();
+                    tableName = "2. Incomplete Scope Status Template (Dynamic Tags)";
+                    break;
+                case 3:
+                    content = getCompletedScopeTableTemplate();
+                    tableName = "3. Completed Scope Status Template (Dynamic Tags)";
+                    break;
+                case 4:
+                    content = getAnodeDepletionTableTemplate();
+                    tableName = "4. Anode Depletion Status Template (Dynamic Tags)";
+                    break;
+                case 5:
+                    content = getAnomalyDefectTypeTableTemplate();
+                    tableName = "5. Anomaly Defect Matrix Template (Dynamic Tags)";
+                    break;
+            }
+        } else {
+            // Summary section page: paste with actual real campaign/inspection data
+            switch (tableIndex) {
+                case 1:
+                    content = buildLiveAnomalyZoneTable(statsContext, effectiveSectionId, sectionTitle);
+                    tableName = "1. Anomaly Breakdown (Live Campaign Data)";
+                    break;
+                case 2:
+                    content = buildLiveIncompleteScopeTable(statsContext, effectiveSectionId, sectionTitle);
+                    tableName = "2. Incomplete Scope Status (Live Campaign Data)";
+                    break;
+                case 3:
+                    content = buildLiveCompletedScopeTable(statsContext, effectiveSectionId, sectionTitle);
+                    tableName = "3. Completed Scope Status (Live Campaign Data)";
+                    break;
+                case 4:
+                    content = buildLiveAnodeDepletionTable(statsContext, effectiveSectionId, sectionTitle);
+                    tableName = "4. Anode Depletion Status (Live Campaign Data)";
+                    break;
+                case 5:
+                    content = buildLiveAnomalyDefectTypeTable(statsContext, effectiveSectionId, sectionTitle);
+                    tableName = "5. Anomaly Defect Matrix (Live Campaign Data)";
+                    break;
+            }
+            // Double-check with interpolateAllVariables to ensure any remaining tags are cleanly replaced
+            if (statsContext) {
+                content = interpolateAllVariables(content, statsContext, effectiveSectionId, sectionTitle);
+            }
+        }
+
+        // Prevent table-in-table nesting corruption & auto-replace empty placeholder tables
+        const { state } = editor;
+        const { $from } = state.selection;
+        let insideTable = false;
+        let tablePos = -1;
+        let tableEnd = -1;
+        let tableNode: any = null;
+
+        for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === "table") {
+                insideTable = true;
+                tablePos = $from.before(d);
+                tableNode = $from.node(d);
+                tableEnd = tablePos + tableNode.nodeSize;
+                break;
+            }
+        }
+
+        if (insideTable && tableNode) {
+            const isTableBlank = !tableNode.textContent.trim();
+            if (isTableBlank) {
+                // Delete empty placeholder table and replace cleanly with the smart table
+                editor.chain().focus().deleteRange({ from: tablePos, to: tableEnd }).insertContent(content).run();
+            } else {
+                // Table already has content; insert after the table to prevent table nesting
+                editor.chain().focus().insertContentAt(tableEnd, `<p></p>${content}<p></p>`).run();
+            }
+        } else {
+            editor.chain().focus().insertContent(content).run();
+        }
+
+        toast.success(`Inserted ${tableName}`);
+    };
+
     // Table Width Presets (100%, 85%, 75%, 60%, 50%) & Alignment
     const setTableWidth = (width: string, align?: string, resetCols: boolean = true) => {
         if (!editor) return;
@@ -516,6 +654,97 @@ export function ExecutiveRichEditor({
         if (success) {
             toast.success(`Table moved ${direction}`);
         }
+    };
+
+    // ══════════ TABLE CELL MERGE & SPLIT HANDLERS ══════════
+    const mergeWithNeighbor = (direction: "right" | "down"): boolean => {
+        if (!editor) return false;
+        try {
+            const { state, view } = editor;
+            const { $from } = state.selection;
+            let tableDepth = -1;
+            let cellDepth = -1;
+            for (let d = $from.depth; d > 0; d--) {
+                const name = $from.node(d).type.name;
+                if (name === "table") {
+                    tableDepth = d;
+                }
+                if (name === "tableCell" || name === "tableHeader") {
+                    cellDepth = d;
+                }
+            }
+            if (tableDepth === -1 || cellDepth === -1) return false;
+
+            const tableNode = $from.node(tableDepth);
+            const tableStart = $from.start(tableDepth);
+            const cellPos = $from.before(cellDepth);
+            const cellOffset = cellPos - tableStart;
+
+            const map = TableMap.get(tableNode);
+            const rect = map.findCell(cellOffset);
+
+            let targetRow = rect.top;
+            let targetCol = rect.left;
+
+            if (direction === "right") {
+                targetCol = rect.right;
+                if (targetCol >= map.width) {
+                    toast.info("No adjacent cell to the right to merge with");
+                    return false;
+                }
+            } else if (direction === "down") {
+                targetRow = rect.bottom;
+                if (targetRow >= map.height) {
+                    toast.info("No adjacent cell below to merge with");
+                    return false;
+                }
+            }
+
+            const targetOffset = map.positionAt(targetRow, targetCol, tableNode);
+            const targetPos = tableStart + targetOffset;
+
+            // Create cell selection spanning from current cell to target cell
+            const sel = CellSelection.create(state.doc, cellPos, targetPos);
+            const tr = state.tr.setSelection(sel);
+            view.dispatch(tr);
+
+            // Execute mergeCells on the selection
+            const merged = editor.chain().focus().mergeCells().run();
+            return merged;
+        } catch (err) {
+            console.warn("[TableMerge] Error merging cells:", err);
+            return false;
+        }
+    };
+
+    const handleMergeCells = () => {
+        if (!editor) return;
+        if (editor.can().mergeCells()) {
+            const ok = editor.chain().focus().mergeCells().run();
+            if (ok) {
+                toast.success("Selected cells merged successfully");
+                return;
+            }
+        }
+        // If not in multi-cell selection, attempt to merge with adjacent cell to the right
+        const okRight = mergeWithNeighbor("right");
+        if (okRight) {
+            toast.success("Merged with adjacent right cell");
+        } else {
+            toast.info("Select 2 or more cells by dragging across them, or use Merge with Right / Below cell.");
+        }
+    };
+
+    const handleSplitCell = () => {
+        if (!editor) return;
+        if (editor.can().splitCell()) {
+            const ok = editor.chain().focus().splitCell().run();
+            if (ok) {
+                toast.success("Cell split (unmerged) successfully");
+                return;
+            }
+        }
+        toast.info("This cell is not merged. Split Cell unmerges cells with multiple rows or columns.");
     };
 
     // Helper to evaluate dynamic tags in HTML string for live preview
@@ -626,101 +855,92 @@ export function ExecutiveRichEditor({
         clearSignature();
     };
 
-    // Insert Chart Visuals
-    const insertChartBlock = () => {
+    // Insert Smart Inspection Charts (Supports Live Data & Template Tags)
+    const insertSmartChart = (chartIndex: number) => {
         if (!editor) return;
 
-        let chartHtml = "";
-        const now = new Date().toLocaleDateString("en-GB");
+        let content = "";
+        let chartName = "";
 
-        if (chartType === "priority") {
-            chartHtml = `
-                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin: 16px 0; background-color: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                    <div style="font-size: 13px; font-weight: bold; color: #0b2c4d; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between;">
-                        <span>ANOMALY PRIORITY BREAKDOWN</span>
-                        <span style="font-size: 10px; color: #64748b; font-weight: normal;">As of ${now}</span>
-                    </div>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                        <thead>
-                            <tr style="background-color: #f1f5f9; text-align: left;">
-                                <th style="border: 1px solid #cbd5e1; padding: 6px 10px;">Classification</th>
-                                <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 80px; text-align: center;">Total</th>
-                                <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">Open</th>
-                                <th style="border: 1px solid #cbd5e1; padding: 6px 10px; width: 90px; text-align: center;">Rectified</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; font-weight: bold; color: #dc2626;"><span style="display:inline-block;width:8px;height:8px;background:#dc2626;border-radius:2px;margin-right:6px;"></span>Priority 1 (Critical)</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; font-weight: bold;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #dc2626;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #16a34a;">0</td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; font-weight: bold; color: #ea580c;"><span style="display:inline-block;width:8px;height:8px;background:#ea580c;border-radius:2px;margin-right:6px;"></span>Priority 2 (Major)</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; font-weight: bold;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #ea580c;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #16a34a;">0</td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; font-weight: bold; color: #ca8a04;"><span style="display:inline-block;width:8px;height:8px;background:#ca8a04;border-radius:2px;margin-right:6px;"></span>Priority 3 (Moderate)</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; font-weight: bold;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #ca8a04;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #16a34a;">0</td>
-                            </tr>
-                            <tr>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; font-weight: bold; color: #16a34a;"><span style="display:inline-block;width:8px;height:8px;background:#16a34a;border-radius:2px;margin-right:6px;"></span>Observations</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; font-weight: bold;">0</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #64748b;">-</td>
-                                <td style="border: 1px solid #cbd5e1; padding: 6px 10px; text-align: center; color: #16a34a;">-</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
-                <p></p>
-            `;
-        } else if (chartType === "status") {
-            chartHtml = `
-                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 14px; margin: 16px 0; background-color: #f8fafc;">
-                    <div style="font-size: 13px; font-weight: bold; color: #0b2c4d; margin-bottom: 8px;">INSPECTION COMPLETION PROGRESS</div>
-                    <div style="display: flex; gap: 12px; margin-bottom: 8px;">
-                        <div style="flex: 1; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center;">
-                            <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">Planned Tasks</div>
-                            <div style="font-size: 18px; font-weight: bold; color: #074e88;">100%</div>
-                        </div>
-                        <div style="flex: 1; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center;">
-                            <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">Completed</div>
-                            <div style="font-size: 18px; font-weight: bold; color: #16a34a;">100%</div>
-                        </div>
-                        <div style="flex: 1; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; text-align: center;">
-                            <div style="font-size: 10px; color: #64748b; text-transform: uppercase;">Outstanding</div>
-                            <div style="font-size: 18px; font-weight: bold; color: #ea580c;">0</div>
-                        </div>
-                    </div>
-                </div>
-                <p></p>
-            `;
+        if (isTemplateMode) {
+            // Template creation page: paste with variables and tags
+            switch (chartIndex) {
+                case 1:
+                    content = getAnomalyPriorityChartTemplate();
+                    chartName = "1. Anomaly Priority Distribution Chart (Template with Tags)";
+                    break;
+                case 2:
+                    content = getScopeCompletionChartTemplate();
+                    chartName = "2. SOW Completion & Scope Progress Chart (Template with Tags)";
+                    break;
+                case 3:
+                    content = getCpHealthChartTemplate();
+                    chartName = "3. CP Potential Integrity Chart (Template with Tags)";
+                    break;
+                case 4:
+                    content = getAnodeDepletionChartTemplate();
+                    chartName = "4. Anode Depletion Distribution Chart (Template with Tags)";
+                    break;
+                case 5:
+                    content = getDefectDistributionChartTemplate();
+                    chartName = "5. Defect Severity Breakdown Chart (Template with Tags)";
+                    break;
+            }
         } else {
-            chartHtml = `
-                <div style="border: 1px solid #cbd5e1; border-radius: 8px; padding: 12px; margin: 16px 0; background-color: #ffffff;">
-                    <div style="font-size: 12px; font-weight: bold; color: #074e88; margin-bottom: 6px;">CATHODIC PROTECTION (CP) INTEGRITY METRIC</div>
-                    <table style="width: 100%; border-collapse: collapse; font-size: 11px;">
-                        <tr style="background: #f8fafc;">
-                            <td style="border: 1px solid #cbd5e1; padding: 5px 8px; font-weight: bold;">Criteria</td>
-                            <td style="border: 1px solid #cbd5e1; padding: 5px 8px;">-800 mV to -1050 mV (Ag/AgCl)</td>
-                        </tr>
-                        <tr>
-                            <td style="border: 1px solid #cbd5e1; padding: 5px 8px; font-weight: bold;">Overall Status</td>
-                            <td style="border: 1px solid #cbd5e1; padding: 5px 8px; color: #16a34a; font-weight: bold;">SATISFACTORY CATHODIC PROTECTION</td>
-                        </tr>
-                    </table>
-                </div>
-                <p></p>
-            `;
+            // Summary section page: paste with actual real campaign/inspection data
+            switch (chartIndex) {
+                case 1:
+                    content = buildLiveAnomalyPriorityChart(statsContext, effectiveSectionId, sectionTitle);
+                    chartName = "1. Anomaly Priority Distribution Chart (Live Data)";
+                    break;
+                case 2:
+                    content = buildLiveScopeCompletionChart(statsContext, effectiveSectionId, sectionTitle);
+                    chartName = "2. SOW Completion & Scope Progress Chart (Live Data)";
+                    break;
+                case 3:
+                    content = buildLiveCpHealthChart(statsContext, effectiveSectionId, sectionTitle);
+                    chartName = "3. CP Potential Integrity Chart (Live Data)";
+                    break;
+                case 4:
+                    content = buildLiveAnodeDepletionChart(statsContext, effectiveSectionId, sectionTitle);
+                    chartName = "4. Anode Depletion Distribution Chart (Live Data)";
+                    break;
+                case 5:
+                    content = buildLiveDefectDistributionChart(statsContext, effectiveSectionId, sectionTitle);
+                    chartName = "5. Defect Severity Breakdown Chart (Live Data)";
+                    break;
+            }
+            if (statsContext) {
+                content = interpolateAllVariables(content, statsContext, effectiveSectionId, sectionTitle);
+            }
         }
 
-        editor.chain().focus().insertContent(chartHtml).run();
+        // Clean space management: insert right after table if cursor is inside a table, or at cursor
+        const { state } = editor;
+        const { $from } = state.selection;
+        let insideTable = false;
+        let tableEnd = -1;
+
+        for (let d = $from.depth; d > 0; d--) {
+            if ($from.node(d).type.name === "table") {
+                insideTable = true;
+                tableEnd = $from.after(d);
+                break;
+            }
+        }
+
+        if (insideTable) {
+            editor.chain().focus().insertContentAt(tableEnd, content).run();
+        } else {
+            editor.chain().focus().insertContent(content).run();
+        }
+
+        toast.success(`Inserted ${chartName}`);
         setChartModalOpen(false);
+    };
+
+    const insertChartBlock = () => {
+        insertSmartChart(chartType);
     };
 
     if (!editor) return null;
@@ -1077,57 +1297,72 @@ export function ExecutiveRichEditor({
                                 </DropdownMenuItem>
 
                                 <DropdownMenuSeparator />
-                                <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center gap-1">
-                                    <Sparkles className="w-3 h-3 text-blue-600" /> Smart Inspection Tables
+                                <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 flex items-center justify-between">
+                                    <span className="flex items-center gap-1">
+                                        <Sparkles className="w-3 h-3 text-blue-600" />
+                                        {isTemplateMode ? "Smart Table Templates (Tags)" : "Smart Inspection Tables (Live Data)"}
+                                    </span>
+                                    <span className={`text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                                        isTemplateMode 
+                                            ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-200" 
+                                            : "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/60 dark:text-emerald-200"
+                                    }`}>
+                                        {isTemplateMode ? "Variables / Tags" : "Actual Data"}
+                                    </span>
                                 </DropdownMenuLabel>
-                                <DropdownMenuItem onClick={() => {
-                                    editor.chain().focus().insertContent(getAnomalyZonePriorityTableTemplate()).run();
-                                    toast.success("Inserted Table 1: Anomaly Breakdown by Zone & Priority");
-                                }} className="cursor-pointer py-1.5">
+                                <DropdownMenuItem onClick={() => insertSmartTable(1)} className="cursor-pointer py-1.5">
                                     <BarChart3 className="h-4 w-4 mr-2 text-rose-500 shrink-0 mt-0.5" />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">1. Anomaly Breakdown</span>
-                                        <span className="text-[10px] text-slate-400">Zone, Component, P1-P3 Counts</span>
+                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                            1. Anomaly Breakdown
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            {isTemplateMode ? "Template with Component, Zone & Full Priority Types" : "Live components, full priority types & open/rectified status"}
+                                        </span>
                                     </div>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                    editor.chain().focus().insertContent(getIncompleteScopeTableTemplate()).run();
-                                    toast.success("Inserted Table 2: Incomplete Scope Status");
-                                }} className="cursor-pointer py-1.5">
+                                <DropdownMenuItem onClick={() => insertSmartTable(2)} className="cursor-pointer py-1.5">
                                     <FileText className="h-4 w-4 mr-2 text-amber-500 shrink-0 mt-0.5" />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">2. Incomplete Scope Status</span>
-                                        <span className="text-[10px] text-slate-400">Inspection types, counts & reasons</span>
+                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                            2. Incomplete Scope Status
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            {isTemplateMode ? "Template grouped by inspection type & ordered by elevation" : "Grouped by inspection type & ordered by elevation"}
+                                        </span>
                                     </div>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                    editor.chain().focus().insertContent(getCompletedScopeTableTemplate()).run();
-                                    toast.success("Inserted Table 3: Completed Scope Status");
-                                }} className="cursor-pointer py-1.5">
+                                <DropdownMenuItem onClick={() => insertSmartTable(3)} className="cursor-pointer py-1.5">
                                     <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-500 shrink-0 mt-0.5" />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">3. Completed Scope Status</span>
-                                        <span className="text-[10px] text-slate-400">Inspection types, 100% completion</span>
+                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                            3. Completed Scope Status
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            {isTemplateMode ? "Template with SOW completion tags" : "Live 100% completed inspection task counts"}
+                                        </span>
                                     </div>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                    editor.chain().focus().insertContent(getAnodeDepletionTableTemplate()).run();
-                                    toast.success("Inserted Table 4: Anode Depletion Breakdown");
-                                }} className="cursor-pointer py-1.5">
+                                <DropdownMenuItem onClick={() => insertSmartTable(4)} className="cursor-pointer py-1.5">
                                     <Zap className="h-4 w-4 mr-2 text-blue-500 shrink-0 mt-0.5" />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">4. Anode Depletion Status</span>
-                                        <span className="text-[10px] text-slate-400">Brackets: 0-25%, 26-50%, 51-75%, 76%+</span>
+                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                            4. Anode Depletion Status
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            {isTemplateMode ? "Template with 0-25%, 26-50%, 51-75%, 76%+ tags" : "Live anode depletion percentage brackets & counts"}
+                                        </span>
                                     </div>
                                 </DropdownMenuItem>
-                                <DropdownMenuItem onClick={() => {
-                                    editor.chain().focus().insertContent(getAnomalyDefectTypeTableTemplate()).run();
-                                    toast.success("Inserted Table 5: Anomaly Defect Type Matrix");
-                                }} className="cursor-pointer py-1.5">
+                                <DropdownMenuItem onClick={() => insertSmartTable(5)} className="cursor-pointer py-1.5">
                                     <Grid className="h-4 w-4 mr-2 text-indigo-500 shrink-0 mt-0.5" />
                                     <div className="flex flex-col min-w-0">
-                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">5. Anomaly Defect Matrix</span>
-                                        <span className="text-[10px] text-slate-400">Defect type vs components & priorities</span>
+                                        <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                            5. Anomaly Defect Matrix
+                                        </span>
+                                        <span className="text-[10px] text-slate-400">
+                                            {isTemplateMode ? "Template with defect type & priority matrix tags" : "Live defect classifications vs components"}
+                                        </span>
                                     </div>
                                 </DropdownMenuItem>
                             </>
@@ -1155,6 +1390,30 @@ export function ExecutiveRichEditor({
                                 <DropdownMenuSeparator />
                                 <DropdownMenuItem onClick={() => editor.chain().focus().toggleHeaderRow().run()}>
                                     <FileSpreadsheet className="h-3.5 w-3.5 mr-2" /> Toggle Header Row
+                                </DropdownMenuItem>
+
+                                {/* Cell Merge & Split Options */}
+                                <DropdownMenuSeparator />
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    Cell Merge & Split
+                                </div>
+                                <DropdownMenuItem onClick={handleMergeCells}>
+                                    <Merge className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge Selected Cells
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                    const ok = mergeWithNeighbor("right");
+                                    if (ok) toast.success("Merged with right cell");
+                                }}>
+                                    <SquareSplitHorizontal className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge with Right Cell
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                    const ok = mergeWithNeighbor("down");
+                                    if (ok) toast.success("Merged with cell below");
+                                }}>
+                                    <SquareSplitVertical className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge with Cell Below
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={handleSplitCell}>
+                                    <SquareSplitHorizontal className="h-3.5 w-3.5 mr-2 text-indigo-600" /> Split (Unmerge) Cell
                                 </DropdownMenuItem>
 
                                 {/* Table Width & Alignment Options */}
@@ -1330,17 +1589,90 @@ export function ExecutiveRichEditor({
                     <LinkIcon className="h-4 w-4" />
                 </Button>
 
-                {/* 12. Chart Visual Block Button */}
-                <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-8 px-2 gap-1.5 text-xs text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                    onClick={() => setChartModalOpen(true)}
-                    title="Insert Inspection Chart / Summary Card"
-                >
-                    <BarChart3 className="h-4 w-4" />
-                    <span>Chart</span>
-                </Button>
+                {/* 12. Smart Charts Dropdown */}
+                <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 px-2 gap-1 text-xs text-indigo-700 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 font-medium"
+                            title="Insert Smart Inspection Chart"
+                        >
+                            <BarChart3 className="h-4 w-4 text-indigo-600 dark:text-indigo-400" />
+                            <span>Chart</span>
+                            <ChevronDown className="h-3 w-3 opacity-60" />
+                        </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start" className="w-84">
+                        <DropdownMenuLabel className="flex items-center justify-between text-xs py-1.5 bg-slate-50 dark:bg-slate-900 border-b">
+                            <span className="font-bold text-slate-700 dark:text-slate-300">
+                                SMART INSPECTION CHARTS
+                            </span>
+                            <span className="text-[10px] font-normal text-indigo-600 dark:text-indigo-400">
+                                {isTemplateMode ? "Variables / Tags" : "Actual Data"}
+                            </span>
+                        </DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => insertSmartChart(1)} className="cursor-pointer py-1.5">
+                            <BarChart3 className="h-4 w-4 mr-2 text-rose-500 shrink-0 mt-0.5" />
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                    1. Anomaly Priority Distribution Chart
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                    {isTemplateMode ? "Template with P1-P4 & OBS variables with horizontal bars" : "Live P1-P4 & OBS visual comparison bars with counts"}
+                                </span>
+                            </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => insertSmartChart(2)} className="cursor-pointer py-1.5">
+                            <TrendingUp className="h-4 w-4 mr-2 text-emerald-500 shrink-0 mt-0.5" />
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                    2. SOW Completion &amp; Scope Progress Chart
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                    {isTemplateMode ? "Template with completion % & task scorecards" : "Live planned vs completed vs outstanding KPI progress bars"}
+                                </span>
+                            </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => insertSmartChart(3)} className="cursor-pointer py-1.5">
+                            <Activity className="h-4 w-4 mr-2 text-sky-500 shrink-0 mt-0.5" />
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                    3. CP Potential Integrity Chart
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                    {isTemplateMode ? "Template with CP voltage threshold & health meter" : "Live CP min/max potential range vs -800mV to -1050mV"}
+                                </span>
+                            </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => insertSmartChart(4)} className="cursor-pointer py-1.5">
+                            <Zap className="h-4 w-4 mr-2 text-blue-500 shrink-0 mt-0.5" />
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                    4. Anode Depletion Distribution Chart
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                    {isTemplateMode ? "Template with 0-25%, 26-50%, 51-75%, 76%+ bars" : "Live consumption distribution visual comparison bars"}
+                                </span>
+                            </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem onClick={() => insertSmartChart(5)} className="cursor-pointer py-1.5">
+                            <Grid className="h-4 w-4 mr-2 text-purple-500 shrink-0 mt-0.5" />
+                            <div className="flex flex-col min-w-0">
+                                <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                    5. Defect Severity &amp; Category Chart
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                    {isTemplateMode ? "Template with defect type matrix & severity tags" : "Live top defect classifications with visual progress distribution"}
+                                </span>
+                            </div>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setChartModalOpen(true)} className="cursor-pointer text-xs text-slate-500 py-1.5">
+                            <BarChart3 className="h-3.5 w-3.5 mr-2" /> Browse / Preview Chart Gallery...
+                        </DropdownMenuItem>
+                    </DropdownMenuContent>
+                </DropdownMenu>
 
                 {/* 13. Digital Signature Button */}
                 <Button
@@ -1506,6 +1838,69 @@ export function ExecutiveRichEditor({
                         </Button>
                     </div>
 
+                    <Separator orientation="vertical" className="h-4 mx-1 bg-blue-200 dark:bg-blue-800" />
+
+                    {/* Cell Merge & Split Buttons */}
+                    <span className="font-semibold text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                        Cells:
+                    </span>
+                    <div className="flex items-center gap-1 bg-white dark:bg-slate-900 p-0.5 rounded border border-blue-200 dark:border-blue-800 shadow-2xs">
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900 gap-1 font-medium"
+                            onClick={handleMergeCells}
+                            title="Merge selected cells (or click to merge with adjacent cell)"
+                        >
+                            <Merge className="h-3.5 w-3.5 text-blue-600" /> Merge
+                        </Button>
+
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button
+                                    type="button"
+                                    variant="ghost"
+                                    size="sm"
+                                    className="h-6 w-5 p-0 text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900"
+                                    title="More merge directions"
+                                >
+                                    <ChevronDown className="h-3 w-3" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="start" className="w-48 text-xs">
+                                <DropdownMenuItem onClick={handleMergeCells}>
+                                    <Merge className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge Selected Cells
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                    const ok = mergeWithNeighbor("right");
+                                    if (ok) toast.success("Merged with cell to the right");
+                                }}>
+                                    <SquareSplitHorizontal className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge with Right Cell
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => {
+                                    const ok = mergeWithNeighbor("down");
+                                    if (ok) toast.success("Merged with cell below");
+                                }}>
+                                    <SquareSplitVertical className="h-3.5 w-3.5 mr-2 text-blue-600" /> Merge with Cell Below
+                                </DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
+
+                        <Separator orientation="vertical" className="h-3.5 mx-0.5 bg-slate-200 dark:bg-slate-700" />
+
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] text-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900 gap-1 font-medium"
+                            onClick={handleSplitCell}
+                            title="Split (unmerge) previously merged cell"
+                        >
+                            <SquareSplitHorizontal className="h-3.5 w-3.5 text-indigo-600" /> Split
+                        </Button>
+                    </div>
+
                     <div className="ml-auto text-[11px] text-blue-600/80 dark:text-blue-400 flex items-center gap-2">
                         <Button
                             type="button"
@@ -1524,7 +1919,7 @@ export function ExecutiveRichEditor({
 
             {/* ══════════ MAIN CONTENT CANVAS ══════════ */}
             <div className="grow overflow-y-auto p-6 focus-within:ring-1 focus-within:ring-blue-500/20 cursor-text">
-                <style jsx global>{`
+                <style dangerouslySetInnerHTML={{ __html: `
                     .ProseMirror {
                         outline: none;
                         min-height: ${minHeight || "240px"};
@@ -1574,14 +1969,13 @@ export function ExecutiveRichEditor({
                         color: #64748b;
                     }
                     .ProseMirror table {
-                        border-collapse: collapse;
-                        table-layout: fixed;
-                        margin: 1.25em 0;
+                        border-collapse: collapse !important;
+                        table-layout: fixed !important;
+                        width: 100% !important;
+                        margin: 0.75em 0 !important;
                         overflow: visible;
                         box-sizing: border-box;
-                    }
-                    .ProseMirror table:not([data-width]):not([style*="width"]) {
-                        width: 100%;
+                        font-size: 11px;
                     }
                     .ProseMirror table[data-align="center"] {
                         margin-left: auto !important;
@@ -1599,10 +1993,16 @@ export function ExecutiveRichEditor({
                     .ProseMirror table th {
                         min-width: 2em;
                         border: 1px solid #cbd5e1;
-                        padding: 6px 10px;
-                        vertical-align: top;
+                        padding: 5px 8px !important;
+                        vertical-align: middle;
                         box-sizing: border-box;
                         position: relative;
+                        font-size: 11px;
+                        line-height: 1.35;
+                    }
+                    .ProseMirror table p {
+                        margin: 0 !important;
+                        padding: 0 !important;
                     }
                     .ProseMirror table th {
                         font-weight: bold;
@@ -1614,7 +2014,8 @@ export function ExecutiveRichEditor({
                         position: absolute;
                         content: "";
                         left: 0; right: 0; top: 0; bottom: 0;
-                        background: rgba(59, 130, 246, 0.15);
+                        background: rgba(59, 130, 246, 0.2);
+                        border: 2px solid #2563eb;
                         pointer-events: none;
                     }
                     .ProseMirror table .column-resize-handle {
@@ -1634,7 +2035,7 @@ export function ExecutiveRichEditor({
                         border-radius: 2px;
                         padding: 0.1em 0.2em;
                     }
-                `}</style>
+                ` }} />
 
                 {isPreviewMode ? (
                     <div className="space-y-4">
@@ -1802,53 +2203,106 @@ export function ExecutiveRichEditor({
 
             {/* 3. CHART / METRIC VISUAL INSERT DIALOG */}
             <Dialog open={chartModalOpen} onOpenChange={setChartModalOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle className="flex items-center gap-2">
                             <BarChart3 className="h-5 w-5 text-indigo-600" />
-                            Insert Integrity Summary Chart
+                            Smart Inspection Charts Gallery
                         </DialogTitle>
                         <DialogDescription>
-                            Select a formatted data visualization block to insert into this executive section.
+                            {isTemplateMode
+                                ? "Select a chart template to insert with dynamic variables and tags for template creation."
+                                : "Select a smart chart to insert with live campaign calculations, horizontal progress bars, and metrics."}
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="space-y-3 py-2">
-                        <div
-                            onClick={() => setChartType("priority")}
-                            className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                chartType === "priority" ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20" : "border-slate-200 hover:bg-slate-50"
-                            }`}
-                        >
-                            <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">Anomaly Priority Distribution</div>
-                            <div className="text-xs text-slate-500">Structured table with P1, P2, P3 color-coded priority indicators and counts.</div>
-                        </div>
-
-                        <div
-                            onClick={() => setChartType("status")}
-                            className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                chartType === "status" ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20" : "border-slate-200 hover:bg-slate-50"
-                            }`}
-                        >
-                            <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">Task Completion KPI Cards</div>
-                            <div className="text-xs text-slate-500">Planned vs Complete vs Outstanding percentage scorecards.</div>
-                        </div>
-
-                        <div
-                            onClick={() => setChartType("metrics")}
-                            className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                chartType === "metrics" ? "border-indigo-600 bg-indigo-50/50 dark:bg-indigo-950/20" : "border-slate-200 hover:bg-slate-50"
-                            }`}
-                        >
-                            <div className="font-semibold text-sm text-slate-800 dark:text-slate-100">CP Potential Integrity Summary</div>
-                            <div className="text-xs text-slate-500">Pass/Fail voltage threshold summary for Cathodic Protection.</div>
-                        </div>
+                    <div className="space-y-2 py-2 max-h-[420px] overflow-y-auto pr-1">
+                        {[
+                            {
+                                id: 1,
+                                title: "1. Anomaly Priority Distribution Chart",
+                                desc: isTemplateMode
+                                    ? "Horizontal visual bars with P1, P2, P3, P4, and OBS tags & counts"
+                                    : "Live visual comparison bars for Priority 1 to 4 and Observations with percentage share",
+                                icon: BarChart3,
+                                color: "text-rose-500",
+                                badge: "Severity Analysis",
+                            },
+                            {
+                                id: 2,
+                                title: "2. SOW Completion & Scope Progress Chart",
+                                desc: isTemplateMode
+                                    ? "Inspection completion % gauge with planned, completed, and outstanding scorecards"
+                                    : "Live campaign execution rate, completed tasks, and outstanding scope KPI bar",
+                                icon: TrendingUp,
+                                color: "text-emerald-500",
+                                badge: "Scope Progress",
+                            },
+                            {
+                                id: 3,
+                                title: "3. CP Potential Integrity Health Chart",
+                                desc: isTemplateMode
+                                    ? "Cathodic protection potential meter vs -800mV to -1050mV threshold criteria"
+                                    : "Live CP potential range (min/max mV) with structural polarization compliance status",
+                                icon: Activity,
+                                color: "text-sky-500",
+                                badge: "CP Health",
+                            },
+                            {
+                                id: 4,
+                                title: "4. Anode Depletion Distribution Chart",
+                                desc: isTemplateMode
+                                    ? "Depletion bracket comparison bars (0-25%, 26-50%, 51-75%, 76-100%)"
+                                    : "Live sacrificial anode consumption breakdown with retrofit/health indicators",
+                                icon: Zap,
+                                color: "text-blue-500",
+                                badge: "Anode Wastage",
+                            },
+                            {
+                                id: 5,
+                                title: "5. Defect Severity & Category Chart",
+                                desc: isTemplateMode
+                                    ? "Top structural defect categories with priority matrix variables"
+                                    : "Live top defect classifications (MGI, coating breakdown, scour) with proportional bars",
+                                icon: Grid,
+                                color: "text-purple-500",
+                                badge: "Defect Matrix",
+                            },
+                        ].map((c) => {
+                            const IconComponent = c.icon;
+                            return (
+                                <div
+                                    key={c.id}
+                                    onClick={() => setChartType(c.id)}
+                                    className={`p-3 rounded-lg border cursor-pointer transition-all flex items-start gap-3 ${
+                                        chartType === c.id
+                                            ? "border-indigo-600 bg-indigo-50/60 dark:bg-indigo-950/30 ring-1 ring-indigo-500/20"
+                                            : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900"
+                                    }`}
+                                >
+                                    <IconComponent className={`h-5 w-5 ${c.color} shrink-0 mt-0.5`} />
+                                    <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                            <span className="font-semibold text-xs text-slate-800 dark:text-slate-100">
+                                                {c.title}
+                                            </span>
+                                            <span className="text-[9px] font-semibold uppercase px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                                {c.badge}
+                                            </span>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                                            {c.desc}
+                                        </p>
+                                    </div>
+                                </div>
+                            );
+                        })}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" size="sm" onClick={() => setChartModalOpen(false)}>
                             Cancel
                         </Button>
                         <Button size="sm" onClick={insertChartBlock} className="bg-indigo-600 hover:bg-indigo-700 text-white">
-                            Insert Block
+                            {isTemplateMode ? "Insert Chart (with Tags)" : "Insert Live Chart"}
                         </Button>
                     </DialogFooter>
                 </DialogContent>

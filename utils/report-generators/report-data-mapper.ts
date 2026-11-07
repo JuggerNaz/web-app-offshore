@@ -1,11 +1,83 @@
 import { normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, isPurelyIncompleteRecord } from "./shared-logo";
 import { format } from "date-fns";
-import { isBLRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
+import { isBLRecord } from "@/utils/inspection-utils";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
-import { isROVRecord, hasCPReading } from "./rov-cp-report";
-import { isDivingCPSURVRecord } from "./diving-cpsurv-report";
-import { isExcludedFromRGVI } from "./rov-rgvi-report";
-import { isStatusIncomplete } from "./inspection-incomplete-flagged-report";
+import { isROVRecord, hasCPReading, generateROVCPReport } from "./rov-cp-report";
+import { isDivingCPSURVRecord, generateDivingCPSURVReport } from "./diving-cpsurv-report";
+import { isExcludedFromRGVI, generateROVRGVIReport } from "./rov-rgvi-report";
+import { isStatusIncomplete, generateInspectionIncompleteFlaggedReport } from "./inspection-incomplete-flagged-report";
+import { createClient } from "@/utils/supabase/client";
+import PizZip from "pizzip";
+import { normalizeDelimiters, generateTemplateReport } from "./template-report-generator";
+export { PizZip, normalizeDelimiters, generateTemplateReport };
+import { generateDefectSummaryReport } from "./defect-summary-report";
+import { generatePipelineDefectSummaryReport } from "./defect-summary-pipeline-report";
+import { generateDefectAnomalyReport } from "./defect-anomaly-report";
+import { generateDefectCriteriaReport } from "./defect-criteria-report";
+import { generateJobPackSummaryReport } from "./jobpack-summary-report";
+import { generateWorkScopeStatusReport } from "./work-scope-status-report";
+import { generateWorkScopeIncompleteReport } from "./work-scope-incomplete-report";
+import { generateWorkScopeReport } from "./work-scope-report";
+import { generateDiverLogReport } from "./diver-log-report";
+import { generateVideoLogReport } from "./video-log-report";
+import { generateROVRWDIReport } from "./rov-rwdi-report";
+import { generateROVRICMIReport } from "./rov-ricmi-report";
+import { generateROVFMDReport } from "./rov-fmd-report";
+import { generateDivingFMDReport } from "./diving-fmd-report";
+import { generateDivingMEASUReport } from "./diving-measu-report";
+import { generateROVCondReport } from "./rov-rcond-report";
+import { generateROVCasnReport } from "./rov-rcasn-report";
+import { generateROVBoatlandingReport } from "./rov-boatlanding-report";
+import { generateROVRiserGuardReport } from "./rov-riser-guard-report";
+import { generateROVCaissonGuardReport } from "./rov-caisson-guard-report";
+import { generateROVConductorGuardReport } from "./rov-conductor-guard-report";
+import { generateROVNavigReport } from "./rov-navig-report";
+import { generateROVCondSketchReport } from "./rov-rcond-sketch-report";
+import { generateROVCasnSketchReport } from "./rov-rcasn-sketch-report";
+import { generateROVRRISIReport } from "./rov-rrisi-report";
+import { generateDivingRRISIReport } from "./diving-rrisi-report";
+import { generateROVRRISIDetailReport } from "./rov-rrisi-detail-report";
+import { generateDivingRRISIDetailReport } from "./diving-rrisi-detail-report";
+import { generateROVRRISIJTubeDetailReport } from "./rov-jtisi-detail-report";
+import { generateROVRRISIITubeDetailReport } from "./rov-itisi-detail-report";
+import { generateROVSZCIReport } from "./rov-szci-report";
+import { generateROVAnodeReport } from "./rov-anode-report";
+import { generateROVAnodeRSANIReport } from "./rov-anode-rsani-report";
+import { generateROVMGIGraphReport } from "./rov-mgi-report";
+import { generateROVRMGIReport } from "./rov-rmgi-report";
+import { generateROVRSCORReport } from "./rov-rscor-report";
+import { generateROVRSCORV2Report } from "./rov-rscor-v2-report";
+import { generateROVRSCORSurveyReport } from "./rov-rscor-survey-report";
+import { generateROVSelectedNodeReport } from "./rov-selected-node-report";
+import { generateROVUTWTReport } from "./rov-utwt-report";
+import { generateROVPhotographyReport } from "./rov-photography-report";
+import { generateROVPhotographyLogReport } from "./rov-photography-log-report";
+import { generateSeabedSurveyReport } from "./seabed-survey-report";
+import { generateROVRSEABDetailReport } from "./rov-rseab-detail-report";
+import { generateROVRSEABGasDetailReport } from "./rov-rseab-gas-detail-report";
+import { generateROVRSEABCraterDetailReport } from "./rov-rseab-crater-detail-report";
+import { generateDivingGVINSReport } from "./diving-gvins-report";
+import { generateDivingBSINSReport } from "./diving-bsins-report";
+import { generateDivingCVINSReport } from "./diving-cvins-report";
+import { generateDivingCLEANReport } from "./diving-clean-report";
+import { generateDivingMPINSReport } from "./diving-mpins-report";
+import { generateDivingUTWTKReport } from "./diving-utwtk-report";
+import { generateDivingACFMCReport } from "./diving-acfmc-report";
+import { generateDivingPLCOReport } from "./diving-plco-report";
+import { generateDivingANMAINReport } from "./diving-anmain-report";
+import { generateDivingCPCLBReport } from "./diving-cpclb-report";
+import { generateDivingDCASNUWReport } from "./diving-dcasn-uw-report";
+import { generateDivingDCASNTSReport } from "./diving-dcasn-ts-report";
+import { generateDivingDCONDUWReport } from "./diving-dcond-uw-report";
+import { generateDivingDCONDTSReport } from "./diving-dcond-ts-report";
+import { generateDivingSZONEReport } from "./diving-szone-report";
+import { generateDivingAnodeReport } from "./diving-anode-report";
+import { generateDivingMGIReport } from "./diving-mgi-report";
+import { generateDivingUTCLBReport } from "./diving-utclb-report";
+import { generateInspectionReport } from "./inspection-report";
+import { generateStructureReport } from "../pdf-generator";
+import { generateInspectionSummaryGraphReport } from "./inspection-summary-graph-report";
+import { generateInspectionSummaryReport } from "./inspection-summary-report";
 
 const LANDSCAPE_SECTION_XML = `<w:sectPr><w:pgSz w:w="16838" w:h="11906" w:orient="landscape"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
 const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient="portrait"/><w:pgMar w:top="0" w:right="0" w:bottom="0" w:left="0"/></w:sectPr>`;
@@ -224,7 +296,7 @@ export const mapInspectionDataForDocx = async (
     const structureCompMap = new Map<string | number, any>();
     if (effectiveStructureId) {
         try {
-            const { createClient } = await import("@/utils/supabase/client");
+
             const supabase = createClient();
             const { data: allComps } = await supabase
                 .from('structure_components')
@@ -266,7 +338,7 @@ export const mapInspectionDataForDocx = async (
     let attachments: any[] = [];
     if (allSourceIds.length > 0) {
         try {
-            const { createClient } = await import("@/utils/supabase/client");
+
             const supabase = createClient();
 
             // Query attachments in parallel batches of 100 to maximize throughput and avoid URL length limitations
@@ -539,7 +611,7 @@ export const mapInspectionDataForDocx = async (
     let contractorLogoUrl = "";
     const contracCode = String(jobPack?.metadata?.contrac || jobPack?.metadata?.contractor || jobPack?.metadata?.contractorId || "").trim();
     try {
-        const { createClient } = await import("@/utils/supabase/client");
+
         const supabase = createClient();
         if (contracCode) {
             const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(contracCode);
@@ -856,7 +928,7 @@ export const mapInspectionDataForDocx = async (
         if (isJobpackLevel || recordsForTemplate.length > 0) {
             try {
             if (templateId === 'defect-summary' || templateId === 'findings-summary') {
-                const { generateDefectSummaryReport } = await import("./defect-summary-report");
+                
                 const isFindingsReport = templateId === "findings-summary";
                 pdfBlob = await generateDefectSummaryReport(
                     jobPack,
@@ -866,7 +938,7 @@ export const mapInspectionDataForDocx = async (
                     { ...sharedConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport } as any
                 ) as any;
             } else if (templateId === 'defect-summary-pipeline' || templateId === 'findings-summary-pipeline' || templateId === 'defect-summary-pipeline-report' || templateId === 'findings-summary-pipeline-report') {
-                const { generatePipelineDefectSummaryReport } = await import("./defect-summary-pipeline-report");
+                
                 const isFindingsReport = templateId.includes("findings");
                 pdfBlob = await generatePipelineDefectSummaryReport(
                     jobPack,
@@ -876,7 +948,7 @@ export const mapInspectionDataForDocx = async (
                     { ...sharedConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport } as any
                 ) as any;
             } else if (templateId === 'defect-anomaly-report' || templateId === 'findings-report') {
-                const { generateDefectAnomalyReport } = await import("./defect-anomaly-report");
+                
                 const isFindingsReport = templateId === "findings-report";
                 pdfBlob = await generateDefectAnomalyReport(
                     jobPack,
@@ -886,20 +958,20 @@ export const mapInspectionDataForDocx = async (
                     { ...sharedConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport } as any
                 ) as any;
             } else if (templateId === 'defect-criteria-report') {
-                const { generateDefectCriteriaReport } = await import("./defect-criteria-report");
+                
                 pdfBlob = await generateDefectCriteriaReport(
                     companySettings || {},
                     { ...sharedConfig, returnBlob: true, showSignatures: false, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 ) as any;
             } else if (templateId === 'jobpack-summary-report') {
-                const { generateJobPackSummaryReport } = await import("./jobpack-summary-report");
+                
                 pdfBlob = await generateJobPackSummaryReport(
                     jobPack,
                     companySettings || {},
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'work-scope-status-report') {
-                const { generateWorkScopeStatusReport } = await import("./work-scope-status-report");
+                
                 pdfBlob = await generateWorkScopeStatusReport(
                     jobPack,
                     structure,
@@ -908,7 +980,7 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'work-scope-incomplete-report') {
-                const { generateWorkScopeIncompleteReport } = await import("./work-scope-incomplete-report");
+                
                 pdfBlob = await generateWorkScopeIncompleteReport(
                     jobPack,
                     structure,
@@ -917,7 +989,7 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'inspection-incomplete-flagged-report' || templateId === 'incomplete-flagged-report') {
-                const { generateInspectionIncompleteFlaggedReport } = await import("./inspection-incomplete-flagged-report");
+                
                 const incompleteRecs = records.filter(isStatusIncomplete);
                 pdfBlob = await generateInspectionIncompleteFlaggedReport(
                     incompleteRecs,
@@ -926,7 +998,7 @@ export const mapInspectionDataForDocx = async (
                     { ...sharedConfig, allRecords: records } as any
                 );
             } else if (templateId === 'work-scope-report') {
-                const { generateWorkScopeReport } = await import("./work-scope-report");
+                
                 pdfBlob = await generateWorkScopeReport(
                     jobPack,
                     structure,
@@ -935,7 +1007,7 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'diver-log-report') {
-                const { generateDiverLogReport } = await import("./diver-log-report");
+                
                 pdfBlob = await generateDiverLogReport(
                     jobPack,
                     structure,
@@ -944,7 +1016,7 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'video-log-report') {
-                const { generateVideoLogReport } = await import("./video-log-report");
+                
                 pdfBlob = await generateVideoLogReport(
                     jobPack,
                     structure,
@@ -953,7 +1025,7 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 ) as any;
             } else if (templateId === 'rov-rgvi-report' || templateId === 'rov-gvi-report') {
-                const { generateROVRGVIReport } = await import("./rov-rgvi-report");
+                
                 const rgviRecords = records.filter(r => {
                     const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     return (c === "RGVI" || c === "GVI") && !isExcludedFromRGVI(r, structureCompMap);
@@ -965,25 +1037,25 @@ export const mapInspectionDataForDocx = async (
                     sharedConfig as any
                 );
             } else if (templateId === 'rov-rwdi-report') {
-                const { generateROVRWDIReport } = await import("./rov-rwdi-report");
+                
                 pdfBlob = await generateROVRWDIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RWDI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-ricmi-report') {
-                const { generateROVRICMIReport } = await import("./rov-ricmi-report");
+                
                 pdfBlob = await generateROVRICMIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RICMI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-cp-report') {
-                const { generateROVCPReport, isROVRecord, hasCPReading } = await import("./rov-cp-report");
+                
                 pdfBlob = await generateROVCPReport(records.filter(r => isROVRecord(r) && hasCPReading(r)), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-fmd-report' || templateId === 'fmd-report') {
-                const { generateROVFMDReport } = await import("./rov-fmd-report");
+                
                 pdfBlob = await generateROVFMDReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RFMD" || (r.inspection_type?.code || "").toUpperCase() === "FMD"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-fmd-report' || templateId === 'fmd-diving-report') {
-                const { generateDivingFMDReport } = await import("./diving-fmd-report");
+                
                 pdfBlob = await generateDivingFMDReport(records.filter(r => ["FLOOD", "FMD", "DFMD"].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-measu-report' || templateId === 'measu-report') {
-                const { generateDivingMEASUReport } = await import("./diving-measu-report");
+                
                 pdfBlob = await generateDivingMEASUReport(records.filter(r => ["MEASU", "DMSR", "MEASUREMENT", "DMEAS"].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rcond-report' || templateId === 'rov-conductor-report') {
-                const { generateROVCondReport } = await import("./rov-rcond-report");
+                
                 const condRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
@@ -991,7 +1063,7 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVCondReport(condRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rcasn-report' || templateId === 'rov-caisson-report') {
-                const { generateROVCasnReport } = await import("./rov-rcasn-report");
+                
                 const casnRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
@@ -999,25 +1071,25 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVCasnReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-bl-report' || templateId === 'bl-report' || templateId === 'boatlanding-report') {
-                const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
+                
                 pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['RBLTG', 'BL', 'BOATLANDING', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-bb-report' || templateId === 'boat-bumper-report') {
-                const { generateROVBoatlandingReport } = await import("./rov-boatlanding-report");
+                
                 pdfBlob = await generateROVBoatlandingReport(records.filter(r => isBLRecord(r, structureCompMap) || ['BB', 'BOATBUMPER', 'FD'].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rg-report') {
-                const { generateROVRiserGuardReport } = await import("./rov-riser-guard-report");
+                
                 pdfBlob = await generateROVRiserGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RGUARD"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-sg-report') {
-                const { generateROVCaissonGuardReport } = await import("./rov-caisson-guard-report");
+                
                 pdfBlob = await generateROVCaissonGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCG"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-cu-report') {
-                const { generateROVConductorGuardReport } = await import("./rov-conductor-guard-report");
+                
                 pdfBlob = await generateROVConductorGuardReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RCDG"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-navig-report' || templateId === 'navig-report') {
-                const { generateROVNavigReport } = await import("./rov-navig-report");
+                
                 pdfBlob = await generateROVNavigReport(jobPack, structure, sowReportNo || "N/A", companySettings || {}, { ...sharedConfig, headerData: sharedHeaderData } as any, records);
             } else if (templateId === 'rov-rcond-sketch-report') {
-                const { generateROVCondSketchReport } = await import("./rov-rcond-sketch-report");
+                
                 const condRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
@@ -1039,7 +1111,7 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVCondSketchReport(condRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rcasn-sketch-report') {
-                const { generateROVCasnSketchReport } = await import("./rov-rcasn-sketch-report");
+                
                 const casnRecs = records.filter(r => {
                     const typeCode = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
                     const compCode = String(r.structure_components?.code || r.component?.code || '').toUpperCase();
@@ -1060,37 +1132,37 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVCasnSketchReport(casnRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rrisi-report') {
-                const { generateROVRRISIReport } = await import("./rov-rrisi-report");
+                
                 pdfBlob = await generateROVRRISIReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (['diving-rrisi-report', 'drrisi-report', 'diving-jtisi-report', 'diving-itisi-report'].includes(templateId)) {
-                const { generateDivingRRISIReport } = await import("./diving-rrisi-report");
+                
                 let reportType: 'R' | 'J' | 'I' = 'R';
                 if (templateId === 'diving-jtisi-report') reportType = 'J';
                 if (templateId === 'diving-itisi-report') reportType = 'I';
                 pdfBlob = await generateDivingRRISIReport(records, sharedHeaderData, companySettings || {}, { ...sharedConfig, reportType } as any);
             } else if (templateId === 'rrisi-detail-report') {
-                const { generateROVRRISIDetailReport } = await import("./rov-rrisi-detail-report");
+                
                 pdfBlob = await generateROVRRISIDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (['diving-rrisi-detail-report', 'drrisi-detail-report', 'diving-jtisi-detail-report', 'diving-itisi-detail-report'].includes(templateId)) {
-                const { generateDivingRRISIDetailReport } = await import("./diving-rrisi-detail-report");
+                
                 let reportType: 'R' | 'J' | 'I' = 'R';
                 if (templateId === 'diving-jtisi-detail-report') reportType = 'J';
                 if (templateId === 'diving-itisi-detail-report') reportType = 'I';
                 pdfBlob = await generateDivingRRISIDetailReport(records, sharedHeaderData, companySettings || {}, { ...sharedConfig, reportType } as any);
             } else if (templateId === 'rov-jtisi-detail-report') {
-                const { generateROVRRISIJTubeDetailReport } = await import("./rov-jtisi-detail-report");
+                
                 pdfBlob = await generateROVRRISIJTubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-itisi-detail-report') {
-                const { generateROVRRISIITubeDetailReport } = await import("./rov-itisi-detail-report");
+                
                 pdfBlob = await generateROVRRISIITubeDetailReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RRISI"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'szci-report' || templateId === 'rov-szci-report' || templateId === 'rov-splash-zone-report' || templateId === 'splash-zone-report') {
-                const { generateROVSZCIReport } = await import("./rov-szci-report");
+                
                 pdfBlob = await generateROVSZCIReport(records.filter(r => {
                     const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     return ["RSZCI", "SZCI", "SZONE", "SPLASH", "DSZCI"].includes(code);
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-anode-report' || templateId === 'anode-report' || templateId === 'rgani-report') {
-                const { generateROVAnodeReport } = await import("./rov-anode-report");
+                
                 const anodeRecs = records.filter(r => {
                     const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
@@ -1099,7 +1171,7 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVAnodeReport(anodeRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-anode-rsani-report' || templateId === 'anode-rsani-report' || templateId === 'rsani-report' || templateId === 'rov-anode-rsani') {
-                const { generateROVAnodeRSANIReport } = await import("./rov-anode-rsani-report");
+                
                 const saniRecs = records.filter(r => {
                     const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
@@ -1109,112 +1181,112 @@ export const mapInspectionDataForDocx = async (
                 });
                 pdfBlob = await generateROVAnodeRSANIReport(saniRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'mgi-report') {
-                const { generateROVMGIGraphReport } = await import("./rov-mgi-report");
+                
                 pdfBlob = await generateROVMGIGraphReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), {}, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rmgi-report') {
-                const { generateROVRMGIReport } = await import("./rov-rmgi-report");
+                
                 pdfBlob = await generateROVRMGIReport(records.filter(r => ["RMGI", "MGROW"].includes((r.inspection_type?.code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-scour-report') {
-                const { generateROVRSCORReport } = await import("./rov-rscor-report");
+                
                 pdfBlob = await generateROVRSCORReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-scour-v2-report' || templateId === 'rov-rscor-v2-report' || templateId === 'rscor-v2' || templateId === 'rscor-v2-report' || templateId === 'rscor_v2' || templateId === 'rscor_v2_rov') {
-                const { generateROVRSCORV2Report } = await import("./rov-rscor-v2-report");
+                
                 const scourCodes = ["RSCOR", "SCOUR", "RSCOUR", "DSCOU", "DSCOUR", "DSCOR", "RSCOR_V2"];
                 pdfBlob = await generateROVRSCORV2Report(records.filter(r => scourCodes.includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase())), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rscor-survey-report' || templateId === 'rscor-survey') {
-                const { generateROVRSCORSurveyReport } = await import("./rov-rscor-survey-report");
+                
                 pdfBlob = await generateROVRSCORSurveyReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RSCOR" || (r.inspection_type?.code || "").toUpperCase() === "SCOUR"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-selected-node-report' || templateId === 'rov-node-report' || templateId === 'selected-node-report' || templateId === 'rswni-report') {
-                const { generateROVSelectedNodeReport } = await import("./rov-selected-node-report");
+                
                 pdfBlob = await generateROVSelectedNodeReport(records.filter(r => {
                     const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                     return ["RSWNI", "SWNI", "NODE", "CVI", "RCVI"].includes(t) || ["ND", "WN", "NODE"].includes(c);
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'utwt-report') {
-                const { generateROVUTWTReport } = await import("./rov-utwt-report");
+                
                 pdfBlob = await generateROVUTWTReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "RUTWT"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-photo-report' || templateId === 'diving-photo-report' || templateId === 'photo-report') {
-                const { generateROVPhotographyReport } = await import("./rov-photography-report");
+                
                 const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-photo-log-report' || templateId === 'diving-photo-log-report' || templateId === 'photo-log-report') {
-                const { generateROVPhotographyLogReport } = await import("./rov-photography-log-report");
+                
                 const photoRecs = records.filter(r => (r.attachments && r.attachments.length > 0) || ["RPHOTO", "DPHOTO", "PHOTO"].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const targetRecs = photoRecs.length > 0 ? photoRecs : (attachments.length > 0 ? attachments : records);
                 pdfBlob = await generateROVPhotographyLogReport(targetRecs, sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-seabed-report' || templateId === 'seabed-survey-debris' || templateId === 'seabed-survey-gas' || templateId === 'seabed-survey-crater') {
-                const { generateSeabedSurveyReport } = await import("./seabed-survey-report");
+                
                 const filterMap: Record<string, string> = { "rov-seabed-report": "", "seabed-survey-debris": "Debris", "seabed-survey-gas": "Gas Seepage", "seabed-survey-crater": "Crater" };
                 pdfBlob = await generateSeabedSurveyReport(jobPack, structure, sowReportNo || "", companySettings || {}, sharedConfig as any, filterMap[templateId]);
             } else if (templateId === 'rov-rseab-detail-report') {
-                const { generateROVRSEABDetailReport } = await import("./rov-rseab-detail-report");
+                
                 pdfBlob = await generateROVRSEABDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rseab-gas-detail-report') {
-                const { generateROVRSEABGasDetailReport } = await import("./rov-rseab-gas-detail-report");
+                
                 pdfBlob = await generateROVRSEABGasDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-rseab-crater-detail-report') {
-                const { generateROVRSEABCraterDetailReport } = await import("./rov-rseab-crater-detail-report");
+                
                 pdfBlob = await generateROVRSEABCraterDetailReport(records.filter(r => { const c = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase(); return c === "RSEAB" || c === "SEABED"; }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-gvins-report') {
-                const { generateDivingGVINSReport } = await import("./diving-gvins-report");
+                
                 pdfBlob = await generateDivingGVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "GVINS"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-bsins-report') {
-                const { generateDivingBSINSReport } = await import("./diving-bsins-report");
+                
                 pdfBlob = await generateDivingBSINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "BSINS"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-cvins-report') {
-                const { generateDivingCVINSReport } = await import("./diving-cvins-report");
+                
                 pdfBlob = await generateDivingCVINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CVINS"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-clean-report') {
-                const { generateDivingCLEANReport } = await import("./diving-clean-report");
+                
                 pdfBlob = await generateDivingCLEANReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CLEAN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-mpins-report') {
-                const { generateDivingMPINSReport } = await import("./diving-mpins-report");
+                
                 pdfBlob = await generateDivingMPINSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "MPINS"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-utwtk-report') {
-                const { generateDivingUTWTKReport } = await import("./diving-utwtk-report");
+                
                 pdfBlob = await generateDivingUTWTKReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTWTK"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-acfmc-report') {
-                const { generateDivingACFMCReport } = await import("./diving-acfmc-report");
+                
                 pdfBlob = await generateDivingACFMCReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ACFMC"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-plco-report') {
-                const { generateDivingPLCOReport } = await import("./diving-plco-report");
+                
                 pdfBlob = await generateDivingPLCOReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "PL_CO"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-anmain-report') {
-                const { generateDivingANMAINReport } = await import("./diving-anmain-report");
+                
                 pdfBlob = await generateDivingANMAINReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "ANMAIN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-cpsurv-report' || templateId === 'cpsurv-diving-report') {
-                const { generateDivingCPSURVReport, isDivingCPSURVRecord } = await import("./diving-cpsurv-report");
+                
                 pdfBlob = await generateDivingCPSURVReport(records.filter(isDivingCPSURVRecord), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-cpclb-report') {
-                const { generateDivingCPCLBReport } = await import("./diving-cpclb-report");
+                
                 pdfBlob = await generateDivingCPCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "CPCLB"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-dcasn-uw-report') {
-                const { generateDivingDCASNUWReport } = await import("./diving-dcasn-uw-report");
+                
                 pdfBlob = await generateDivingDCASNUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-dcasn-ts-report') {
-                const { generateDivingDCASNTSReport } = await import("./diving-dcasn-ts-report");
+                
                 pdfBlob = await generateDivingDCASNTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCASN"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-dcond-uw-report') {
-                const { generateDivingDCONDUWReport } = await import("./diving-dcond-uw-report");
+                
                 pdfBlob = await generateDivingDCONDUWReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-dcond-ts-report') {
-                const { generateDivingDCONDTSReport } = await import("./diving-dcond-ts-report");
+                
                 pdfBlob = await generateDivingDCONDTSReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DCOND"), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'diving-szone-report') {
-                const { generateDivingSZONEReport } = await import("./diving-szone-report");
+                
                 pdfBlob = (await generateDivingSZONEReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "DSZCI"), sharedHeaderData, companySettings || {}, sharedConfig as any, null)) || null;
             } else if (templateId === 'diving-anode-report') {
-                const { generateDivingAnodeReport } = await import("./diving-anode-report");
+                
                 pdfBlob = (await generateDivingAnodeReport(records.filter(r => {
                     const t = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
                     const c = (r.structure_components?.code || r.component?.code || "").toUpperCase();
                     return t === "DAN" || (['DGVI', 'ANODE', 'ANOD', 'PL_AN'].includes(t) && c === 'AN');
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any)) || null;
             } else if (templateId === 'diving-mgi-report') {
-                const { generateDivingMGIReport } = await import("./diving-mgi-report");
-                const { createClient } = await import("@/utils/supabase/client");
+                
+    
                 const supabase = createClient();
                 const mgiRecs = records.filter(r => ['DMGI', 'MGROW', 'RMGI'].includes((r.inspection_type?.code || r.inspection_type_code || "").toUpperCase()));
                 const profileId = mgiRecs.find(r => r.inspection_data?._mgi_profile_id)?.inspection_data?._mgi_profile_id;
@@ -1228,16 +1300,16 @@ export const mapInspectionDataForDocx = async (
                     supabase
                 )) || null;
             } else if (templateId === 'diving-utclb-report') {
-                const { generateDivingUTCLBReport } = await import("./diving-utclb-report");
+                
                 pdfBlob = (await generateDivingUTCLBReport(records.filter(r => (r.inspection_type?.code || "").toUpperCase() === "UTCLB"), sharedHeaderData, companySettings || {}, sharedConfig as any)) || null;
             } else if (templateId === 'inspection-report') {
-                const { generateInspectionReport } = await import("./inspection-report");
+                
                 const firstId = records[0]?.insp_id;
                 if (firstId) {
                     pdfBlob = (await generateInspectionReport(firstId, companySettings || {}, sharedConfig as any)) || null;
                 }
             } else if (templateId === 'structure-summary') {
-                const { generateStructureReport } = await import("../pdf-generator");
+                
                 let fullStructure = structure;
                 const structId = structure.id || structure.str_id || structure.plat_id || structure.pipe_id;
                 try {
@@ -1272,7 +1344,7 @@ export const mapInspectionDataForDocx = async (
                     reportNoPrefix: sowReportNo || "" 
                 } as any)) || null;
             } else if (templateId === 'inspection-summary-graph' || templateId === 'inspection-summary-graph-report') {
-                const { generateInspectionSummaryGraphReport } = await import("./inspection-summary-graph-report");
+                
                 let summaryData: any = null;
                 try {
                     const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;
@@ -1298,7 +1370,7 @@ export const mapInspectionDataForDocx = async (
                     { ...sharedConfig, returnBlob: true, showSignatures: true, showPageNumbers: false, sowReportNo: sowReportNo || "", reportNoPrefix: sowReportNo || "" } as any
                 )) || null;
             } else if (templateId === 'inspection-summary' || templateId === 'inspection-summary-report') {
-                const { generateInspectionSummaryReport } = await import("./inspection-summary-report");
+                
                 let summaryData: any = null;
                 try {
                     const structId = structure?.id || structure?.str_id || structure?.plat_id || structure?.pipe_id;

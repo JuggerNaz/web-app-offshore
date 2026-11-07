@@ -38,7 +38,9 @@ import {
     CheckCircle2,
     Code,
     Zap,
-    ChevronDown
+    ChevronDown,
+    BarChart3,
+    TrendingUp
 } from "lucide-react";
 import { toast } from "sonner";
 import useSWR, { mutate } from "swr";
@@ -51,7 +53,12 @@ import {
     getIncompleteScopeTableTemplate,
     getCompletedScopeTableTemplate,
     getAnodeDepletionTableTemplate,
-    getAnomalyDefectTypeTableTemplate
+    getAnomalyDefectTypeTableTemplate,
+    getAnomalyPriorityChartTemplate,
+    getScopeCompletionChartTemplate,
+    getCpHealthChartTemplate,
+    getAnodeDepletionChartTemplate,
+    getDefectDistributionChartTemplate
 } from "./template-utils";
 
 interface SummaryTemplatesDialogProps {
@@ -94,6 +101,7 @@ export function SummaryTemplatesDialog({
     onSaveCustomVariables,
     statsContext,
 }: SummaryTemplatesDialogProps) {
+    if (!open) return null;
     const { data: templatesRes, isLoading } = useSWR(
         open ? `/api/executive-summary/templates?section_id=${sectionId}` : null,
         fetcher
@@ -197,7 +205,7 @@ export function SummaryTemplatesDialog({
 
     // When applying/loading a template into the summary editor, ALL tags are replaced with live data!
     const handleApplyTemplate = (rawContent: string) => {
-        const resolved = interpolateAllVariables(rawContent, statsContext);
+        const resolved = interpolateAllVariables(rawContent, statsContext, sectionId, sectionTitle);
         onSelect(resolved);
         toast.success("Template inserted into summary with all live data replaced!");
         onOpenChange(false);
@@ -381,6 +389,16 @@ export function SummaryTemplatesDialog({
         toast.success(`Inserted ${tableName} into template designer!`);
     };
 
+    const handleInsertSmartChart = (chartHtml: string, chartName: string) => {
+        setDesignerContent((prev) => {
+            if (!prev || prev === "<p></p>" || prev.trim() === "") {
+                return chartHtml;
+            }
+            return `${prev}<p></p>${chartHtml}<p></p>`;
+        });
+        toast.success(`Inserted ${chartName} into template designer!`);
+    };
+
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
             <DialogContent className="max-w-6xl w-[96vw] h-[88vh] max-h-[920px] bg-white dark:bg-slate-950 p-0 overflow-hidden flex flex-col rounded-3xl border-none shadow-2xl animate-in fade-in-50 zoom-in-95 duration-200">
@@ -538,6 +556,87 @@ export function SummaryTemplatesDialog({
                                                 </DropdownMenuContent>
                                             </DropdownMenu>
 
+                                            <DropdownMenu>
+                                                <DropdownMenuTrigger asChild>
+                                                    <Button
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-7 text-[11px] bg-purple-50 hover:bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300 dark:hover:bg-purple-950/60 border-purple-300 dark:border-purple-800 font-bold gap-1 shadow-2xs"
+                                                        title="Insert standard smart inspection charts into the template"
+                                                    >
+                                                        <BarChart3 className="w-3 h-3 text-purple-600 dark:text-purple-400" /> 
+                                                        + Insert Smart Chart 
+                                                        <ChevronDown className="w-3 h-3 opacity-60" />
+                                                    </Button>
+                                                </DropdownMenuTrigger>
+                                                <DropdownMenuContent align="start" className="w-80 p-1.5 text-xs shadow-2xl z-[150] border-slate-200 dark:border-slate-800">
+                                                    <DropdownMenuLabel className="text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 px-2.5 py-1">
+                                                        Smart Inspection Charts (5 Presets)
+                                                    </DropdownMenuLabel>
+                                                    <DropdownMenuSeparator />
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleInsertSmartChart(getAnomalyPriorityChartTemplate(), "Anomaly Priority Distribution Chart")}
+                                                        className="flex flex-col items-start gap-0.5 cursor-pointer py-2 px-2.5 rounded-lg focus:bg-purple-50 dark:focus:bg-purple-950/30"
+                                                    >
+                                                        <span className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                                                            <span className="w-2 h-2 rounded-full bg-red-500"></span>
+                                                            1. Anomaly Priority Breakdown Chart
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 pl-3.5">
+                                                            Visual progress bars for P1-P4 & OBS severity metrics
+                                                        </span>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleInsertSmartChart(getScopeCompletionChartTemplate(), "SOW Scope Completion Progress Chart")}
+                                                        className="flex flex-col items-start gap-0.5 cursor-pointer py-2 px-2.5 rounded-lg focus:bg-purple-50 dark:focus:bg-purple-950/30"
+                                                    >
+                                                        <span className="font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1.5">
+                                                            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                                            2. Scope Completion & Progress Chart
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 pl-3.5">
+                                                            Campaign execution progress bar & scope percentage
+                                                        </span>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleInsertSmartChart(getCpHealthChartTemplate(), "CP Potential Health Chart")}
+                                                        className="flex flex-col items-start gap-0.5 cursor-pointer py-2 px-2.5 rounded-lg focus:bg-purple-50 dark:focus:bg-purple-950/30"
+                                                    >
+                                                        <span className="font-semibold text-sky-700 dark:text-sky-400 flex items-center gap-1.5">
+                                                            <span className="w-2 h-2 rounded-full bg-sky-500"></span>
+                                                            3. CP Potential Integrity Health Meter
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 pl-3.5">
+                                                            Protection band visualization (-800mV to -1050mV)
+                                                        </span>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleInsertSmartChart(getAnodeDepletionChartTemplate(), "Anode Depletion Distribution Chart")}
+                                                        className="flex flex-col items-start gap-0.5 cursor-pointer py-2 px-2.5 rounded-lg focus:bg-purple-50 dark:focus:bg-purple-950/30"
+                                                    >
+                                                        <span className="font-semibold text-blue-700 dark:text-blue-400 flex items-center gap-1.5">
+                                                            <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                                            4. Anode Depletion Distribution Chart
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 pl-3.5">
+                                                            Consumption brackets (0-25%, 26-50%, 51-75%, &gt;75%)
+                                                        </span>
+                                                    </DropdownMenuItem>
+                                                    <DropdownMenuItem 
+                                                        onClick={() => handleInsertSmartChart(getDefectDistributionChartTemplate(), "Defect Classification Breakdown Chart")}
+                                                        className="flex flex-col items-start gap-0.5 cursor-pointer py-2 px-2.5 rounded-lg focus:bg-purple-50 dark:focus:bg-purple-950/30"
+                                                    >
+                                                        <span className="font-semibold text-indigo-700 dark:text-indigo-400 flex items-center gap-1.5">
+                                                            <span className="w-2 h-2 rounded-full bg-indigo-500"></span>
+                                                            5. Defect Severity Breakdown Chart
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-500 pl-3.5">
+                                                            Marine growth, coating breakdown & scour distribution
+                                                        </span>
+                                                    </DropdownMenuItem>
+                                                </DropdownMenuContent>
+                                            </DropdownMenu>
+
                                             <span className="text-[10px] font-bold uppercase text-slate-400 mx-1 hidden sm:inline">
                                                 AI Presets:
                                             </span>
@@ -601,11 +700,14 @@ export function SummaryTemplatesDialog({
                                 {/* Rich Text Editor with Tables & Dynamic Variables */}
                                 <div className="flex-1 min-h-0 flex flex-col rounded-2xl overflow-hidden shadow-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950">
                                     <ExecutiveRichEditor
+                                        key={sectionId}
                                         value={designerContent}
                                         onChange={(val) => setDesignerContent(val)}
                                         placeholder="Design template content... Insert tables, format text colors and fonts, and add auto-updating dynamic fields..."
                                         sectionTitle={sectionTitle}
+                                        sectionId={sectionId}
                                         showDynamicFields={true}
+                                        isTemplateMode={true}
                                         minHeight="340px"
                                         statsContext={statsContext}
                                     />
@@ -650,6 +752,7 @@ export function SummaryTemplatesDialog({
                                     ) : (
                                         filteredTemplates.map((t: any) => {
                                             const hasTable = t.content?.includes("<table");
+                                            const hasChart = t.content?.includes("CHART") || t.content?.includes("BAR") || t.content?.includes("ANOMALY PRIORITY BREAKDOWN") || t.content?.includes("WORK SCOPE EXECUTION") || t.content?.includes("CATHODIC PROTECTION (CP) POTENTIAL HEALTH") || t.content?.includes("SACRIFICIAL ANODE DEPLETION") || t.content?.includes("STRUCTURAL DEFECT CLASSIFICATION");
                                             const hasTags = t.content?.includes("{{");
 
                                             return (
@@ -678,6 +781,11 @@ export function SummaryTemplatesDialog({
                                                                 {hasTable && (
                                                                     <Badge variant="secondary" className="text-[8px] font-semibold h-4 px-1 gap-0.5 bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
                                                                         <TableIcon className="w-2.5 h-2.5" /> Table
+                                                                    </Badge>
+                                                                )}
+                                                                {hasChart && (
+                                                                    <Badge variant="secondary" className="text-[8px] font-semibold h-4 px-1 gap-0.5 bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                                                                        <TrendingUp className="w-2.5 h-2.5" /> Chart
                                                                     </Badge>
                                                                 )}
                                                                 {hasTags && (

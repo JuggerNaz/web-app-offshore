@@ -28,6 +28,7 @@ interface ReportSettingsDialogProps {
 }
 
 export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialogProps) {
+    if (!open) return null;
     const [isUploading, setIsUploading] = useState(false);
     const [uploadData, setUploadData] = useState({
         name: "",
@@ -38,10 +39,10 @@ export function ReportSettingsDialog({ open, onOpenChange }: ReportSettingsDialo
     const [editingAliases, setEditingAliases] = useState<Record<string, string>>({});
     const [isSavingAliases, setIsSavingAliases] = useState(false);
 
-    const { data: templatesRes } = useSWR("/api/report-templates", fetcher);
+    const { data: templatesRes } = useSWR(open ? "/api/report-templates" : null, fetcher);
     const templates = Array.isArray(templatesRes?.data) ? templatesRes.data : [];
 
-    const { data: aliasesRes, mutate: mutateAliases } = useSWR("/api/report-aliases", fetcher);
+    const { data: aliasesRes, mutate: mutateAliases } = useSWR(open ? "/api/report-aliases" : null, fetcher);
     const aliases = Array.isArray(aliasesRes?.data) ? aliasesRes.data : [];
 
     useEffect(() => {
