@@ -1,7 +1,7 @@
 "use client";
 
 import { useAttachmentStore } from "@/stores/attachment-store";
-import { useState, useMemo, Fragment } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import {
@@ -70,6 +70,16 @@ export default function AttachmentTreeView() {
 
     const { filters, selectedPlatformId, setSelectedPlatformId, openSlideOver } = useAttachmentStore();
     const { searchQuery, hasAttachmentsOnly } = filters;
+
+    // Pre-select platform from URL query parameter when opened from Platform 3D QID Details
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const rawPlatId = params.get("platformId") || params.get("structure_id") || params.get("id");
+        if (rawPlatId && !isNaN(Number(rawPlatId))) {
+            setSelectedPlatformId(Number(rawPlatId));
+        }
+    }, [setSelectedPlatformId]);
 
     const [categoryFilter, setCategoryFilter] = useState<AttachmentCategory | "ALL">("ALL");
 

@@ -12,6 +12,7 @@ import type { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 import {
     DebrisFlag,
     MaterialClass,
+    SketchHeaderMeta,
     SketchMember,
     Vec3,
     chooseElevationAxis,
@@ -20,9 +21,15 @@ import {
     drawMemberDetail,
     drawPanelTitle,
     drawPlanView,
+    findHostStructuralMember,
+    formatElev3D,
+    isAnodeMember,
     isHorizontalMember,
     isPointMember,
+    isWeldMember,
+    lerp3,
     memberLength,
+    resolveFaceSubtitle,
     toNum
 } from "./member-sketch";
 
@@ -125,6 +132,11 @@ export const buildDebrisItems = (records: any[], member: SketchMember | null): D
             alongApprox = false; // the member is a single node
         }
 
+        const explicitRef = cleanText(record.display_ref_no || record.anomaly_ref_no || record.ref_no);
+        const qidShort = cleanText(member?.qid || record.component_qid);
+        const calloutLabel = explicitRef
+            || (records.length === 1 && qidShort ? qidShort : `D-${String(idx + 1).padStart(3, "0")}`);
+
         const flag: DebrisFlag = {
             n: idx + 1,
             t,
@@ -132,7 +144,8 @@ export const buildDebrisItems = (records: any[], member: SketchMember | null): D
             material,
             touching,
             hazardous,
-            approx: alongApprox || clockApprox
+            approx: alongApprox || clockApprox,
+            label: calloutLabel
         };
 
         return {
@@ -202,88 +215,9 @@ export const buildDebrisItems = (records: any[], member: SketchMember | null): D
 /*  Report                                                                    */
 /* -------------------------------------------------------------------------- */
 
-interface LoadedImage {
-    data: string;
-    aspect: number;
-}
-
-const imageCache = new Map<string, LoadedImage | null>();
-
-const loadReportImage = async (url: string): Promise<LoadedImage | null> => {
-    if (!url) return null;
-    if (imageCache.has(url)) return imageCache.get(url)!;
-    try {
-        const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), 30000);
-        const res = await fetch(url, { signal: controller.signal });
-        clearTimeout(timer);
-        if (!res.ok) { imageCache.set(url, null); return null; }
-        const blob = await res.blob();
-        const dataUrl: string = await new Promise((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.onerror = reject;
-            reader.readAsDataURL(blob);
-        });
-        const loaded: LoadedImage | null = await new Promise(resolve => {
-            const img = new Image();
-            const timeout = setTimeout(() => resolve({ data: dataUrl, aspect: 4 / 3 }), 15000);
-            img.onload = () => {
-                clearTimeout(timeout);
-                const w = img.naturalWidth || 800;
-                const h = img.naturalHeight || 600;
-                try {
-                    const canvas = document.createElement("canvas");
-                    canvas.width = w;
-                    canvas.height = h;
-                    const ctx = canvas.getContext("2d");
-                    if (ctx) {
-                        ctx.drawImage(img, 0, 0);
-                        resolve({ data: canvas.toDataURL("image/jpeg", 0.9), aspect: h > 0 ? w / h : 4 / 3 });
-                        return;
-                    }
-                } catch { /* fall through to raw data */ }
-                resolve({ data: dataUrl, aspect: h > 0 ? w / h : 4 / 3 });
-            };
-            img.onerror = () => { clearTimeout(timeout); resolve(null); };
-            img.src = dataUrl;
-        });
-        imageCache.set(url, loaded);
-        return loaded;
-    } catch {
-        imageCache.set(url, null);
-        return null;
-    }
-};
-
-const loadAttachment = async (rawAtt: any): Promise<{ data: string; aspect: number; att: any } | null> => {
-    const att = typeof rawAtt === "string" ? { path: rawAtt, name: "Photo" } : (rawAtt || {});
-    const rawPath = att.path || att.file_path || att.file_url || att.url || att.storage_path;
-    if (!rawPath && !att.id) return null;
-    const bucket = att.bucket_id || att.bucket || "attachments";
-    const candidates: string[] = [];
-    if (att.id) candidates.push(`/api/attachment/url?id=${encodeURIComponent(att.id)}`);
-    if (rawPath) {
-        candidates.push(`/api/attachment/url?path=${encodeURIComponent(rawPath)}`);
-        candidates.push(`/api/attachment/download?path=${encodeURIComponent(rawPath)}&bucket=${bucket}`);
-        if (typeof rawPath === "string" && /^(https?:|data:)/.test(rawPath) && !rawPath.includes("backblazeb2.com")) {
-            candidates.push(rawPath);
-        }
-    }
-    for (const url of candidates) {
-        const img = await loadReportImage(url);
-        if (img) {
-            let meta = att.meta || {};
-            if (typeof meta === "string") { try { meta = JSON.parse(meta); } catch { meta = {}; } }
-            return { data: img.data, aspect: img.aspect, att: { ...att, meta } };
-        }
-    }
-    return null;
-};
-
 /** Pull every 3D member of the structure (webapp_3d coordinates enriched by the platform API) */
 const fetchStructureMembers = async (structureId: string | number | undefined) => {
-    const all: (SketchMember & { compId: number | null })[] = [];
+    const all: (SketchMember & { compId: number | null; isFoundation?: boolean })[] = [];
     if (!structureId || String(structureId) === "0") return all;
     try {
         const res = await fetch(`/api/platform/webapp-3d/${structureId}`, { cache: "no-store" });
@@ -295,18 +229,115 @@ const fetchStructureMembers = async (structureId: string | number | undefined) =
             const end: Vec3 = [toNum(c.end_x, start[0]), toNum(c.end_y, start[1]), toNum(c.end_z, start[2])];
             const compIdRaw = c.comp_id ?? c.id ?? c.component_id;
             const compId = Number(String(compIdRaw ?? "").split("-seg-")[0]);
+            const sc = c.structure_components || {};
+            const md = c.metadata || sc.metadata || {};
+            const qid = String(c.q_id || sc.q_id || "").trim();
+            const code = String(c.code || sc.code || "").trim();
+
+            let sNode = String(md.s_node || md.start_node || md.Node_1 || md.node_1 || c.s_node || sc.s_node || "").trim();
+            let fNode = String(md.f_node || md.end_node || md.Node_2 || md.node_2 || c.f_node || sc.f_node || "").trim();
+            if (!sNode && !fNode) {
+                const pairMatch = qid.match(/\b(N?\d+)\s*-\s*(N?\d+)\b/i);
+                if (pairMatch) {
+                    sNode = pairMatch[1].toUpperCase();
+                    fNode = pairMatch[2].toUpperCase();
+                } else if (/^(?:WN|WP|ND|NODE)\b/i.test(qid) || ["WN", "WP", "ND"].includes(code.toUpperCase())) {
+                    const wnMatch = qid.match(/(?:WN|WP|ND|NODE)\s*[-_]?\s*(N?\d+[A-Z]?)/i);
+                    if (wnMatch) {
+                        sNode = wnMatch[1].toUpperCase();
+                        fNode = sNode;
+                    }
+                }
+            }
+
+            let sLeg = String(md.s_leg || md.leg || md.start_leg || c.s_leg || sc.s_leg || "").trim().toUpperCase();
+            let fLeg = String(md.f_leg || md.end_leg || c.f_leg || sc.f_leg || "").trim().toUpperCase();
+            if (!sLeg && !fLeg) {
+                const legsInQid = qid.match(/\b([A-Z]\d+)\b/gi);
+                if (legsInQid && legsInQid.length >= 1) {
+                    sLeg = legsInQid[0].toUpperCase();
+                    fLeg = (legsInQid[1] || legsInQid[0]).toUpperCase();
+                }
+            }
+            const face = String(md.face || c.face || sc.face || "").trim().toUpperCase();
+            const assocRaw = md.associated_comp_id ?? c.associated_comp_id ?? sc.associated_comp_id;
+            const assocId = Number(assocRaw);
+            const hasAnomaly = Boolean(c.has_anomaly || c.inspection_color === "red");
+
             all.push({
-                qid: String(c.q_id || c.structure_components?.q_id || "").trim(),
-                code: String(c.code || "").trim(),
+                qid,
+                code,
                 start,
                 end,
-                compId: Number.isFinite(compId) && compId > 0 ? compId : null
+                sNode,
+                fNode,
+                sLeg,
+                fLeg,
+                face,
+                compId: Number.isFinite(compId) && compId > 0 ? compId : null,
+                associatedCompId: Number.isFinite(assocId) && assocId > 0 ? assocId : null,
+                hasAnomaly,
+                clkPos: md.clk_pos ?? c.clk_pos ?? null,
+                dist: md.dist !== undefined && md.dist !== "" ? toNum(md.dist, 0) : null,
+                elv1: md.elv_1 !== undefined && md.elv_1 !== "" ? toNum(md.elv_1, start[1]) : null,
+                elv2: md.elv_2 !== undefined && md.elv_2 !== "" ? toNum(md.elv_2, end[1]) : null,
+                thickness: toNum(c.thickness ?? c.dimensions?.thickness, 0.2)
+            });
+        });
+        const foundation: any[] = json?.data?.foundationMembers || [];
+        foundation.forEach(f => {
+            const s = Array.isArray(f.start) ? f.start : [];
+            const e = Array.isArray(f.end) ? f.end : s;
+            const start: Vec3 = [toNum(s[0]), toNum(s[1]), toNum(s[2])];
+            const end: Vec3 = [toNum(e[0], start[0]), toNum(e[1], start[1]), toNum(e[2], start[2])];
+            const isLeg = String(f.id || "").startsWith("leg-");
+            const lbl = String(f.label || "").trim();
+            all.push({
+                qid: lbl,
+                code: isLeg ? "LG" : "FA",
+                start,
+                end,
+                sLeg: isLeg ? lbl.toUpperCase() : undefined,
+                fLeg: isLeg ? lbl.toUpperCase() : undefined,
+                face: !isLeg ? lbl.toUpperCase() : undefined,
+                compId: null,
+                isFoundation: true
             });
         });
     } catch (e) {
         console.warn("[DebrisLocationReport] Failed to load 3D geometry:", e);
     }
     return all;
+};
+
+/** Resolve the relevant elevation(s) for a component's debris records */
+export const resolveRelevantElevations = (
+    records: any[],
+    member: SketchMember | null,
+    flags: DebrisFlag[]
+): number[] => {
+    const recElevs = records
+        .map(r => r?.elevation)
+        .filter(e => e !== null && e !== undefined && String(e).trim() !== "" && Number.isFinite(Number(e)))
+        .map(Number);
+
+    const rawElevs = recElevs.length > 0
+        ? recElevs
+        : member
+            ? (isHorizontalMember(member) || isPointMember(member)
+                ? [Math.round(((member.start[1] + member.end[1]) / 2) * 100) / 100]
+                : (flags.length > 0
+                    ? flags.map(f => Math.round(lerp3(member.start, member.end, f.t)[1] * 100) / 100)
+                    : [Math.round(((member.start[1] + member.end[1]) / 2) * 100) / 100]))
+            : [];
+
+    const unique: number[] = [];
+    for (const e of rawElevs) {
+        if (!unique.some(u => Math.abs(u - e) < 0.5)) {
+            unique.push(e);
+        }
+    }
+    return unique;
 };
 
 export const generateDebrisLocationReport = async (
@@ -360,9 +391,69 @@ export const generateDebrisLocationReport = async (
         if (m.compId && !byCompId.has(m.compId)) byCompId.set(m.compId, m);
         else if (m.compId && memberLength(byCompId.get(m.compId)!) < 0.05 && memberLength(m) >= 0.05) byCompId.set(m.compId, m);
         const key = m.qid.toUpperCase();
-        if (key && !byQid.has(key)) byQid.set(key, m);
+        if (key && !m.isFoundation && !byQid.has(key)) byQid.set(key, m);
     });
-    const contextMembers: SketchMember[] = allMembers.filter(m => !isPointMember(m)).slice(0, 5000);
+
+    // 2b. Enrich members where anomalies / debris have been identified so their locations are highlighted
+    if (!isBlank && allMembers.length > 0) {
+        const markMemberAnomaly = (compId?: number | null, qid?: string | null, refLabel?: string | null) => {
+            const cid = Number(compId);
+            const cleanRef = String(refLabel || "").split("/").pop()?.trim() || "";
+            const mById = Number.isFinite(cid) && cid > 0 ? byCompId.get(cid) : undefined;
+            const mByQid = qid ? byQid.get(String(qid).trim().toUpperCase()) : undefined;
+            const matched = mById || mByQid;
+            if (matched) {
+                matched.hasAnomaly = true;
+                if (cleanRef && !matched.anomalyLabel) matched.anomalyLabel = cleanRef;
+            }
+        };
+
+        // Mark all components present in the campaign's debris records
+        records.forEach(r => {
+            markMemberAnomaly(r.component_id, r.component_qid, r.display_ref_no || r.anomaly_ref);
+        });
+
+        // Also query open anomalies on this structure from v_anomaly_details
+        if (structureIdVal && String(structureIdVal) !== "0") {
+            try {
+                let anomQuery = supabase
+                    .from("v_anomaly_details")
+                    .select("component_id, component_qid, display_ref_no, status, jobpack_id")
+                    .eq("structure_id", Number(structureIdVal));
+                if (jobPack?.id && String(jobPack.id) !== "0") {
+                    anomQuery = anomQuery.eq("jobpack_id", Number(jobPack.id));
+                }
+                const { data: anomRows } = await anomQuery;
+                if (Array.isArray(anomRows)) {
+                    anomRows.forEach((a: any) => {
+                        if (String(a.status || "").toLowerCase() !== "closed") {
+                            markMemberAnomaly(a.component_id, a.component_qid, a.display_ref_no);
+                        }
+                    });
+                }
+            } catch (e) {
+                console.warn("[DebrisLocationReport] Optional anomaly enrichment skipped:", e);
+            }
+        }
+
+        // Propagate anomaly highlight from attached anodes (AN) / node welds (WN) to their host structural members
+        const structuralPool = allMembers.filter(m => !isAnodeMember(m) && !isWeldMember(m) && !isPointMember(m));
+        allMembers.forEach(m => {
+            if (m.hasAnomaly && (isAnodeMember(m) || isWeldMember(m))) {
+                const host = findHostStructuralMember(m, structuralPool);
+                if (host) {
+                    host.hasAnomaly = true;
+                    if (!host.anomalyLabel) {
+                        host.anomalyLabel = m.anomalyLabel ? `${m.qid} ${m.anomalyLabel}` : m.qid;
+                    }
+                }
+            }
+        });
+    }
+
+    const contextMembers: SketchMember[] = allMembers
+        .filter(m => !isPointMember(m) || isAnodeMember(m) || isWeldMember(m))
+        .slice(0, 5000);
 
     // 3. Group records by component QID (one page per QID)
     interface Group { qid: string; compId: number | null; records: any[]; member: SketchMember | null; }
@@ -435,6 +526,9 @@ export const generateDebrisLocationReport = async (
 
     const structName = structure?.str_name ? `${structure.str_name}${structure.title ? ` - ${structure.title}` : ""}` : jobPack?.name;
     const reportNoDisplay = sowReportNo || records[0]?.sow_report_no || jobPack?.metadata?.report_no || (config as any)?.reportNoPrefix || "N/A";
+    const regionDisplay = structure?.region || structure?.area || jobPack?.metadata?.region || "";
+    const fieldDisplay = structure?.field_name || structure?.field || jobPack?.metadata?.field || "";
+    const shortStructDisplay = structure?.str_name || jobPack?.name || "";
 
     const drawHeader = () => {
         draw3SectionHeader(doc, {
@@ -609,10 +703,10 @@ export const generateDebrisLocationReport = async (
 
         let lastY = (doc as any).lastAutoTable.finalY + 4;
 
-        // --- Sketch block -------------------------------------------------------
+        // --- Sketch block (3D Face View + 3D Framing Plan + Member Detail) ------
         const member = group.member;
         const flags = items.map(i => i.flag);
-        const panelH = 66;
+        const panelH = 74;
         const detailH = 38;
 
         if (member || isBlank) {
@@ -622,22 +716,49 @@ export const generateDebrisLocationReport = async (
             const planBox = { x: margin + halfW + gap, y: lastY, w: halfW, h: panelH };
             const detailBox = { x: margin, y: lastY + panelH + gap, w: contentWidth, h: detailH };
 
+            const baseHeaderMeta: SketchHeaderMeta = {
+                region: regionDisplay || undefined,
+                field: fieldDisplay || undefined,
+                structure: shortStructDisplay || undefined
+            };
+
             if (member) {
                 const axis = chooseElevationAxis(member);
-                drawPanelTitle(doc, elevBox, `ELEVATION VIEW - ${group.qid}`, isPrintFriendly);
-                drawElevationView(doc, elevBox, contextMembers, member, flags, axis);
-                drawPanelTitle(doc, planBox, `PLAN VIEW - ${group.qid}`, isPrintFriendly);
-                drawPlanView(doc, planBox, contextMembers, member, flags);
-                // panel frames were drawn before content; redraw borders so content never hides them
+                const relevantElevs = resolveRelevantElevations(group.records, member, flags);
+                const faceSubtitle = resolveFaceSubtitle(member, contextMembers, axis);
+                const planElevSubtitle = relevantElevs.length > 0
+                    ? `ELEVATION ${relevantElevs.map(e => formatElev3D(e)).join(", ")}`
+                    : `ELEVATION ${formatElev3D((member.start[1] + member.end[1]) / 2)}`;
+
+                drawPanelTitle(doc, elevBox, "DEBRIS LOCATION - 3D FACE VIEW", isPrintFriendly, {
+                    ...baseHeaderMeta,
+                    subtitle: faceSubtitle
+                });
+                drawElevationView(doc, elevBox, contextMembers, member, flags, axis, relevantElevs, allMembers);
+
+                drawPanelTitle(doc, planBox, "DEBRIS LOCATION - 3D FRAMING PLAN", isPrintFriendly, {
+                    ...baseHeaderMeta,
+                    subtitle: planElevSubtitle
+                });
+                drawPlanView(doc, planBox, contextMembers, member, flags, relevantElevs, allMembers);
+
+                // Redraw outer panel borders so content never hides them
                 doc.setDrawColor(200, 200, 200);
-                doc.setLineWidth(0.1);
+                doc.setLineWidth(0.12);
                 doc.rect(elevBox.x, elevBox.y, elevBox.w, elevBox.h);
                 doc.rect(planBox.x, planBox.y, planBox.w, planBox.h);
+
                 drawPanelTitle(doc, detailBox, "MEMBER DETAIL - FLAG LOCATIONS ALONG MEMBER AND AROUND ITS CIRCUMFERENCE", isPrintFriendly);
                 drawMemberDetail(doc, detailBox, member, flags);
             } else {
-                drawPanelTitle(doc, elevBox, "ELEVATION VIEW", isPrintFriendly);
-                drawPanelTitle(doc, planBox, "PLAN VIEW", isPrintFriendly);
+                drawPanelTitle(doc, elevBox, "DEBRIS LOCATION - 3D FACE VIEW", isPrintFriendly, {
+                    ...baseHeaderMeta,
+                    subtitle: "FACE VIEW"
+                });
+                drawPanelTitle(doc, planBox, "DEBRIS LOCATION - 3D FRAMING PLAN", isPrintFriendly, {
+                    ...baseHeaderMeta,
+                    subtitle: "FRAMING PLAN"
+                });
                 drawPanelTitle(doc, detailBox, "MEMBER DETAIL - FLAG LOCATIONS ALONG MEMBER AND AROUND ITS CIRCUMFERENCE", isPrintFriendly);
             }
             drawFlagLegend(doc, margin, lastY + panelH + gap + detailH + 4.5);
@@ -660,7 +781,7 @@ export const generateDebrisLocationReport = async (
             lastY += noteH + 4;
         }
 
-        // --- Debris description table --------------------------------------------
+        // --- Debris description table (no picture attachments rendered) ----------
         const tableStartPage = doc.getNumberOfPages();
         const contBarText = `Debris Location  |  Structure: ${structure?.str_name || "N/A"}  |  Component: ${group.qid || "N/A"}`;
         const rows = isBlank
@@ -703,68 +824,6 @@ export const generateDebrisLocationReport = async (
                 }
             }
         });
-
-        lastY = (doc as any).lastAutoTable.finalY + 4;
-
-        // --- Photos per debris item ----------------------------------------------
-        const includePhotos = (config as any).includePhotos !== false;
-        if (includePhotos && !isBlank) {
-            const FRAME_W = 135;
-            const FRAME_H = 84;
-            for (const it of items) {
-                const rawImages: any[] = Array.isArray(it.record.attachments) ? it.record.attachments : [];
-                if (rawImages.length === 0) continue;
-                const loaded = (await Promise.all(rawImages.map(loadAttachment))).filter((x): x is NonNullable<typeof x> => x !== null);
-                for (let j = 0; j < loaded.length; j++) {
-                    const { data, aspect, att } = loaded[j];
-                    const meta = att.meta || {};
-                    const baseTitle = meta.title || att.name || `Photo ${j + 1}`;
-                    const title = `Debris #${it.flag.n} - ${baseTitle}`;
-                    const description = meta.description || "";
-                    const headerBox = 7;
-                    const splitDesc = doc.splitTextToSize(description || `Debris #${it.flag.n} photo ${j + 1}`, contentWidth - 10);
-                    const footerBox = description ? Math.min(14, splitDesc.length * 3.5 + 4) : 6;
-                    const blockH = headerBox + FRAME_H + footerBox + 4;
-
-                    if (lastY + blockH > maxYForContent) {
-                        doc.addPage();
-                        drawHeader();
-                        drawSubBar(contBarText);
-                        lastY = margin + headerH + 10;
-                    }
-
-                    doc.setDrawColor(200, 200, 200);
-                    doc.setLineWidth(0.2);
-                    doc.rect(margin, lastY, contentWidth, blockH);
-                    if (isPrintFriendly) {
-                        doc.setFillColor(245, 245, 245);
-                        doc.rect(margin, lastY, contentWidth, headerBox, "F");
-                        doc.setTextColor(7, 78, 136);
-                    } else {
-                        doc.setFillColor(7, 78, 136);
-                        doc.rect(margin, lastY, contentWidth, headerBox, "F");
-                        doc.setTextColor(255, 255, 255);
-                    }
-                    doc.setFontSize(8);
-                    doc.setFont("helvetica", "bold");
-                    doc.text(String(title).toUpperCase(), pageWidth / 2, lastY + 5, { align: "center" });
-
-                    let w = FRAME_W;
-                    let h = w / (aspect > 0 ? aspect : 4 / 3);
-                    if (h > FRAME_H) { h = FRAME_H; w = h * (aspect > 0 ? aspect : 4 / 3); }
-                    const imgX = margin + (contentWidth - w) / 2;
-                    const imgY = lastY + headerBox + 2 + (FRAME_H - h) / 2;
-                    doc.addImage(data, data.startsWith("data:image/png") ? "PNG" : "JPEG", imgX, imgY, w, h);
-
-                    doc.setFontSize(7.5);
-                    doc.setTextColor(60, 60, 60);
-                    doc.setFont("helvetica", description ? "normal" : "italic");
-                    doc.text(splitDesc, pageWidth / 2, lastY + headerBox + FRAME_H + 5.5, { align: "center" });
-                    doc.setTextColor(0, 0, 0);
-                    lastY += blockH + 3;
-                }
-            }
-        }
 
         if (config.showSignatures !== false) drawSignatories();
 

@@ -25,7 +25,8 @@ import {
     ArrowUp,
     ArrowDown,
     Eye,
-    ClipboardCheck
+    ClipboardCheck,
+    ShieldAlert
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -62,6 +63,7 @@ import { PrintFaceDialog } from "@/components/dialogs/print-face-dialog";
 import { PlatformSpecsDialog } from "@/components/dialogs/platform-specs-dialog";
 import { InspectionStatusDialog } from "@/components/dialogs/inspection-status-dialog";
 import { InspectionTaskDialog } from "@/components/dialogs/inspection-task-dialog";
+import { AnomalyStatusDialog } from "@/components/dialogs/anomaly-status-dialog";
 import { InspectionStatusOverlay } from "./_components/InspectionStatusOverlay";
 import { ExternalLink } from "lucide-react";
 import { useAtom } from "jotai";
@@ -197,6 +199,35 @@ export default function Platform3DPage() {
         return s?.items || [];
     }, [inspectionTaskSowResponse]);
 
+    // Anomaly Status state
+    const [isAnomalyStatusDialogOpen, setIsAnomalyStatusDialogOpen] = useState(false);
+    const [anomalyJobpackId, setAnomalyJobpackId] = useState<number | null>(null);
+    const [anomalySowReportNo, setAnomalySowReportNo] = useState<string | null>(null);
+    const [anomalyStatusFilters, setAnomalyStatusFilters] = useState<string[]>(["Open", "Rectified"]);
+
+    // Fetch Anomaly Records & SOW items for active Anomaly Status Jobpack
+    const { data: anomalyRecordsResponse } = useSWR(
+        selectedPlatform && anomalyJobpackId
+            ? `/api/reports/anomaly-report?jobpack_id=${anomalyJobpackId}&structure_id=${selectedPlatform.plat_id}`
+            : null,
+        fetcher
+    );
+    const anomalyItems = useMemo(() => {
+        return Array.isArray(anomalyRecordsResponse?.data) ? anomalyRecordsResponse.data : [];
+    }, [anomalyRecordsResponse]);
+
+    const { data: anomalySowResponse } = useSWR(
+        selectedPlatform && anomalyJobpackId
+            ? `/api/sow?jobpack_id=${anomalyJobpackId}&structure_id=${selectedPlatform.plat_id}`
+            : null,
+        fetcher
+    );
+    const anomalySowItems = useMemo(() => {
+        if (!anomalySowResponse?.data) return [];
+        const s = Array.isArray(anomalySowResponse.data) ? anomalySowResponse.data[0] : anomalySowResponse.data;
+        return s?.items || [];
+    }, [anomalySowResponse]);
+
     // Fetch Jobpacks for selected platform to resolve names & active detection
     const { data: platformJobpacksData } = useSWR(
         selectedPlatform ? `/api/jobpack?structure_id=${selectedPlatform.plat_id}&pageSize=50` : null,
@@ -204,11 +235,17 @@ export default function Platform3DPage() {
     );
     const platformJobpacks = useMemo(() => platformJobpacksData?.data || [], [platformJobpacksData]);
 
-    // Inspection Status Bottom Overlay state
+    // QID Details / Inspection Status Bottom Semi-Transparent Overlay state
     const [isInspectionOverlayDismissed, setIsInspectionOverlayDismissed] = useState(false);
-    const activeInspectionJobpackId = inspectionJobpackId || inspectionTaskJobpackId;
-    const activeInspectionSowReportNo = inspectionSowReportNo || inspectionTaskSowReportNo;
-    const activeInspectionSowItems = inspectionJobpackId ? inspectionSowItems : (inspectionTaskJobpackId ? inspectionTaskSowItems : []);
+    const activeInspectionJobpackId = anomalyJobpackId || inspectionJobpackId || inspectionTaskJobpackId;
+    const activeInspectionSowReportNo = anomalySowReportNo || inspectionSowReportNo || inspectionTaskSowReportNo;
+    const activeInspectionSowItems = anomalyJobpackId
+        ? anomalySowItems
+        : inspectionJobpackId
+        ? inspectionSowItems
+        : inspectionTaskJobpackId
+        ? inspectionTaskSowItems
+        : [];
 
     const activeJobpackName = useMemo(() => {
         if (!activeInspectionJobpackId) return null;
@@ -217,9 +254,7 @@ export default function Platform3DPage() {
     }, [activeInspectionJobpackId, platformJobpacks]);
 
     const isInspectionOverlayVisible = Boolean(
-        selectedComponent &&
-        !isInspectionOverlayDismissed &&
-        (activeInspectionJobpackId !== null || activeInspectionSowItems.length > 0)
+        selectedComponent && !isInspectionOverlayDismissed
     );
 
     // WINCAIRS Mode state & Fallback Dialog state
@@ -668,7 +703,18 @@ export default function Platform3DPage() {
     }, [selectedPlatform, selectedComponent, isSpecOpen]);
 
     const handleSelectComponent = (comp: any) => {
-        setSelectedComponent(comp);
+        if (!comp) {
+            setSelectedComponent(null);
+            return;
+        }
+        const compId = comp.id || comp.comp_id;
+        const compQId = String(comp.q_id || "").trim().toUpperCase();
+        const fullMatch = components.find((c: any) => {
+            if (compId && (Number(c.id) === Number(compId) || Number(c.comp_id) === Number(compId))) return true;
+            if (compQId && String(c.q_id || "").trim().toUpperCase() === compQId) return true;
+            return false;
+        });
+        setSelectedComponent(fullMatch ? { ...comp, ...fullMatch } : comp);
         setIsSpecOpen(true);
         setIsInspectionOverlayDismissed(false);
     };
@@ -919,6 +965,32 @@ export default function Platform3DPage() {
                                 <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-teal-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
                             )}
                         </Button>
+
+                        {/* 6. Anomaly Status Button */}
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsAnomalyStatusDialogOpen(true)}
+                            className={cn(
+                                "h-9 px-3 gap-2 rounded-xl text-xs font-bold transition-all relative overflow-hidden",
+                                anomalyJobpackId
+                                    ? "bg-red-50 hover:bg-red-100 text-red-700 border-red-200 dark:bg-red-950/40 dark:hover:bg-red-900/50 dark:border-red-800/60 dark:text-red-300 shadow-xs"
+                                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 dark:border-slate-800 dark:text-slate-300 shadow-xs"
+                            )}
+                            title="Filter 3D platform components by Anomaly Status (Open in Red / Rectified in Green) for a selected Jobpack and SOW Report Scope"
+                        >
+                            <ShieldAlert className={cn("h-3.5 w-3.5", anomalyJobpackId ? "text-red-500" : "")} />
+                            <span>
+                                {anomalyJobpackId
+                                    ? `Anomaly • JP #${anomalyJobpackId}${anomalySowReportNo ? ` • ${anomalySowReportNo}` : ""}`
+                                    : "Anomaly Status"}
+                            </span>
+
+                            {/* Active Filter Badge */}
+                            {anomalyJobpackId !== null && (
+                                <div className="absolute top-0 right-0 -mt-1 -mr-1 w-3 h-3 bg-red-500 rounded-full border-2 border-white dark:border-slate-950 animate-pulse" />
+                            )}
+                        </Button>
                     </div>
                 </div>
 
@@ -946,6 +1018,11 @@ export default function Platform3DPage() {
                             selectedInspectionTaskCode={selectedInspectionTaskCode}
                             inspectionTaskSowItems={inspectionTaskSowItems}
                             selectedTaskSowReportNo={inspectionTaskSowReportNo}
+                            isAnomalyStatusMode={anomalyJobpackId !== null}
+                            selectedAnomalyStatusFilters={anomalyStatusFilters}
+                            anomalyItems={anomalyItems}
+                            anomalySowItems={anomalySowItems}
+                            selectedAnomalySowReportNo={anomalySowReportNo}
                             isLoading={isPlatformDataLoading}
                         />
 
@@ -1022,7 +1099,13 @@ export default function Platform3DPage() {
                     selectedFilters={inspectionFilters}
                     onFiltersChange={setInspectionFilters}
                     selectedJobpackId={inspectionJobpackId}
-                    onJobpackChange={setInspectionJobpackId}
+                    onJobpackChange={(id) => {
+                        setInspectionJobpackId(id);
+                        if (id !== null) {
+                            setInspectionTaskJobpackId(null);
+                            setAnomalyJobpackId(null);
+                        }
+                    }}
                     selectedSowReportNo={inspectionSowReportNo}
                     onSowReportChange={setInspectionSowReportNo}
                     onSelectComponent={handleSelectComponent}
@@ -1035,7 +1118,13 @@ export default function Platform3DPage() {
                     platformId={selectedPlatform.plat_id}
                     platformTitle={selectedPlatform.title}
                     selectedJobpackId={inspectionTaskJobpackId}
-                    onJobpackChange={setInspectionTaskJobpackId}
+                    onJobpackChange={(id) => {
+                        setInspectionTaskJobpackId(id);
+                        if (id !== null) {
+                            setInspectionJobpackId(null);
+                            setAnomalyJobpackId(null);
+                        }
+                    }}
                     selectedSowReportNo={inspectionTaskSowReportNo}
                     onSowReportChange={setInspectionTaskSowReportNo}
                     selectedTaskCode={selectedInspectionTaskCode}
@@ -1045,6 +1134,32 @@ export default function Platform3DPage() {
                         setInspectionTaskJobpackId(null);
                         setInspectionTaskSowReportNo(null);
                         setSelectedInspectionTaskCode("ALL");
+                    }}
+                />
+
+                {/* Anomaly Status Dialog */}
+                <AnomalyStatusDialog
+                    isOpen={isAnomalyStatusDialogOpen}
+                    onClose={() => setIsAnomalyStatusDialogOpen(false)}
+                    platformId={selectedPlatform.plat_id}
+                    platformTitle={selectedPlatform.title}
+                    selectedJobpackId={anomalyJobpackId}
+                    onJobpackChange={(id) => {
+                        setAnomalyJobpackId(id);
+                        if (id !== null) {
+                            setInspectionJobpackId(null);
+                            setInspectionTaskJobpackId(null);
+                        }
+                    }}
+                    selectedSowReportNo={anomalySowReportNo}
+                    onSowReportChange={setAnomalySowReportNo}
+                    selectedStatusFilters={anomalyStatusFilters}
+                    onStatusFiltersChange={setAnomalyStatusFilters}
+                    onSelectComponent={handleSelectComponent}
+                    onResetColors={() => {
+                        setAnomalyJobpackId(null);
+                        setAnomalySowReportNo(null);
+                        setAnomalyStatusFilters(["Open", "Rectified"]);
                     }}
                 />
 

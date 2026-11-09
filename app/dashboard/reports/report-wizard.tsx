@@ -131,6 +131,25 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         printBlankReport: false,
     });
 
+    // Pre-populate context from URL query parameters when navigated from Platform 3D QID Details
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const structureId = params.get("structureId") || params.get("structure_id") || "";
+        const jobPackId = params.get("jobpackId") || params.get("jobpack_id") || "";
+        const sowReportNo = params.get("sowReportNo") || params.get("sow_report_no") || "";
+        const componentId = params.get("componentId") || params.get("component_id") || "";
+        if (structureId || jobPackId || sowReportNo || componentId) {
+            setSelections((prev) => ({
+                ...prev,
+                structureId: structureId || prev.structureId,
+                jobPackId: jobPackId || prev.jobPackId,
+                sowReportNo: sowReportNo || prev.sowReportNo,
+                componentId: componentId || prev.componentId,
+            }));
+        }
+    }, []);
+
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
         const allIds: string[] = [];
         TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
