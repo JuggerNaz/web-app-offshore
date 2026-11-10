@@ -4,6 +4,7 @@ import { useState, useMemo } from "react";
 import { useUserRole } from "@/utils/hooks/use-user-role";
 import { UserRole } from "@/utils/role-auth-base";
 import { InviteDialog } from "./invite-dialog";
+import { DeleteDialog } from "./delete-dialog";
 import { ResetPasswordDialog } from "@/components/admin/reset-password-dialog";
 import { useInfiniteList } from "@/hooks/use-infinite-list";
 import { useDebouncedValue } from "@/hooks/use-debounced-value";
@@ -41,7 +42,9 @@ import {
   Building2,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  Trash2,
+  UserX,
 } from "lucide-react";
 import {
   Dialog,
@@ -78,6 +81,7 @@ export default function UserManagementPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const debouncedSearch = useDebouncedValue(searchQuery, 300);
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<"all" | "active" | "archived">("active");
   const [actionInProgress, setActionInProgress] = useState<string | null>(null);
 
   type SortKey = "name" | "designation" | "role" | "status";
@@ -107,6 +111,7 @@ export default function UserManagementPage() {
     fetchNextPage,
     refetch,
     updateItem,
+    removeItem,
     prependItem,
   } = useInfiniteList<any>({
     queryKey: ["admin", "users", activeCompanyId, debouncedSearch, sortKey, sortDirection],
@@ -120,9 +125,16 @@ export default function UserManagementPage() {
   });
 
   const sortedMembers = useMemo(() => {
-    if (!sortKey) return members;
+    let filtered = members;
+    if (statusFilter === "active") {
+      filtered = members.filter((m) => m.is_active !== false);
+    } else if (statusFilter === "archived") {
+      filtered = members.filter((m) => m.is_active === false);
+    }
 
-    return [...members].sort((a, b) => {
+    if (!sortKey) return filtered;
+
+    return [...filtered].sort((a, b) => {
       if (sortKey === "status") {
         const aActive = a.is_active ? 1 : 0;
         const bActive = b.is_active ? 1 : 0;
@@ -150,7 +162,7 @@ export default function UserManagementPage() {
       const comparison = aVal.localeCompare(bVal);
       return sortDirection === "asc" ? comparison : -comparison;
     });
-  }, [members, sortKey, sortDirection]);
+  }, [members, statusFilter, sortKey, sortDirection]);
 
   const renderSortIcon = (key: SortKey) => {
     if (sortKey !== key) {
@@ -171,6 +183,8 @@ export default function UserManagementPage() {
   // Access Configuration Dialog States
   const [editingMember, setEditingMember] = useState<any | null>(null);
   const [resetPasswordUser, setResetPasswordUser] = useState<any | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deletingMember, setDeletingMember] = useState<any | null>(null);
   const [editSystemRole, setEditSystemRole] = useState<string>("User");
   const [editModules, setEditModules] = useState<string[]>([]);
   const [editRestrictionType, setEditRestrictionType] = useState<string>("always");
@@ -428,6 +442,24 @@ export default function UserManagementPage() {
     prependItem(newMembership);
   };
 
+  const handleOpenDeleteDialog = (member?: any) => {
+    setDeletingMember(member || null);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleUserDeleted = (membershipId: string, userId: string, action?: string, message?: string) => {
+    if (action === "permanent_delete") {
+      removeItem((m: any) => m.id === membershipId || m.user_id === userId);
+    } else {
+      // Soft-deleted: update active status in table so they move into the Archived tab
+      updateItem((m: any) => (m.id === membershipId ? { ...m, is_active: false, user: { ...(m.user || {}), is_active: false } } : m));
+    }
+    refetch();
+    if (message) {
+      alert(message);
+    }
+  };
+
   return (
     <div className="flex-1 space-y-6 p-8 overflow-y-auto">
       {/* Header Area */}
@@ -444,27 +476,77 @@ export default function UserManagementPage() {
             </span>
           </p>
         </div>
-        <Button
-          onClick={() => setInviteDialogOpen(true)}
-          className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all"
-        >
-          <UserPlus className="h-4 w-4 mr-2" />
-          Invite Member
-        </Button>
+        <div className="flex items-center gap-2.5 flex-wrap">
+          <Button
+            variant="outline"
+            onClick={() => handleOpenDeleteDialog()}
+            className="rounded-xl border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 font-semibold shadow-sm active:scale-95 transition-all"
+            title="Delete or remove a user from the workspace"
+          >
+            <UserX className="h-4 w-4 mr-1.5" />
+            Remove User
+          </Button>
+          <Button
+            onClick={() => setInviteDialogOpen(true)}
+            className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white font-semibold shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all"
+          >
+            <UserPlus className="h-4 w-4 mr-2" />
+            Invite Member
+          </Button>
+        </div>
       </div>
 
       {/* Filters bar */}
-      <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-850 shadow-sm">
-        <div className="relative grow max-w-sm">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input
-            placeholder="Search by name, email, or role..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="h-10 pl-10 rounded-xl bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/15"
-          />
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-100 dark:border-slate-850 shadow-sm">
+        <div className="flex items-center gap-2 grow max-w-sm">
+          <div className="relative grow">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input
+              placeholder="Search by name, email, or role..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="h-10 pl-10 rounded-xl bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500/15"
+            />
+          </div>
+          {isLoading && <Loader2 className="h-5 w-5 animate-spin text-blue-500 shrink-0" />}
         </div>
-        {isLoading && <Loader2 className="h-5 w-5 animate-spin text-blue-500 ml-2" />}
+
+        {/* Status Filter Segmented Controls */}
+        <div className="flex items-center gap-1 p-1 bg-slate-100 dark:bg-slate-950 rounded-xl border border-slate-200/60 dark:border-slate-800 shrink-0">
+          <button
+            type="button"
+            onClick={() => setStatusFilter("active")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === "active"
+                ? "bg-white dark:bg-slate-800 text-blue-600 dark:text-blue-400 shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Active ({members.filter((m) => m.is_active !== false).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("archived")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === "archived"
+                ? "bg-white dark:bg-slate-800 text-amber-600 dark:text-amber-400 shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            Archived ({members.filter((m) => m.is_active === false).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setStatusFilter("all")}
+            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all ${
+              statusFilter === "all"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm"
+                : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            All ({members.length})
+          </button>
+        </div>
       </div>
 
       {/* Main Members Table */}
@@ -697,7 +779,7 @@ export default function UserManagementPage() {
                               variant="ghost"
                               disabled={isPending}
                               onClick={() => handleDeactivate(member.id)}
-                              className="h-8 rounded-lg text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                              className="h-8 rounded-lg text-amber-500 hover:text-amber-600 hover:bg-amber-500/10"
                               title="Deactivate Member"
                             >
                               <Ban className="h-3.5 w-3.5 mr-1" />
@@ -716,6 +798,17 @@ export default function UserManagementPage() {
                               Activate
                             </Button>
                           )}
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            disabled={isPending}
+                            onClick={() => handleOpenDeleteDialog(member)}
+                            className="h-8 rounded-lg text-rose-500 hover:text-rose-600 hover:bg-rose-500/10"
+                            title="Delete or Remove User"
+                          >
+                            <Trash2 className="h-3.5 w-3.5 mr-1" />
+                            Delete
+                          </Button>
                         </div>
                       )}
                     </TableCell>
@@ -743,6 +836,18 @@ export default function UserManagementPage() {
         activeCompanyId={activeCompanyId}
         companyName={company?.name}
         isSuperAdmin={role === "super_admin" || (systemRole || "").toLowerCase().includes("super")}
+      />
+
+      {/* Delete / Remove User Modal */}
+      <DeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        targetMember={deletingMember}
+        members={members}
+        activeCompanyId={activeCompanyId}
+        currentUserId={currentProfile?.id}
+        isSuperAdmin={role === "super_admin" || (systemRole || "").toLowerCase().includes("super")}
+        onUserDeleted={handleUserDeleted}
       />
 
       {/* Reset Password Modal */}
@@ -984,23 +1089,40 @@ export default function UserManagementPage() {
           </div>
 
           <DialogFooter className="sm:justify-between border-t border-slate-100 dark:border-slate-850 pt-4 gap-2">
-            <Button
-              type="button"
-              variant="ghost"
-              onClick={() => setEditingMember(null)}
-              className="rounded-xl border-none hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={isSavingAccess}
-              onClick={handleSaveAccessConfiguration}
-              className="bg-blue-600 hover:bg-blue-700 text-white gap-2 rounded-xl px-5 font-semibold shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all"
-            >
-              {isSavingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Configuration
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => {
+                  const target = editingMember;
+                  setEditingMember(null);
+                  handleOpenDeleteDialog(target);
+                }}
+                className="rounded-xl border border-rose-200 dark:border-rose-900/50 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 font-semibold text-xs h-9"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                Delete User
+              </Button>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={() => setEditingMember(null)}
+                className="rounded-xl border-none hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isSavingAccess}
+                onClick={handleSaveAccessConfiguration}
+                className="bg-blue-600 hover:bg-blue-700 text-white gap-2 rounded-xl px-5 font-semibold shadow-lg hover:shadow-blue-500/10 active:scale-95 transition-all"
+              >
+                {isSavingAccess ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                Save Configuration
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>

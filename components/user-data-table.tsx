@@ -23,7 +23,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { formatDistanceToNow, parseISO, format } from "date-fns";
-import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X, ChevronUp, ChevronDown, KeyRound } from "lucide-react";
+import { Loader2, Search, User as UserIcon, Shield, Activity, Edit2, CheckSquare, Save, X, ChevronUp, ChevronDown, KeyRound, Trash2 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { usePresence } from "@/components/presence-provider";
@@ -258,6 +258,36 @@ export function UserDataTable() {
         } catch (err: any) {
             console.error("Error saving user profile:", err);
             toast.error(err.message || "Failed to update user profile");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteUser = async () => {
+        if (!editingUser) return;
+        if (editingUser.id === currentUserId) {
+            toast.error("You cannot delete your own account.");
+            return;
+        }
+        if (!confirm(`Are you sure you want to permanently delete user "${editingUser.full_name || editingUser.email}"? This will revoke all company access and delete credentials.`)) {
+            return;
+        }
+
+        setIsSaving(true);
+        try {
+            const res = await fetch(`/api/admin/users/${editingUser.id}?hard=true`, {
+                method: "DELETE",
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || json.success === false) {
+                throw new Error(json.error || "Failed to delete user");
+            }
+            toast.success("User deleted successfully.");
+            setEditingUser(null);
+            refetch();
+        } catch (err: any) {
+            console.error("Error deleting user:", err);
+            toast.error(err.message || "Failed to delete user");
         } finally {
             setIsSaving(false);
         }
@@ -690,18 +720,34 @@ export function UserDataTable() {
                     </div>
 
                     <DialogFooter className="sm:justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
-                        <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>
-                            Cancel
-                        </Button>
-                        <Button
-                            type="button"
-                            disabled={isSaving}
-                            onClick={handleSaveRole}
-                            className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-semibold shadow-sm"
-                        >
-                            {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            Save Changes
-                        </Button>
+                        {isContextAdmin && editingUser?.id !== currentUserId ? (
+                            <Button
+                                type="button"
+                                variant="ghost"
+                                disabled={isSaving}
+                                onClick={handleDeleteUser}
+                                className="text-rose-600 hover:text-rose-700 hover:bg-rose-50 dark:hover:bg-rose-950/30 gap-1.5 font-semibold text-xs h-9"
+                            >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete User
+                            </Button>
+                        ) : (
+                            <div />
+                        )}
+                        <div className="flex items-center gap-2">
+                            <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>
+                                Cancel
+                            </Button>
+                            <Button
+                                type="button"
+                                disabled={isSaving}
+                                onClick={handleSaveRole}
+                                className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-semibold shadow-sm"
+                            >
+                                {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                                Save Changes
+                            </Button>
+                        </div>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>

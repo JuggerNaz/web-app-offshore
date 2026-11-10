@@ -268,52 +268,241 @@ export const GET = withRole(
 
 /**
  * DELETE /api/admin/users/[id]
- * Soft deletes / deactivates a user membership in the active company.
- * Prevents self-deactivation.
+ * Intelligent user removal:
+ * - If user has recorded inspection data (insp_records, anomalies, planning, u_sow), 
+ *   safely soft-deletes / archives the account so historical inspection reports remain intact.
+ * - If user has no data associated, permanently deletes user ID, profile, and auth account.
+ * - Prevents self-deletion.
  */
 export const DELETE = withRole(
   ["company_admin", "super_admin"],
-  async (request, { params, company, user }) => {
+  async (request, { params, company, user, effectiveRole }) => {
     try {
       const { id } = await params;
+      const forceHardParam = request.nextUrl.searchParams.get("hard") === "true";
+
       const supabase = createClient() as any;
       let db = supabase;
+      let adminClient: any = null;
       try {
         if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
-          db = createAdminClient() as any;
+          adminClient = createAdminClient() as any;
+          db = adminClient;
         }
       } catch (e) {
         console.warn("[DELETE /api/admin/users/[id]] SUPABASE_SERVICE_ROLE_KEY not configured. Falling back to session client.");
       }
 
-      // Retrieve the target membership first
-      const { data: targetMembership, error: fetchError } = await db
+      // Retrieve the target membership (by membership id or by user_id)
+      let { data: targetMembership, error: fetchError } = await db
         .from("company_memberships")
         .select("*")
         .eq("id", id)
-        .single();
+        .maybeSingle();
 
-      if (fetchError || !targetMembership) {
+      if (!targetMembership) {
+        const { data: byUserId } = await db
+          .from("company_memberships")
+          .select("*")
+          .eq("user_id", id)
+          .eq("company_id", company.id)
+          .maybeSingle();
+        targetMembership = byUserId;
+      }
+
+      if (!targetMembership) {
         return apiError("Membership record not found", 404);
       }
 
-      // Check self-deactivation safety
+      // Check self-deletion safety
       if (targetMembership.user_id === user.id) {
-        return apiError("You cannot deactivate your own membership", 400);
+        return apiError("You cannot delete your own user account", 400);
       }
 
-      const { error: deleteError } = await db
-        .from("company_memberships")
-        .update({ is_active: false })
-        .eq("id", id)
-        .eq("company_id", company.id);
-
-      if (deleteError) {
-        console.error("[DELETE /api/admin/users/[id]] DB Error:", deleteError);
-        return apiError("Failed to deactivate member", 500);
+      // Safety: Only super_admin can delete another super_admin
+      if (targetMembership.role === "super_admin" && effectiveRole !== "super_admin") {
+        return apiError("Only Super Admins can delete a Super Admin user", 403);
       }
 
-      return apiNoContent();
+      const targetUserId = targetMembership.user_id;
+
+      // Fetch target user profile for data linkage checks
+      const { data: targetProfile } = await db
+        .from("profiles")
+        .select("id, email, full_name, designation")
+        .eq("id", targetUserId)
+        .maybeSingle();
+
+      const userEmail = targetProfile?.email?.trim();
+      const userFullName = targetProfile?.full_name?.trim();
+
+      // Check whether this user has recorded inspection data, anomalies, SOWs, or planning records
+      let hasInspectionData = false;
+      const linkedDataCounts: Record<string, number> = {};
+
+      const checkPromises: Promise<void>[] = [];
+
+      // 1. Check insp_records
+      checkPromises.push(
+        (async () => {
+          try {
+            const filters: string[] = [];
+            if (userEmail) filters.push(`cr_user.eq.${userEmail}`);
+            if (userFullName) filters.push(`cr_user.eq.${userFullName}`);
+            if (targetUserId) filters.push(`cr_user.eq.${targetUserId}`);
+            if (filters.length > 0) {
+              const { count } = await db
+                .from("insp_records")
+                .select("insp_id", { count: "exact", head: true })
+                .or(filters.join(","));
+              if (count && count > 0) {
+                hasInspectionData = true;
+                linkedDataCounts.insp_records = count;
+              }
+            }
+          } catch (_) {}
+        })()
+      );
+
+      // 2. Check anomalies
+      checkPromises.push(
+        (async () => {
+          try {
+            const filters: string[] = [];
+            if (userEmail) filters.push(`cr_user.eq.${userEmail}`);
+            if (userFullName) filters.push(`cr_user.eq.${userFullName}`);
+            if (filters.length > 0) {
+              const { count } = await db
+                .from("anomalies")
+                .select("anomaly_id", { count: "exact", head: true })
+                .or(filters.join(","));
+              if (count && count > 0) {
+                hasInspectionData = true;
+                linkedDataCounts.anomalies = count;
+              }
+            }
+          } catch (_) {}
+        })()
+      );
+
+      // 3. Check planning2
+      checkPromises.push(
+        (async () => {
+          try {
+            const filters: string[] = [];
+            if (userEmail) filters.push(`cr_user.eq.${userEmail}`);
+            if (userFullName) filters.push(`cr_user.eq.${userFullName}`);
+            if (filters.length > 0) {
+              const { count } = await db
+                .from("planning2")
+                .select("comp_id", { count: "exact", head: true })
+                .or(filters.join(","));
+              if (count && count > 0) {
+                hasInspectionData = true;
+                linkedDataCounts.planning = count;
+              }
+            }
+          } catch (_) {}
+        })()
+      );
+
+      // 4. Check u_sow
+      checkPromises.push(
+        (async () => {
+          try {
+            const { count } = await db
+              .from("u_sow")
+              .select("id", { count: "exact", head: true })
+              .eq("created_by", targetUserId);
+            if (count && count > 0) {
+              hasInspectionData = true;
+              linkedDataCounts.u_sow = count;
+            }
+          } catch (_) {}
+        })()
+      );
+
+      await Promise.all(checkPromises);
+
+      // If user has recorded inspection data and hard delete was not forced:
+      // Perform SOFT DELETE / ARCHIVE to preserve historical audit records
+      if (hasInspectionData && !forceHardDelete) {
+        // Deactivate company membership
+        await db
+          .from("company_memberships")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("id", targetMembership.id);
+
+        // Deactivate profile so user cannot log in
+        await db
+          .from("profiles")
+          .update({ is_active: false, updated_at: new Date().toISOString() })
+          .eq("id", targetUserId);
+
+        // Remove registered devices
+        try {
+          await db.from("registered_devices").delete().eq("user_id", targetUserId);
+        } catch (_) {}
+
+        const reasons = Object.entries(linkedDataCounts)
+          .map(([tbl, count]) => `${count} in ${tbl}`)
+          .join(", ");
+
+        return apiSuccess({
+          action: "soft_delete",
+          message: `User has recorded inspection data (${reasons}). Safely archived/deactivated to preserve historical inspection reports.`,
+          deletedMembershipId: targetMembership.id,
+          deletedUserId: targetUserId,
+          hasInspectionData: true,
+        });
+      }
+
+      // NO HISTORICAL DATA: PERFORM CLEAN PERMANENT DELETE
+      // 1. Delete company_memberships
+      await db.from("company_memberships").delete().eq("id", targetMembership.id);
+
+      // 2. Delete user_roles
+      try {
+        await db.from("user_roles").delete().eq("user_id", targetUserId);
+      } catch (_) {}
+
+      // 3. Delete registered_devices
+      try {
+        await db.from("registered_devices").delete().eq("user_id", targetUserId);
+      } catch (_) {}
+
+      // 4. Delete profiles
+      try {
+        const { error: profDelErr } = await db
+          .from("profiles")
+          .delete()
+          .eq("id", targetUserId);
+
+        if (profDelErr) {
+          // If foreign keys prevent delete, mark inactive
+          await db
+            .from("profiles")
+            .update({ is_active: false, updated_at: new Date().toISOString() })
+            .eq("id", targetUserId);
+        }
+      } catch (_) {}
+
+      // 5. Delete from auth.users via Admin API if available
+      if (adminClient?.auth?.admin?.deleteUser) {
+        try {
+          await adminClient.auth.admin.deleteUser(targetUserId);
+        } catch (authErr) {
+          console.warn("[DELETE /api/admin/users/[id]] deleteUser auth warning:", authErr);
+        }
+      }
+
+      return apiSuccess({
+        action: "permanent_delete",
+        message: "No inspection data exists for this user. User account and credentials permanently deleted.",
+        deletedMembershipId: targetMembership.id,
+        deletedUserId: targetUserId,
+        hasInspectionData: false,
+      });
     } catch (error: any) {
       console.error("[DELETE /api/admin/users/[id]] Error:", error);
       return apiError("Internal server error", 500);

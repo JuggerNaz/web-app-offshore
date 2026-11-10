@@ -59,6 +59,8 @@ export interface UseInfiniteListResult<T> {
    * consistent after PATCH/POST without a full refetch.
    */
   updateItem: (updater: (item: T) => T) => void;
+  /** Remove items matching predicate from all cached pages. */
+  removeItem: (predicate: (item: T) => boolean) => void;
   /** Insert an item at the top of the first page (e.g. newly created records). */
   prependItem: (item: T) => void;
 }
@@ -138,6 +140,22 @@ export function useInfiniteList<T>(
     [queryClient, queryKey]
   );
 
+  const removeItem = useCallback(
+    (predicate: (item: T) => boolean) => {
+      queryClient.setQueryData<InfiniteData<PaginatedPage<T>>>(queryKey, (old) => {
+        if (!old) return old;
+        return {
+          ...old,
+          pages: old.pages.map((page) => ({
+            ...page,
+            data: (page.data ?? []).filter((item) => !predicate(item)),
+          })),
+        };
+      });
+    },
+    [queryClient, queryKey]
+  );
+
   const prependItem = useCallback(
     (item: T) => {
       queryClient.setQueryData<InfiniteData<PaginatedPage<T>>>(queryKey, (old) => {
@@ -175,6 +193,7 @@ export function useInfiniteList<T>(
       void query.refetch();
     },
     updateItem,
+    removeItem,
     prependItem,
   };
 }
