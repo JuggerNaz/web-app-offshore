@@ -49,6 +49,7 @@ interface InviteDialogProps {
   onOpenChange: (open: boolean) => void;
   onUserInvited: (newUser: any) => void;
   activeCompanyId?: string | null;
+  companyName?: string;
   isSuperAdmin?: boolean;
 }
 
@@ -57,6 +58,7 @@ export function InviteDialog({
   onOpenChange,
   onUserInvited,
   activeCompanyId,
+  companyName,
   isSuperAdmin = false,
 }: InviteDialogProps) {
   const [email, setEmail] = useState("");
@@ -420,10 +422,34 @@ export function InviteDialog({
               </DialogDescription>
             </DialogHeader>
 
+            {/* Target Workspace Banner */}
+            <div className="flex items-center justify-between p-3 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs">
+              <div className="flex items-center gap-2 text-slate-300">
+                <Building2 className="h-4 w-4 text-blue-400 shrink-0" />
+                <span>Target Workspace:</span>
+                <span className="font-bold text-white bg-blue-600/30 px-2 py-0.5 rounded-md border border-blue-500/30">
+                  {companyName || "Current Workspace"}
+                </span>
+              </div>
+              <span className="text-[11px] text-slate-400">
+                {isSuperAdmin ? "Multi-tenant selection below" : "Assigned automatically"}
+              </span>
+            </div>
+
             {errorMessage && (
-              <div className="bg-red-500/10 border border-red-500/20 text-red-300 p-3 rounded-xl text-xs flex items-start gap-2.5">
-                <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
-                <div className="leading-relaxed font-semibold">{errorMessage}</div>
+              <div className="bg-red-500/10 border border-red-500/30 text-red-300 p-4 rounded-2xl text-xs space-y-2">
+                <div className="flex items-start gap-2.5 font-bold text-red-200">
+                  <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
+                  <span>Unable to Create User</span>
+                </div>
+                <div className="text-slate-300 leading-relaxed font-normal whitespace-pre-line pl-6">
+                  {errorMessage}
+                </div>
+                {errorMessage.includes("SUPABASE_SERVICE_ROLE_KEY") && (
+                  <div className="pl-6 pt-1 text-[11px] text-cyan-400 leading-relaxed">
+                    💡 <strong>How to fix:</strong> In your <code className="bg-slate-900 px-1.5 py-0.5 rounded text-white">.env.local</code> file, uncomment <code className="text-white">SUPABASE_SERVICE_ROLE_KEY</code> and paste the secret service key from your <a href="https://supabase.com/dashboard" target="_blank" rel="noreferrer" className="underline font-bold text-cyan-300 hover:text-white">Supabase Dashboard &gt; Project Settings &gt; API</a>.
+                  </div>
+                )}
               </div>
             )}
 
@@ -556,9 +582,14 @@ export function InviteDialog({
                             />
                             <label
                               htmlFor={`tenant-${t.id}`}
-                              className="text-xs font-semibold cursor-pointer text-white"
+                              className="text-xs font-semibold cursor-pointer text-white flex items-center gap-2"
                             >
-                              {t.name}
+                              <span>{t.name}</span>
+                              {t.id === activeCompanyId && (
+                                <span className="text-[10px] bg-blue-500/20 text-blue-400 border border-blue-500/30 px-1.5 py-0.5 rounded font-medium">
+                                  Current Workspace
+                                </span>
+                              )}
                             </label>
                           </div>
 
@@ -587,7 +618,7 @@ export function InviteDialog({
               ) : (
                 <div className="space-y-1.5 border-t border-slate-800/80 pt-3">
                   <Label htmlFor="role" className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                    System Role in Current Workspace
+                    System Role in {companyName ? companyName : "Current Workspace"}
                   </Label>
                   <Select value={singleRole} onValueChange={(val) => setSingleRole(val as UserRole)}>
                     <SelectTrigger className="h-11 rounded-xl bg-slate-950/50 border-slate-800 text-white focus:ring-2 focus:ring-blue-500/20 text-left">

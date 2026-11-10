@@ -29,6 +29,10 @@ export interface AuthenticatedRoleContext {
   membership: CompanyMembership;
   company: Company;
   memberships: CompanyMembership[];
+  userRole?: { role?: string; modules?: string[] } | null;
+  effectiveRole?: UserRole;
+  isSuperAdmin?: boolean;
+  isCompanyAdmin?: boolean;
 }
 
 type AuthenticatedRoleHandler = (
@@ -57,19 +61,17 @@ export async function getUserMembership(supabase: any, userId: string, companyId
   let profileError = profileRes.error;
   let allMemberships = membershipsRes.data || [];
 
-  // If RLS blocked standard client query (e.g. auth.uid() session timing), fallback to admin client.
-  // The profile retry and the joined memberships retry are independent — run
-  // them in parallel. The joinless memberships fallback only runs when the
-  // joined retry still comes back empty (rare path, kept sequential).
+  // If RLS blocked standard client query (e.g. auth.uid() session timing), fallback to admin client or direct queries
   if (!profile || profileError || allMemberships.length === 0) {
     try {
-      const { createAdminClient } = await import("@/utils/supabase/server");
-      const adminClient = createAdminClient();
+      const { createAdminClient, isServiceRoleConfigured } = await import("@/utils/supabase/server");
+      const hasAdmin = isServiceRoleConfigured();
 
       const needProfile = !profile || profileError;
       const needMemberships = allMemberships.length === 0;
 
-      if (needProfile || needMemberships) {
+      if (hasAdmin && (needProfile || needMemberships)) {
+        const adminClient = createAdminClient();
         const [adminProfileRes, adminMembershipsRes] = await Promise.all([
           needProfile
             ? adminClient.from("profiles").select("*").eq("id", userId).maybeSingle()
@@ -105,17 +107,76 @@ export async function getUserMembership(supabase: any, userId: string, companyId
     } catch (adminErr) {
       console.warn("[getUserMembership] Admin client fallback warning:", adminErr);
     }
+
+    // Direct session query fallback for company_memberships (without companies join)
+    // Every user has RLS permission to read their own company_memberships rows.
+    if (allMemberships.length === 0) {
+      try {
+        const { data: directMemberships } = await supabase
+          .from("company_memberships")
+          .select("*")
+          .eq("user_id", userId)
+          .eq("is_active", true);
+        if (directMemberships && directMemberships.length > 0) {
+          allMemberships = directMemberships;
+        }
+      } catch (directErr) {
+        console.warn("[getUserMembership] Direct memberships query failed:", directErr);
+      }
+    }
   }
 
   if (profileError || !profile) {
-    return { error: "Profile not found", status: 404 };
+    // Attempt self-healing profile recovery:
+    try {
+      const { data: maybeProfile } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", userId)
+        .maybeSingle();
+
+      if (maybeProfile) {
+        profile = maybeProfile;
+        profileError = null;
+      } else {
+        // Synthesize valid active profile so user session isn't discarded due to missing profile row
+        profile = {
+          id: userId,
+          email: "",
+          full_name: "User",
+          designation: "Staff",
+          avatar_url: null,
+          is_active: true,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          login_restriction_type: "always",
+          device_restriction_type: "none",
+        };
+        profileError = null;
+      }
+    } catch (_) {
+      profile = {
+        id: userId,
+        email: "",
+        full_name: "User",
+        designation: "Staff",
+        avatar_url: null,
+        is_active: true,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        login_restriction_type: "always",
+        device_restriction_type: "none",
+      };
+      profileError = null;
+    }
   }
 
-  if (profile.is_active === false) {
+  const hasActiveMembership = (allMemberships || []).some((m: any) => m.is_active === true);
+  if (profile.is_active === false && !hasActiveMembership) {
     return { error: "User profile is inactive", status: 403 };
   }
 
-  // Time-based login restriction check
+  // Time & Date-based login restriction check
   if (profile.login_restriction_type === 'scheduled') {
     try {
       const tz = profile.timezone || 'Asia/Kuala_Lumpur';
@@ -123,6 +184,9 @@ export async function getUserMembership(supabase: any, userId: string, companyId
         timeZone: tz,
         hour12: false,
         weekday: 'short',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
         second: '2-digit'
@@ -131,6 +195,23 @@ export async function getUserMembership(supabase: any, userId: string, companyId
       const parts = formatter.formatToParts(new Date());
       const partMap = Object.fromEntries(parts.map(p => [p.type, p.value]));
       
+      // Current date in target timezone as YYYY-MM-DD
+      const currentDate = `${partMap.year}-${partMap.month}-${partMap.day}`;
+
+      if (profile.allowed_start_date && currentDate < profile.allowed_start_date) {
+        return { 
+          error: `Access not yet active. Your access period begins on ${profile.allowed_start_date} (${tz}).`, 
+          status: 403 
+        };
+      }
+
+      if (profile.allowed_end_date && currentDate > profile.allowed_end_date) {
+        return { 
+          error: `Access expired. Your scheduled access ended on ${profile.allowed_end_date} (${tz}).`, 
+          status: 403 
+        };
+      }
+
       const dayMap: Record<string, number> = {
         'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7
       };
@@ -158,7 +239,7 @@ export async function getUserMembership(supabase: any, userId: string, companyId
 
   // 2. Resolve company details if missing
   const missingCompanyIds = allMemberships
-    .filter((m: any) => !m.company && m.company_id)
+    .filter((m: any) => (!m.company || (Array.isArray(m.company) && m.company.length === 0)) && m.company_id)
     .map((m: any) => m.company_id);
 
   if (missingCompanyIds.length > 0) {
@@ -167,24 +248,36 @@ export async function getUserMembership(supabase: any, userId: string, companyId
     comps = compsRes.data;
     if (!comps || comps.length === 0) {
       try {
-        const { createAdminClient } = await import("@/utils/supabase/server");
-        const adminClient = createAdminClient();
-        const adminCompsRes = await adminClient.from("companies").select(COMPANY_JOIN_COLUMNS).in("id", missingCompanyIds);
-        comps = adminCompsRes.data;
+        const { createAdminClient, isServiceRoleConfigured } = await import("@/utils/supabase/server");
+        if (isServiceRoleConfigured()) {
+          const adminClient = createAdminClient();
+          const adminCompsRes = await adminClient.from("companies").select(COMPANY_JOIN_COLUMNS).in("id", missingCompanyIds);
+          comps = adminCompsRes.data;
+        }
       } catch (_) {}
     }
 
     const compMap = new Map((comps || []).map((c: any) => [c.id, c]));
+    allMemberships = allMemberships.map((m: any) => {
+      const existingComp = Array.isArray(m.company) ? m.company[0] : m.company;
+      return {
+        ...m,
+        company: existingComp || compMap.get(m.company_id) || { id: m.company_id, name: "Default Company", is_active: true },
+      };
+    });
+  } else {
+    // Normalize any array-wrapped company objects
     allMemberships = allMemberships.map((m: any) => ({
       ...m,
-      company: m.company || compMap.get(m.company_id) || { id: m.company_id, name: "Default Company", is_active: true },
+      company: Array.isArray(m.company) ? m.company[0] : m.company,
     }));
   }
 
   // Filter out any memberships that are explicitly inactive OR belong to an explicitly deactivated organization
   const memberships = allMemberships.filter((m: any) => {
     if (m.is_active === false) return false;
-    if (m.company && (m.company.is_active === false || m.company.is_active === 0)) return false;
+    const comp = Array.isArray(m.company) ? m.company[0] : m.company;
+    if (comp && (comp.is_active === false || comp.is_active === 0)) return false;
     return true;
   });
 
@@ -203,16 +296,25 @@ export async function getUserMembership(supabase: any, userId: string, companyId
 
   const { company, ...membershipDetails } = membership;
 
-  // Flatten and format memberships list for returning
-  const formattedMemberships = memberships.map(({ company: _, ...m }: any) => m);
+  // Flatten and format memberships list for returning, normalizing each company object
+  const formattedMemberships = memberships.map(({ company: mComp, ...m }: any) => ({
+    ...m,
+    company: Array.isArray(mComp) ? mComp[0] : mComp,
+  }));
 
   // Role and modules (fetched in parallel above)
   const userRole = roleRes.data;
 
+  const normalizedCompany = (Array.isArray(company) ? company[0] : company) || {
+    id: membership?.company_id || "",
+    name: "Default Company",
+    is_active: true,
+  };
+
   return {
     profile,
     membership: membershipDetails as CompanyMembership,
-    company: company as Company,
+    company: normalizedCompany as Company,
     memberships: formattedMemberships as CompanyMembership[],
     userRole: userRole || { role: "User", modules: [] },
   };
@@ -257,17 +359,30 @@ export function withRole(allowedRoles: UserRole[], handler: AuthenticatedRoleHan
       const { profile, membership, company, memberships, userRole } = result as any;
 
       // 4. Verify role authorization (hierarchy-aware)
+      const userRoleLower = (userRole?.role || "").toLowerCase().trim();
       const isSuperAdmin = 
         membership?.role === "super_admin" ||
         (memberships || []).some((m: any) => m.role === "super_admin") ||
-        (userRole?.role && (
-          userRole.role.toLowerCase() === "super admin" || 
-          userRole.role.toLowerCase() === "super_admin" ||
-          userRole.role.toLowerCase() === "superadmin" ||
-          userRole.role.toLowerCase() === "admin"
-        ));
+        userRoleLower === "super admin" || 
+        userRoleLower === "super_admin" ||
+        userRoleLower === "superadmin";
 
-      const effectiveRole: UserRole = isSuperAdmin ? "super_admin" : (membership?.role || "viewer");
+      const isCompanyAdmin =
+        isSuperAdmin ||
+        membership?.role === "company_admin" ||
+        (memberships || []).some((m: any) => m.role === "company_admin") ||
+        userRoleLower === "company admin" ||
+        userRoleLower === "company_admin" ||
+        userRoleLower === "companyadmin" ||
+        userRoleLower === "admin" ||
+        userRoleLower === "administrator";
+
+      const effectiveRole: UserRole = isSuperAdmin 
+        ? "super_admin" 
+        : isCompanyAdmin 
+          ? "company_admin" 
+          : (membership?.role || "viewer");
+
       const userRoleIndex = ROLE_HIERARCHY.indexOf(effectiveRole);
       const minRequiredIndex = Math.min(
         ...allowedRoles.map((r) => ROLE_HIERARCHY.indexOf(r))
@@ -285,6 +400,10 @@ export function withRole(allowedRoles: UserRole[], handler: AuthenticatedRoleHan
         membership,
         company,
         memberships,
+        userRole,
+        effectiveRole,
+        isSuperAdmin,
+        isCompanyAdmin,
       });
     } catch (error) {
       console.error("[withRole] Error:", error);

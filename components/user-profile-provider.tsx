@@ -67,8 +67,10 @@ export function UserProfileProvider({
   };
 }) {
   const [data, setData] = useState(initialData || null);
+  const rawInitialComp = initialData?.company;
+  const initialComp = Array.isArray(rawInitialComp) ? rawInitialComp[0] : rawInitialComp;
   const [activeCompanyId, setActiveCompanyIdState] = useState<string | null>(
-    initialData?.company.id || null
+    initialComp?.id || null
   );
   const [isLoading, setIsLoading] = useState(!initialData);
 
@@ -110,7 +112,9 @@ export function UserProfileProvider({
           else if (json.message) errorMsg = json.message;
         } catch (_) {}
         if (typeof window !== "undefined") {
-          window.location.href = `/sign-in?error=${encodeURIComponent(errorMsg)}`;
+          // If the error was due to an invalid or stale company ID, clear it and redirect to workspace picker
+          localStorage.removeItem("active_company_id");
+          window.location.href = `/select-tenant?error=${encodeURIComponent(errorMsg)}`;
         }
       }
     } catch (err) {
@@ -165,9 +169,10 @@ export function UserProfileProvider({
       fetchProfile();
     } else {
       // Synchronize client localStorage with server-resolved company selection
-      if (typeof window !== "undefined" && initialData.company?.id) {
-        localStorage.setItem("active_company_id", initialData.company.id);
-        setActiveCompanyIdState(initialData.company.id);
+      const activeComp = Array.isArray(initialData.company) ? initialData.company[0] : initialData.company;
+      if (typeof window !== "undefined" && activeComp?.id) {
+        localStorage.setItem("active_company_id", activeComp.id);
+        setActiveCompanyIdState(activeComp.id);
       }
     }
 
@@ -211,14 +216,18 @@ export function UserProfileProvider({
     }
   };
 
+  const role = data?.membership?.role;
+  const sysRoleLower = ((data as any)?.userRole?.role || "").toLowerCase().trim();
+  const isSysSuper = sysRoleLower === "super admin" || sysRoleLower === "super_admin" || sysRoleLower === "superadmin";
+  const isSysCompanyAdmin = isSysSuper || sysRoleLower === "company admin" || sysRoleLower === "company_admin" || sysRoleLower === "companyadmin" || sysRoleLower === "admin" || sysRoleLower === "administrator";
+  const effectiveRole: UserRole = isSysSuper ? "super_admin" : (isSysCompanyAdmin ? "company_admin" : (role || "viewer"));
+
   const hasMinRole = (requiredRole: UserRole): boolean => {
-    if (!data?.membership?.role) return false;
-    return hasMinimumRole(data.membership.role, requiredRole);
+    return hasMinimumRole(effectiveRole, requiredRole);
   };
 
-  const role = data?.membership?.role;
-  const isAdmin = role ? hasMinimumRole(role, "company_admin") : false;
-  const canEdit = role ? hasMinimumRole(role, "inspector") : false;
+  const isAdmin = hasMinimumRole(effectiveRole, "company_admin");
+  const canEdit = hasMinimumRole(effectiveRole, "inspector");
 
   const value: UserProfileContextType = {
     profile: data?.profile || null,

@@ -18,8 +18,10 @@ import {
     User as UserIcon,
     CheckCircle2,
     Lock,
-    Sparkles
+    Sparkles,
+    Edit2
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
 interface UserProfileCardProps {
@@ -31,9 +33,11 @@ interface UserProfileCardProps {
         designation?: string;
         avatar_url?: string;
     } | null;
+    canEdit?: boolean;
+    onEdit?: () => void;
 }
 
-export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: UserProfileCardProps) {
+export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata, canEdit, onEdit }: UserProfileCardProps) {
     const getInitials = (name: string, email: string) => {
         if (name) {
             const parts = name.split(' ');
@@ -69,7 +73,7 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
         <Card className="border-0 shadow-none bg-transparent overflow-hidden">
             {/* Header / Avatar Area */}
             <div className="relative h-40 bg-gradient-to-br from-indigo-600 via-blue-600 to-emerald-500 dark:from-indigo-900 dark:via-blue-900 dark:to-emerald-900">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+                <div className="absolute inset-0 bg-[radial-gradient(#ffffff18_1px,transparent_1px)] [background-size:16px_16px] opacity-40" />
                 <div className="absolute -bottom-16 left-8">
                     <motion.div
                         initial={{ scale: 0.5, opacity: 0 }}
@@ -99,17 +103,30 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
             <CardContent className="pt-20 pb-8 px-8 space-y-8 bg-white dark:bg-slate-950">
                 {/* Essential Info */}
                 <div className="space-y-2">
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="flex items-center gap-3"
-                    >
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-                            {resolvedName}
-                        </h2>
-                        <Sparkles className="h-5 w-5 text-amber-500 animate-pulse" />
-                    </motion.div>
+                    <div className="flex items-start justify-between gap-4">
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.1 }}
+                            className="flex items-center gap-3"
+                        >
+                            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                                {resolvedName}
+                            </h2>
+                            <Sparkles className="h-5 w-5 text-amber-500 animate-pulse" />
+                        </motion.div>
+                        {canEdit && onEdit && (
+                            <Button
+                                onClick={onEdit}
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl gap-2 font-bold border-slate-200 dark:border-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 shrink-0 shadow-sm"
+                            >
+                                <Edit2 className="h-4 w-4 text-blue-600" />
+                                Edit Profile
+                            </Button>
+                        )}
+                    </div>
                     <motion.p 
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}

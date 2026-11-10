@@ -1,8 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
 import { createClient } from "@/utils/supabase/client";
 import { UserData } from "@/types/user";
+import { useUserProfile } from "@/components/user-profile-provider";
+import { useUserRole } from "@/utils/hooks/use-user-role";
 import {
     Table,
     TableBody,
@@ -60,7 +62,17 @@ export function UserDataTable() {
     const [filter, setFilter] = useState("");
     const debouncedFilter = useDebouncedValue(filter, 300);
     const { onlineUserIds } = usePresence();
-    const supabase = createClient();
+    const supabase = useMemo(() => createClient(), []);
+
+    const { profile, user: authUser } = useUserProfile();
+    const { isAdmin: isContextAdmin, role: effectiveRole, systemRole } = useUserRole();
+
+    const currentUserId = profile?.id || authUser?.id || null;
+    const localMetadata = profile ? {
+        full_name: profile.full_name || undefined,
+        designation: profile.designation || undefined,
+        avatar_url: profile.avatar_url || undefined,
+    } : null;
 
     // Scroll-to-load user directory. The server pages the get_all_users RPC
     // (50 rows at a time) and handles the search server-side via ?q=.
@@ -73,6 +85,7 @@ export function UserDataTable() {
         isFetchingNextPage,
         fetchNextPage,
         refetch,
+        updateItem,
     } = useInfiniteList<UserData>({
         queryKey: ["users", "directory", debouncedFilter],
         getPageUrl: (page) =>
@@ -80,16 +93,12 @@ export function UserDataTable() {
                 debouncedFilter ? `&q=${encodeURIComponent(debouncedFilter)}` : ""
             }`,
     });
-    const [currentUserId, setCurrentUserId] = useState<string | null>(null);
-    const [localMetadata, setLocalMetadata] = useState<{
-        full_name?: string;
-        designation?: string;
-        avatar_url?: string;
-    } | null>(null);
 
     // Editing State
     const [editingUser, setEditingUser] = useState<UserData | null>(null);
     const [resetPasswordUser, setResetPasswordUser] = useState<{ id: string; email?: string; full_name?: string } | null>(null);
+    const [editFullName, setEditFullName] = useState<string>("");
+    const [editDesignation, setEditDesignation] = useState<string>("");
     const [editRole, setEditRole] = useState<string>("");
     const [editModules, setEditModules] = useState<string[]>([]);
     const [isSaving, setIsSaving] = useState(false);
@@ -103,46 +112,6 @@ export function UserDataTable() {
         }
         setSortConfig({ key, direction });
     };
-
-    // Resolve the current user + local metadata (session first to avoid navigator locks).
-    const loadAuthUser = useCallback(async () => {
-        let authUser: any = null;
-        try {
-            const { data: { session } } = await supabase.auth.getSession();
-            authUser = session?.user || null;
-        } catch (sessionErr) {}
-
-        if (!authUser) {
-            try {
-                const { data: { user } } = await supabase.auth.getUser();
-                authUser = user;
-            } catch (userErr) {}
-        }
-
-        if (authUser) {
-            setCurrentUserId(authUser.id);
-            setLocalMetadata(authUser.user_metadata);
-        }
-    }, [supabase]);
-
-    useEffect(() => {
-        loadAuthUser();
-
-        // Listen for profile updates to refresh the list instantly
-        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            if (event === 'USER_UPDATED' || event === 'SIGNED_IN') {
-                if (session?.user) {
-                    setCurrentUserId(session.user.id);
-                    setLocalMetadata(session.user.user_metadata);
-                }
-                refetch();
-            }
-        });
-
-        return () => {
-            subscription.unsubscribe();
-        };
-    }, [loadAuthUser, refetch, supabase]);
 
     const sortedUsers = [...users].sort((a, b) => {
         if (!sortConfig) return 0;
@@ -178,7 +147,14 @@ export function UserDataTable() {
     });
 
     const currentUserData = users.find(u => u.id === currentUserId);
-    const isAdmin = currentUserData?.role === 'Admin';
+    const sysRoleStr = (systemRole || "").toLowerCase();
+    const isSuperOrAdmin =
+        isContextAdmin ||
+        effectiveRole === "super_admin" ||
+        effectiveRole === "company_admin" ||
+        sysRoleStr.includes("admin") ||
+        currentUserData?.role === 'Admin';
+    const isAdmin = Boolean(isSuperOrAdmin);
 
     const isHeartbeatOnline = (user: UserData) => {
         if (!user.last_seen_at) return false;
@@ -217,8 +193,18 @@ export function UserDataTable() {
 
     const handleEditClick = (user: UserData) => {
         setEditingUser(user);
+        setEditFullName(user.full_name || "");
+        setEditDesignation(user.designation || "Offshore Staff");
         setEditRole(user.role || 'User');
         setEditModules(user.modules || []);
+    };
+
+    const handleSelectAllModules = () => {
+        setEditModules([...AVAILABLE_MODULES]);
+    };
+
+    const handleClearAllModules = () => {
+        setEditModules([]);
     };
 
     const handleModuleToggle = (moduleName: string) => {
@@ -233,6 +219,21 @@ export function UserDataTable() {
         if (!editingUser) return;
         setIsSaving(true);
         try {
+            // 1. Update profiles table (full_name, designation)
+            const { error: profileError } = await supabase
+                .from("profiles")
+                .update({
+                    full_name: editFullName.trim() || null,
+                    designation: editDesignation.trim() || null,
+                    updated_at: new Date().toISOString()
+                })
+                .eq("id", editingUser.id);
+
+            if (profileError) {
+                console.warn("Profiles update notice:", profileError.message);
+            }
+
+            // 2. Update role and modules via assign_user_role RPC
             const { data, error } = await supabase.rpc('assign_user_role', {
                 target_id: editingUser.id,
                 new_role: editRole,
@@ -242,12 +243,21 @@ export function UserDataTable() {
             if (error) throw error;
             if (data && !data.success) throw new Error(data.error || 'Failed to assign role');
 
-            toast.success("User access updated successfully!");
+            // 3. Optimistic update in infinite query list
+            updateItem((u) => u.id === editingUser.id ? {
+                ...u,
+                full_name: editFullName.trim() || u.full_name,
+                designation: editDesignation.trim() || u.designation,
+                role: editRole,
+                modules: editModules,
+            } : u);
+
+            toast.success("User profile and permissions updated successfully!");
             setEditingUser(null);
             refetch(); // Refresh the loaded window
         } catch (err: any) {
-            console.error("Error saving role:", err);
-            toast.error(err.message || "Failed to update role");
+            console.error("Error saving user profile:", err);
+            toast.error(err.message || "Failed to update user profile");
         } finally {
             setIsSaving(false);
         }
@@ -547,7 +557,7 @@ export function UserDataTable() {
                                                                 size="icon"
                                                                 onClick={() => handleEditClick(user)}
                                                                 className="text-slate-400 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/30"
-                                                                title="Edit Roles & Module Access"
+                                                                title="Edit Profile & Permissions"
                                                             >
                                                                 <Edit2 className="h-4 w-4" />
                                                             </Button>
@@ -580,37 +590,86 @@ export function UserDataTable() {
 
             {/* Editing Dialog */}
             <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl">
                     <DialogHeader>
-                        <DialogTitle className="flex items-center gap-2">
+                        <DialogTitle className="flex items-center gap-2 text-xl font-bold">
                             <Shield className="h-5 w-5 text-amber-500" />
-                            Access Configuration
+                            Edit Profile & Permissions
                         </DialogTitle>
                         <DialogDescription>
-                            Change role and module permissions for {editingUser?.email}
+                            Update user profile details, role, and module permissions for {editingUser?.email}
                         </DialogDescription>
                     </DialogHeader>
 
-                    <div className="space-y-4 py-4">
+                    <div className="space-y-4 py-2">
+                        {/* Profile Info Section */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800">
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Full Name</label>
+                                <Input
+                                    value={editFullName}
+                                    onChange={(e) => setEditFullName(e.target.value)}
+                                    placeholder="e.g. John Doe"
+                                    className="h-9 bg-white dark:bg-slate-950 font-medium"
+                                />
+                            </div>
+                            <div className="space-y-1.5">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Designation</label>
+                                <Input
+                                    value={editDesignation}
+                                    onChange={(e) => setEditDesignation(e.target.value)}
+                                    placeholder="e.g. Senior Inspection Engineer"
+                                    className="h-9 bg-white dark:bg-slate-950 font-medium"
+                                />
+                            </div>
+                        </div>
+
+                        {/* System Role Selection */}
                         <div className="space-y-2">
                             <label className="text-xs font-bold uppercase tracking-wider text-slate-500">System Role</label>
                             <Select value={editRole} onValueChange={setEditRole}>
-                                <SelectTrigger>
+                                <SelectTrigger className="h-10">
                                     <SelectValue placeholder="Select a role" />
                                 </SelectTrigger>
                                 <SelectContent>
+                                    <SelectItem value="Super Admin">Super Admin</SelectItem>
+                                    <SelectItem value="Company Admin">Company Admin</SelectItem>
                                     <SelectItem value="Admin">Administrator</SelectItem>
                                     <SelectItem value="Operator">Operator</SelectItem>
                                     <SelectItem value="Viewer">Viewer</SelectItem>
                                     <SelectItem value="User">Basic User</SelectItem>
                                 </SelectContent>
                             </Select>
-                            <p className="text-[11px] text-muted-foreground mt-1 mb-4">Admins have full access to manage roles. Other roles are for categorizing access.</p>
+                            <p className="text-[11px] text-muted-foreground">
+                                Super Admin & Company Admin grant administrative oversight. Operator & Viewer categorize functional access.
+                            </p>
                         </div>
 
+                        {/* Module Access Checkboxes */}
                         <div className="space-y-2">
-                            <label className="text-xs font-bold uppercase tracking-wider text-slate-500">Module Access</label>
-                            <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-md border border-slate-200 dark:border-slate-800">
+                            <div className="flex items-center justify-between">
+                                <label className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                                    Module Access ({editModules.length}/{AVAILABLE_MODULES.length})
+                                </label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={handleSelectAllModules}
+                                        className="text-[11px] text-blue-600 dark:text-blue-400 hover:underline font-semibold"
+                                    >
+                                        Select All
+                                    </button>
+                                    <span className="text-slate-300 dark:text-slate-700">|</span>
+                                    <button
+                                        type="button"
+                                        onClick={handleClearAllModules}
+                                        className="text-[11px] text-slate-500 hover:underline font-semibold"
+                                    >
+                                        Clear All
+                                    </button>
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-2 p-3 bg-slate-50 dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 max-h-56 overflow-y-auto">
                                 {AVAILABLE_MODULES.map((mod) => (
                                     <div key={mod} className="flex flex-row items-center space-x-2 py-1">
                                         <Checkbox
@@ -620,7 +679,7 @@ export function UserDataTable() {
                                         />
                                         <label
                                             htmlFor={`mod-${mod}`}
-                                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-slate-700 dark:text-slate-300"
+                                            className="text-xs font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer text-slate-700 dark:text-slate-300 select-none"
                                         >
                                             {mod}
                                         </label>
@@ -630,18 +689,18 @@ export function UserDataTable() {
                         </div>
                     </div>
 
-                    <DialogFooter className="sm:justify-between border-t border-slate-100 pt-3">
+                    <DialogFooter className="sm:justify-between border-t border-slate-100 dark:border-slate-800 pt-3">
                         <Button type="button" variant="ghost" onClick={() => setEditingUser(null)}>
                             Cancel
                         </Button>
                         <Button
-                            type="submit"
+                            type="button"
                             disabled={isSaving}
                             onClick={handleSaveRole}
-                            className="bg-blue-600 hover:bg-blue-700 text-white gap-2"
+                            className="bg-blue-600 hover:bg-blue-700 text-white gap-2 font-semibold shadow-sm"
                         >
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-                            Save Configuration
+                            Save Changes
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -662,6 +721,12 @@ export function UserDataTable() {
                             isOnline={isOnline(viewingUser)} 
                             isMe={viewingUser.id === currentUserId}
                             currentUserMetadata={localMetadata}
+                            canEdit={isAdmin}
+                            onEdit={() => {
+                                const targetUser = viewingUser;
+                                setViewingUser(null);
+                                handleEditClick(targetUser);
+                            }}
                         />
                     )}
                 </DialogContent>

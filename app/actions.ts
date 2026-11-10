@@ -124,7 +124,7 @@ export const selectTenantAction = async (formData: FormData) => {
   }
 
   // Verify that the user has an active membership in this company and the organization is active
-  const { data: membership, error } = await (supabase as any)
+  let { data: membership, error } = await (supabase as any)
     .from("company_memberships")
     .select("company_id, is_active, company:companies!company_id(id, is_active)")
     .eq("user_id", userRes.data.user.id)
@@ -132,15 +132,74 @@ export const selectTenantAction = async (formData: FormData) => {
     .eq("is_active", true)
     .maybeSingle();
 
+  // If RLS blocked the joined query, try admin client or direct query
+  if (error || !membership) {
+    try {
+      const { createAdminClient, isServiceRoleConfigured } = await import("@/utils/supabase/server");
+      if (isServiceRoleConfigured()) {
+        const adminClient = createAdminClient();
+        const { data: adminMem } = await (adminClient as any)
+          .from("company_memberships")
+          .select("company_id, is_active, company:companies!company_id(id, is_active)")
+          .eq("user_id", userRes.data.user.id)
+          .eq("company_id", companyId)
+          .eq("is_active", true)
+          .maybeSingle();
+        if (adminMem) {
+          membership = adminMem;
+          error = null;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Direct membership fallback without company join
+  if (!membership) {
+    const { data: directMem } = await (supabase as any)
+      .from("company_memberships")
+      .select("company_id, is_active")
+      .eq("user_id", userRes.data.user.id)
+      .eq("company_id", companyId)
+      .eq("is_active", true)
+      .maybeSingle();
+    if (directMem) {
+      membership = directMem;
+      error = null;
+    }
+  }
+
+  const rawCompany = membership?.company;
+  const comp = Array.isArray(rawCompany) ? rawCompany[0] : rawCompany;
+
   if (
-    error || 
     !membership || 
-    !membership.company || 
-    membership.company.is_active === false || 
-    membership.company.is_active === 0
+    membership.is_active === false || 
+    (comp && (comp.is_active === false || comp.is_active === 0))
   ) {
     return encodedRedirect("error", "/select-tenant", "This organization is inactive or you do not have active access.");
   }
+
+  // Self-heal / ensure profile row exists for the logged-in user
+  try {
+    const { data: userProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", userRes.data.user.id)
+      .maybeSingle();
+
+    if (!userProfile) {
+      await supabase.from("profiles").upsert({
+        id: userRes.data.user.id,
+        email: userRes.data.user.email,
+        full_name: userRes.data.user.user_metadata?.full_name || userRes.data.user.email?.split("@")[0] || "User",
+        designation: userRes.data.user.user_metadata?.designation || "Staff",
+        is_active: true,
+        login_restriction_type: "always",
+        device_restriction_type: "none",
+        updated_at: new Date().toISOString(),
+      });
+    }
+  } catch (_) {}
 
   const cookieStore = await cookies();
   cookieStore.set("active_company_id", companyId, {

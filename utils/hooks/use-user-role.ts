@@ -20,8 +20,14 @@ export function useUserRole() {
     refresh,
   } = useUserProfile();
 
+  const sysRoleLower = (systemRole || "").toLowerCase().trim();
+  const isSysSuper = sysRoleLower === "super admin" || sysRoleLower === "super_admin" || sysRoleLower === "superadmin";
+  const isSysCompanyAdmin = isSysSuper || sysRoleLower === "company admin" || sysRoleLower === "company_admin" || sysRoleLower === "companyadmin" || sysRoleLower === "admin" || sysRoleLower === "administrator";
+  const effectiveRole: UserRole = isSysSuper ? "super_admin" : (isSysCompanyAdmin ? "company_admin" : (membership?.role || "viewer"));
+
   return {
-    role: membership?.role || ("viewer" as UserRole),
+    role: effectiveRole,
+    rawRole: membership?.role || ("viewer" as UserRole),
     profile,
     company,
     membership,

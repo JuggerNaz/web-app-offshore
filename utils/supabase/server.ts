@@ -36,18 +36,33 @@ export const createClient = () => {
 
   return autoPaginateClient(client);
 };
+export const isServiceRoleConfigured = (): boolean => {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key || key === process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+    return false;
+  }
+  try {
+    const parts = key.split(".");
+    if (parts.length === 3) {
+      const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
+      return payload.role === "service_role";
+    }
+  } catch (_) {}
+  return true;
+};
+
 export const createAdminClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-  if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.warn(
-      "[Supabase] SUPABASE_SERVICE_ROLE_KEY is missing in environment variables. Falling back to NEXT_PUBLIC_SUPABASE_ANON_KEY. Admin bypass capabilities may be restricted by RLS."
+  if (!isServiceRoleConfigured()) {
+    throw new Error(
+      "[Supabase] Valid SUPABASE_SERVICE_ROLE_KEY (role: 'service_role') is required for createAdminClient."
     );
   }
 
   if (!url || !key) {
-    throw new Error("Supabase URL or Key is missing. Please add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY or SUPABASE_SERVICE_ROLE_KEY to your .env.local file.");
+    throw new Error("Supabase URL or Key is missing.");
   }
 
   const client = createServerClient<Database>(url, key, {

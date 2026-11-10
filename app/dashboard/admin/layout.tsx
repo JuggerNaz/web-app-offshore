@@ -19,11 +19,27 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     return redirect("/dashboard");
   }
 
-  const { membership } = result;
+  const { membership, userRole, memberships } = result as any;
 
-  // Only allow company_admin and super_admin access
-  const allowedRoles = ["company_admin", "super_admin"];
-  if (!allowedRoles.includes(membership.role)) {
+  const userRoleLower = (userRole?.role || "").toLowerCase().trim();
+  const isSuperAdmin =
+    membership?.role === "super_admin" ||
+    (memberships || []).some((m: any) => m.role === "super_admin") ||
+    userRoleLower === "super admin" ||
+    userRoleLower === "super_admin" ||
+    userRoleLower === "superadmin";
+
+  const isCompanyAdmin =
+    isSuperAdmin ||
+    membership?.role === "company_admin" ||
+    (memberships || []).some((m: any) => m.role === "company_admin") ||
+    userRoleLower === "company admin" ||
+    userRoleLower === "company_admin" ||
+    userRoleLower === "companyadmin" ||
+    userRoleLower === "admin" ||
+    userRoleLower === "administrator";
+
+  if (!isSuperAdmin && !isCompanyAdmin && !["company_admin", "super_admin"].includes(membership?.role)) {
     return redirect("/dashboard");
   }
 

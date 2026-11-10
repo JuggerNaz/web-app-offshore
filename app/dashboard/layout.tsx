@@ -21,7 +21,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   if (!user) {
-    return redirect("/");
+    return redirect("/sign-in");
   }
 
   let initialProfileData: any = undefined;
@@ -30,15 +30,40 @@ export default async function Layout({ children }: { children: React.ReactNode }
   try {
     const cookieStore = await cookies();
     const activeCompanyId = cookieStore.get("active_company_id")?.value;
-    const result = await getUserMembership(supabase, user.id, activeCompanyId);
+    let result = await getUserMembership(supabase, user.id, activeCompanyId);
+
+    // If query failed with activeCompanyId, retry without activeCompanyId to fall back to the first active membership
+    if (result && "error" in result && activeCompanyId) {
+      const fallbackResult = await getUserMembership(supabase, user.id);
+      if (fallbackResult && !("error" in fallbackResult)) {
+        result = fallbackResult;
+        const comp = Array.isArray((result as any).company) ? (result as any).company[0] : (result as any).company;
+        if (comp?.id) {
+          cookieStore.set("active_company_id", comp.id, {
+            path: "/",
+            maxAge: 60 * 60 * 24 * 30,
+            sameSite: "lax",
+          });
+        }
+      }
+    }
+
     if (result) {
       if ("error" in result) {
-        const isDeactivated = result.error === "User profile is inactive" || result.error === "No active company memberships found";
-        deactivationError = isDeactivated
-          ? "Your account has been deactivated. Please contact your administrator."
-          : `Access Denied: ${result.error}`;
+        deactivationError = result.error;
       } else {
+        const rawComp = (result as any).company;
+        const normalizedComp = Array.isArray(rawComp) ? rawComp[0] : rawComp;
+        (result as any).company = normalizedComp;
         initialProfileData = result;
+
+        if (normalizedComp?.id && (!activeCompanyId || activeCompanyId !== normalizedComp.id)) {
+          cookieStore.set("active_company_id", normalizedComp.id, {
+            path: "/",
+            maxAge: 60 * 60 * 24 * 30,
+            sameSite: "lax",
+          });
+        }
       }
     }
   } catch (error) {
@@ -46,12 +71,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
   }
 
   if (deactivationError) {
-    try {
-      await supabase.auth.signOut();
-    } catch (signOutErr) {
-      console.error("Sign out error in layout:", signOutErr);
-    }
-    return redirect(`/sign-in?error=${encodeURIComponent(deactivationError)}`);
+    return redirect(`/select-tenant?error=${encodeURIComponent(deactivationError)}`);
   }
 
   return (

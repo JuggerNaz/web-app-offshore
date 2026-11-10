@@ -74,24 +74,41 @@ export const updateSession = async (request: NextRequest) => {
     // protected routes - update to go to landing page as there will be the sign in page
     if (request.nextUrl.pathname.startsWith("/dashboard")) {
       if (user.error || !user.data?.user) {
-        return NextResponse.redirect(new URL("/", request.url));
+        return NextResponse.redirect(new URL("/sign-in", request.url));
       }
 
       // Fetch user profile to check active state and login schedule constraints.
       // Bounded by the client's fetchWithTimeout (10s); on failure/timeout this
       // resolves null and the route proceeds without profile-based restrictions.
-      const { data: profile } = await supabase
+      let profileRes = await supabase
         .from("profiles")
-        .select("is_active, must_change_password, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type")
+        .select("is_active, must_change_password, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type, allowed_start_date, allowed_end_date")
         .eq("id", user.data.user.id)
         .single();
 
+      if (profileRes.error && (profileRes.error.message?.includes("allowed_start_date") || profileRes.error.message?.includes("allowed_end_date"))) {
+        profileRes = await supabase
+          .from("profiles")
+          .select("is_active, must_change_password, login_restriction_type, allowed_start_time, allowed_end_time, allowed_days, timezone, device_restriction_type")
+          .eq("id", user.data.user.id)
+          .single();
+      }
+      const profile = profileRes.data;
+
       if (profile) {
-        if (!profile.is_active) {
-          await supabase.auth.signOut();
-          const redirectRes = NextResponse.redirect(new URL("/?error=inactive", request.url));
-          // Clear session cookies by copying the updated headers/cookies from the client
-          return redirectRes;
+        if (profile.is_active === false) {
+          // Check if user holds an active company membership before signing out
+          const { data: activeMem } = await supabase
+            .from("company_memberships")
+            .select("id")
+            .eq("user_id", user.data.user.id)
+            .eq("is_active", true)
+            .maybeSingle();
+
+          if (!activeMem) {
+            const redirectRes = NextResponse.redirect(new URL("/sign-in?error=" + encodeURIComponent("Your account has been deactivated. Please contact your administrator."), request.url));
+            return redirectRes;
+          }
         }
 
         // Compulsory password change enforcement
@@ -104,39 +121,51 @@ export const updateSession = async (request: NextRequest) => {
           const deviceToken = request.cookies.get("device_token")?.value;
           let isValidDevice = false;
 
-          if (deviceToken) {
-            // Check if token matches an active registered device
-            const { data: deviceRecord } = await supabase
+          // Check if registered devices are configured in the system
+          try {
+            const { data: companyDevices, error: devicesErr } = await supabase
               .from("registered_devices")
-              .select("id, company_id")
-              .eq("device_token", deviceToken)
+              .select("id")
               .eq("is_active", true)
-              .maybeSingle();
+              .limit(1);
 
-            if (deviceRecord) {
-              // Confirm the user holds an active membership in the device's company
-              const { data: membership } = await supabase
-                .from("company_memberships")
-                .select("id")
-                .eq("user_id", user.data.user.id)
-                .eq("company_id", deviceRecord.company_id)
+            // If registered_devices table doesn't exist, has an error, or has no devices registered at all,
+            // don't lock out users with an unfulfillable device gate.
+            if (devicesErr || !companyDevices || companyDevices.length === 0) {
+              isValidDevice = true;
+            } else if (deviceToken) {
+              const { data: deviceRecord } = await supabase
+                .from("registered_devices")
+                .select("id, company_id")
+                .eq("device_token", deviceToken)
                 .eq("is_active", true)
                 .maybeSingle();
 
-              if (membership) {
-                isValidDevice = true;
+              if (deviceRecord) {
+                const { data: membership } = await supabase
+                  .from("company_memberships")
+                  .select("id")
+                  .eq("user_id", user.data.user.id)
+                  .eq("company_id", deviceRecord.company_id)
+                  .eq("is_active", true)
+                  .maybeSingle();
+
+                if (membership) {
+                  isValidDevice = true;
+                }
               }
             }
+          } catch (_) {
+            isValidDevice = true;
           }
 
           if (!isValidDevice) {
-            await supabase.auth.signOut();
-            const errorParam = encodeURIComponent("Access restricted: Unregistered or unauthorized device.");
-            return NextResponse.redirect(new URL(`/?error=${errorParam}`, request.url));
+            const errorParam = encodeURIComponent("Access restricted: Unregistered or unauthorized device. Please use an authorized registered device.");
+            return NextResponse.redirect(new URL(`/select-tenant?error=${errorParam}`, request.url));
           }
         }
 
-        // 2. Scheduled hours validation check
+        // 2. Scheduled hours and date range validation check
         if (profile.login_restriction_type === "scheduled") {
           try {
             const tz = profile.timezone || "Asia/Kuala_Lumpur";
@@ -144,6 +173,9 @@ export const updateSession = async (request: NextRequest) => {
               timeZone: tz,
               hour12: false,
               weekday: "short",
+              year: "numeric",
+              month: "2-digit",
+              day: "2-digit",
               hour: "2-digit",
               minute: "2-digit",
               second: "2-digit",
@@ -151,6 +183,20 @@ export const updateSession = async (request: NextRequest) => {
 
             const parts = formatter.formatToParts(new Date());
             const partMap = Object.fromEntries(parts.map((p) => [p.type, p.value]));
+
+            // Current date in target timezone as YYYY-MM-DD
+            const currentDate = `${partMap.year}-${partMap.month}-${partMap.day}`;
+
+            // Check date range boundary if configured
+            if (profile.allowed_start_date && currentDate < profile.allowed_start_date) {
+              const errorParam = encodeURIComponent(`Access not yet active. Your access period begins on ${profile.allowed_start_date} (${tz}).`);
+              return NextResponse.redirect(new URL(`/sign-in?error=${errorParam}`, request.url));
+            }
+
+            if (profile.allowed_end_date && currentDate > profile.allowed_end_date) {
+              const errorParam = encodeURIComponent(`Access expired. Your scheduled access ended on ${profile.allowed_end_date} (${tz}).`);
+              return NextResponse.redirect(new URL(`/sign-in?error=${errorParam}`, request.url));
+            }
 
             const dayMap: Record<string, number> = {
               'Mon': 1, 'Tue': 2, 'Wed': 3, 'Thu': 4, 'Fri': 5, 'Sat': 6, 'Sun': 7
@@ -163,9 +209,8 @@ export const updateSession = async (request: NextRequest) => {
             const endTime = profile.allowed_end_time || "17:00:00";
 
             if (!allowedDays.includes(isoWeekday) || currentTime < startTime || currentTime > endTime) {
-              await supabase.auth.signOut();
               const errorParam = encodeURIComponent(`Access restricted outside allowed hours: ${startTime} - ${endTime} (${tz})`);
-              return NextResponse.redirect(new URL(`/?error=${errorParam}`, request.url));
+              return NextResponse.redirect(new URL(`/sign-in?error=${errorParam}`, request.url));
             }
           } catch (err) {
             console.error("[Middleware] Time scheduling check failed:", err);
@@ -174,8 +219,11 @@ export const updateSession = async (request: NextRequest) => {
       }
     }
 
-    if (request.nextUrl.pathname === "/" && !user.error && user.data?.user) {
-      return NextResponse.redirect(new URL("/dashboard", request.url));
+    if (request.nextUrl.pathname === "/") {
+      if (!user.error && user.data?.user) {
+        return NextResponse.redirect(new URL("/dashboard", request.url));
+      }
+      return NextResponse.redirect(new URL("/sign-in", request.url));
     }
 
     return response;

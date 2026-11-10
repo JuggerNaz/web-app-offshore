@@ -52,8 +52,8 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     query = query.in("plat_id", ids);
   }
 
-  // Free-text title search before pagination so the count reflects the filter
-  const searchFilter = buildSearchFilter(q, ["title"]);
+  // Free-text title, description, and field search before pagination so the count reflects the filter
+  const searchFilter = buildSearchFilter(q, ["title", "pdesc", "pfield"]);
   if (searchFilter) {
     query = query.or(searchFilter);
   }
@@ -89,7 +89,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
   const fieldMap = new Map((allFields || []).map((f: any) => [f.lib_id.toString(), f.lib_desc]));
 
   // Fetch structure images for all platforms in ONE query
-  const platIds = (data || []).map((platform) => platform.plat_id);
+  const platIds = (data || []).map((platform: any) => platform.plat_id);
   const { data: allImages } = platIds.length
     ? await supabase
         .from("attachment")
@@ -106,7 +106,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     else imagesByPlatform.set(img.source_id, [row]);
   }
 
-  const platformsWithDetails = (data || []).map((platform) => ({
+  const platformsWithDetails = (data || []).map((platform: any) => ({
     ...platform,
     images: imagesByPlatform.get(platform.plat_id) || [],
     field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,

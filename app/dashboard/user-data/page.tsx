@@ -3,7 +3,7 @@ import { Users } from "lucide-react";
 
 export default function UserDataPage() {
     return (
-        <div className="min-h-screen max-h-screen overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-blue-950/10 dark:to-slate-950">
+        <div className="flex-1 overflow-y-auto bg-gradient-to-br from-slate-50 via-blue-50/30 to-slate-50 dark:from-slate-950 dark:via-blue-950/10 dark:to-slate-950">
             <div className="container max-w-6xl mx-auto px-4 py-8">
                 {/* Header */}
                 <div className="mb-8">
