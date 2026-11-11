@@ -40,7 +40,7 @@ interface CompanySettings {
     logo_url?: string;
 }
 
-import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, formatReportHeaderTitle, formatHeaderInfoText } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo , applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, formatReportHeaderTitle, formatHeaderInfoText, toProperCase } from "./shared-logo";
 
 const fetchContractorDetails = async (id: string): Promise<{ name: string; address: string; logoUrl?: string }> => {
     try {
@@ -223,12 +223,12 @@ export const generateJobPackSummaryReport = async (
     const endDate = jobPack.metadata?.iend || "TBD";
 
     // Resolve Vessel (Single or History)
-    let vesselStr = jobPack.metadata?.vessel || "N/A";
+    let vesselStr = jobPack.metadata?.vessel ? toProperCase(jobPack.metadata.vessel) : "N/A";
     if (jobPack.metadata?.vessel_history && Array.isArray(jobPack.metadata.vessel_history) && jobPack.metadata.vessel_history.length > 0) {
         // Sort by date descending usually, but for history list maybe ascending?
-        // Let's list unique names with dates
+        // Let's list unique names with dates in Proper Case
         vesselStr = jobPack.metadata.vessel_history
-            .map(v => `${v.name} (${v.date})`)
+            .map(v => `${toProperCase(v.name)} (${v.date})`)
             .join(", ");
     }
 
@@ -340,7 +340,7 @@ export const generateJobPackSummaryReport = async (
 
     if (jobPack.metadata?.vessel_history && jobPack.metadata.vessel_history.length > 0) {
         jobPack.metadata.vessel_history.forEach((v, i) => {
-            const vText = `${v.name} (${v.date})`;
+            const vText = `${toProperCase(v.name)} (${v.date})`;
             doc.text(`• ${vText}`, rightValueX, contentStart + 4 + (i * 5));
         });
         vesselBottom = contentStart + 4 + (jobPack.metadata.vessel_history.length * 5);

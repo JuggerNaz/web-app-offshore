@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, toProperCase } from "./shared-logo";
 
 export interface SeabedSurveyReportOptions extends Partial<ReportConfig> {
     contractorLogoUrl?: string;
@@ -282,7 +282,7 @@ export const generateSeabedSurveyReport = async (
         
         const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
-        const vessel = hData.vessel || "N/A";
+        const vessel = hData.vessel && hData.vessel !== "N/A" ? toProperCase(hData.vessel) : (hData.vessel || "N/A");
         const inspDate = hData.date || new Date().toLocaleDateString("en-GB");
 
         const drawBox = (label: string, value: string, x: number, w: number, ty: number) => {

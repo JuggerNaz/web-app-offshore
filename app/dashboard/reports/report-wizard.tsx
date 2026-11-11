@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ChevronRight,
@@ -74,6 +74,7 @@ import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/d
 import { generateInspectionSummaryReport } from "@/utils/report-generators/inspection-summary-report";
 import { generateInspectionSummaryGraphReport } from "@/utils/report-generators/inspection-summary-graph-report";
 import { generateDefectSummaryReport } from "@/utils/report-generators/defect-summary-report";
+import { toProperCase, resolveOilFieldDescription } from "@/utils/report-generators/shared-logo";
 
 // Types
 type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
@@ -195,11 +196,39 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const defaultIds: string[] = [];
         defaultSections.forEach(s => s.templates.forEach(t => defaultIds.push(t.id)));
 
+        const normalizeSections = (secs: TocSectionItem[]): TocSectionItem[] => {
+            return secs.map(s => ({
+                ...s,
+                name: (s.name || "").trim().toLowerCase() === "structure details" ? "Structure Summary" : s.name,
+                templates: (s.templates || []).map(t => {
+                    let tName = t.name;
+                    if (t.id === "defect-criteria-report" || tName === "Defect Criteria Report") {
+                        tName = "Defect Criteria Specification Report";
+                    } else if (t.id === "inspection-summary-graph" || tName === "Inspection Summary by Graph") {
+                        tName = "Inspection Summary";
+                    } else if (t.id === "inspection-incomplete-flagged-report" || tName === "Inspection Incomplete Summary Report") {
+                        tName = "Incomplete Inspection Summary Report";
+                    } else if (t.id === "rov-anode-report" || (tName && tName.includes("General Visual Anode Inspection"))) {
+                        tName = "General Visual Anode Inspection Report (ROV)";
+                    } else if (t.id === "rov-anode-rsani-report" || (tName && tName.includes("Selected Anode Inspection") && (tName.includes("SANI") || tName.includes("ROV")))) {
+                        tName = "Selected Anode Inspection Report (ROV)";
+                    } else if (t.id === "defect-summary" || tName === "Defect Summary Report") {
+                        tName = "Anomaly Summary Report";
+                    } else if (t.id === "defect-anomaly-report" || tName === "Defect / Anomaly Report") {
+                        tName = "Anomaly Report";
+                    } else if (t.id === "defect-summary-pipeline" || tName === "Defect Summary Report (Pipeline)") {
+                        tName = "Anomaly Summary Report (Pipeline)";
+                    }
+                    return { ...t, name: tName };
+                })
+            }));
+        };
+
         // 1. Check backend storage_config.toc_config
         const backendTocConfig = settingsObj?.storage_config?.toc_config;
         const typeConfig = isPipe ? backendTocConfig?.pipeline_toc : backendTocConfig?.platform_toc;
         if (typeConfig && Array.isArray(typeConfig.sections) && typeConfig.sections.length > 0) {
-            setTocSections(typeConfig.sections);
+            setTocSections(normalizeSections(typeConfig.sections));
             if (Array.isArray(typeConfig.selectedTemplates)) {
                 setSelectedTemplates(typeConfig.selectedTemplates);
             }
@@ -208,7 +237,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // 2. Check legacy backend config (if platform)
         if (!isPipe && backendTocConfig && Array.isArray(backendTocConfig.sections) && backendTocConfig.sections.length > 0) {
-            setTocSections(backendTocConfig.sections);
+            setTocSections(normalizeSections(backendTocConfig.sections));
             if (Array.isArray(backendTocConfig.selectedTemplates)) {
                 setSelectedTemplates(backendTocConfig.selectedTemplates);
             }
@@ -223,7 +252,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 try {
                     const parsed = JSON.parse(localSaved);
                     if (Array.isArray(parsed?.sections) && parsed.sections.length > 0) {
-                        setTocSections(parsed.sections);
+                        setTocSections(normalizeSections(parsed.sections));
                         if (Array.isArray(parsed?.selectedTemplates)) {
                             setSelectedTemplates(parsed.selectedTemplates);
                         }
@@ -234,7 +263,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         }
 
         // 4. Default standard fallback
-        setTocSections(defaultSections);
+        setTocSections(normalizeSections(defaultSections));
         setSelectedTemplates(defaultIds);
     }, []);
 
@@ -496,6 +525,38 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Consolidated preview generation logic is handled below near line 1170.
 
 
+
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState<number>(0);
+    const [currentGeneratingTemplate, setCurrentGeneratingTemplate] = useState<string>("");
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+    // Abort controller and cancellation flag for stopping report generation immediately
+    const cancelGenerationRef = useRef<boolean>(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    const handleCancelGeneration = useCallback(() => {
+        console.log("[report-wizard] Cancelling report generation in progress...");
+        cancelGenerationRef.current = true;
+        if (abortControllerRef.current) {
+            try { abortControllerRef.current.abort(); } catch (_) {}
+            abortControllerRef.current = null;
+        }
+        setIsGenerating(false);
+        setGenerationProgress(0);
+        setCurrentGeneratingTemplate("");
+    }, []);
+
+    // Cleanup when component unmounts
+    useEffect(() => {
+        return () => {
+            cancelGenerationRef.current = true;
+            if (abortControllerRef.current) {
+                try { abortControllerRef.current.abort(); } catch (_) {}
+            }
+        };
+    }, []);
+
     const handleNext = () => {
         if (step === "template") setStep("context");
         else if (step === "context") {
@@ -510,6 +571,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const handleBack = () => {
+        handleCancelGeneration();
         if (step === "preview") {
             setStep("configuration");
             setPreviewUrl(null);
@@ -2492,10 +2554,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         </div>
     );
 
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generationProgress, setGenerationProgress] = useState<number>(0);
-    const [currentGeneratingTemplate, setCurrentGeneratingTemplate] = useState<string>("");
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     // Invalidate preview when selections or config change
     useEffect(() => {
@@ -2511,6 +2569,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 generatePreview();
             }
         }
+        return () => {
+            // Cancel report generation immediately if leaving preview step or dependencies change
+            handleCancelGeneration();
+        };
     }, [
         step,
         previewMode,
@@ -2526,6 +2588,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     ]);
 
     const fetchStructureData = async () => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
         if (!selections.structureId) {
             console.log("[fetchStructureData] No structureId selected");
             return null;
@@ -2533,7 +2596,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const cleanId = String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim();
         console.log(`[fetchStructureData] Fetching data for structure ID: ${cleanId}`);
         try {
-            const res = await fetch(`/api/structures/${cleanId}`);
+            const res = await fetch(`/api/structures/${cleanId}`, { signal: abortControllerRef.current?.signal });
             if (res.ok) {
                 const data = await res.json();
                 const structureData = data.data || data;
@@ -2543,7 +2606,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     // Fetch discussion/comment records for this structure
                     try {
                         const strType = structureData.str_type?.toLowerCase() || "platform";
-                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
+                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`, { signal: abortControllerRef.current?.signal });
                         if (commentRes.ok) {
                             const commentText = await commentRes.text();
                             if (commentText.trim()) {
@@ -2553,15 +2616,32 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 }
                             }
                         }
-                    } catch (commentErr) {
-                        console.warn("Error fetching structure comments for report:", commentErr);
+                    } catch (commentErr: any) {
+                        if (commentErr?.name !== "AbortError") {
+                            console.warn("Error fetching structure comments for report:", commentErr);
+                        }
+                    }
+
+                    // Resolve oilfield description from library in Proper Case
+                    const rawField = structureData.pfield || structureData.field_name || structureData.field;
+                    if (rawField) {
+                        try {
+                            const properDesc = await resolveOilFieldDescription(rawField);
+                            if (properDesc) {
+                                structureData.pfield = properDesc;
+                                structureData.field_name = properDesc;
+                                structureData.field = properDesc;
+                            }
+                        } catch (_) {}
                     }
 
                     return structureData;
                 }
             }
-        } catch (e) {
-            console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
+        } catch (e: any) {
+            if (e?.name !== "AbortError") {
+                console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
+            }
         }
 
         // Cache fallback: Check if structure exists in structures from useSWR
@@ -2572,20 +2652,33 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         );
         if (found) {
             console.log(`[fetchStructureData] Using cached structure: ${found.str_name || found.name}`);
-            return found;
+            const cloned = { ...found };
+            const rawField = cloned.pfield || cloned.field_name || cloned.field;
+            if (rawField) {
+                try {
+                    const properDesc = await resolveOilFieldDescription(rawField);
+                    if (properDesc) {
+                        cloned.pfield = properDesc;
+                        cloned.field_name = properDesc;
+                        cloned.field = properDesc;
+                    }
+                } catch (_) {}
+            }
+            return cloned;
         }
 
         return { id: cleanId, str_name: selections.structureName || "Structure " + cleanId };
     };
 
     const fetchJobPackData = async () => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
         if (!selections.jobPackId) {
             console.log("[fetchJobPackData] No jobPackId selected");
             return null;
         }
         console.log(`[fetchJobPackData] Fetching data for job pack ID: ${selections.jobPackId}`);
         try {
-            const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
+            const res = await fetch(`/api/jobpack/${selections.jobPackId}`, { signal: abortControllerRef.current?.signal });
             if (res.ok) {
                 const data = await res.json();
                 if (data.data) {
@@ -2594,8 +2687,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
                 return data;
             }
-        } catch (e) {
-            console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
+        } catch (e: any) {
+            if (e?.name !== "AbortError") {
+                console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
+            }
         }
 
         const found = (jobPacks || []).find((jp: any) => String(jp.id) === String(selections.jobPackId));
@@ -2617,12 +2712,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const resolveVessel = (jobPack: any) => {
-        if (!jobPack?.metadata) return "N/A";
-        const history = jobPack.metadata.vessel_history;
+        if (!jobPack) return "N/A";
+        const history = jobPack.metadata?.vessel_history || jobPack.metadata?.vessels;
         if (Array.isArray(history) && history.length > 0) {
-            return history.map((v: any) => v.name || v).join(", ");
+            const list = history.map((v: any) => typeof v === "string" ? v : (v?.name || v?.vessel || v?.vessel_name || "")).filter(Boolean);
+            if (list.length > 0) {
+                return toProperCase(list.join(", "));
+            }
         }
-        return jobPack.metadata.vessel || "N/A";
+        const raw = jobPack.metadata?.vessel || jobPack.metadata?.vessel_name || jobPack.vessel || "N/A";
+        return raw === "N/A" ? "N/A" : toProperCase(raw);
     };
 
     const generateCoverPage = async (templateName: string): Promise<Blob> => {
@@ -2656,6 +2755,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const generateReportAction = async (returnBlob: boolean = false, templateIdOverride?: string): Promise<any> => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) {
+            return null;
+        }
         const currentTemplateId = templateIdOverride || selections.templateId;
         const originalTemplateId = selections.templateId;
 
@@ -2726,7 +2828,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             // Fetch real company settings from API
             let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
         try {
-            const response = await fetch("/api/company-settings");
+            const response = await fetch("/api/company-settings", { signal: abortControllerRef.current?.signal });
             if (response.ok) {
                 const result = await response.json();
                 if (result.data) {
@@ -2738,8 +2840,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     };
                 }
             }
-        } catch (error) {
-            console.error("Error fetching company settings for report:", error);
+        } catch (error: any) {
+            if (error?.name !== "AbortError") {
+                console.error("Error fetching company settings for report:", error);
+            }
         }
 
         const cleanStructureId = selections.structureId ? String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim() : "";
@@ -2771,6 +2875,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
+            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
             const selectedTOC = tocSections.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
             if (previewMode === "individual") {
@@ -2787,6 +2892,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             } else {
                 // All-in-One: Combine all selected templates with cover sheets and interactive Table of Contents (TOC)!
                 if (selectedTOC.length === 0) return null;
+                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                 const originalAlert = window.alert;
                 window.alert = () => {}; 
@@ -2805,7 +2911,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     if (contracId) {
                         try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cRes = await fetch(`/api/library/CONTR_NAM`, { signal: abortControllerRef.current?.signal });
                             if (cRes.ok) {
                                 const cJson = await cRes.json();
                                 const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
@@ -2845,13 +2951,198 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                        selectedStructureObj?.type === "pipeline" || 
                                        activeCategory === "Pipeline";
 
-                    const vessel = jobPackData?.metadata?.vessel || 
-                                   selectedJobPack?.metadata?.vessel || 
-                                   jobPackData?.vessel || 
-                                   selectedJobPack?.vessel || 
-                                   (jobPackData?.metadata?.vessel_history?.[0]?.name) || 
-                                   (selectedJobPack?.metadata?.vessel_history?.[0]?.name) || 
-                                   "MEO RESOLUTION";
+                    const {
+                        generateMainCoverPage,
+                        generateTOCPages,
+                        generateSectionDividerPage,
+                        generateEndOfReportCoverPage,
+                        applyTOCLinksToPdf,
+                        toProperCase
+                    } = await import("@/utils/report-generators/final-datasheet-report");
+
+                    // ── 1. Resolve Vessels (Multiple based on Jobpack, SOW report no, & Structure ID in Proper Case) ──
+                    const vesselCandidates = new Set<string>();
+
+                    const addVesselString = (raw: any) => {
+                        if (!raw || typeof raw !== "string") return;
+                        raw.split(/[,;\n\/&]+/).forEach(part => {
+                            const cleaned = part.replace(/[.]+$/, "").trim();
+                            const upper = cleaned.toUpperCase();
+                            if (cleaned && upper !== "N/A" && upper !== "NONE" && upper !== "NULL" && upper !== "UNDEFINED") {
+                                vesselCandidates.add(cleaned);
+                            }
+                        });
+                    };
+
+                    const extractVesselsFromList = (list: any) => {
+                        if (!Array.isArray(list)) return;
+                        list.forEach((item: any) => {
+                            if (typeof item === "string") {
+                                addVesselString(item);
+                            } else if (item && typeof item === "object") {
+                                addVesselString(item.name || item.vessel || item.vessel_name);
+                            }
+                        });
+                    };
+
+                    extractVesselsFromList(jobPackData?.metadata?.vessel_history);
+                    extractVesselsFromList(selectedJobPack?.metadata?.vessel_history);
+                    extractVesselsFromList(jobPackData?.metadata?.vessels);
+                    extractVesselsFromList(selectedJobPack?.metadata?.vessels);
+
+                    addVesselString(jobPackData?.metadata?.vessel);
+                    addVesselString(selectedJobPack?.metadata?.vessel);
+                    addVesselString(jobPackData?.vessel);
+                    addVesselString(selectedJobPack?.vessel);
+
+                    // Query inspection records, dive jobs, and rov jobs matching (jobpack, structure, sowReportNo)
+                    try {
+                        const { createClient } = await import("@/utils/supabase/client");
+                        const supabase = createClient();
+                        const cleanSow = (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") 
+                            ? selections.sowReportNo.trim() 
+                            : null;
+
+                        // Check insp_records
+                        let rQuery = (supabase as any)
+                            .from("insp_records")
+                            .select("vessel, inspection_data, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) rQuery = rQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) rQuery = rQuery.eq("structure_id", structId);
+                        if (cleanSow) rQuery = rQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: recData } = await rQuery.limit(200);
+                        if (recData && Array.isArray(recData)) {
+                            recData.forEach((r: any) => {
+                                addVesselString(r.vessel);
+                                addVesselString(r.inspection_data?.vessel);
+                                addVesselString(r.inspection_data?.vessel_name);
+                                addVesselString(r.metadata?.vessel);
+                                addVesselString(r.metadata?.vessel_name);
+                            });
+                        }
+
+                        // Check insp_dive_jobs
+                        let dQuery = (supabase as any)
+                            .from("insp_dive_jobs")
+                            .select("vessel, vessel_name, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) dQuery = dQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) dQuery = dQuery.eq("structure_id", structId);
+                        if (cleanSow) dQuery = dQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: diveJobsData } = await dQuery.limit(50);
+                        if (diveJobsData && Array.isArray(diveJobsData)) {
+                            diveJobsData.forEach((dj: any) => {
+                                addVesselString(dj.vessel);
+                                addVesselString(dj.vessel_name);
+                                addVesselString(dj.metadata?.vessel);
+                                addVesselString(dj.metadata?.vessel_name);
+                            });
+                        }
+
+                        // Check insp_rov_jobs
+                        let rovQuery = (supabase as any)
+                            .from("insp_rov_jobs")
+                            .select("vessel, vessel_name, rov_vessel, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) rovQuery = rovQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) rovQuery = rovQuery.eq("structure_id", structId);
+                        if (cleanSow) rovQuery = rovQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: rovJobsData } = await rovQuery.limit(50);
+                        if (rovJobsData && Array.isArray(rovJobsData)) {
+                            rovJobsData.forEach((rj: any) => {
+                                addVesselString(rj.vessel);
+                                addVesselString(rj.vessel_name);
+                                addVesselString(rj.rov_vessel);
+                                addVesselString(rj.metadata?.vessel);
+                                addVesselString(rj.metadata?.vessel_name);
+                            });
+                        }
+                    } catch (vErr) {
+                        console.warn("[CoverPage] Could not query extra vessel records:", vErr);
+                    }
+
+                    // Format each unique vessel in Proper Case
+                    const formattedVessels: string[] = [];
+                    const seenVessels = new Set<string>();
+
+                    vesselCandidates.forEach(raw => {
+                        const formatted = toProperCase(raw);
+                        const key = formatted.toLowerCase();
+                        if (formatted && !seenVessels.has(key)) {
+                            seenVessels.add(key);
+                            formattedVessels.push(formatted);
+                        }
+                    });
+
+                    let vessel = formattedVessels.join(", ");
+                    if (!vessel) {
+                        vessel = "Meo Resolution";
+                    }
+
+                    // ── 2. Resolve Oil Field Name (Fetch Description from Library, not ID, in Proper Case) ──
+                    let resolvedFieldDesc = "";
+                    const rawFieldIdentifier = (
+                        structureData?.pfield || 
+                        structureData?.field_name || 
+                        structureData?.field || 
+                        selectedStructureObj?.field_name || 
+                        selectedStructureObj?.pfield || 
+                        jobPackData?.field || 
+                        selectedJobPack?.field ||
+                        "BOKOR"
+                    ).toString().trim();
+
+                    const cleanFieldKey = rawFieldIdentifier.replace(/\.+$/, "").trim().toLowerCase();
+
+                    try {
+                        // A. Fetch from /api/library/fields-stats (pre-aggregated oilfield list)
+                        const fStatsRes = await fetch("/api/library/fields-stats", { signal: abortControllerRef.current?.signal });
+                        let fieldLibItems: any[] = [];
+                        if (fStatsRes.ok) {
+                            const fJson = await fStatsRes.json();
+                            if (Array.isArray(fJson?.data)) fieldLibItems = fJson.data;
+                        }
+
+                        // B. Direct database query fallback on u_lib_list
+                        if (fieldLibItems.length === 0) {
+                            const { createClient } = await import("@/utils/supabase/client");
+                            const supabase = createClient();
+                            const { data: uLibData } = await (supabase as any)
+                                .from("u_lib_list")
+                                .select("lib_id, lib_desc, lib_val, lib_code")
+                                .eq("lib_code", "OILFIELD")
+                                .or("lib_delete.is.null,lib_delete.neq.1");
+                            if (uLibData && Array.isArray(uLibData)) {
+                                fieldLibItems = uLibData;
+                            }
+                        }
+
+                        // C. Match by code/ID or value or description
+                        const matchedField = fieldLibItems.find((item: any) => {
+                            const libIdClean = String(item.lib_id || "").replace(/\.+$/, "").trim().toLowerCase();
+                            const libValClean = String(item.lib_val || "").replace(/\.+$/, "").trim().toLowerCase();
+                            const libDescClean = String(item.lib_desc || "").replace(/\.+$/, "").trim().toLowerCase();
+                            return libIdClean === cleanFieldKey || libValClean === cleanFieldKey || libDescClean === cleanFieldKey;
+                        });
+
+                        if (matchedField && matchedField.lib_desc) {
+                            resolvedFieldDesc = String(matchedField.lib_desc).replace(/\.+$/, "").trim();
+                        }
+                    } catch (fErr) {
+                        console.warn("[CoverPage] Failed to fetch field description from library:", fErr);
+                    }
+
+                    // Fallback if not found in library
+                    if (!resolvedFieldDesc) {
+                        if (cleanFieldKey === "bokor") {
+                            resolvedFieldDesc = "Bokor Field";
+                        } else {
+                            resolvedFieldDesc = rawFieldIdentifier.replace(/\.+$/, "").trim();
+                        }
+                    }
+
+                    const fieldName = toProperCase(resolvedFieldDesc);
 
                     let inspectionDateRange = (reportConfig as any)?.dateRange || 
                                               (reportConfig as any)?.inspDateRange || 
@@ -2874,7 +3165,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     const coverOptions = {
                         structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
-                        fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
+                        fieldName,
                         jobPackName: jobPackData?.name || jobPackData?.title || selectedJobPack?.name || "UIMC2026/SKA/PLAT01",
                         sowReportNo: selections.sowReportNo || reportConfig?.sowReportNo || "AM26-016-01",
                         clientName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
@@ -2895,14 +3186,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : undefined,
                     };
 
-                    const {
-                        generateMainCoverPage,
-                        generateTOCPages,
-                        generateSectionDividerPage,
-                        generateEndOfReportCoverPage,
-                        applyTOCLinksToPdf
-                    } = await import("@/utils/report-generators/final-datasheet-report");
-
                     const collectedSections: Array<{
                         section: typeof tocSections[0];
                         dividerDonorDoc: any;
@@ -2915,6 +3198,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     let count = 0;
                     for (const s of tocSections) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
                         if (sectionTemplates.length === 0) continue;
 
@@ -2925,19 +3209,24 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         }> = [];
 
                         for (const t of sectionTemplates) {
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                             count++;
                             setCurrentGeneratingTemplate(t.name);
                             setGenerationProgress(Math.min(90, 5 + Math.round(((count - 1) / selectedTOC.length) * 85)));
                             await new Promise(resolve => setTimeout(resolve, 300));
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                             try {
                                 let sectionResult = await generateReportAction(true, t.id); // Must ask for Blob
+                                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                 if (sectionResult && !(sectionResult instanceof Blob) && (sectionResult as any).output) {
                                     sectionResult = (sectionResult as any).output('blob');
                                 }
                                 if (sectionResult instanceof Blob) {
                                     const sectionArrayBuffer = await sectionResult.arrayBuffer();
+                                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                     const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
+                                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                     activeReports.push({
                                         template: t,
                                         donorDoc: donorSectionPdf,
@@ -2946,14 +3235,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 } else {
                                     console.warn(`Skipping template ${t.name} as it yielded no records.`);
                                 }
-                            } catch (err) {
+                            } catch (err: any) {
+                                if (err?.name === "AbortError" || cancelGenerationRef.current) return null;
                                 console.error(`Error generating template report for ${t.name}:`, err);
                             }
                         }
 
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
+
                         if (activeReports.length > 0) {
                             try {
                                 const dividerBlob = await generateSectionDividerPage(s.name, coverOptions);
+                                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                 const dividerBuffer = await dividerBlob.arrayBuffer();
                                 const dividerDonor = await PDFDocument.load(dividerBuffer);
 
@@ -2962,12 +3255,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     dividerDonorDoc: dividerDonor,
                                     reports: activeReports
                                 });
-                            } catch (err) {
+                            } catch (err: any) {
+                                if (err?.name === "AbortError" || cancelGenerationRef.current) return null;
                                 console.error(`Error preparing section divider for ${s.name}:`, err);
                             }
                         }
                     }
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     if (collectedSections.length === 0) return null;
 
                     // 1. Calculate Exact Page Numbers for TOC
@@ -3009,16 +3304,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     const totalDocumentPages = runningPageNum - 1;
 
                     // 2. Generate Main Cover & TOC Pages
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setCurrentGeneratingTemplate("Creating Main Cover Page & Interactive TOC...");
                     const coverBlob = await generateMainCoverPage(coverOptions);
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const coverBuffer = await coverBlob.arrayBuffer();
                     const coverDonor = await PDFDocument.load(coverBuffer);
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const { blobs: tocBlobs, linkTargets } = await generateTOCPages(
                         sectionsWithPages,
                         totalDocumentPages,
                         coverOptions
                     );
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                     // 3. Assemble in mergedPdf
                     const mergedPdf = await PDFDocument.create();
@@ -3030,6 +3329,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     // 3B. TOC Pages (Pages 2 .. 1 + tocPagesCount)
                     const addedTocPages: any[] = [];
                     for (const tBlob of tocBlobs) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const tBuffer = await tBlob.arrayBuffer();
                         const tDonor = await PDFDocument.load(tBuffer);
                         const [copiedToc] = await mergedPdf.copyPages(tDonor, [0]);
@@ -3039,24 +3339,29 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     // 3C. Section Dividers & Reports
                     for (const cs of collectedSections) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const [copiedDiv] = await mergedPdf.copyPages(cs.dividerDonorDoc, [0]);
                         mergedPdf.addPage(copiedDiv);
 
                         for (const r of cs.reports) {
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                             const pages = await mergedPdf.copyPages(r.donorDoc, r.donorDoc.getPageIndices());
                             pages.forEach(p => mergedPdf.addPage(p));
                         }
                     }
 
                     // 3D. End of Report Cover Page
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setCurrentGeneratingTemplate("Adding End of Report Cover Page...");
                     const endCoverBlob = await generateEndOfReportCoverPage(coverOptions);
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const endCoverBuffer = await endCoverBlob.arrayBuffer();
                     const endCoverDonor = await PDFDocument.load(endCoverBuffer);
                     const [copiedEndCover] = await mergedPdf.copyPages(endCoverDonor, [0]);
                     mergedPdf.addPage(copiedEndCover);
 
                     // 4. Attach Interactive PDF Link Annotations to the TOC page(s)
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     applyTOCLinksToPdf(mergedPdf, addedTocPages, linkTargets);
 
                     // 5. Stamp global continuous page numbers on all merged pages
@@ -3064,6 +3369,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
 
                     for (let idx = 0; idx < totalPagesCount; idx++) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const p = mergedPdf.getPage(idx);
                         const { width } = p.getSize();
                         const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
@@ -3080,10 +3386,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         });
                     }
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setGenerationProgress(100);
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const mergedPdfBytes = await mergedPdf.save();
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const finalBlob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
 
                     if (returnBlob) {
@@ -8402,6 +8711,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 };
 
     const generatePreview = async () => {
+        handleCancelGeneration();
+        cancelGenerationRef.current = false;
+        const currentAbort = new AbortController();
+        abortControllerRef.current = currentAbort;
+
         setIsGenerating(true);
         setPreviewUrl(null);
         setGenerationProgress(5);
@@ -8410,6 +8724,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         try {
             console.log("[generatePreview] Calling generateReportAction(true)...");
             const result = await generateReportAction(true); // Return Blob
+
+            if (cancelGenerationRef.current || currentAbort.signal.aborted) {
+                console.log("[generatePreview] Preview generation was cancelled, discarding result.");
+                return;
+            }
+
             console.log("[generatePreview] generateReportAction completed, result type:", result ? (result instanceof Blob ? "Blob" : typeof result) : "null/undefined");
 
             if (result instanceof Blob) {
@@ -8424,10 +8744,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 setPreviewUrl(url);
             } else {
                 console.warn("Generator did not return a blob. It might have saved directly or failed.");
-                // If it failed to return a blob, we can't show preview.
             }
-        } catch (error) {
-            console.error("Preview generation failed", error);
+        } catch (error: any) {
+            if (error?.name === "AbortError" || cancelGenerationRef.current) {
+                console.log("[generatePreview] Caught abort error - generation stopped cleanly.");
+            } else {
+                console.error("Preview generation failed", error);
+            }
         } finally {
             console.log("[generatePreview] Finished preview generation, setting isGenerating to false");
             setIsGenerating(false);
@@ -8441,7 +8764,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             a.download = `${selections.templateId}_${selections.structureId}.pdf`;
             a.click();
         } else {
-            await generateReportAction(false);
+            handleCancelGeneration();
+            cancelGenerationRef.current = false;
+            const currentAbort = new AbortController();
+            abortControllerRef.current = currentAbort;
+            setIsGenerating(true);
+            try {
+                await generateReportAction(false);
+            } catch (err: any) {
+                if (err?.name !== "AbortError" && !cancelGenerationRef.current) {
+                    console.error("Download generation failed", err);
+                }
+            } finally {
+                setIsGenerating(false);
+            }
         }
     };
 
@@ -8546,6 +8882,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     {generationProgress > 0 ? `${generationProgress}% Complete` : 'Processing...'}
                                 </span>
                             </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCancelGeneration}
+                                className="mt-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40 shadow-sm transition-all"
+                            >
+                                <X className="w-3.5 h-3.5 mr-1.5" />
+                                Cancel Generation
+                            </Button>
                         </div>
                     ) : previewUrl ? (
                         <iframe
@@ -8631,6 +8977,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         )}
                     </h1>
                 </div>
+                {onClose && (
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => {
+                            handleCancelGeneration();
+                            onClose();
+                        }}
+                        className="rounded-full h-8 w-8 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        title="Close Wizard"
+                    >
+                        <X className="w-4 h-4" />
+                    </Button>
+                )}
             </div>
 
             {/* Progress Bar */}
@@ -8658,7 +9018,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 key={s}
                                 className={`relative z-10 flex flex-col items-center gap-2 ${isClickable ? "cursor-pointer group" : "cursor-default"}`}
                                 onClick={() => {
-                                    if (isClickable) setStep(s);
+                                    if (isClickable) {
+                                        handleCancelGeneration();
+                                        setStep(s);
+                                    }
                                 }}
                             >
                                 <div className={`
@@ -8719,18 +9082,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     </Button>
                 ) : (
                     <div className="flex gap-2">
-                        <Button variant="outline" className="gap-2" onClick={handlePreview}>
-                            <Eye className="w-4 h-4" /> Open PDF
-                        </Button>
-                        <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
-                            <Download className="w-4 h-4" /> Download
-                        </Button>
-                        <Button variant="outline" className="gap-2" onClick={handleShare}>
-                            <Share2 className="w-4 h-4" /> Share
-                        </Button>
-                        <Button variant="secondary" className="gap-2" onClick={handlePrint}>
-                            <Printer className="w-4 h-4" /> Print
-                        </Button>
+                        {isGenerating ? (
+                            <Button
+                                variant="destructive"
+                                className="gap-2 shadow-sm"
+                                onClick={handleCancelGeneration}
+                            >
+                                <X className="w-4 h-4" /> Cancel Generation
+                            </Button>
+                        ) : (
+                            <>
+                                <Button variant="outline" className="gap-2" onClick={handlePreview}>
+                                    <Eye className="w-4 h-4" /> Open PDF
+                                </Button>
+                                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
+                                    <Download className="w-4 h-4" /> Download
+                                </Button>
+                                <Button variant="outline" className="gap-2" onClick={handleShare}>
+                                    <Share2 className="w-4 h-4" /> Share
+                                </Button>
+                                <Button variant="secondary" className="gap-2" onClick={handlePrint}>
+                                    <Printer className="w-4 h-4" /> Print
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
             </div>

@@ -32,19 +32,28 @@ type AuthenticatedHandler = (
  */
 export function withAuth(handler: AuthenticatedHandler) {
   return async (request: NextRequest, context: { params: Promise<any> }) => {
+    let user: AuthUser | null = null;
     try {
       const supabase = createClient();
-      const user = await getAuthUser(supabase);
-
-      if (!user) {
-        return apiUnauthorized("Authentication required");
-      }
-
-      // Call the original handler with user context
-      return await handler(request, { params: context.params, user });
+      user = await getAuthUser(supabase);
     } catch (error) {
-      console.error("[withAuth] Error:", error);
+      console.error("[withAuth] Auth check error:", error);
       return apiUnauthorized("Authentication failed");
+    }
+
+    if (!user) {
+      return apiUnauthorized("Authentication required");
+    }
+
+    // Call the original handler with user context
+    try {
+      return await handler(request, { params: context.params, user });
+    } catch (error: any) {
+      console.error("[withAuth] Handler error:", error);
+      return NextResponse.json(
+        { error: error?.message || "Internal server error" },
+        { status: 500 }
+      );
     }
   };
 }

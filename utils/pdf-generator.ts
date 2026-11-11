@@ -7,7 +7,9 @@ import {
   REPORT_FOOTER_APP_TEXT,
   formatPdfDate,
   formatReportHeaderTitle,
-  formatHeaderInfoText
+  formatHeaderInfoText,
+  toProperCase,
+  resolveOilFieldDescription
 } from "./report-generators/shared-logo";
 
 // Helper to load image for PDF with transparency support
@@ -643,7 +645,9 @@ const generatePipelineReport = async (
 
   col1Y = drawCompactField("Pipeline:", structure.str_name || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Title:", structure.title || "N/A", col1X, col1Y, colWidth);
-  col1Y = drawCompactField("Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth);
+  const rawPipeField = structure.pfield || structure.field_name || (structure as any).field;
+  const resolvedPipeField = rawPipeField ? await resolveOilFieldDescription(rawPipeField) : "N/A";
+  col1Y = drawCompactField("Field:", resolvedPipeField || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Install Date:", structure.inst_date || "N/A", col1X, col1Y, colWidth);
   col1Y = drawCompactField("Description:", (structure.description || "N/A").substring(0, 30), col1X, col1Y, colWidth);
 
@@ -729,25 +733,36 @@ const generatePipelineReport = async (
 
   // ===== DISCUSSIONS / COMMENTS =====
   const pipeDiscussions = (structure.discussions || []).filter((d) => !d.is_deleted);
-  if (pipeDiscussions.length > 0) {
-    if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
-
-    // Sort discussions by created_at descending (latest comment first)
-    const sortedPipeDiscussions = [...pipeDiscussions].sort((a: any, b: any) => {
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (dateB !== dateA) return dateB - dateA;
-      return (Number(b.id) || 0) - (Number(a.id) || 0);
+  if (pipeDiscussions.length === 0 && (structure as any).comments && typeof (structure as any).comments === 'string' && (structure as any).comments.trim()) {
+    pipeDiscussions.push({
+      created_at: (structure as any).created_at || (structure as any).updated_at || null,
+      text: (structure as any).comments.trim()
     });
+  }
 
-    const hasUser = sortedPipeDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
+  if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
+
+  // Sort discussions by created_at descending (latest comment first)
+  const sortedPipeDiscussions = [...pipeDiscussions].sort((a: any, b: any) => {
+    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (dateB !== dateA) return dateB - dateA;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
+  });
+
+  if (sortedPipeDiscussions.length > 0) {
+    const pipeCommentRows = sortedPipeDiscussions.map((disc: any) => {
+      const dateStr = formatCommentDate(disc.created_at);
+      const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "-";
+      return [dateStr, commentDetails];
+    });
 
     autoTable(doc, {
       startY: yPos,
       head: [
         [{
           content: 'COMMENTS',
-          colSpan: hasUser ? 3 : 2,
+          colSpan: 2,
           styles: {
             halign: 'left',
             fontStyle: 'bold',
@@ -757,14 +772,9 @@ const generatePipelineReport = async (
             cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
           }
         }],
-        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
+        ['Date', 'Comment Details']
       ],
-      body: sortedPipeDiscussions.map((disc: any) => {
-        const dateStr = formatCommentDate(disc.created_at);
-        const userName = disc.user_name || disc.user_id || "N/A";
-        const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
-        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
-      }),
+      body: pipeCommentRows,
       theme: 'grid',
       styles: {
         lineWidth: 0.2,
@@ -782,11 +792,7 @@ const generatePipelineReport = async (
         lineWidth: 0.2,
         lineColor: [200, 200, 200],
       },
-      columnStyles: hasUser ? {
-        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
-        1: { cellWidth: 32, fontStyle: 'bold' },
-        2: { cellWidth: 'auto', halign: 'left' }
-      } : {
+      columnStyles: {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 'auto', halign: 'left' }
       },
@@ -795,6 +801,9 @@ const generatePipelineReport = async (
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 4;
+  } else {
+    drawSectionBar(10, yPos, pageWidth - 20, 5, "COMMENTS", 12, yPos + 3.5);
+    yPos += 5 + 4;
   }
 
   // ===== SIGNATURES =====
@@ -987,7 +996,9 @@ const generatePlatformReport = async (
   const col1Offset = 23;
   const col1RowH = 6;
   col1Y = drawCompactField("Structure Title:", structure.title || structure.str_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
-  col1Y = drawCompactField("Oil Field:", structure.pfield || structure.field_name || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
+  const rawPlatField = structure.pfield || structure.field_name || (structure as any).field;
+  const resolvedPlatField = rawPlatField ? await resolveOilFieldDescription(rawPlatField) : "N/A";
+  col1Y = drawCompactField("Oil Field:", resolvedPlatField || "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
   col1Y = drawCompactField("Installation Date:", formatDisplayDate(structure.inst_date), col1X, col1Y, colWidth, col1Offset, col1RowH);
   col1Y = drawCompactField("Water Depth:", (structure.depth !== undefined && structure.depth !== null && String(structure.depth).trim() !== "") ? `${structure.depth} m` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
   col1Y = drawCompactField("Design Life:", (structure.desg_life !== undefined && structure.desg_life !== null && String(structure.desg_life).trim() !== "") ? `${structure.desg_life} yrs` : "N/A", col1X, col1Y, colWidth, col1Offset, col1RowH);
@@ -1633,25 +1644,36 @@ const generatePlatformReport = async (
 
   // ===== DISCUSSIONS / COMMENTS =====
   const discussions = (structure.discussions || []).filter((d) => !d.is_deleted);
-  if (discussions.length > 0) {
-    if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
-
-    // Sort discussions by created_at descending (latest comment first)
-    const sortedDiscussions = [...discussions].sort((a: any, b: any) => {
-      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
-      if (dateB !== dateA) return dateB - dateA;
-      return (Number(b.id) || 0) - (Number(a.id) || 0);
+  if (discussions.length === 0 && (structure as any).comments && typeof (structure as any).comments === 'string' && (structure as any).comments.trim()) {
+    discussions.push({
+      created_at: (structure as any).created_at || (structure as any).updated_at || null,
+      text: (structure as any).comments.trim()
     });
+  }
 
-    const hasUser = sortedDiscussions.some((d: any) => d.user_name && d.user_name !== "Unknown" && d.user_name !== "N/A");
+  if (yPos > pageHeight - 35) { doc.addPage(); yPos = 15; }
+
+  // Sort discussions by created_at descending (latest comment first)
+  const sortedDiscussions = [...discussions].sort((a: any, b: any) => {
+    const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+    if (dateB !== dateA) return dateB - dateA;
+    return (Number(b.id) || 0) - (Number(a.id) || 0);
+  });
+
+  if (sortedDiscussions.length > 0) {
+    const commentRows = sortedDiscussions.map((disc: any) => {
+      const dateStr = formatCommentDate(disc.created_at);
+      const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "-";
+      return [dateStr, commentDetails];
+    });
 
     autoTable(doc, {
       startY: yPos,
       head: [
         [{
           content: 'COMMENTS',
-          colSpan: hasUser ? 3 : 2,
+          colSpan: 2,
           styles: {
             halign: 'left',
             fontStyle: 'bold',
@@ -1661,14 +1683,9 @@ const generatePlatformReport = async (
             cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
           }
         }],
-        hasUser ? ['Date', 'User', 'Comment Details'] : ['Date', 'Comment Details']
+        ['Date', 'Comment Details']
       ],
-      body: sortedDiscussions.map((disc: any) => {
-        const dateStr = formatCommentDate(disc.created_at);
-        const userName = disc.user_name || disc.user_id || "N/A";
-        const commentDetails = disc.text || disc.comment_details || disc.content || disc.message || disc.details || disc.comment || "N/A";
-        return hasUser ? [dateStr, userName, commentDetails] : [dateStr, commentDetails];
-      }),
+      body: commentRows,
       theme: 'grid',
       styles: {
         lineWidth: 0.2,
@@ -1686,11 +1703,7 @@ const generatePlatformReport = async (
         lineWidth: 0.2,
         lineColor: [200, 200, 200],
       },
-      columnStyles: hasUser ? {
-        0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
-        1: { cellWidth: 32, fontStyle: 'bold' },
-        2: { cellWidth: 'auto', halign: 'left' }
-      } : {
+      columnStyles: {
         0: { cellWidth: 26, halign: 'center', fontStyle: 'bold' },
         1: { cellWidth: 'auto', halign: 'left' }
       },
@@ -1699,6 +1712,10 @@ const generatePlatformReport = async (
     });
 
     yPos = (doc as any).lastAutoTable.finalY + 4;
+  } else {
+    // If no comments data exists, show the comments panel banner only without table columns
+    drawSectionBar(10, yPos, pageWidth - 20, 5, "COMMENTS", 12, yPos + 3.5);
+    yPos += 5 + 4;
   }
 
   // ===== ADDITIONAL STRUCTURE VISUAL DOCUMENTATION (for remaining photos beyond Page 1) =====

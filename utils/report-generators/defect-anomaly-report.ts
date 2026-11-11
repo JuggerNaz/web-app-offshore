@@ -4,7 +4,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal , formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText , REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, toProperCase, resolveOilFieldDescription } from "./shared-logo";
 
 export interface CompanySettings {
     company_name: string;
@@ -466,11 +466,12 @@ export const generateDefectAnomalyReport = async (
         // Determine vessel 
         // If jobpack metadata provides multiple vessels (comma separated), they should be displayed.
         // We prioritize explicit anomaly vessel if present, otherwise jobpack vessel.
-        const vessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
+        const rawVessel = record.main_vessel || record.dive_vessel || jobPack.metadata?.vessel || "N/A";
+        const vessel = rawVessel !== "N/A" ? toProperCase(rawVessel) : "N/A";
 
         // Field/Install
-        // Field/Install
-        const field = record.field_name || structure.field_name || "N/A";
+        const rawField = record.field_name || structure.field_name || structure.pfield || "N/A";
+        const field = rawField !== "N/A" ? await resolveOilFieldDescription(rawField) : "N/A";
         const install = record.structure_name || structure.str_name || "N/A";
         const ref = anomalyDetails.display_ref_no || "N/A";
         // Report No resolution

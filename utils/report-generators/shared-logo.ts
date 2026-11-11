@@ -4,6 +4,98 @@ export const APP_NAME = "OFFSHOREPRO";
 export const APP_VERSION = "1.0";
 export const REPORT_FOOTER_APP_TEXT = `${APP_NAME} Version ${APP_VERSION}`;
 
+/**
+ * Formats string to Proper Case (Title Case).
+ * Handles multi-word phrases, hyphens, and slashes.
+ */
+export const toProperCase = (str?: string | null): string => {
+    if (!str || typeof str !== 'string') return '';
+    const trimmed = str.trim();
+    if (!trimmed) return '';
+    return trimmed.replace(/\b([a-zA-Z])([a-zA-Z0-9]*)\b/g, (_, firstChar, rest) => {
+        return firstChar.toUpperCase() + rest.toLowerCase();
+    });
+};
+
+let cachedOilFieldLib: { id: string; val: string; desc: string }[] | null = null;
+
+/**
+ * Resolves raw oilfield ID or code to its library description and formats in Proper Case.
+ * Example: "BOKOR." -> "Bokor Field"
+ */
+export const resolveOilFieldDescription = async (rawFieldId?: any): Promise<string> => {
+    if (!rawFieldId || (typeof rawFieldId !== "string" && typeof rawFieldId !== "number")) {
+        return "";
+    }
+    const rawStr = String(rawFieldId).trim();
+    if (!rawStr || rawStr.toUpperCase() === "N/A" || rawStr === "-") return rawStr;
+
+    const cleanFieldKey = rawStr.replace(/\.+$/, "").trim().toLowerCase();
+
+    if (!cachedOilFieldLib) {
+        if (typeof window !== "undefined" && typeof fetch !== "undefined") {
+            try {
+                const fStatsRes = await fetch("/api/library/fields-stats");
+                if (fStatsRes.ok) {
+                    const fJson = await fStatsRes.json();
+                    const list = Array.isArray(fJson?.data) ? fJson.data : (Array.isArray(fJson) ? fJson : []);
+                    if (list.length > 0) {
+                        cachedOilFieldLib = list.map((item: any) => ({
+                            id: String(item.lib_id || "").replace(/\.+$/, "").trim().toLowerCase(),
+                            val: String(item.lib_val || "").replace(/\.+$/, "").trim().toLowerCase(),
+                            desc: String(item.lib_desc || "").replace(/\.+$/, "").trim()
+                        }));
+                    }
+                }
+            } catch (_) {}
+
+            if (!cachedOilFieldLib || cachedOilFieldLib.length === 0) {
+                try {
+                    const fLibRes = await fetch("/api/library/OILFIELD");
+                    if (fLibRes.ok) {
+                        const fJson = await fLibRes.json();
+                        const list = Array.isArray(fJson?.data) ? fJson.data : (Array.isArray(fJson) ? fJson : []);
+                        if (list.length > 0) {
+                            cachedOilFieldLib = list.map((item: any) => ({
+                                id: String(item.lib_id || item.id || item.code || "").replace(/\.+$/, "").trim().toLowerCase(),
+                                val: String(item.lib_val || "").replace(/\.+$/, "").trim().toLowerCase(),
+                                desc: String(item.lib_desc || item.name || "").replace(/\.+$/, "").trim()
+                            }));
+                        }
+                    }
+                } catch (_) {}
+            }
+        }
+    }
+
+    if (cachedOilFieldLib && cachedOilFieldLib.length > 0) {
+        const matched = cachedOilFieldLib.find(item =>
+            item.id === cleanFieldKey ||
+            item.val === cleanFieldKey ||
+            item.desc.toLowerCase() === cleanFieldKey
+        );
+        if (matched && matched.desc) {
+            return toProperCase(matched.desc);
+        }
+    }
+
+    if (cleanFieldKey === "bokor") {
+        return "Bokor Field";
+    }
+
+    return toProperCase(rawStr.replace(/\.+$/, "").trim());
+};
+
+/**
+ * Synchronous fallback for formatting oilfield in Proper Case
+ */
+export const formatOilFieldProper = (rawFieldId?: any): string => {
+    if (!rawFieldId) return "";
+    const clean = String(rawFieldId).replace(/\.+$/, "").trim();
+    if (clean.toLowerCase() === "bokor") return "Bokor Field";
+    return toProperCase(clean);
+};
+
 const logoCache = new Map<string, { data: string; width: number; height: number; }>();
 
 export const loadLogoWithTransparency = async (url: string): Promise<{ data: string; width: number; height: number; } | null> => {
@@ -447,7 +539,8 @@ export const drawStandardContextRow = (
     };
 
     drawBox("Structure:", data.structure || "N/A", margin, half, y);
-    drawBox("Vessel:", data.vessel || "N/A", margin + half, half, y);
+    const vesselVal = data.vessel && data.vessel !== "N/A" ? toProperCase(data.vessel) : (data.vessel || "N/A");
+    drawBox("Vessel:", vesselVal, margin + half, half, y);
     drawBox("Job Pack:", data.jobpack || "N/A", margin, half, y + ROW_H);
     drawBox("Insp. Date Range:", data.dateRange || "N/A", margin + half, half, y + ROW_H);
 

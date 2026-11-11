@@ -7,7 +7,9 @@ import {
     draw3SectionHeader,
     applyWatermarkAndSignaturesGlobal, 
     formatPdfDate, 
-    REPORT_FOOTER_APP_TEXT 
+    REPORT_FOOTER_APP_TEXT,
+    toProperCase,
+    resolveOilFieldDescription 
 } from "./shared-logo";
 import { getInspectionDateRange } from "./date-range-utils";
 
@@ -140,6 +142,7 @@ export const generateInspectionSummaryReport = async (
         // Structure & Header Info
         const structureInfo = summaryData?.structureInfo || headerDataOrStructure || {};
         const fieldName = (headerDataOrStructure?.fieldName || headerDataOrStructure?.field || headerDataOrStructure?.pfield || summaryData?.structureInfo?.field || summaryData?.structureInfo?.fieldName || summaryData?.structureInfo?.pfield || "").trim();
+        const resolvedFieldName = fieldName ? await resolveOilFieldDescription(fieldName) : "";
         const platformName = (headerDataOrStructure?.platformName || headerDataOrStructure?.name || headerDataOrStructure?.str_name || headerDataOrStructure?.title || summaryData?.structureInfo?.name || summaryData?.structureInfo?.title || "OFFSHORE PLATFORM").trim();
         
         let rawWaterDepth = 
@@ -373,7 +376,7 @@ export const generateInspectionSummaryReport = async (
             }
         }
 
-        const fieldVal = fieldName ? fieldName.toUpperCase() : "--";
+        const fieldVal = resolvedFieldName ? toProperCase(resolvedFieldName) : (fieldName ? toProperCase(fieldName) : "--");
         const structVal = platformName ? platformName.toUpperCase() : "--";
         const jpVal = jobPackName || "--";
         const dateVal = inspDateRangeStr || "--";

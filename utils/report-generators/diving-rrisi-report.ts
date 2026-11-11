@@ -514,22 +514,22 @@ export const generateDivingRRISIReport = async (
                 if (sMax >= 0 && sMin <= 0) {
                     const seaY = elevToY(0);
                     d.setDrawColor(...colors.seaLevel); d.setLineWidth(0.4);
-                    d.line(sx + 2, seaY, sx + sw - 2, seaY);
+                    d.line(sx + 11, seaY, sx + sw - 2, seaY);
                     d.setFontSize(5); d.setTextColor(...colors.seaLevel); d.setFont("helvetica", "bold");
-                    d.text("SEA LEVEL (0.00m)", sx + 2.5, seaY - 1.2);
+                    d.text("SEA LEVEL (0.00m)", sx + 12, seaY - 1.5);
                 }
 
                 // 2. Seabed Mudline Line
                 d.setDrawColor(...colors.mudline); d.setLineWidth(1.2);
                 if (suspGap === 0) {
-                    d.line(sx + 2, mudY, sx + sw - 2, mudY);
+                    d.line(sx + 11, mudY, sx + sw - 2, mudY);
                     d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
-                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, mudY - 1.5);
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 12, mudY - 1.5);
                 } else {
                     const startMudY = mudY;
                     const endMudY = pipeY + (rWidth / 2);
                     const touchMudX = Math.min(pipeCenterX + bRadius + (mudTouchDist * (sw / 60)), sx + sw - 4);
-                    d.line(sx + 2, startMudY, pipeCenterX - 10, startMudY);
+                    d.line(sx + 11, startMudY, pipeCenterX - 10, startMudY);
                     let lx = pipeCenterX - 10; let ly = startMudY;
                     const segs = 20;
                     for (let j = 1; j <= segs; j++) {
@@ -542,7 +542,7 @@ export const generateDivingRRISIReport = async (
                     d.line(lx, ly, sx + sw - 2, ly);
                     d.setFontSize(5); d.setTextColor(...colors.mudline); d.setFont("helvetica", "bold");
                     d.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 4, { align: 'center' });
-                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 2.5, startMudY - 1.5);
+                    d.text(`SEABED (${platformDepth.toFixed(1)}m)`, sx + 12, startMudY - 1.5);
                 }
 
                 // Helper pipe cylinder renderer
@@ -658,13 +658,28 @@ export const generateDivingRRISIReport = async (
                     const ty = elevToY(e);
                     if (ty >= gTopY && ty <= gMudlineY + 15) {
                         d.line(sx + 7, ty, sx + 10, ty);
+                        if (Math.abs(e) < 0.01 && (sMax >= 0 && sMin <= 0)) continue;
                         d.setFontSize(5); d.setFont("helvetica", "normal"); d.setTextColor(100, 115, 130);
                         d.text(`${e}m`, sx + 2, ty + 1);
                     }
                 }
 
-                // 6. Component Markers & Callouts (including Clamps)
-                recordsInGroup.forEach((r) => {
+                // 6. Component Markers & Callouts (including Clamps - Clamps drawn first)
+                const sortedForDrawing = [...recordsInGroup].sort((a, b) => {
+                    const cA = a.structure_components || {};
+                    const cB = b.structure_components || {};
+                    const qidA = (cA.q_id || a.q_id || a.component_qid || '').toUpperCase();
+                    const qidB = (cB.q_id || b.q_id || b.component_qid || '').toUpperCase();
+                    const codeA = (cA.code || a.component_code || '').toUpperCase();
+                    const codeB = (cB.code || b.component_code || '').toUpperCase();
+                    const isCompA = codeA === 'CL' || codeA === 'CLP' || codeA === 'CLAMP' || qidA.includes('CLP') || qidA.includes('CLAMP') || qidA.includes('SUPP') || (a.description && a.description.toLowerCase().includes('clamp'));
+                    const isCompB = codeB === 'CL' || codeB === 'CLP' || codeB === 'CLAMP' || qidB.includes('CLP') || qidB.includes('CLAMP') || qidB.includes('SUPP') || (b.description && b.description.toLowerCase().includes('clamp'));
+                    if (isCompA && !isCompB) return -1;
+                    if (!isCompA && isCompB) return 1;
+                    return 0;
+                });
+                const drawnElevations = new Set<string>();
+                sortedForDrawing.forEach((r) => {
                     const c = r.structure_components || {};
                     const qid = (c.q_id || r.q_id || r.component_qid || '').toUpperCase();
                     const compCode = (c.code || r.component_code || '').toUpperCase();
@@ -682,33 +697,34 @@ export const generateDivingRRISIReport = async (
                     const isClamp = compCode === 'CL' || compCode === 'CLP' || compCode === 'CLAMP' || 
                                     qid.includes('CLP') || qid.includes('CLAMP') || qid.includes('SUPP') || 
                                     (r.description && r.description.toLowerCase().includes('clamp'));
+                    const elevKey = elev.toFixed(1);
 
                     if (isClamp) {
                         // Clamp Shape: Bracket rectangle with bolt ears
-                        const cw = rWidth + 5; const ch = 4;
+                        const cw = rWidth + 4; const ch = 2.8; const fw = 1.4;
                         d.setFillColor(255, 255, 255);
                         d.rect(pipeCenterX - cw/2, py - ch/2, cw, ch, 'F');
-                        d.setDrawColor(...colors.navy); d.setLineWidth(0.7);
+                        d.setDrawColor(...colors.navy); d.setLineWidth(0.5);
                         d.rect(pipeCenterX - cw/2, py - ch/2, cw, ch, 'S');
 
                         // Left & Right bolt ears
-                        d.setFillColor(...colors.navy);
-                        d.rect(pipeCenterX - cw/2 - 2, py - 1, 2, 2, 'F');
-                        d.rect(pipeCenterX + cw/2, py - 1, 2, 2, 'F');
-                        d.circle(pipeCenterX - cw/2 - 1, py, 0.5, 'F');
-                        d.circle(pipeCenterX + cw/2 + 1, py, 0.5, 'F');
+                        d.rect(pipeCenterX - cw/2 - fw, py - 0.7, fw, 1.4, 'S');
+                        d.rect(pipeCenterX + cw/2, py - 0.7, fw, 1.4, 'S');
 
                         // Left Side: Elevation Value
                         d.setDrawColor(...colors.navy); d.setLineWidth(0.2);
-                        const leftLineEnd = pipeCenterX - cw/2 - 2 - 5;
-                        d.line(pipeCenterX - cw/2 - 2, py, leftLineEnd, py);
-                        d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
+                        if (!drawnElevations.has(elevKey)) {
+                            drawnElevations.add(elevKey);
+                            const leftLineEnd = pipeCenterX - cw/2 - fw - 4;
+                            d.line(pipeCenterX - cw/2 - fw, py, leftLineEnd, py);
+                            d.setFontSize(5.5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                            d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                        }
 
                         // Right Side: Object Name / QID
-                        const rightLineEnd = Math.min(pipeCenterX + cw/2 + 2 + 5, sx + sw - 20);
-                        d.line(pipeCenterX + cw/2 + 2, py, rightLineEnd, py);
-                        d.setFontSize(5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
+                        const rightLineEnd = Math.min(pipeCenterX + cw/2 + fw + 4, sx + sw - 20);
+                        d.line(pipeCenterX + cw/2 + fw, py, rightLineEnd, py);
+                        d.setFontSize(5.5); d.setTextColor(...colors.navy); d.setFont("helvetica", "bold");
                         let displayQid = c.q_id || r.q_id || 'Clamp';
                         const maxW = (sx + sw - 2) - (rightLineEnd + 1);
                         if (d.getTextWidth(displayQid) > maxW) {
@@ -717,18 +733,21 @@ export const generateDivingRRISIReport = async (
                             }
                             displayQid += '...';
                         }
-                        d.text(displayQid, rightLineEnd + 1, py + 1.2);
+                        d.text(displayQid, rightLineEnd + 1, py + 1);
                     } else {
                         // Normal Marker Dot
                         d.setFillColor(...markerColor);
-                        d.circle(pipeCenterX, py, 1.8, 'F');
+                        d.circle(pipeCenterX, py, 1.5, 'F');
                         d.setDrawColor(...markerColor); d.setLineWidth(0.1);
 
                         // Left Side: Elevation Value
-                        const leftLineEnd = pipeCenterX - 2 - 5;
-                        d.line(pipeCenterX - 2, py, leftLineEnd, py);
-                        d.setFontSize(5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
-                        d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1.2, { align: "right" });
+                        if (!drawnElevations.has(elevKey)) {
+                            drawnElevations.add(elevKey);
+                            const leftLineEnd = pipeCenterX - (rWidth / 2) - 4;
+                            d.line(pipeCenterX - (rWidth / 2), py, leftLineEnd, py);
+                            d.setFontSize(5.5); d.setTextColor(...markerColor); d.setFont("helvetica", "bold");
+                            d.text(`${elev.toFixed(1)}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                        }
                     }
                 });
             };
@@ -784,7 +803,7 @@ export const generateDivingRRISIReport = async (
                 margin: { left: dX, right: margin, top: margin + headerH + 6, bottom: 20 },
                 tableWidth: dW,
                 head: [
-                    ['No.', 'Elev', 'Dive', 'CP', 'UT', 'Findings']
+                    ['No.', 'Elev\n(m)', 'Dive\nNo.', 'CP\n(mV)', 'UT\n(mm)', 'Findings']
                 ],
                 body: tableRows.map(tr => tr.rowCells),
                 theme: 'grid',
@@ -815,11 +834,11 @@ export const generateDivingRRISIReport = async (
                     }
                 },
                 columnStyles: {
-                    0: { cellWidth: 12, halign: 'center' },
-                    1: { cellWidth: 16, halign: 'center' },
-                    2: { cellWidth: 14, halign: 'center' },
-                    3: { cellWidth: 16, halign: 'center', fontStyle: 'bold' },
-                    4: { cellWidth: 14, halign: 'center', fontStyle: 'bold' },
+                    0: { cellWidth: 7, halign: 'center' },
+                    1: { cellWidth: 12, halign: 'center' },
+                    2: { cellWidth: 12, halign: 'center' },
+                    3: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
+                    4: { cellWidth: 12, halign: 'center', fontStyle: 'bold' },
                     5: { cellWidth: 'auto', halign: 'left' }
                 },
                 didDrawPage: (data) => {
@@ -864,9 +883,9 @@ export const generateDivingRRISIReport = async (
                     doc.text(label, lx + 2, sigY + 3.5);
                     doc.setTextColor(...colors.text); doc.setFont("helvetica", "normal"); doc.setFontSize(6.5);
                     doc.text("Name:", lx + 2, sigY + 10);
-                if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
+                    if (person?.name) doc.text(person.name, lx + 14, sigY + 10);
                     doc.text("Date:", lx + 2, sigY + 13.5);
-                if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
+                    if (person?.date) doc.text(formatPdfDate(person.date), lx + 14, sigY + 13.5);
                     doc.text("Signature:", lx + 2, sigY + 17);
                 };
 

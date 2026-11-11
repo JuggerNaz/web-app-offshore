@@ -28,6 +28,15 @@ export interface TOCLinkTarget {
     };
 }
 
+export function toProperCase(str: string): string {
+    if (!str || typeof str !== "string") return "";
+    const clean = str.replace(/[.,;]+$/, "").trim();
+    return clean
+        .toLowerCase()
+        .replace(/(?:^|[\s\-\/\(\[])([a-z0-9])/gi, (match) => match.toUpperCase())
+        .trim();
+}
+
 export interface FinalDatasheetCoverOptions {
     structureName?: string;
     fieldName?: string;
@@ -138,7 +147,8 @@ export const generateMainCoverPage = async (options: FinalDatasheetCoverOptions 
     // Detail Box rows:
     const clientVal = options.clientName || options.companyName || "Petronas Carigali Sdn Bhd (SKA)";
     const contractorVal = options.contractorName || "NasQuest Resources Sdn Bhd";
-    const vesselVal = options.vessel || "MEO RESOLUTION";
+    const vesselVal = toProperCase(options.vessel || "Meo Resolution");
+    const fieldVal = toProperCase(options.fieldName ? String(options.fieldName).replace(/\.+$/, "").trim() : "Bokor Field");
     const todayDateStr = options.issuedDate || options.dateStr || new Date().toISOString().split("T")[0];
     const dateRangeVal = options.inspectionDateRange || options.dateRange || "24 Aug 2026 – 31 Aug 2026";
     const revisionVal = options.revision || "0";
@@ -147,7 +157,7 @@ export const generateMainCoverPage = async (options: FinalDatasheetCoverOptions 
         { label: "CLIENT:", val: clientVal },
         { label: "CONTRACTOR:", val: contractorVal },
         { label: "VESSEL:", val: vesselVal },
-        { label: "FIELD / LOCATION:", val: options.fieldName || "BOKOR FIELD" },
+        { label: "FIELD / LOCATION:", val: fieldVal },
         { label: "JOBPACK:", val: options.jobPackName || "UIMC2026/SKA/PLAT01" },
         { label: "SOW REPORT NUMBER:", val: options.sowReportNo || "N/A" },
         { label: "INSPECTION DATE RANGE:", val: dateRangeVal },
@@ -162,9 +172,17 @@ export const generateMainCoverPage = async (options: FinalDatasheetCoverOptions 
         doc.setTextColor(71, 85, 105); // slate-600
         doc.text(m.label, cardX + 8, my);
 
+        const maxValW = cardW - 68; // available width (~102mm)
         doc.setFontSize(9);
         doc.setFont("helvetica", "bold");
         doc.setTextColor(15, 23, 42); // slate-900
+
+        // Auto-scale font size if text exceeds line boundary (e.g. multiple vessels)
+        const textW = doc.getTextWidth(m.val);
+        if (textW > maxValW) {
+            const scaledSize = Math.max(7, Math.floor(9 * (maxValW / textW) * 10) / 10);
+            doc.setFontSize(scaledSize);
+        }
         doc.text(m.val, cardX + 60, my);
 
         if (idx < metaFields.length - 1) {
@@ -275,10 +293,46 @@ export const generateTOCPages = async (
     const maxItemsPerPage = 22;
     const allEntries: Array<{ isSection: boolean; title: string; mode?: string; pageNum: number; sectionName?: string }> = [];
 
+    const normalizeTOCSectionTitle = (name: string): string => {
+        const u = (name || "").trim().toUpperCase();
+        if (u === "STRUCTURE DETAILS") return "Structure Summary";
+        return name;
+    };
+
+    const normalizeTOCTemplateTitle = (id: string, name: string): string => {
+        if (id === "defect-criteria-report" || name === "Defect Criteria Report") {
+            return "Defect Criteria Specification Report";
+        }
+        if (id === "inspection-summary-graph" || name === "Inspection Summary by Graph") {
+            return "Inspection Summary";
+        }
+        if (id === "inspection-incomplete-flagged-report" || name === "Inspection Incomplete Summary Report") {
+            return "Incomplete Inspection Summary Report";
+        }
+        if (id === "rov-anode-report" || (name && name.includes("General Visual Anode Inspection"))) {
+            return "General Visual Anode Inspection Report (ROV)";
+        }
+        if (id === "rov-anode-rsani-report" || (name && name.includes("Selected Anode Inspection") && (name.includes("SANI") || name.includes("ROV")))) {
+            return "Selected Anode Inspection Report (ROV)";
+        }
+        if (id === "defect-summary" || name === "Defect Summary Report") {
+            return "Anomaly Summary Report";
+        }
+        if (id === "defect-anomaly-report" || name === "Defect / Anomaly Report" || name === "Defect Report") {
+            return "Anomaly Report";
+        }
+        if (id === "defect-summary-pipeline" || name === "Defect Summary Report (Pipeline)") {
+            return "Anomaly Summary Report (Pipeline)";
+        }
+        return name;
+    };
+
     sections.forEach(sec => {
-        allEntries.push({ isSection: true, title: sec.name, pageNum: sec.pageNum || 1 });
+        const secTitle = normalizeTOCSectionTitle(sec.name);
+        allEntries.push({ isSection: true, title: secTitle, pageNum: sec.pageNum || 1 });
         sec.templates.forEach(t => {
-            allEntries.push({ isSection: false, title: t.name, mode: t.mode, pageNum: t.pageNum || 1, sectionName: sec.name });
+            const tempTitle = normalizeTOCTemplateTitle(t.id, t.name);
+            allEntries.push({ isSection: false, title: tempTitle, mode: t.mode, pageNum: t.pageNum || 1, sectionName: secTitle });
         });
     });
 
@@ -526,7 +580,7 @@ export const generateInspectionSummaryCoverPage = async (options: FinalDatasheet
 
     const metaFields = [
         { label: "STRUCTURE / PLATFORM:", val: options.structureName || "BODP-A" },
-        { label: "FIELD / LOCATION:", val: options.fieldName || "BOKOR FIELD" },
+        { label: "FIELD / LOCATION:", val: toProperCase(options.fieldName ? String(options.fieldName).replace(/\.+$/, "").trim() : "Bokor Field") },
         { label: "JOBPACK REFERENCE:", val: options.jobPackName || "UIMC2026/SKA/PLAT01" },
         { label: "SOW REPORT NUMBER:", val: options.sowReportNo || "AM26-016-01" },
         { label: "INSPECTION SCOPE / MODE:", val: options.inspectionModes || "ROV & Diving Consolidated" },
@@ -710,7 +764,9 @@ export const generateSectionDividerPage = async (sectionName: string, options: F
     // Normalize Section Name for CATHODIC PROTECTION SURVEY
     let displayName = sectionName;
     const normUpper = (sectionName || "").trim().toUpperCase();
-    if (
+    if (normUpper === "STRUCTURE DETAILS") {
+        displayName = "Structure Summary";
+    } else if (
         normUpper === "CATHODIC PROTECTION" ||
         normUpper === "CATHODIC PROTECTION POTENTIAL" ||
         normUpper === "CATHODIC PROTECTION POTENTIAL SURVEY"

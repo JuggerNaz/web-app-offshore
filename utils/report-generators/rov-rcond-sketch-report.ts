@@ -336,7 +336,7 @@ export const generateROVCondSketchReport = async (
                 pMeta.end_elevation ?? pMeta.end_elev ?? platformDepth
             );
             
-            const rWidth = 14; // Slightly wider for conductor
+            const rWidth = 10; // Sleek conductor width
             const sketchH = 155;
             const isPF = config?.printFriendly;
 
@@ -364,9 +364,9 @@ export const generateROVCondSketchReport = async (
             if (sMax >= 0 && sMin <= 0) {
                 const seaY = eToY(0);
                 doc.setDrawColor(59, 130, 246); doc.setLineWidth(0.4);
-                doc.line(gX + 2, seaY, gX + gW - 2, seaY);
+                doc.line(gX + 11, seaY, gX + gW - 2, seaY);
                 doc.setFontSize(5); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
-                doc.text("SEA LEVEL (0.00m)", gX + 2.5, seaY - 1.2);
+                doc.text("SEA LEVEL (0.00m)", gX + 12, seaY - 1.5);
             }
 
             // --- Graphics Area ---
@@ -385,12 +385,29 @@ export const generateROVCondSketchReport = async (
                 const ey = eToY(e);
                 if (ey <= gBottomY + 15) {
                     doc.line(gX + 7, ey, gX + 10, ey);
+                    if (Math.abs(e) < 0.01 && (sMax >= 0 && sMin <= 0)) continue;
                     doc.setFontSize(5); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, gX + 2, ey + 1);
                 }
             }
 
             // Mark Points
-            recordsInGroup.forEach(r => {
+            const sortedForDrawing = [...recordsInGroup].sort((a, b) => {
+                const cA = a.structure_components || a.component || {};
+                const cB = b.structure_components || b.component || {};
+                const descA = String(cA.name || cA.description || cA.metadata?.description || '').toLowerCase();
+                const qidA = String(cA.q_id || '').toLowerCase();
+                const codeA = String(cA.code || '').toUpperCase();
+                const isCompA = descA.includes('clamp') || qidA.includes('clp') || qidA.includes('supp') || descA.includes('guide') || descA.includes('frame') || qidA.includes('gf') || codeA === 'CF' || codeA === 'CGF';
+                const descB = String(cB.name || cB.description || cB.metadata?.description || '').toLowerCase();
+                const qidB = String(cB.q_id || '').toLowerCase();
+                const codeB = String(cB.code || '').toUpperCase();
+                const isCompB = descB.includes('clamp') || qidB.includes('clp') || qidB.includes('supp') || descB.includes('guide') || descB.includes('frame') || qidB.includes('gf') || codeB === 'CF' || codeB === 'CGF';
+                if (isCompA && !isCompB) return -1;
+                if (!isCompA && isCompB) return 1;
+                return 0;
+            });
+            const drawnElevations = new Set<string>();
+            sortedForDrawing.forEach(r => {
                 const c = r.structure_components || r.component || {}; 
                 const d = r.inspection_data || {};
                 const el = parseFloat(r.elevation ?? d.elevation); if (isNaN(el)) return;
@@ -404,23 +421,27 @@ export const generateROVCondSketchReport = async (
                 const cCode = String(c.code || '').toUpperCase();
                 const isClamp = cDesc.includes('clamp') || cQid.includes('clp') || cQid.includes('supp');
                 const isGuide = cDesc.includes('guide') || cDesc.includes('frame') || cQid.includes('gf') || cCode === 'CF' || cCode === 'CGF';
+                const elevKey = el.toFixed(1);
 
                 if (isClamp) {
-                    const cw = rWidth + 10; const ch = 4;
+                    const cw = rWidth + 4; const ch = 2.8; const earW = 1.4;
                     doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
-                    doc.rect(cX - cw/2 - 2, py - 1, 2, 2, 'S'); doc.rect(cX + cw/2, py - 1, 2, 2, 'S');
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.5); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
+                    doc.rect(cX - cw/2 - earW, py - 0.7, earW, 1.4, 'S'); doc.rect(cX + cw/2, py - 0.7, earW, 1.4, 'S');
                     
                     // Left Side: Elevation Value
                     doc.setLineWidth(0.2); doc.setDrawColor(...colors.navy);
-                    const leftLineEnd = cX - cw/2 - 2 - 5;
-                    doc.line(cX - cw/2 - 2, py, leftLineEnd, py);
+                    if (!drawnElevations.has(elevKey)) {
+                        drawnElevations.add(elevKey);
+                        const leftLineEnd = cX - cw/2 - earW - 4;
+                        doc.line(cX - cw/2 - earW, py, leftLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                        doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    }
 
                     // Right Side: Object Name / QID
-                    const rightLineEnd = Math.min(cX + cw/2 + 2 + 5, gX + gW - 20);
-                    doc.line(cX + cw/2 + 2, py, rightLineEnd, py);
+                    const rightLineEnd = Math.min(cX + cw/2 + earW + 4, gX + gW - 20);
+                    doc.line(cX + cw/2 + earW, py, rightLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
                     let qidText = c.q_id || 'Clamp';
                     const maxQidW = (gX + gW - 2) - (rightLineEnd + 1);
@@ -432,22 +453,25 @@ export const generateROVCondSketchReport = async (
                     }
                     doc.text(qidText, rightLineEnd + 1, py + 1);
                 } else if (isGuide) {
-                    const gw = rWidth + 16; const gh = 6;
+                    const gw = rWidth + 7; const gh = 3.8;
                     doc.setFillColor(230, 235, 245); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'F');
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(1); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'S');
-                    doc.setLineWidth(0.3);
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.6); doc.rect(cX - gw/2, py - gh/2, gw, gh, 'S');
+                    doc.setLineWidth(0.2);
                     doc.line(cX - gw/2, py - gh/2, cX + gw/2, py + gh/2);
                     doc.line(cX - gw/2, py + gh/2, cX + gw/2, py - gh/2);
                     
                     // Left Side: Elevation Value
                     doc.setLineWidth(0.2); doc.setDrawColor(...colors.navy);
-                    const leftLineEnd = cX - gw/2 - 5;
+                    if (!drawnElevations.has(elevKey)) {
+                        drawnElevations.add(elevKey);
+                        const leftLineEnd = cX - gw/2 - 4;
                     doc.line(cX - gw/2, py, leftLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                        doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    }
 
                     // Right Side: Object Name / QID
-                    const rightLineEnd = Math.min(cX + gw/2 + 5, gX + gW - 20);
+                    const rightLineEnd = Math.min(cX + gw/2 + 4, gX + gW - 20);
                     doc.line(cX + gw/2, py, rightLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
                     let qidText = c.q_id || 'Guide Frame';
@@ -460,14 +484,17 @@ export const generateROVCondSketchReport = async (
                     }
                     doc.text(qidText, rightLineEnd + 1, py + 1);
                 } else {
-                    doc.setFillColor(...col); doc.circle(cX, py, 2, 'F');
+                    doc.setFillColor(...col); doc.circle(cX, py, 1.5, 'F');
                     doc.setDrawColor(...col); doc.setLineWidth(0.1); 
 
                     // Left Side: Elevation Value
-                    const leftLineEnd = cX - 3 - 5;
-                    doc.line(cX - 3, py, leftLineEnd, py);
+                    if (!drawnElevations.has(elevKey)) {
+                        drawnElevations.add(elevKey);
+                        const leftLineEnd = cX - (rWidth / 2) - 4;
+                        doc.line(cX - (rWidth / 2), py, leftLineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...col);
-                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                        doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    }
                 }
             });
 
@@ -477,7 +504,7 @@ export const generateROVCondSketchReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
-                head: [['No.', 'Elev (m)', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                head: [['No.', 'Elev\n(m)', 'Dive\nNo.', 'CP\n(mV)', 'Findings / Anomalies']],
                 body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
@@ -534,7 +561,7 @@ export const generateROVCondSketchReport = async (
 
                     return [
                         { content: String(itemNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
-                        { content: r.elevation ? `${r.elevation}m` : (rd.elevation ? `${rd.elevation}m` : 'N/A'), styles: {fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
+                        { content: r.elevation != null && String(r.elevation).trim() !== '' ? (String(r.elevation).endsWith('m') ? String(r.elevation) : `${r.elevation}m`) : (rd.elevation != null && String(rd.elevation).trim() !== '' ? (String(rd.elevation).endsWith('m') ? String(rd.elevation) : `${rd.elevation}m`) : 'N/A'), styles: {fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
                         { content: String(diveNo), styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
                         { content: cpDisplay, styles: {halign: 'center', lineWidth: 0.1, lineColor: colors.border} },
                         { content: findings, styles: {textColor: isAnom ? colors.anomaly : colors.text, lineWidth: 0.1, lineColor: colors.border} }
@@ -552,7 +579,7 @@ export const generateROVCondSketchReport = async (
                     fontSize: 8,
                     halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                 styles: {fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: colors.border},
-                columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
+                columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 11 }, 2: { cellWidth: 12 }, 3: { cellWidth: 11 }, 4: { cellWidth: 'auto' } },
                 didDrawPage: (data) => {
                     if (data.pageNumber > 1) drawHeader(doc);
                 }

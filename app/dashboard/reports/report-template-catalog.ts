@@ -26,7 +26,7 @@ export const REPORT_TEMPLATES = {
         { id: "work-scope-report", name: "Work Scope Report", icon: Wrench, description: "Detailed work scope for a specific platform", requires: ["jobpack", "structure"] },
         { id: "work-scope-status", name: "Work Scope Status Summary", icon: FileBarChart, description: "Status completion summary with charts", requires: ["jobpack", "structure"] },
         { id: "work-scope-incomplete", name: "Work Scope Incomplete Status", icon: FileBarChart, description: "Incomplete status breakdown with charts", requires: ["jobpack", "structure"] },
-        { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", icon: FileCheck, description: "Detailed list of all incomplete flagged inspection records grouped by inspection type", requires: ["jobpack", "structure"] },
+        { id: "inspection-incomplete-flagged-report", name: "Incomplete Inspection Summary Report", icon: FileCheck, description: "Detailed list of all incomplete flagged inspection records grouped by inspection type", requires: ["jobpack", "structure"] },
     ],
     planning: [
         { id: "inspection-schedule", name: "Inspection Schedule", icon: Calendar, description: "Planned inspection timeline and milestones", requires: ["planning"] },
@@ -35,14 +35,14 @@ export const REPORT_TEMPLATES = {
     inspection: [
         { id: "inspection-summary", name: "Inspection Summary", icon: FileBarChart, description: "Executive summary dashboard with task coverage, anomaly distribution, and active task breakdown", requires: ["jobpack", "structure", "sow_report"] },
         { id: "inspection-summary-graph", name: "Inspection Summary by Graph", icon: FileBarChart, description: "Executive graphical dashboard with interactive visual charts, anomaly donuts, depletion meters, and survey gauges", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "defect-summary", name: "Defect Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "defect-summary", name: "Anomaly Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all anomalies with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "defect-summary-pipeline", name: "Anomaly Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline anomalies and associated structure risers with combined span/burial events and color coding", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", icon: FileBarChart, description: "Priority-ordered summary of pipeline findings with reference numbers containing 'F' and combined span/burial events", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-summary", name: "Findings Summary Report", icon: FileBarChart, description: "Priority-ordered summary of all findings with colour coding and rectification status", requires: ["jobpack", "structure", "sow_report"] },
         { id: "compliance-report", name: "Compliance Report", icon: FileText, description: "Regulatory compliance documentation", requires: ["jobpack"] },
-        { id: "defect-anomaly-report", name: "Defect / Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "defect-anomaly-report", name: "Anomaly Report", icon: FileCheck, description: "Detailed defect and anomaly report with images", requires: ["jobpack", "structure", "sow_report"] },
         { id: "findings-report", name: "Findings Report", icon: FileCheck, description: "Detailed findings report with images", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", icon: FileCheck, description: "Detailed list of all incomplete flagged inspection records grouped by inspection type with QID, elevation and comments", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "inspection-incomplete-flagged-report", name: "Incomplete Inspection Summary Report", icon: FileCheck, description: "Detailed list of all incomplete flagged inspection records grouped by inspection type with QID, elevation and comments", requires: ["jobpack", "structure", "sow_report"] },
         { id: "diver-log-report", name: "Diver Log Report", icon: FileText, description: "Chronological diver log grouped by dive number with inspection findings", requires: ["jobpack", "structure", "sow_report"] },
         { id: "video-log-report", name: "Video Log & Tape Summary Report", icon: FileText, description: "Video log entries grouped by tape number with timecodes and dive references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "seabed-survey-debris", name: "Seabed Survey Debris Sketch Report (ROV)", icon: FileCheck, description: "Filtered Seabed GUI maps with debris items marked", requires: ["jobpack", "structure", "sow_report"] },
@@ -66,8 +66,8 @@ export const REPORT_TEMPLATES = {
         { id: "rov-rscor-survey-report", name: "Scour Survey Report (ROV)", icon: FileBarChart, description: "Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with No., QID, Elevation, Dive No., Tape No., and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-report", name: "Scour Survey Sketch Report (ROV)", icon: FileBarChart, description: "Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-scour-v2-report", name: "Scour Survey Sketch Report v2 (ROV)", icon: FileBarChart, description: "Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-report", name: "General Visual Anode Inspection Report (RGANI / GANI)", icon: FileBarChart, description: "Detailed ROV General Visual Anode Inspection summary (GANI) with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
-        { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (RSANI / SANI)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (SANI) summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-report", name: "General Visual Anode Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV General Visual Anode Inspection summary (GANI) with CP, depletion, and structural references (excluding RSANI)", requires: ["jobpack", "structure", "sow_report"] },
+        { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (ROV)", icon: FileBarChart, description: "Detailed ROV Selected Anode Close Visual Inspection (SANI) summary with CP, depletion, and structural references", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-cp-report",    name: "Cathodic Protection Survey Report (ROV)", icon: FileBarChart, description: "Portrait CP survey report with primary + additional CP readings, anomaly refs and rectification remarks", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-ricmi-report", name: "Inclinometer Survey Report (ROV)", icon: FileBarChart, description: "Portrait Inclinometer Survey Report (RICMI) with QID, Elevation, Dive No., Angle readings, additional readings, and findings.", requires: ["jobpack", "structure", "sow_report"] },
         { id: "rov-selected-node-report", name: "Selected Node Inspection Report (ROV)", icon: FileText, description: "Landscape Selected Node Inspection Report (RSWNI) with QID, Elevation, CP, Hard/Soft Growth, Component/Coating Condition, and findings.", requires: ["jobpack", "structure", "sow_report"] },
@@ -121,7 +121,7 @@ export const REPORT_TEMPLATES = {
         { id: "final-inspection-datasheet", name: "Final Inspection Datasheet", icon: FileCheck, description: "Generate comprehensive technical inspection datasheet compilation packages", requires: ["jobpack", "structure", "sow_report"] },
     ],
     others: [
-        { id: "defect-criteria-report", name: "Defect Criteria Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
+        { id: "defect-criteria-report", name: "Defect Criteria Specification Report", icon: FileCheck, description: "Complete specification of all defect criteria rules by procedure", requires: ["procedure"] },
     ],
 };
 
@@ -138,15 +138,15 @@ export interface TocSectionItem {
 }
 
 export const TOC_SECTIONS: TocSectionItem[] = [
-  { id: 1, name: "Structure Details", templates: [
+  { id: 1, name: "Structure Summary", templates: [
       { id: "structure-summary", name: "Structure Summary Report", mode: "General" },
-      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
+      { id: "defect-criteria-report", name: "Defect Criteria Specification Report", mode: "General" }
   ]},
   { id: 2, name: "Inspection Summary", templates: [
-      { id: "inspection-summary-graph", name: "Inspection Summary by Graph", mode: "General" }
+      { id: "inspection-summary-graph", name: "Inspection Summary", mode: "General" }
   ]},
   { id: 3, name: "Incomplete Inspection", templates: [
-      { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", mode: "General" }
+      { id: "inspection-incomplete-flagged-report", name: "Incomplete Inspection Summary Report", mode: "General" }
   ]},
   { id: 4, name: "General Visual Inspection", templates: [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
@@ -193,8 +193,8 @@ export const TOC_SECTIONS: TocSectionItem[] = [
       { id: "diving-plco-report", name: "Coating Damage Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 10, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "General Visual Anode Inspection (RGANI / GANI)", mode: "ROV" },
-      { id: "rov-anode-rsani-report", name: "Selected Anode Inspection (RSANI / SANI)", mode: "ROV" },
+      { id: "rov-anode-report", name: "General Visual Anode Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-anode-report", name: "Selected Anode Report (Diving)", mode: "Diving" }
   ]},
   { id: 11, name: "Marine Growth Survey", templates: [
@@ -244,9 +244,9 @@ export const TOC_SECTIONS: TocSectionItem[] = [
       { id: "diver-log-report", name: "Diver Log Report", mode: "Diving" }
   ]},
   { id: 20, name: "Anomaly", templates: [
-      { id: "defect-summary", name: "Defect Summary Report", mode: "General" },
+      { id: "defect-summary", name: "Anomaly Summary Report", mode: "General" },
       { id: "findings-summary", name: "Findings Summary Report", mode: "General" },
-      { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
+      { id: "defect-anomaly-report", name: "Anomaly Report", mode: "General" },
       { id: "findings-report", name: "Findings Report", mode: "General" }
   ]}
 ];
@@ -254,11 +254,11 @@ export const TOC_SECTIONS: TocSectionItem[] = [
 export const PIPELINE_TOC_SECTIONS: TocSectionItem[] = [
   { id: 101, name: "Pipeline Details", templates: [
       { id: "structure-summary", name: "Pipeline Summary Report", mode: "General" },
-      { id: "defect-criteria-report", name: "Defect Criteria Report", mode: "General" }
+      { id: "defect-criteria-report", name: "Defect Criteria Specification Report", mode: "General" }
   ]},
   { id: 102, name: "Inspection Summary", templates: [
-      { id: "inspection-summary-graph", name: "Inspection Summary by Graph", mode: "General" },
-      { id: "inspection-incomplete-flagged-report", name: "Inspection Incomplete Summary Report", mode: "General" }
+      { id: "inspection-summary-graph", name: "Inspection Summary", mode: "General" },
+      { id: "inspection-incomplete-flagged-report", name: "Incomplete Inspection Summary Report", mode: "General" }
   ]},
   { id: 103, name: "Pipeline Visual & Event Survey", templates: [
       { id: "rov-navig-report", name: "Pipeline Visual Inspection Report (NAVIG)", mode: "ROV" },
@@ -280,8 +280,8 @@ export const PIPELINE_TOC_SECTIONS: TocSectionItem[] = [
       { id: "diving-szone-report", name: "Splash Zone Inspection (Diving)", mode: "Diving" }
   ]},
   { id: 106, name: "Anode Inspection", templates: [
-      { id: "rov-anode-report", name: "Anode Inspection Report (ROV)", mode: "ROV" },
-      { id: "rov-anode-rsani-report", name: "Selected Anode Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-report", name: "General Visual Anode Inspection Report (ROV)", mode: "ROV" },
+      { id: "rov-anode-rsani-report", name: "Selected Anode Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-anode-report", name: "Selected Anode Report (Diving)", mode: "Diving" }
   ]},
   { id: 107, name: "Marine Growth Survey", templates: [
@@ -315,9 +315,9 @@ export const PIPELINE_TOC_SECTIONS: TocSectionItem[] = [
       { id: "diver-log-report", name: "Diver Log Report", mode: "Diving" }
   ]},
   { id: 112, name: "Pipeline Anomaly & Findings", templates: [
-      { id: "defect-summary-pipeline", name: "Defect Summary Report (Pipeline)", mode: "General" },
+      { id: "defect-summary-pipeline", name: "Anomaly Summary Report (Pipeline)", mode: "General" },
       { id: "findings-summary-pipeline", name: "Finding Summary Report (Pipeline)", mode: "General" },
-      { id: "defect-anomaly-report", name: "Defect / Anomaly Report", mode: "General" },
+      { id: "defect-anomaly-report", name: "Anomaly Report", mode: "General" },
       { id: "findings-report", name: "Findings Report", mode: "General" }
   ]}
 ];

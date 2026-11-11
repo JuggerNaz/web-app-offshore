@@ -3,7 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { ReportConfig } from "../pdf-generator";
 
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, draw3SectionHeader } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, toProperCase } from "./shared-logo";
 
 interface JobPackData {
     id: number;
@@ -302,7 +302,7 @@ export const generateWorkScopeReport = async (
             const history = jobPack.metadata.vessel_history;
             let vY = contentStart + 4;
             history.forEach((h, idx) => {
-                const vText = `${h.name} (${h.date})`;
+                const vText = `${toProperCase(h.name)} (${h.date})`;
                 doc.text(vText, rightColX + rightValueOffset, vY);
                 vY += 4;
             });
@@ -310,7 +310,7 @@ export const generateWorkScopeReport = async (
             yPos = Math.max(contentStart + 14 + logoH + 5, contentStart + (history.length * 4) + 10);
         } else {
             const vesselStr = jobPack.metadata?.vessel || "N/A";
-            doc.text(vesselStr, rightColX + rightValueOffset, contentStart + 4);
+            doc.text(vesselStr && vesselStr !== "N/A" ? toProperCase(vesselStr) : vesselStr, rightColX + rightValueOffset, contentStart + 4);
             yPos = Math.max(contentStart + 14 + logoH + 5, contentStart + 24);
         }
 

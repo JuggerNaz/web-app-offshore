@@ -47,22 +47,25 @@ export const isServiceRoleConfigured = (): boolean => {
       const payload = JSON.parse(Buffer.from(parts[1], "base64").toString());
       return payload.role === "service_role";
     }
-  } catch (_) {}
+  } catch (_) { }
   return true;
 };
 
 export const createAdminClient = () => {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!isServiceRoleConfigured()) {
-    throw new Error(
-      "[Supabase] Valid SUPABASE_SERVICE_ROLE_KEY (role: 'service_role') is required for createAdminClient."
-    );
-  }
+  const hasServiceRole = isServiceRoleConfigured();
+  const key = hasServiceRole
+    ? process.env.SUPABASE_SERVICE_ROLE_KEY
+    : (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY);
 
   if (!url || !key) {
     throw new Error("Supabase URL or Key is missing.");
+  }
+
+  if (!hasServiceRole) {
+    console.warn(
+      "[Supabase] Valid SUPABASE_SERVICE_ROLE_KEY (role: 'service_role') is not configured. Falling back to default client credentials."
+    );
   }
 
   const client = createServerClient<Database>(url, key, {
