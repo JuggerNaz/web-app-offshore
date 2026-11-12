@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createAdminClient, createClient } from "@/utils/supabase/server";
+import { createAdminClient, createClient, isServiceRoleConfigured } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
 import {
   apiSuccess,
@@ -18,7 +18,7 @@ export const GET = withRole(["super_admin"], async (request, { params }) => {
     const { id } = await params;
     let clientToUse: any;
     try {
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      if (isServiceRoleConfigured()) {
         clientToUse = createAdminClient();
       } else {
         clientToUse = createClient();
@@ -92,7 +92,7 @@ export const PATCH = withRole(
       
       let clientToUse: any;
       try {
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (isServiceRoleConfigured()) {
           clientToUse = createAdminClient();
         } else {
           clientToUse = createClient();
@@ -196,7 +196,7 @@ export const DELETE = withRole(
       const { id } = await params;
       let clientToUse: any;
       try {
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (isServiceRoleConfigured()) {
           clientToUse = createAdminClient();
         } else {
           clientToUse = createClient();

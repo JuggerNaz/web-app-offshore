@@ -1,6 +1,6 @@
 // Touch to trigger Next.js route compilation
 import { NextRequest } from "next/server";
-import { createClient, createAdminClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient, isServiceRoleConfigured } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
 import { apiSuccess, apiError, apiNoContent } from "@/utils/api-response";
 
@@ -33,7 +33,7 @@ export const PATCH = withRole(
       const supabase = createClient() as any;
       let db = supabase;
       try {
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (isServiceRoleConfigured()) {
           db = createAdminClient() as any;
         }
       } catch (e) {
@@ -217,7 +217,7 @@ export const GET = withRole(
       const supabase = createClient() as any;
       let db = supabase;
       try {
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (isServiceRoleConfigured()) {
           db = createAdminClient() as any;
         }
       } catch (_) {}
@@ -285,7 +285,7 @@ export const DELETE = withRole(
       let db = supabase;
       let adminClient: any = null;
       try {
-        if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+        if (isServiceRoleConfigured()) {
           adminClient = createAdminClient() as any;
           db = adminClient;
         }

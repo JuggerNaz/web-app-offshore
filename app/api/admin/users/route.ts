@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient, createAdminClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient, isServiceRoleConfigured } from "@/utils/supabase/server";
 import { withRole } from "@/utils/role-auth";
 import { apiSuccess, apiError, apiCreated, apiPaginated } from "@/utils/api-response";
 import {
@@ -22,7 +22,7 @@ export const GET = withRole(["company_admin", "super_admin"], async (request, { 
     
     // Prefer adminClient if available to avoid RLS recursion/policy issues on memberships
     try {
-      if (process.env.SUPABASE_SERVICE_ROLE_KEY) {
+      if (isServiceRoleConfigured()) {
         supabase = createAdminClient() as any;
       }
     } catch (_) {}
@@ -194,7 +194,7 @@ export const POST = withRole(["company_admin", "super_admin"], async (request, {
 
     const trimmedEmail = email.trim().toLowerCase();
 
-    const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+    const hasServiceRole = isServiceRoleConfigured();
     const origin = new URL(request.url).origin;
 
     let targetUser: any = null;

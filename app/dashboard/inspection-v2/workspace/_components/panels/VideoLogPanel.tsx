@@ -142,6 +142,8 @@ export function VideoLogPanel({
           inspMethod={inspMethod}
           jobPackId={jobPackId}
           structureId={structureId}
+          activeTapeNo={tapeNo}
+          activeTapeId={tapeId}
         />
       </div>
     </div>

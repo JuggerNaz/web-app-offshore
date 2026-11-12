@@ -1491,6 +1491,19 @@ function V10PreviewLayout() {
   const [videoEvents, setVideoEvents] = useState<any[]>([]);
   const [jobTapes, setJobTapes] = useState<any[]>([]);
   const isLoggingRef = useRef(false);
+  const tapeIdRef = useRef<number | null>(tapeId);
+  const tapeNoRef = useRef<string>(tapeNo);
+  const activeChapterRef = useRef<number>(activeChapter);
+
+  useEffect(() => {
+    tapeIdRef.current = tapeId;
+  }, [tapeId]);
+  useEffect(() => {
+    tapeNoRef.current = tapeNo;
+  }, [tapeNo]);
+  useEffect(() => {
+    activeChapterRef.current = activeChapter;
+  }, [activeChapter]);
   const [isEditTapeOpen, setIsEditTapeOpen] = useState(false);
   const [editTapeNo, setEditTapeNo] = useState("");
   const [editTapeChapter, setEditTapeChapter] = useState("");
@@ -1525,6 +1538,23 @@ function V10PreviewLayout() {
     }
   }, [tapeId, tapeNo, activeChapter, vidState, vidTimer, saveUserSession]);
 
+  // Keep tapeId in sync with active tapeNo and activeChapter
+  useEffect(() => {
+    if (!tapeNo || !jobTapes || jobTapes.length === 0) return;
+    const cleanTape = tapeNo.trim().toUpperCase();
+    const currentTape = jobTapes.find((t: any) => String(t.tape_id) === String(tapeId));
+    if (currentTape && (currentTape.tape_no || "").trim().toUpperCase() === cleanTape && Number(currentTape.chapter_no || 1) === Number(activeChapter || 1)) {
+      return;
+    }
+    const matchingTape = jobTapes.find((t: any) =>
+      (t.tape_no || "").trim().toUpperCase() === cleanTape &&
+      Number(t.chapter_no || 1) === Number(activeChapter || 1)
+    );
+    if (matchingTape && matchingTape.tape_id !== tapeId) {
+      setTapeId(matchingTape.tape_id);
+    }
+  }, [tapeNo, activeChapter, jobTapes, tapeId]);
+
   // Synchronize recording duration and vidState upon changing active tape
   useEffect(() => {
     if (!tapeId) {
@@ -1549,30 +1579,58 @@ function V10PreviewLayout() {
 
       setVidState(isRecording ? "RECORDING" : isStopped ? "IDLE" : "PAUSED");
 
-      let currentCounter = lastLog.tape_counter_start || 0;
-      if (isRecording) {
-        const startTime = new Date(lastLog.eventTime).getTime();
-        const now = new Date().getTime();
-        const elapsedSeconds = Math.floor((now - startTime) / 1000);
-        // If elapsed time is greater than 12 hours, this is a historical tape, not an active real-time live recording
-        if (elapsedSeconds > 43200) {
-          setVidState("PAUSED");
-        } else {
-          currentCounter += Math.max(0, elapsedSeconds);
-        }
-      }
-      setVidTimer(currentCounter);
-    } else {
-      const session = loadUserSession();
-      if (session?.lastActiveTapeId === tapeId && session?.vidState) {
-        setVidState(session.vidState);
-        setVidTimer(session.vidTimer || 0);
-      } else {
+      if (isStopped) {
+        // Tape was stopped: counter resets to 0 for next recording
         setVidTimer(0);
-        setVidState("IDLE");
+
+        // Advance to next chapter if this was the latest chapter logged
+        const currentTapeNo = tapeNo;
+        const matchingTapes = jobTapes.filter((t) =>
+          (t.tape_no || "").trim().toUpperCase() === (currentTapeNo || "").trim().toUpperCase()
+        );
+        let maxCh = 0;
+        matchingTapes.forEach((t) => {
+          const ch = Number(t.chapter_no) || 1;
+          if (ch > maxCh) maxCh = ch;
+        });
+        const currentLogChapter = Number(lastLog.chapterNo) || 1;
+        const isLatestChapter = currentLogChapter >= maxCh;
+        const nextCh = isLatestChapter ? maxCh + 1 : currentLogChapter;
+        setActiveChapter(nextCh);
+        saveUserSession({
+          lastActiveTapeId: tapeId,
+          lastActiveTapeNo: tapeNo,
+          lastActiveChapter: nextCh,
+          vidState: "IDLE",
+          vidTimer: 0,
+        });
+      } else {
+        let currentCounter = lastLog.tape_counter_start || 0;
+        if (isRecording) {
+          const startTime = parseClientDate(lastLog.eventTime).getTime();
+          const now = Date.now();
+          const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+          // If elapsed time is greater than 12 hours, this is a historical tape, not an active real-time live recording
+          if (elapsedSeconds > 43200) {
+            setVidState("PAUSED");
+          } else {
+            currentCounter += elapsedSeconds;
+          }
+        }
+        setVidTimer(currentCounter);
       }
+    } else {
+      setVidTimer(0);
+      setVidState("IDLE");
+      saveUserSession({
+        lastActiveTapeId: tapeId,
+        lastActiveTapeNo: tapeNo,
+        lastActiveChapter: activeChapter,
+        vidState: "IDLE",
+        vidTimer: 0,
+      });
     }
-  }, [tapeId, videoEvents, loadUserSession]);
+  }, [tapeId, videoEvents, loadUserSession, tapeNo, saveUserSession, jobTapes]);
 
   // Auto-populate tape number when opening the new tape dialog
   useEffect(() => {
@@ -4017,6 +4075,46 @@ function V10PreviewLayout() {
         resetForm();
       }
 
+      // Check if the deleted record was on a chapter tape that is now completely empty
+      if (record?.tape_id) {
+        const targetTapeId = record.tape_id;
+        const currentTape = jobTapes.find((t) => t.tape_id === targetTapeId);
+        if (currentTape && Number(currentTape.chapter_no) > 1) {
+          const { count: recCount } = await supabase
+            .from("insp_records")
+            .select("insp_id", { count: "exact", head: true })
+            .eq("tape_id", targetTapeId);
+
+          const { count: logCount } = await supabase
+            .from("insp_video_logs")
+            .select("video_log_id", { count: "exact", head: true })
+            .eq("tape_id", targetTapeId);
+
+          if ((recCount || 0) === 0 && (logCount || 0) === 0) {
+            await supabase.from("insp_video_tapes").delete().eq("tape_id", targetTapeId);
+
+            const { data: prevTapes } = await supabase
+              .from("insp_video_tapes")
+              .select("*")
+              .eq("tape_no", currentTape.tape_no)
+              .order("chapter_no", { ascending: false });
+
+            const validPrevTapes = (prevTapes || []).filter((t: any) => t.tape_id !== targetTapeId);
+            if (validPrevTapes.length > 0) {
+              const prevTape = validPrevTapes[0];
+              if (tapeId === targetTapeId || !tapeId) {
+                setTapeId(prevTape.tape_id);
+                setTapeNo(prevTape.tape_no);
+                setActiveChapter(prevTape.chapter_no);
+              }
+              setJobTapes((prev) => prev.filter((t) => t.tape_id !== targetTapeId));
+              toast.success(`Empty chapter removed. Rolled back to Chapter ${prevTape.chapter_no}`);
+              await handleSelectTape(prevTape.tape_id);
+            }
+          }
+        }
+      }
+
       fetchHistory();
       await syncDeploymentState();
     } catch (error) {
@@ -4972,7 +5070,7 @@ function V10PreviewLayout() {
     return () => clearInterval(interval);
   }, [isStreamRecording, isStreamPaused]);
 
-  const syncDeploymentState = useCallback(async () => {
+  const syncDeploymentState = useCallback(async (forceFresh: boolean = false) => {
     if (!jobPackId || isNaN(Number(jobPackId)) || !structureId || isNaN(Number(structureId))) {
       console.log("[Sync] Skipping sync: jobPackId or structureId is non-numeric");
       setIsReadyForComps(true);
@@ -5012,7 +5110,7 @@ function V10PreviewLayout() {
         .order("inspection_date", { ascending: false })
         .order("inspection_time", { ascending: false });
 
-      let allInspsQuery = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
+      let allInspsQuery = (!forceFresh && allWorkspaceRecords && allWorkspaceRecords.length > 0)
         ? Promise.resolve({ data: allWorkspaceRecords })
         : supabase
             .from("insp_records")
@@ -5271,17 +5369,41 @@ function V10PreviewLayout() {
 
       if (tapes && tapes.length > 0) {
         const session = loadUserSession();
+
+        const curTapeNo = (tapeNoRef.current || "").trim().toUpperCase();
+        const curChapter = Number(activeChapterRef.current || 1);
+        const curTapeId = tapeIdRef.current;
+
         // Priority for active tape:
-        // 1. Current tapeId if it exists in the fetched list
-        // 2. Saved tapeId from user session if it exists in the fetched list
-        // 3. First tape in the list (fallback)
-        const currentSelectedTape = tapeId ? tapes.find((t: any) => String(t.tape_id) === String(tapeId)) : null;
+        // 1. Matches BOTH current tapeNo AND activeChapter
+        // 2. Matches current tapeId
+        // 3. Matches current tapeNo (prefer highest chapter)
+        // 4. Saved from session (matching tapeNo + chapter or tapeId)
+        // 5. Fallback to first tape in sorted list
+        const matchBoth = curTapeNo ? tapes.find((t: any) =>
+          (t.tape_no || "").trim().toUpperCase() === curTapeNo &&
+          Number(t.chapter_no || 1) === curChapter
+        ) : null;
+
+        const currentSelectedTape = curTapeId ? tapes.find((t: any) => String(t.tape_id) === String(curTapeId)) : null;
+
+        const matchByTapeNo = curTapeNo ? tapes.filter((t: any) =>
+          (t.tape_no || "").trim().toUpperCase() === curTapeNo
+        ).sort((a: any, b: any) => (Number(b.chapter_no) || 1) - (Number(a.chapter_no) || 1)) : [];
+
+        const savedTapeByNoAndCh = (session?.lastActiveTapeNo && session?.lastActiveChapter)
+          ? tapes.find((t: any) =>
+              (t.tape_no || "").trim().toUpperCase() === (session.lastActiveTapeNo || "").trim().toUpperCase() &&
+              Number(t.chapter_no || 1) === Number(session.lastActiveChapter)
+            )
+          : null;
+
         const savedTape = session?.lastActiveTapeId ? tapes.find((t: any) => String(t.tape_id) === String(session.lastActiveTapeId)) : null;
-        const activeTape = currentSelectedTape || savedTape || tapes[0];
+
+        const activeTape = matchBoth || currentSelectedTape || matchByTapeNo[0] || savedTapeByNoAndCh || savedTape || tapes[0];
 
         setTapeNo(activeTape.tape_no);
         setTapeId(activeTape.tape_id);
-        setActiveChapter(activeTape.chapter_no || 1);
 
         // Fetch logs for active tape in parallel
         const [lastLogRes, stateLogRes] = await Promise.all([
@@ -5311,26 +5433,59 @@ function V10PreviewLayout() {
           const isStopped = currentState === "END";
           setVidState(isRecording ? "RECORDING" : isStopped ? "IDLE" : "PAUSED");
 
-          let currentCounter = lastLog.tape_counter_start || 0;
-          if (isRecording) {
-            const startTime = parseDbDate(lastLog.event_time).getTime();
-            const now = new Date().getTime();
-            const elapsedSeconds = Math.floor((now - startTime) / 1000);
-            if (elapsedSeconds > 43200) {
-              setVidState("PAUSED");
-            } else {
-              currentCounter += Math.max(0, elapsedSeconds);
-            }
-          }
-          setVidTimer(currentCounter);
-        } else {
-          if (session?.lastActiveTapeId === activeTape.tape_id && session?.vidState) {
-            setVidState(session.vidState);
-            setVidTimer(session.vidTimer || 0);
-          } else {
-            setVidState("IDLE");
+          if (isStopped) {
             setVidTimer(0);
+            const matchingTapes = tapes.filter((t: any) =>
+              (t.tape_no || "").trim().toUpperCase() === (activeTape.tape_no || "").trim().toUpperCase()
+            );
+            let maxCh = 0;
+            matchingTapes.forEach((t: any) => {
+              const ch = Number(t.chapter_no) || 1;
+              if (ch > maxCh) maxCh = ch;
+            });
+            const isLatestChapter = (Number(activeTape.chapter_no) || 1) >= maxCh;
+            const nextCh = isLatestChapter ? maxCh + 1 : (Number(activeTape.chapter_no) || 1);
+            setActiveChapter(nextCh);
+            saveUserSession({
+              lastActiveTapeId: activeTape.tape_id,
+              lastActiveTapeNo: activeTape.tape_no,
+              lastActiveChapter: nextCh,
+              vidState: "IDLE",
+              vidTimer: 0,
+            });
+          } else {
+            setActiveChapter(activeTape.chapter_no || 1);
+            let currentCounter = lastLog.tape_counter_start || 0;
+            if (isRecording) {
+              const startTime = parseClientDate(lastLog.event_time).getTime();
+              const now = Date.now();
+              const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+              if (elapsedSeconds > 43200) {
+                setVidState("PAUSED");
+              } else {
+                currentCounter += elapsedSeconds;
+              }
+            }
+            setVidTimer(currentCounter);
+            saveUserSession({
+              lastActiveTapeId: activeTape.tape_id,
+              lastActiveTapeNo: activeTape.tape_no,
+              lastActiveChapter: activeTape.chapter_no || 1,
+              vidState: isRecording ? "RECORDING" : "PAUSED",
+              vidTimer: currentCounter,
+            });
           }
+        } else {
+          setActiveChapter(activeTape.chapter_no || 1);
+          setVidState("IDLE");
+          setVidTimer(0);
+          saveUserSession({
+            lastActiveTapeId: activeTape.tape_id,
+            lastActiveTapeNo: activeTape.tape_no,
+            lastActiveChapter: activeTape.chapter_no || 1,
+            vidState: "IDLE",
+            vidTimer: 0,
+          });
         }
       } else {
         setTapeId(null);
@@ -5389,7 +5544,8 @@ function V10PreviewLayout() {
       if (logs) {
         allEv.push(
           ...logs.map((l: any) => {
-            const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(l.tape_id));
+            const matchedTape = tapes?.find((t: any) => String(t.tape_id) === String(l.tape_id)) ||
+              jobTapes?.find((t: any) => String(t.tape_id) === String(l.tape_id));
             const tapeNo = matchedTape?.tape_no || "N/A";
             const chapterNo = matchedTape?.chapter_no != null ? String(matchedTape.chapter_no) : "N/A";
             const matchedDep = deployments?.find((d: any) => 
@@ -5413,7 +5569,7 @@ function V10PreviewLayout() {
                         ? "Resume"
                         : l.event_type,
               logType: "video_log",
-              eventTime: l.event_time ? l.event_time : new Date().toISOString(),
+              eventTime: l.event_time ? parseClientDate(l.event_time).toISOString() : new Date().toISOString(),
               inspectionId: l.inspection_id,
               tape_id: l.tape_id,
               tape_counter_start: l.tape_counter_start || 0,
@@ -5906,7 +6062,7 @@ function V10PreviewLayout() {
       const optimisticId = `log_${Date.now()}`;
       const tcode = formatTime(currentTimer);
       const now = new Date();
-      const eventTime = format(now, "yyyy-MM-dd'T'HH:mm:ss");
+      const eventTime = now.toISOString();
 
       // Map UI labels to valid DB constraint values
       let dbAction = action;
@@ -5920,9 +6076,18 @@ function V10PreviewLayout() {
       const jobCol = inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id";
       const jobVal = Number(activeDep?.id);
 
-      if (activeDep?.id && (!tId || action === "Start Tape")) {
+      let effectiveTapeObj: any = null;
+      const targetChapter = activeChapter || 1;
+
+      // Check if current tId matches targetChapter or if it belongs to a different chapter
+      const matchedTapeForTid = tId ? jobTapes.find((t: any) => String(t.tape_id) === String(tId)) : null;
+      const isChapterMismatch = Boolean(
+        matchedTapeForTid &&
+        Number(matchedTapeForTid.chapter_no || 1) !== Number(targetChapter)
+      );
+
+      if (activeDep?.id && (!tId || action === "Start Tape" || isChapterMismatch)) {
         const cleanTapeNo = (tapeNo || "").replace(/\s+/g, "").toUpperCase();
-        const targetChapter = activeChapter || 1;
 
         // 1. Try to find if this tape_no and chapter_no is already registered (even across different dives under the same structure/jobpack)
         const dupCheck = await checkTapeDuplicate(supabase, {
@@ -5935,16 +6100,20 @@ function V10PreviewLayout() {
         });
 
         let existingTapeId = dupCheck.existingTapeId || null;
+        if (dupCheck.matchedTape) {
+          effectiveTapeObj = dupCheck.matchedTape;
+        }
 
         if (!existingTapeId && cleanTapeNo) {
           const { data: existingTape } = await supabase
             .from("insp_video_tapes")
-            .select("tape_id")
+            .select("*")
             .ilike("tape_no", cleanTapeNo)
             .eq("chapter_no", targetChapter)
             .maybeSingle();
           if (existingTape) {
             existingTapeId = existingTape.tape_id;
+            effectiveTapeObj = existingTape;
           }
         }
 
@@ -5958,6 +6127,7 @@ function V10PreviewLayout() {
               .eq("tape_id", existingTapeId)
               .maybeSingle();
             if (fetchedTape) {
+              effectiveTapeObj = fetchedTape;
               setJobTapes((prev) => [fetchedTape, ...prev]);
             }
           }
@@ -5986,7 +6156,7 @@ function V10PreviewLayout() {
             .insert({
               tape_no: uniqueTapeNo,
               tape_type: "DIGITAL - PRIMARY",
-              chapter_no: activeChapter,
+              chapter_no: targetChapter,
               status: "ACTIVE",
               [jobCol]: jobVal,
               cr_user: user?.id || "system",
@@ -5999,6 +6169,7 @@ function V10PreviewLayout() {
             console.error("[Start Tape] Error registering tape:", insErr.message);
             toast.error(`Error registering tape: ${insErr.message}`);
           } else if (newTape) {
+            effectiveTapeObj = newTape;
             setJobTapes((prev) => [newTape, ...prev]);
             setTapeId(newTape.tape_id);
             setTapeNo(newTape.tape_no);
@@ -6007,6 +6178,28 @@ function V10PreviewLayout() {
           }
         }
       }
+
+      // If effectiveTapeObj not resolved yet, search jobTapes with chapter sensitivity
+      if (!effectiveTapeObj) {
+        if (tId) {
+          effectiveTapeObj = jobTapes.find((t: any) => String(t.tape_id) === String(tId));
+        }
+        if (!effectiveTapeObj && tapeNo) {
+          effectiveTapeObj = jobTapes.find((t: any) =>
+            (t.tape_no || "").trim().toUpperCase() === (tapeNo || "").trim().toUpperCase() &&
+            String(t.chapter_no || 1) === String(targetChapter)
+          ) || jobTapes.find((t: any) =>
+            (t.tape_no || "").trim().toUpperCase() === (tapeNo || "").trim().toUpperCase()
+          );
+        }
+      }
+
+      const eventTapeNo = effectiveTapeObj?.tape_no || tapeNo || "N/A";
+      const eventChapterNo = effectiveTapeObj?.chapter_no != null
+        ? String(effectiveTapeObj.chapter_no)
+        : String(targetChapter);
+      const eventDiveNo = effectiveTapeObj?.dive_job_no || effectiveTapeObj?.rov_job_no || activeDep?.jobNo || activeDep?.job_no || "N/A";
+      const eventStructure = effectiveTapeObj?.structure_name || headerData.platformName || "N/A";
 
       if (action === "Stop Tape") {
         // Auto-increment to next chapter by default for the next recording session
@@ -6030,6 +6223,10 @@ function V10PreviewLayout() {
           logType: "video_log",
           eventTime,
           tape_id: tId,
+          tapeNo: eventTapeNo,
+          chapterNo: eventChapterNo,
+          diveNo: eventDiveNo,
+          structure: eventStructure,
           tape_counter_start: currentTimer,
         },
         ...prev,
@@ -6054,7 +6251,16 @@ function V10PreviewLayout() {
           setVideoEvents((prev) =>
             prev.map((ev) =>
               ev.id === optimisticId
-                ? { ...ev, id: `log_${newLog.video_log_id}`, realId: newLog.video_log_id }
+                ? {
+                    ...ev,
+                    id: `log_${newLog.video_log_id}`,
+                    realId: newLog.video_log_id,
+                    tape_id: tId,
+                    tapeNo: eventTapeNo,
+                    chapterNo: eventChapterNo,
+                    diveNo: eventDiveNo,
+                    structure: eventStructure,
+                  }
                 : ev
             )
           );
@@ -6064,12 +6270,130 @@ function V10PreviewLayout() {
       console.error("[handleLogEvent] Error:", err);
     } finally {
       isLoggingRef.current = false;
+      syncDeploymentState(true);
     }
   };
 
+  const handleSelectTape = async (selectedTapeId: number | null) => {
+    if (!selectedTapeId) return;
+    const targetTape = jobTapes.find((t: any) => String(t.tape_id) === String(selectedTapeId));
+    if (!targetTape) return;
+
+    setTapeId(targetTape.tape_id);
+    setTapeNo(targetTape.tape_no);
+
+    try {
+      const [lastLogRes, stateLogRes] = await Promise.all([
+        supabase
+          .from("insp_video_logs")
+          .select("*")
+          .eq("tape_id", targetTape.tape_id)
+          .order("event_time", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        supabase
+          .from("insp_video_logs")
+          .select("event_type")
+          .eq("tape_id", targetTape.tape_id)
+          .in("event_type", ["NEW_LOG_START", "RESUME", "PAUSE", "END"])
+          .order("event_time", { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+      ]);
+
+      const lastLog = lastLogRes.data;
+      const stateLog = stateLogRes.data;
+
+      if (lastLog) {
+        const currentState = stateLog ? stateLog.event_type : lastLog.event_type;
+        const isRecording = currentState === "NEW_LOG_START" || currentState === "RESUME";
+        const isStopped = currentState === "END";
+        const newState = isRecording ? "RECORDING" : isStopped ? "IDLE" : "PAUSED";
+        setVidState(newState);
+
+        if (isStopped) {
+          setVidTimer(0);
+          const matchingTapes = jobTapes.filter((t: any) =>
+            (t.tape_no || "").trim().toUpperCase() === (targetTape.tape_no || "").trim().toUpperCase()
+          );
+          let maxCh = 0;
+          matchingTapes.forEach((t: any) => {
+            const ch = Number(t.chapter_no) || 1;
+            if (ch > maxCh) maxCh = ch;
+          });
+          const isLatestChapter = (Number(targetTape.chapter_no) || 1) >= maxCh;
+          const nextCh = isLatestChapter ? maxCh + 1 : (Number(targetTape.chapter_no) || 1);
+          setActiveChapter(nextCh);
+          saveUserSession({
+            lastActiveTapeId: targetTape.tape_id,
+            lastActiveTapeNo: targetTape.tape_no,
+            lastActiveChapter: nextCh,
+            vidState: "IDLE",
+            vidTimer: 0,
+          });
+        } else {
+          setActiveChapter(targetTape.chapter_no || 1);
+          let currentCounter = lastLog.tape_counter_start || 0;
+          if (isRecording) {
+            const startTime = parseClientDate(lastLog.event_time).getTime();
+            const now = Date.now();
+            const elapsedSeconds = Math.max(0, Math.floor((now - startTime) / 1000));
+            if (elapsedSeconds > 43200) {
+              setVidState("PAUSED");
+            } else {
+              currentCounter += elapsedSeconds;
+            }
+          }
+          setVidTimer(currentCounter);
+          saveUserSession({
+            lastActiveTapeId: targetTape.tape_id,
+            lastActiveTapeNo: targetTape.tape_no,
+            lastActiveChapter: targetTape.chapter_no || 1,
+            vidState: newState,
+            vidTimer: currentCounter,
+          });
+        }
+      } else {
+        // Fresh or empty tape with NO logs
+        setActiveChapter(targetTape.chapter_no || 1);
+        setVidState("IDLE");
+        setVidTimer(0);
+        saveUserSession({
+          lastActiveTapeId: targetTape.tape_id,
+          lastActiveTapeNo: targetTape.tape_no,
+          lastActiveChapter: targetTape.chapter_no || 1,
+          vidState: "IDLE",
+          vidTimer: 0,
+        });
+      }
+    } catch (err) {
+      console.error("[handleSelectTape] Error fetching tape state:", err);
+      setVidState("IDLE");
+      setVidTimer(0);
+    }
+  };
+
+  const refreshAllWorkspaceData = useCallback(async () => {
+    try {
+      await fetchFullWorkspaceRecords();
+      await syncDeploymentState(true);
+      await fetchHistory();
+      if (tapeId) {
+        await handleSelectTape(tapeId);
+      }
+      queryClient.invalidateQueries({ queryKey: ["sow-data"] });
+      queryClient.invalidateQueries({ queryKey: ["inspection-records"] });
+      queryClient.invalidateQueries({ queryKey: ["inspection-events"] });
+      queryClient.invalidateQueries({ queryKey: ["workspace-records"] });
+      queryClient.invalidateQueries({ queryKey: ["component-records"] });
+    } catch (err) {
+      console.warn("[refreshAllWorkspaceData] Refresh warning:", err);
+    }
+  }, [fetchFullWorkspaceRecords, syncDeploymentState, fetchHistory, tapeId, handleSelectTape, queryClient]);
+
   const handleDeleteEvent = async (id: string, logType: string, realId: number) => {
     if (!confirm("Delete this event?")) return;
-    setVideoEvents(videoEvents.filter((ev) => ev.id !== id));
+    setVideoEvents((prev) => prev.filter((ev) => ev.id !== id));
     if (logType === "video_log") {
       const { data: logToDel } = await supabase
         .from("insp_video_logs")
@@ -6078,49 +6402,114 @@ function V10PreviewLayout() {
         .single();
       const { error } = await supabase.from("insp_video_logs").delete().eq("video_log_id", realId);
       if (!error) {
-        // Feature: Revert chapter logic if NEW_LOG_START event deleted
-        if (logToDel?.event_type === "NEW_LOG_START") {
-          const currentTape = jobTapes.find((t) => t.tape_id === logToDel.tape_id);
+        const targetTapeId = logToDel?.tape_id;
+        const currentTape = jobTapes.find((t) => t.tape_id === targetTapeId) ||
+          jobTapes.find((t) => String(t.tape_id) === String(targetTapeId));
+
+        // Check if there are any remaining video logs on this tape
+        const { data: remainingLogs } = await supabase
+          .from("insp_video_logs")
+          .select("video_log_id, event_type, event_time, tape_counter_start")
+          .eq("tape_id", targetTapeId)
+          .order("event_time", { ascending: false });
+
+        // Check if there are any remaining inspection records on this tape
+        const { data: remainingRecords } = await supabase
+          .from("insp_records")
+          .select("insp_id")
+          .eq("tape_id", targetTapeId)
+          .limit(1);
+
+        const hasRemainingLogs = Boolean(remainingLogs && remainingLogs.length > 0);
+        const hasRemainingRecords = Boolean(remainingRecords && remainingRecords.length > 0);
+
+        if (!hasRemainingLogs && !hasRemainingRecords) {
+          // Both video logs and inspection events on this tape are now completely empty!
           if (currentTape && Number(currentTape.chapter_no) > 1) {
-            // We check if this tape has any other logs.
-            const { data: otherLogs } = await supabase
-              .from("insp_video_logs")
-              .select("video_log_id")
-              .eq("tape_id", logToDel.tape_id)
-              .limit(1);
-            if (!otherLogs || otherLogs.length === 0) {
-              await supabase.from("insp_video_tapes").delete().eq("tape_id", logToDel.tape_id);
+            // Delete this empty chapter tape from DB
+            await supabase.from("insp_video_tapes").delete().eq("tape_id", targetTapeId);
 
-              // Find the previous chapter tape to switch back to
-              const { data: prevTapes } = await supabase
-                .from("insp_video_tapes")
-                .select("*")
-                .eq("tape_no", currentTape.tape_no)
-                .eq(inspMethod === "DIVING" ? "dive_job_id" : "rov_job_id", activeDep?.id || 0)
-                .order("chapter_no", { ascending: false });
+            // Find previous chapter tape to roll back to
+            const { data: prevTapes } = await supabase
+              .from("insp_video_tapes")
+              .select("*")
+              .eq("tape_no", currentTape.tape_no)
+              .order("chapter_no", { ascending: false });
 
-              if (prevTapes && prevTapes.length > 0) {
-                // Since we just deleted the top one, the next highest is the previous tape
-                const prevTape =
-                  prevTapes.length > 1 && prevTapes[0].tape_id === logToDel.tape_id
-                    ? prevTapes[1]
-                    : prevTapes[0];
-                if (tapeId === logToDel.tape_id) {
-                  setTapeId(prevTape.tape_id);
-                  setActiveChapter(prevTape.chapter_no);
-                }
-                setJobTapes((prev) => prev.filter((t) => t.tape_id !== logToDel.tape_id));
-                toast.success("Rolled back tape to previous chapter");
+            const validPrevTapes = (prevTapes || []).filter((t: any) => t.tape_id !== targetTapeId);
+
+            if (validPrevTapes.length > 0) {
+              const prevTape = validPrevTapes[0];
+              if (tapeId === targetTapeId || !tapeId) {
+                setTapeId(prevTape.tape_id);
+                setTapeNo(prevTape.tape_no);
+                setActiveChapter(prevTape.chapter_no);
               }
+              setJobTapes((prev) => prev.filter((t) => t.tape_id !== targetTapeId));
+              toast.success(`Empty chapter removed. Rolled back to Chapter ${prevTape.chapter_no}`);
+              await handleSelectTape(prevTape.tape_id);
+            } else {
+              setJobTapes((prev) => prev.filter((t) => t.tape_id !== targetTapeId));
+              setActiveChapter(1);
+              setVidState("IDLE");
+              setVidTimer(0);
+              saveUserSession({
+                lastActiveTapeId: tapeId === targetTapeId ? null : tapeId,
+                vidState: "IDLE",
+                vidTimer: 0,
+              });
+            }
+          } else {
+            // Chapter 1 is empty: reset recording timer and status so it's ready for the next log (Start)
+            setVidState("IDLE");
+            setVidTimer(0);
+            saveUserSession({
+              lastActiveTapeId: targetTapeId,
+              lastActiveTapeNo: currentTape?.tape_no || tapeNo,
+              lastActiveChapter: currentTape?.chapter_no || activeChapter || 1,
+              vidState: "IDLE",
+              vidTimer: 0,
+            });
+            toast.success("All events deleted. Tape reset to 00:00:00 (Ready to Start)");
+          }
+        } else if (hasRemainingLogs) {
+          // There are remaining video logs on this tape: recalculate state and timer
+          const lastLog = remainingLogs![0];
+          const stateLog = remainingLogs!.find((l: any) =>
+            ["NEW_LOG_START", "RESUME", "PAUSE", "END"].includes(l.event_type)
+          );
+          const currentAction = stateLog ? stateLog.event_type : lastLog.event_type;
+          const isRec = currentAction === "NEW_LOG_START" || currentAction === "RESUME";
+          const isStop = currentAction === "END";
+
+          const nextState = isRec ? "RECORDING" : isStop ? "IDLE" : "PAUSED";
+          setVidState(nextState);
+
+          let currentCounter = lastLog.tape_counter_start || 0;
+          if (isRec && lastLog.event_time) {
+            const startTime = parseClientDate(lastLog.event_time).getTime();
+            const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startTime) / 1000));
+            if (elapsedSeconds > 43200) {
+              setVidState("PAUSED");
+            } else {
+              currentCounter += elapsedSeconds;
             }
           }
+          setVidTimer(currentCounter);
+          saveUserSession({
+            lastActiveTapeId: targetTapeId,
+            lastActiveTapeNo: currentTape?.tape_no || tapeNo,
+            lastActiveChapter: currentTape?.chapter_no || activeChapter,
+            vidState: nextState,
+            vidTimer: currentCounter,
+          });
         }
 
-        // Re-sync timer state after deleting a log event
-        syncDeploymentState();
+        await refreshAllWorkspaceData();
       }
     } else if (logType === "insp") {
       await handleDeleteRecord(realId, true);
+      await refreshAllWorkspaceData();
     }
   };
 
@@ -6231,8 +6620,7 @@ function V10PreviewLayout() {
       }
 
       setEditingEvent(null);
-      syncDeploymentState();
-      fetchHistory();
+      await refreshAllWorkspaceData();
     } catch (error) {
       console.error("Error saving event:", error);
       toast.error("Failed to save changes");
@@ -9607,7 +9995,11 @@ function V10PreviewLayout() {
                 setIsNewTapeOpen={setIsNewTapeOpen}
                 handleOpenEditTape={handleOpenEditTape}
                 formatTime={formatTime}
-                onOpenHistory={() => setVideoLogExpanded(true)}
+                onSelectTape={handleSelectTape}
+                onOpenHistory={() => {
+                  setVideoLogExpanded(true);
+                  syncDeploymentState(true);
+                }}
                 onSetVidTimer={(secs) => {
                   setVidTimer(secs);
                   saveUserSession({ vidTimer: secs });
@@ -9628,14 +10020,26 @@ function V10PreviewLayout() {
                 setIsNewTapeOpen={setIsNewTapeOpen}
                 handleOpenEditTape={handleOpenEditTape}
                 formatTime={formatTime}
-                onOpenHistory={() => setVideoLogExpanded(true)}
+                onSelectTape={handleSelectTape}
+                onOpenHistory={() => {
+                  setVideoLogExpanded(true);
+                  syncDeploymentState(true);
+                }}
                 onSetVidTimer={(secs) => {
                   setVidTimer(secs);
                   saveUserSession({ vidTimer: secs });
                 }}
               />
             )}
-            <Dialog open={videoLogExpanded} onOpenChange={setVideoLogExpanded}>
+            <Dialog
+              open={videoLogExpanded}
+              onOpenChange={async (open) => {
+                setVideoLogExpanded(open);
+                if (!open) {
+                  await refreshAllWorkspaceData();
+                }
+              }}
+            >
               <DialogContent className="max-w-4xl max-h-[90vh] flex flex-col p-0 overflow-hidden bg-white dark:bg-slate-950 border-slate-300 dark:border-slate-800 shadow-2xl">
                 <DialogHeader className="p-4 border-b border-slate-300 dark:border-slate-800 bg-slate-100 dark:bg-slate-900 shrink-0">
                   <DialogTitle className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-slate-700 dark:text-slate-200">
@@ -9645,17 +10049,21 @@ function V10PreviewLayout() {
                 <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-50/50 dark:bg-slate-900/50 p-4">
                    <TapeLogEvents
                     videoEvents={videoEvents}
+                    jobTapes={jobTapes}
                     handleDeleteEvent={handleDeleteEvent}
                     onEditEvent={(ev) => setEditingEvent(ev)}
                     expanded={videoLogExpanded}
                     setExpanded={setVideoLogExpanded}
                     inline={true}
-                    onRefresh={syncDeploymentState}
+                    onRefresh={refreshAllWorkspaceData}
                     deployments={deployments}
                     activeDep={activeDep}
                     inspMethod={inspMethod}
                     jobPackId={jobPackId}
                     structureId={structureId}
+                    activeTapeNo={tapeNo}
+                    activeTapeId={tapeId}
+                    activeChapter={activeChapter}
                   />
                 </div>
               </DialogContent>
