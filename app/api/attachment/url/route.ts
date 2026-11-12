@@ -17,7 +17,7 @@ function cleanKey(val: string): string {
  * Builds an HTTP response that forces browsers, proxies, and all CDNs (including Netlify Edge CDN)
  * to never cache or reuse the attachment binary.
  */
-function buildFreshResponse(buffer: Uint8Array, contentType: string) {
+function buildFreshResponse(buffer: Uint8Array, contentType: string, extraHeaders: Record<string, string> = {}) {
   const headers = new Headers();
   headers.set("Content-Type", contentType || "image/jpeg");
   headers.set("Content-Length", buffer.byteLength.toString());
@@ -29,6 +29,9 @@ function buildFreshResponse(buffer: Uint8Array, contentType: string) {
   headers.set("Netlify-CDN-Cache-Control", "no-store");
   headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  for (const [k, v] of Object.entries(extraHeaders)) {
+    headers.set(k, v);
+  }
   return new Response(buffer, { status: 200, headers });
 }
 
@@ -674,6 +677,15 @@ export async function GET(request: NextRequest) {
   const defaultProvider = settings?.storage_provider || "Supabase";
   const defaultStorageConfig = settings?.storage_config || {};
 
+  const isDownload = request.nextUrl.searchParams.get("download") === "true" || request.nextUrl.searchParams.get("download") === "1";
+  const getExtraHeaders = () => {
+    if (!isDownload) return {};
+    const downloadFileName = fileName || (typeof targetUrlOrPath === "string" ? path.basename(targetUrlOrPath) : "") || "attachment";
+    return {
+      "Content-Disposition": `attachment; filename="${encodeURIComponent(downloadFileName)}"`,
+    };
+  };
+
   try {
     const primaryResult = await tryRetrieveWithStorageProvider({
       provider: defaultProvider,
@@ -690,7 +702,8 @@ export async function GET(request: NextRequest) {
     if (primaryResult && primaryResult.buffer && primaryResult.buffer.length > 0) {
       return buildFreshResponse(
         new Uint8Array(primaryResult.buffer),
-        primaryResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+        primaryResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath),
+        getExtraHeaders()
       );
     }
   } catch (primaryErr) {
@@ -706,7 +719,7 @@ export async function GET(request: NextRequest) {
     const parts = targetUrlOrPath.split(",");
     const mime = parts[0].match(/:(.*?);/)?.[1] || "image/jpeg";
     const buffer = Buffer.from(parts[1], "base64");
-    return buildFreshResponse(new Uint8Array(buffer), mime);
+    return buildFreshResponse(new Uint8Array(buffer), mime, getExtraHeaders());
   }
 
   // 2b. Direct HTTP/HTTPS candidate URLs
@@ -734,7 +747,7 @@ export async function GET(request: NextRequest) {
       if (directResp.ok) {
         const buffer = await directResp.arrayBuffer();
         const contentType = directResp.headers.get("Content-Type") || fileType || "image/jpeg";
-        return buildFreshResponse(new Uint8Array(buffer), contentType);
+        return buildFreshResponse(new Uint8Array(buffer), contentType, getExtraHeaders());
       }
     } catch (httpErr) {
       console.warn(`[AttachmentURL] Direct HTTP fetch failed for ${remoteHttpUrl}:`, httpErr);
@@ -759,7 +772,8 @@ export async function GET(request: NextRequest) {
       if (recordProviderResult && recordProviderResult.buffer && recordProviderResult.buffer.length > 0) {
         return buildFreshResponse(
           new Uint8Array(recordProviderResult.buffer),
-          recordProviderResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+          recordProviderResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath),
+          getExtraHeaders()
         );
       }
     } catch (_) {}
@@ -784,7 +798,8 @@ export async function GET(request: NextRequest) {
       if (b2Result && b2Result.buffer && b2Result.buffer.length > 0) {
         return buildFreshResponse(
           new Uint8Array(b2Result.buffer),
-          b2Result.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+          b2Result.contentType || fileType || getMimeType(fileName || targetUrlOrPath),
+          getExtraHeaders()
         );
       }
     } catch (_) {}
@@ -807,7 +822,8 @@ export async function GET(request: NextRequest) {
       if (supaResult && supaResult.buffer && supaResult.buffer.length > 0) {
         return buildFreshResponse(
           new Uint8Array(supaResult.buffer),
-          supaResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath)
+          supaResult.contentType || fileType || getMimeType(fileName || targetUrlOrPath),
+          getExtraHeaders()
         );
       }
     } catch (_) {}
@@ -826,7 +842,7 @@ export async function GET(request: NextRequest) {
       try {
         const buffer = await fs.promises.readFile(resolvedLocal);
         const mime = getMimeType(resolvedLocal) || fileType || "application/octet-stream";
-        return buildFreshResponse(new Uint8Array(buffer), mime);
+        return buildFreshResponse(new Uint8Array(buffer), mime, getExtraHeaders());
       } catch (readErr) {
         console.warn("[AttachmentURL] Local file read error:", readErr);
       }

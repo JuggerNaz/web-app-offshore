@@ -550,6 +550,49 @@ export function AttachmentEditorDialog({
         toast.success(`Moved to position #${targetIndex + 1}`);
     };
 
+    const handleDownloadCurrent = async () => {
+        if (!activeAttachment) return;
+        try {
+            const url = activeAttachment.previewUrl || (activeAttachment.id ? `/api/attachment/url?id=${encodeURIComponent(activeAttachment.id)}` : (activeAttachment.path ? `/api/attachment/download?path=${encodeURIComponent(activeAttachment.path)}` : ''));
+            const saveName = activeAttachment.name || activeAttachment.title || `attachment-${activeIndex + 1}`;
+            if (!url) {
+                toast.error("Download URL not found");
+                return;
+            }
+            toast.info(`Preparing download for "${saveName}"...`);
+            const downloadUrl = url.includes('/api/attachment/') ? `${url}${url.includes('?') ? '&' : '?'}download=true` : url;
+            const res = await fetch(downloadUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = saveName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(blobUrl);
+            toast.success(`Downloaded "${saveName}" to local drive`);
+        } catch (err: any) {
+            console.warn("Direct blob download failed, falling back to anchor:", err);
+            const url = activeAttachment.previewUrl || (activeAttachment.id ? `/api/attachment/url?id=${encodeURIComponent(activeAttachment.id)}` : (activeAttachment.path ? `/api/attachment/download?path=${encodeURIComponent(activeAttachment.path)}` : ''));
+            if (url) {
+                const downloadUrl = url.includes('/api/attachment/') ? `${url}${url.includes('?') ? '&' : '?'}download=true` : url;
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = activeAttachment.name || activeAttachment.title || 'attachment';
+                a.target = '_blank';
+                a.rel = 'noopener noreferrer';
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast.success(`Downloading file`);
+            } else {
+                toast.error("Failed to download attachment");
+            }
+        }
+    };
+
     // ─── Reset Order to Natural Creation/Capture Order ─────────────────
     const handleResetOrder = () => {
         commitCurrentModifications();
@@ -1129,6 +1172,17 @@ export function AttachmentEditorDialog({
                         >
                             <Upload className="w-3 h-3" />
                             <span>Replace File</span>
+                        </Button>
+
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={handleDownloadCurrent}
+                            className="h-7 px-2.5 text-[11px] font-bold text-emerald-400 hover:text-white hover:bg-emerald-600 bg-slate-800/80 border-emerald-500/30 gap-1.5"
+                            title="Download this file to your local drive"
+                        >
+                            <Download className="w-3 h-3" />
+                            <span>Download</span>
                         </Button>
                     </div>
 

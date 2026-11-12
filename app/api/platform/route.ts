@@ -69,7 +69,7 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     .or("lib_delete.is.null,lib_delete.neq.1");
 
   if (companyId) {
-    fieldsQuery = fieldsQuery.eq("company_id", companyId);
+    fieldsQuery = fieldsQuery.or(`company_id.eq.${companyId},company_id.is.null`);
   }
 
   // Run the platform page query and the independent fields lookup in parallel.
@@ -86,7 +86,18 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
 
   const { data: allFields } = fieldsRes;
 
-  const fieldMap = new Map((allFields || []).map((f: any) => [f.lib_id.toString(), f.lib_desc]));
+  const fieldMap = new Map<string, string>();
+  (allFields || []).forEach((f: any) => {
+    if (f.lib_id && f.lib_desc) {
+      const raw = String(f.lib_id).trim();
+      const desc = String(f.lib_desc).trim();
+      fieldMap.set(raw, desc);
+      fieldMap.set(raw.toLowerCase(), desc);
+      const noDot = raw.replace(/\.+$/, "").trim();
+      fieldMap.set(noDot, desc);
+      fieldMap.set(noDot.toLowerCase(), desc);
+    }
+  });
 
   // Fetch structure images for all platforms in ONE query
   const platIds = (data || []).map((platform: any) => platform.plat_id);
@@ -106,11 +117,22 @@ export const GET = withOptionalAuth(async (request: NextRequest, { user }) => {
     else imagesByPlatform.set(img.source_id, [row]);
   }
 
-  const platformsWithDetails = (data || []).map((platform: any) => ({
-    ...platform,
-    images: imagesByPlatform.get(platform.plat_id) || [],
-    field_name: fieldMap.get(platform.pfield?.toString() ?? "") || platform.pfield,
-  }));
+  const platformsWithDetails = (data || []).map((platform: any) => {
+    const rawPfield = platform.pfield ? String(platform.pfield).trim() : "";
+    const noDotPfield = rawPfield.replace(/\.+$/, "").trim();
+    const resolvedFieldDesc =
+      fieldMap.get(rawPfield) ||
+      fieldMap.get(rawPfield.toLowerCase()) ||
+      fieldMap.get(noDotPfield) ||
+      fieldMap.get(noDotPfield.toLowerCase()) ||
+      platform.pfield;
+
+    return {
+      ...platform,
+      images: imagesByPlatform.get(platform.plat_id) || [],
+      field_name: resolvedFieldDesc,
+    };
+  });
 
   // Create pagination metadata
   const pagination = createPaginationMeta(paginationParams, count || 0);

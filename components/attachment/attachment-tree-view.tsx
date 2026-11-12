@@ -38,7 +38,10 @@ import {
     Maximize2,
     X,
     Download,
-    Trash2
+    Trash2,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { DataTable } from "../data-table/data-table";
@@ -72,9 +75,55 @@ export default function AttachmentTreeView() {
     const { searchQuery, hasAttachmentsOnly } = filters;
 
     const [categoryFilter, setCategoryFilter] = useState<AttachmentCategory | "ALL">("ALL");
+    const [currentTab, setCurrentTab] = useState<"inspection" | "platform" | "components">("inspection");
 
     // Fetch all platforms
     const { data: platformsData, isLoading: isLoadingPlatforms } = useSWR('/api/platform?pageSize=1000', fetcher);
+
+    // Fetch oilfield library to resolve field descriptions
+    const { data: fieldsData } = useSWR('/api/library/fields-stats', fetcher);
+    const fieldDescriptionMap = useMemo(() => {
+        const map = new Map<string, string>();
+        const list = fieldsData?.data || [];
+        list.forEach((f: any) => {
+            const desc = f.lib_desc || f.lib_name || f.description;
+            if (f.lib_id && desc) {
+                const rawId = String(f.lib_id).trim();
+                const cleanDesc = String(desc).trim();
+                map.set(rawId, cleanDesc);
+                map.set(rawId.toLowerCase(), cleanDesc);
+                const noDot = rawId.replace(/\.+$/, "").trim();
+                map.set(noDot, cleanDesc);
+                map.set(noDot.toLowerCase(), cleanDesc);
+            }
+        });
+        return map;
+    }, [fieldsData]);
+
+    const getFieldDisplayName = (platform: Platform | any): string => {
+        if (!platform) return "Unassigned Field";
+        const rawPfield = platform.pfield ? String(platform.pfield).trim() : "";
+        const fieldName = platform.field_name ? String(platform.field_name).trim() : "";
+
+        // 1. Check fieldDescriptionMap by raw pfield
+        if (rawPfield) {
+            if (fieldDescriptionMap.has(rawPfield)) return fieldDescriptionMap.get(rawPfield)!;
+            if (fieldDescriptionMap.has(rawPfield.toLowerCase())) return fieldDescriptionMap.get(rawPfield.toLowerCase())!;
+            const noDot = rawPfield.replace(/\.+$/, "").trim().toLowerCase();
+            if (fieldDescriptionMap.has(noDot)) return fieldDescriptionMap.get(noDot)!;
+        }
+
+        // 2. Check field_name returned from API
+        if (fieldName && fieldName !== rawPfield) {
+            return fieldName;
+        }
+        if (fieldName && fieldDescriptionMap.has(fieldName)) {
+            return fieldDescriptionMap.get(fieldName)!;
+        }
+
+        // 3. Fallback: return raw pfield stripped of trailing dot
+        return rawPfield ? rawPfield.replace(/\.+$/, "") : "Unassigned Field";
+    };
 
     // Fetch real attachment counts aggregated per platform
     const { data: countsData } = useSWR('/api/attachment/counts', fetcher);
@@ -85,7 +134,10 @@ export default function AttachmentTreeView() {
     // Filter Platforms
     const filteredPlatforms = useMemo(() => {
         return allPlatforms.filter(platform => {
-            const matchesSearch = platform.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            const fieldDisplay = getFieldDisplayName(platform);
+            const matchesSearch =
+                platform.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                fieldDisplay.toLowerCase().includes(searchQuery.toLowerCase()) ||
                 (platform.pfield && platform.pfield.toLowerCase().includes(searchQuery.toLowerCase()));
 
             if (!matchesSearch) return false;
@@ -97,19 +149,19 @@ export default function AttachmentTreeView() {
 
             return true;
         });
-    }, [allPlatforms, platformCounts, searchQuery, hasAttachmentsOnly]);
+    }, [allPlatforms, platformCounts, searchQuery, hasAttachmentsOnly, fieldDescriptionMap]);
 
-    // Group platforms by field
+    // Group platforms by field description
     const groupedPlatforms = useMemo(() => {
         return filteredPlatforms.reduce((acc, platform) => {
-            const fieldName = platform.pfield || "Unassigned Field";
+            const fieldName = getFieldDisplayName(platform);
             if (!acc[fieldName]) {
                 acc[fieldName] = [];
             }
             acc[fieldName].push(platform);
             return acc;
         }, {} as Record<string, Platform[]>);
-    }, [filteredPlatforms]);
+    }, [filteredPlatforms, fieldDescriptionMap]);
 
     // Set selected platform
     const activePlatform = useMemo(() => {
@@ -226,7 +278,7 @@ export default function AttachmentTreeView() {
                                 <div className="flex items-center gap-3">
                                     <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white dark:bg-slate-800 border shadow-sm h-8">
                                         <MapPin className="h-3.5 w-3.5 text-blue-500" />
-                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{activePlatform.pfield}</span>
+                                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">{getFieldDisplayName(activePlatform)}</span>
                                     </div>
                                     <h2 className="text-lg font-bold text-slate-900 dark:text-white leading-none">
                                         {activePlatform.title}
@@ -262,7 +314,16 @@ export default function AttachmentTreeView() {
                                     <Button
                                         size="sm"
                                         className="h-8 bg-blue-600 hover:bg-blue-700 text-white font-semibold"
-                                        onClick={() => openSlideOver(null, { sourceType: "platform", sourceId: activePlatform.plat_id })}
+                                        onClick={() => {
+                                            if (currentTab === "inspection") {
+                                                openSlideOver(null, { sourceType: "inspection", sourceId: 0 });
+                                            } else if (currentTab === "components") {
+                                                openSlideOver(null, { sourceType: "component", sourceId: 0 });
+                                            } else {
+                                                openSlideOver(null, { sourceType: "platform", sourceId: activePlatform.plat_id });
+                                            }
+                                        }}
+                                        title={`Add new ${currentTab === "inspection" ? "inspection" : currentTab === "components" ? "component" : "platform"} attachment`}
                                     >
                                         <Plus className="mr-1 h-3.5 w-3.5" /> Add
                                     </Button>
@@ -272,7 +333,7 @@ export default function AttachmentTreeView() {
 
                         {/* Tabs */}
                         <div className="flex-1 overflow-hidden p-6 pb-0 flex flex-col">
-                            <Tabs defaultValue="inspection" className="h-full flex flex-col">
+                            <Tabs value={currentTab} onValueChange={(val) => setCurrentTab(val as any)} className="h-full flex flex-col">
                                 <TabsList className="grid w-full grid-cols-3 mb-4 shrink-0 bg-slate-100/80 dark:bg-slate-900 h-11 p-1 border border-slate-200/50 dark:border-slate-800">
                                     <TabsTrigger
                                         value="inspection"
@@ -365,6 +426,14 @@ export default function AttachmentTreeView() {
                                                     <div className="flex flex-col items-center justify-center p-12 text-slate-400 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl mt-4">
                                                         <Box className="h-10 w-10 mb-2 opacity-20" />
                                                         <p className="font-bold text-sm">No component attachments found</p>
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="mt-3"
+                                                            onClick={() => openSlideOver(null, { sourceType: "component", sourceId: 0 })}
+                                                        >
+                                                            <Plus className="mr-1 h-3.5 w-3.5" /> Add Component File
+                                                        </Button>
                                                     </div>
                                                 );
                                             }
@@ -394,6 +463,32 @@ export default function AttachmentTreeView() {
 
 // ─── Inspection Attachments Tab ───────────────────────────────────────────────
 
+function resolveComponentQid(item: any): string | null {
+    if (item.component_q_id && item.component_q_id !== "N/A" && item.component_q_id !== "null") {
+        return item.component_q_id;
+    }
+    if (item.component_name && item.component_name !== "N/A" && item.component_name !== "null") {
+        return item.component_name;
+    }
+    if (item.inspection_data?.component_qid) {
+        return item.inspection_data.component_qid;
+    }
+    if (item.inspection_data?.q_id) {
+        return item.inspection_data.q_id;
+    }
+    const name = item.name || item.path || "";
+    const clean = name.split(/[/\\]/).pop()?.replace(/\.[^/.]+$/, "") || "";
+    const parts = clean.split("_");
+    for (const part of parts) {
+        const m = part.match(/^([A-Za-z]{2,6}\d{1,5})(?:-[0-9]+[a-zA-Z]*|\b|$)/);
+        if (m) return m[1].toUpperCase();
+    }
+    const tokenMatch = clean.match(/\b([A-Za-z]{2,6}\d{2,5})\b/);
+    if (tokenMatch) return tokenMatch[1].toUpperCase();
+    if (item.anomaly_ref_no) return `Anomaly ${item.anomaly_ref_no}`;
+    return null;
+}
+
 function InspectionAttachmentsTab({
     platformId,
     categoryFilter,
@@ -409,6 +504,98 @@ function InspectionAttachmentsTab({
     const [failedImageIds, setFailedImageIds] = useState<Record<string | number, boolean>>({});
     const [itemToDelete, setItemToDelete] = useState<any | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    const handleDownload = async (item: any) => {
+        if (!item) return;
+        try {
+            const publicUrl = getAttachmentUrl(item);
+            const { fileUrl: rawFileUrl, fileName: processedName } = processAttachmentUrl(item);
+            const url = publicUrl || rawFileUrl;
+
+            const rawFileName = item.meta?.original_file_name || item.name || processedName || "attachment";
+            let ext = "";
+            if (rawFileName.includes(".")) {
+                ext = rawFileName.split(".").pop() || "";
+            } else if (item.path && item.path.includes(".")) {
+                ext = item.path.split(/[#?]/)[0].split(".").pop() || "";
+            }
+            const finalName = ext && !rawFileName.endsWith(`.${ext}`) ? `${rawFileName}.${ext}` : rawFileName;
+
+            if (!url) {
+                toast.error("Download URL not found for this attachment.");
+                return;
+            }
+
+            toast.info(`Preparing download for "${finalName}"...`);
+
+            const downloadUrl = url.includes("/api/attachment/")
+                ? `${url}${url.includes("?") ? "&" : "?"}download=true`
+                : url;
+
+            const res = await fetch(downloadUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = finalName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(blobUrl);
+
+            toast.success(`Downloaded "${finalName}" to your local drive`);
+        } catch (err: any) {
+            console.warn("Direct blob download failed, falling back to anchor:", err);
+            const publicUrl = getAttachmentUrl(item);
+            const { fileUrl: rawFileUrl, fileName: processedName } = processAttachmentUrl(item);
+            const url = publicUrl || rawFileUrl;
+            const rawFileName = item.meta?.original_file_name || item.name || processedName || "attachment";
+            if (url) {
+                const downloadUrl = url.includes("/api/attachment/")
+                    ? `${url}${url.includes("?") ? "&" : "?"}download=true`
+                    : url;
+                const a = document.createElement("a");
+                a.href = downloadUrl;
+                a.download = rawFileName;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast.success(`Downloading "${rawFileName}"`);
+            } else {
+                toast.error("Failed to download attachment.");
+            }
+        }
+    };
+
+    // Sorting state for inspection table
+    type SortColumn = "component" | "date" | "sow_report" | "status" | "attachment";
+    type SortDirection = "asc" | "desc";
+    const [sortColumn, setSortColumn] = useState<SortColumn>("component");
+    const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+    const handleSort = (column: SortColumn) => {
+        if (sortColumn === column) {
+            setSortDirection(prev => (prev === "asc" ? "desc" : "asc"));
+        } else {
+            setSortColumn(column);
+            setSortDirection("asc");
+        }
+    };
+
+    const renderSortIcon = (column: SortColumn) => {
+        if (sortColumn !== column) {
+            return <ArrowUpDown className="h-3 w-3 opacity-40 hover:opacity-100 transition-opacity ml-1 shrink-0" />;
+        }
+        return sortDirection === "asc" ? (
+            <ArrowUp className="h-3 w-3 text-blue-400 ml-1 font-bold shrink-0" />
+        ) : (
+            <ArrowDown className="h-3 w-3 text-blue-400 ml-1 font-bold shrink-0" />
+        );
+    };
 
     const { data, isLoading, mutate: mutateInspectionAttachments } = useSWR(
         platformId ? `/api/attachment/inspection?platform_id=${platformId}` : null,
@@ -533,13 +720,17 @@ function InspectionAttachmentsTab({
             // Search filter
             if (searchQuery.trim()) {
                 const q = searchQuery.toLowerCase();
+                const qid = (item.component_q_id || resolveComponentQid(item) || "").toLowerCase();
+                const desc = (item.component_description || "").toLowerCase();
                 const matched =
-                    (item.component_q_id || "").toLowerCase().includes(q) ||
+                    qid.includes(q) ||
+                    desc.includes(q) ||
                     (item.inspection_type_name || "").toLowerCase().includes(q) ||
                     (item.inspection_type_code || "").toLowerCase().includes(q) ||
                     (item.jobpack_name || "").toLowerCase().includes(q) ||
                     (item.name || "").toLowerCase().includes(q) ||
-                    (item.sow_report_no || "").toLowerCase().includes(q);
+                    (item.sow_report_no || "").toLowerCase().includes(q) ||
+                    (item.anomaly_ref_no || "").toLowerCase().includes(q);
                 if (!matched) return false;
             }
 
@@ -660,11 +851,12 @@ function InspectionAttachmentsTab({
                                                     const componentGroups: { key: string; component_q_id: string | null; component_description?: string; items: any[] }[] = [];
                                                     const compMap = new Map<string, (typeof componentGroups)[0]>();
                                                     items.forEach((item: any) => {
-                                                        const key = item.component_q_id || "__NO_COMP__";
+                                                        const resolvedQid = item.component_q_id || resolveComponentQid(item);
+                                                        const key = resolvedQid || "__NO_COMP__";
                                                         if (!compMap.has(key)) {
                                                             const grp = {
                                                                 key,
-                                                                component_q_id: item.component_q_id || null,
+                                                                component_q_id: resolvedQid || null,
                                                                 component_description: item.component_description,
                                                                 items: [],
                                                             };
@@ -674,10 +866,70 @@ function InspectionAttachmentsTab({
                                                         compMap.get(key)!.items.push(item);
                                                     });
 
+                                                    // Helper to compare items within each group
+                                                    const compareItems = (a: any, b: any) => {
+                                                        let result = 0;
+                                                        if (sortColumn === "date") {
+                                                            const timeA = a.inspection_date ? new Date(a.inspection_date).getTime() : 0;
+                                                            const timeB = b.inspection_date ? new Date(b.inspection_date).getTime() : 0;
+                                                            result = timeA - timeB;
+                                                        } else if (sortColumn === "sow_report") {
+                                                            const repA = (a.sow_report_no || "").trim();
+                                                            const repB = (b.sow_report_no || "").trim();
+                                                            result = repA.localeCompare(repB, undefined, { numeric: true, sensitivity: "base" });
+                                                        } else if (sortColumn === "status") {
+                                                            const score = (item: any) => (item.has_anomaly ? 3 : item.inspection_status === "COMPLETED" ? 2 : 1);
+                                                            result = score(a) - score(b);
+                                                        } else if (sortColumn === "attachment") {
+                                                            const nameA = (a.name || a.path || "").trim();
+                                                            const nameB = (b.name || b.path || "").trim();
+                                                            result = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" });
+                                                        } else {
+                                                            const timeA = a.inspection_date ? new Date(a.inspection_date).getTime() : 0;
+                                                            const timeB = b.inspection_date ? new Date(b.inspection_date).getTime() : 0;
+                                                            result = timeA - timeB;
+                                                        }
+                                                        return sortDirection === "asc" ? result : -result;
+                                                    };
+
+                                                    // Sort items inside each group
+                                                    componentGroups.forEach((grp) => {
+                                                        grp.items.sort(compareItems);
+                                                    });
+
+                                                    // Sort componentGroups themselves
+                                                    componentGroups.sort((a, b) => {
+                                                        let result = 0;
+                                                        if (sortColumn === "component") {
+                                                            const qidA = a.component_q_id || "";
+                                                            const qidB = b.component_q_id || "";
+                                                            if (!qidA && qidB) return 1;
+                                                            if (qidA && !qidB) return -1;
+                                                            result = qidA.localeCompare(qidB, undefined, { numeric: true, sensitivity: "base" });
+                                                        } else if (sortColumn === "date") {
+                                                            const dateA = a.items[0]?.inspection_date ? new Date(a.items[0].inspection_date).getTime() : 0;
+                                                            const dateB = b.items[0]?.inspection_date ? new Date(b.items[0].inspection_date).getTime() : 0;
+                                                            result = dateA - dateB;
+                                                        } else if (sortColumn === "sow_report") {
+                                                            const repA = a.items[0]?.sow_report_no || "";
+                                                            const repB = b.items[0]?.sow_report_no || "";
+                                                            result = repA.localeCompare(repB, undefined, { numeric: true, sensitivity: "base" });
+                                                        } else if (sortColumn === "status") {
+                                                            const hasAnomalyA = a.items.some((i: any) => i.has_anomaly) ? 1 : 0;
+                                                            const hasAnomalyB = b.items.some((i: any) => i.has_anomaly) ? 1 : 0;
+                                                            result = hasAnomalyA - hasAnomalyB;
+                                                        } else if (sortColumn === "attachment") {
+                                                            const nameA = a.items[0]?.name || a.items[0]?.path || "";
+                                                            const nameB = b.items[0]?.name || b.items[0]?.path || "";
+                                                            result = nameA.localeCompare(nameB, undefined, { numeric: true, sensitivity: "base" });
+                                                        }
+                                                        return sortDirection === "asc" ? result : -result;
+                                                    });
+
                                                     return (
                                                         <Collapsible key={inspType} defaultOpen className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
                                                             <CollapsibleTrigger asChild>
-                                                                <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
+                                                                 <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
                                                                     <ChevronDown className="h-3.5 w-3.5 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
                                                                     <span className="font-bold text-[12px] text-slate-600 dark:text-slate-300 flex-1 text-left">{inspType}</span>
                                                                     <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
@@ -687,35 +939,80 @@ function InspectionAttachmentsTab({
                                                             </CollapsibleTrigger>
                                                             <CollapsibleContent>
                                                                 <div className="overflow-x-auto w-full border-2 border-slate-200 dark:border-slate-800 rounded-xl shadow-sm bg-white dark:bg-slate-950">
-                                                                    {/* Table Header with Distinct Column Borders */}
+                                                                    {/* Table Header with Distinct Column Borders & Interactive Sorting */}
                                                                     <div
-                                                                        className="grid grid-cols-[1.1fr_105px_140px_65px_2.3fr_95px] divide-x divide-slate-700/80 bg-slate-900 dark:bg-slate-950 text-slate-100 dark:text-slate-200 border-b-2 border-slate-700 text-[11px] font-black uppercase tracking-wider w-full"
+                                                                        className="grid grid-cols-[1.1fr_105px_140px_65px_2.3fr_140px] divide-x divide-slate-700/80 bg-slate-900 dark:bg-slate-950 text-slate-100 dark:text-slate-200 border-b-2 border-slate-700 text-[11px] font-black uppercase tracking-wider w-full select-none"
                                                                     >
-                                                                        <div className="px-4 py-3 flex items-center justify-center">
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSort("component")}
+                                                                            className={cn(
+                                                                                "px-3 py-3 flex items-center justify-center gap-1 hover:bg-slate-800/80 transition-colors cursor-pointer",
+                                                                                sortColumn === "component" && "text-blue-400 bg-slate-800/50"
+                                                                            )}
+                                                                            title="Click to sort by Component QID"
+                                                                        >
                                                                             <span>Component</span>
-                                                                        </div>
-                                                                        <div className="px-4 py-3 flex items-center gap-1.5">
-                                                                            <Calendar className="h-3.5 w-3.5 text-blue-400" />
+                                                                            {renderSortIcon("component")}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSort("date")}
+                                                                            className={cn(
+                                                                                "px-3 py-3 flex items-center gap-1 hover:bg-slate-800/80 transition-colors cursor-pointer",
+                                                                                sortColumn === "date" && "text-blue-400 bg-slate-800/50"
+                                                                            )}
+                                                                            title="Click to sort by Inspection Date"
+                                                                        >
+                                                                            <Calendar className="h-3.5 w-3.5 text-blue-400 shrink-0" />
                                                                             <span>Date</span>
-                                                                        </div>
-                                                                        <div className="px-4 py-3 flex items-center gap-1.5">
-                                                                            <FileText className="h-3.5 w-3.5 text-indigo-400" />
+                                                                            {renderSortIcon("date")}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSort("sow_report")}
+                                                                            className={cn(
+                                                                                "px-3 py-3 flex items-center gap-1 hover:bg-slate-800/80 transition-colors cursor-pointer",
+                                                                                sortColumn === "sow_report" && "text-blue-400 bg-slate-800/50"
+                                                                            )}
+                                                                            title="Click to sort by SOW Report"
+                                                                        >
+                                                                            <FileText className="h-3.5 w-3.5 text-indigo-400 shrink-0" />
                                                                             <span>SOW Report</span>
-                                                                        </div>
-                                                                        <div className="px-4 py-3 flex items-center justify-center">
+                                                                            {renderSortIcon("sow_report")}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSort("status")}
+                                                                            className={cn(
+                                                                                "px-2 py-3 flex items-center justify-center gap-1 hover:bg-slate-800/80 transition-colors cursor-pointer",
+                                                                                sortColumn === "status" && "text-blue-400 bg-slate-800/50"
+                                                                            )}
+                                                                            title="Click to sort by Status / Anomaly"
+                                                                        >
                                                                             <span>Status</span>
-                                                                        </div>
-                                                                        <div className="px-4 py-3 flex items-center gap-1.5">
-                                                                            <Paperclip className="h-3.5 w-3.5 text-emerald-400" />
+                                                                            {renderSortIcon("status")}
+                                                                        </button>
+                                                                        <button
+                                                                            type="button"
+                                                                            onClick={() => handleSort("attachment")}
+                                                                            className={cn(
+                                                                                "px-3 py-3 flex items-center gap-1 hover:bg-slate-800/80 transition-colors cursor-pointer",
+                                                                                sortColumn === "attachment" && "text-blue-400 bg-slate-800/50"
+                                                                            )}
+                                                                            title="Click to sort by Attachment Name"
+                                                                        >
+                                                                            <Paperclip className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
                                                                             <span>Attachment</span>
-                                                                        </div>
-                                                                        <div className="px-4 py-3 flex items-center justify-center">
+                                                                            {renderSortIcon("attachment")}
+                                                                        </button>
+                                                                        <div className="px-2 py-3 flex items-center justify-center">
                                                                             <span>Actions</span>
                                                                         </div>
                                                                     </div>
 
                                                                     {/* Table Body with Merged & Centered Component Cells */}
-                                                                    <div className="grid grid-cols-[1.1fr_105px_140px_65px_2.3fr_95px] text-xs items-stretch w-full">
+                                                                    <div className="grid grid-cols-[1.1fr_105px_140px_65px_2.3fr_140px] text-xs items-stretch w-full">
                                                                         {componentGroups.map((group, groupIdx) => {
                                                                             return (
                                                                                 <Fragment key={group.key}>
@@ -734,11 +1031,12 @@ function InspectionAttachmentsTab({
                                                                                                 <span className="font-bold text-slate-900 dark:text-slate-100 text-[13px] tracking-tight truncate max-w-full">
                                                                                                     {group.component_q_id}
                                                                                                 </span>
-                                                                                                {group.component_description && (
-                                                                                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-tight">
-                                                                                                        {group.component_description}
-                                                                                                    </span>
-                                                                                                )}
+                                                                                                {group.component_description &&
+                                                                                                    group.component_description.trim().toUpperCase() !== group.component_q_id.trim().toUpperCase() && (
+                                                                                                        <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 line-clamp-2 leading-tight">
+                                                                                                            {group.component_description}
+                                                                                                        </span>
+                                                                                                    )}
                                                                                                 {group.items.length > 1 && (
                                                                                                     <span className="mt-2 text-[9px] font-bold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-900 shadow-2xs">
                                                                                                         {group.items.length} attachments
@@ -892,12 +1190,15 @@ function InspectionAttachmentsTab({
                                                                                                                     </span>
                                                                                                                 )}
                                                                                                                 <span className={cn(
-                                                                                                                    "text-[9px] font-black uppercase px-1.5 py-0.2 rounded tracking-wider",
+                                                                                                                    "text-[9px] font-black uppercase px-1.5 py-0.2 rounded tracking-wider inline-flex items-center gap-1",
                                                                                                                     isImage ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" :
                                                                                                                     isVideo ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" :
                                                                                                                     "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                                                                                                                 )}>
-                                                                                                                    {category}
+                                                                                                                    <span>{category}</span>
+                                                                                                                    {fileName.includes(".") && (
+                                                                                                                        <span className="opacity-70 font-mono">• {fileName.split(".").pop()?.toUpperCase()}</span>
+                                                                                                                    )}
                                                                                                                 </span>
                                                                                                             </div>
                                                                                                         </div>
@@ -905,7 +1206,34 @@ function InspectionAttachmentsTab({
                                                                                                 </div>
 
                                                                                                 {/* 6. Actions */}
-                                                                                                <div className={cn("px-2 py-3 flex items-center justify-center gap-1.5 border-b border-slate-200 dark:border-slate-800", rowBg)}>
+                                                                                                <div className={cn("px-1.5 py-3 flex items-center justify-center gap-1 border-b border-slate-200 dark:border-slate-800", rowBg)}>
+                                                                                                    {/* Add new attachment to this specific inspection record */}
+                                                                                                    {item.inspection_id && (
+                                                                                                        <Button
+                                                                                                            variant="outline"
+                                                                                                            size="icon"
+                                                                                                            className="h-7 w-7 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border-slate-200 dark:border-slate-800 shadow-2xs transition-colors"
+                                                                                                            onClick={(e) => {
+                                                                                                                e.stopPropagation();
+                                                                                                                openSlideOver(null, { sourceType: "inspection", sourceId: Number(item.inspection_id) });
+                                                                                                            }}
+                                                                                                            title="Add attachment to this inspection record"
+                                                                                                        >
+                                                                                                            <Plus className="h-3.5 w-3.5" />
+                                                                                                        </Button>
+                                                                                                    )}
+                                                                                                    <Button
+                                                                                                        variant="outline"
+                                                                                                        size="icon"
+                                                                                                        className="h-7 w-7 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 border-slate-200 dark:border-slate-800 shadow-2xs transition-colors"
+                                                                                                        onClick={(e) => {
+                                                                                                            e.stopPropagation();
+                                                                                                            handleDownload(item);
+                                                                                                        }}
+                                                                                                        title="Download file to your local drive"
+                                                                                                    >
+                                                                                                        <Download className="h-3.5 w-3.5" />
+                                                                                                    </Button>
                                                                                                     <Button
                                                                                                         variant="outline"
                                                                                                         size="icon"
@@ -977,6 +1305,21 @@ function InspectionAttachmentsTab({
                         </div>
                         {lightboxItem?.url && (
                             <div className="flex items-center gap-2 pr-6">
+                                <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-xs bg-emerald-600 text-white hover:bg-emerald-700 border-none font-semibold gap-1 shadow-2xs"
+                                    onClick={() => {
+                                        const att = allItems.find(a => a.name === lightboxItem.name || a.path === lightboxItem.url) || {
+                                            name: lightboxItem.name,
+                                            path: lightboxItem.url,
+                                        };
+                                        handleDownload(att);
+                                    }}
+                                    title="Download this file to your local drive"
+                                >
+                                    <Download className="h-3.5 w-3.5 mr-1" /> Download
+                                </Button>
                                 <Button
                                     size="sm"
                                     className="h-7 text-xs bg-blue-600 text-white hover:bg-blue-700 font-semibold"
