@@ -4,6 +4,7 @@ import { getStorageHandler } from "@/utils/storage-factory";
 import { getCurrentUser } from "@/utils/with-auth";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -19,7 +20,6 @@ function buildFreshResponse(buffer: ArrayBuffer | Uint8Array, contentType: strin
   headers.set("Surrogate-Control", "no-store");
   headers.set("CDN-Cache-Control", "no-store");
   headers.set("Netlify-CDN-Cache-Control", "no-store");
-  headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   for (const [k, v] of Object.entries(extraHeaders)) {
     headers.set(k, v);
@@ -52,29 +52,89 @@ function getMimeType(filePath: string): string {
   return map[ext] || "application/octet-stream";
 }
 
+function isSafeLocalPath(candidatePath: string): boolean {
+  if (!candidatePath) return false;
+  const normalized = path.resolve(candidatePath);
+
+  // Path traversal check
+  if (candidatePath.includes("..")) return false;
+
+  // Never allow reading files inside the web application codebase/working dir itself
+  const cwd = path.resolve(process.cwd());
+  if (normalized.toLowerCase().startsWith(cwd.toLowerCase())) {
+    const safeUploads = path.resolve(cwd, "public", "uploads").toLowerCase();
+    if (!normalized.toLowerCase().startsWith(safeUploads)) {
+      return false;
+    }
+  }
+
+  // Never allow reading system root directories
+  const forbiddenDirs = [
+    "c:\\windows",
+    "c:\\program files",
+    "c:\\program files (x86)",
+    "/etc",
+    "/proc",
+    "/sys",
+    "/var",
+    "/root",
+  ];
+  const lowerNorm = normalized.toLowerCase();
+  for (const f of forbiddenDirs) {
+    if (lowerNorm.startsWith(f)) return false;
+  }
+
+  // Allowed storage roots
+  const allowedRoots = [
+    "y:\\", "w:\\", "z:\\", "d:\\", "e:\\", "x:\\", "v:\\",
+    "c:\\offshore", "c:\\offshore10", "c:\\offshore12",
+    path.join(os.homedir(), "offshoreattachments").toLowerCase()
+  ];
+
+  const hasAllowedRoot = allowedRoots.some(r => lowerNorm.startsWith(r));
+  const hasAllowedFolderKeyword =
+    lowerNorm.includes("\\attach") ||
+    lowerNorm.includes("/attach") ||
+    lowerNorm.includes("\\profile") ||
+    lowerNorm.includes("/profile") ||
+    lowerNorm.includes("\\drawing") ||
+    lowerNorm.includes("/drawing") ||
+    lowerNorm.includes("\\uploads") ||
+    lowerNorm.includes("/uploads");
+
+  return hasAllowedRoot || hasAllowedFolderKeyword;
+}
+
 function resolveLocalPath(dirOrPath: string): string | null {
   if (!dirOrPath) return null;
   const clean = dirOrPath.trim();
+  if (clean.includes("..")) return null;
 
-  try {
-    if (fs.existsSync(clean) && fs.statSync(clean).isFile()) {
-      return clean;
-    }
-  } catch {}
+  const rawFName = path.extname(clean) ? path.basename(clean) : "";
+  const fName = rawFName ? path.basename(rawFName) : "";
+  if (fName.includes("..")) return null;
 
-  const fName = path.extname(clean) ? path.basename(clean) : "";
+  const checkCandidate = (cand: string): string | null => {
+    try {
+      if (!isSafeLocalPath(cand)) return null;
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        return cand;
+      }
+    } catch {}
+    return null;
+  };
+
+  const direct = checkCandidate(clean);
+  if (direct) return direct;
+
   if (!fName) return null;
 
   // Alternative drive letters
-  const driveLetters = ["Y:", "W:", "C:", "Z:", "D:", "E:", "X:", "V:"];
+  const driveLetters = ["Y:", "W:", "Z:", "D:", "E:", "X:", "V:"];
   const strippedDrive = clean.replace(/^[A-Za-z]:[\\\/]/, "");
   for (const drive of driveLetters) {
-    try {
-      const altFile = path.join(drive, strippedDrive);
-      if (fs.existsSync(altFile) && fs.statSync(altFile).isFile()) {
-        return altFile;
-      }
-    } catch {}
+    const altFile = checkCandidate(path.join(drive, strippedDrive));
+    if (altFile) return altFile;
   }
 
   // Project code matching
@@ -90,12 +150,8 @@ function resolveLocalPath(dirOrPath: string): string | null {
       path.join("W:\\", proj, "Attach"),
     ];
     for (const cDir of candidateDirs) {
-      try {
-        const cFile = path.join(cDir, fName);
-        if (fs.existsSync(cFile) && fs.statSync(cFile).isFile()) {
-          return cFile;
-        }
-      } catch {}
+      const cFile = checkCandidate(path.join(cDir, fName));
+      if (cFile) return cFile;
     }
   }
 
@@ -136,11 +192,65 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     if (att?.company_id) {
       targetCompanyId = att.company_id;
+
+      // Verify tenant authorization: prevent cross-tenant IDOR download
+      const { data: membership } = await (supabase as any)
+        .from("company_memberships")
+        .select("id")
+        .eq("user_id", authUser.id)
+        .eq("company_id", att.company_id)
+        .eq("is_active", true)
+        .maybeSingle();
+
+      if (!membership) {
+        const { data: userRole } = await (supabase as any)
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", authUser.id)
+          .maybeSingle();
+        const role = (userRole?.role || "").toLowerCase().trim();
+        const isSuperAdmin = role === "super_admin" || role === "super admin" || role === "superadmin";
+
+        if (!isSuperAdmin) {
+          return NextResponse.json(
+            { error: "Access denied to attachment outside your organization", code: "FORBIDDEN" },
+            { status: 403 }
+          );
+        }
+      }
     }
-  } catch (_) {}
+  } catch (err: any) {
+    if (err?.status === 403) throw err;
+  }
 
   let settings: any = null;
   if (targetCompanyId) {
+    // Verify caller has membership in targetCompanyId (or is super admin)
+    const { data: targetMembership } = await (supabase as any)
+      .from("company_memberships")
+      .select("id")
+      .eq("user_id", authUser.id)
+      .eq("company_id", targetCompanyId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!targetMembership) {
+      const { data: userRole } = await (supabase as any)
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", authUser.id)
+        .maybeSingle();
+      const role = (userRole?.role || "").toLowerCase().trim();
+      const isSuperAdmin = role === "super_admin" || role === "super admin" || role === "superadmin";
+
+      if (!isSuperAdmin) {
+        return NextResponse.json(
+          { error: "Access denied to target organization storage", code: "FORBIDDEN" },
+          { status: 403 }
+        );
+      }
+    }
+
     const { data: s } = await (supabase as any)
       .from("company_settings")
       .select("storage_provider, storage_config")
@@ -149,17 +259,7 @@ export async function GET(request: NextRequest) {
     if (s) settings = s;
   }
 
-  if (!settings?.storage_provider) {
-    const { data: fallbackSettings } = await (supabase as any)
-      .from("company_settings")
-      .select("storage_provider, storage_config")
-      .not("storage_config", "is", null)
-      .filter("storage_config", "neq", "{}")
-      .limit(1)
-      .maybeSingle();
-    if (fallbackSettings) settings = fallbackSettings;
-  }
-
+  // Never borrow storage credentials from another organization (strict tenant isolation)
   const defaultProvider = settings?.storage_provider || "Supabase";
   const defaultStorageConfig = settings?.storage_config || {};
 
@@ -350,14 +450,19 @@ export async function GET(request: NextRequest) {
   );
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  const headers = new Headers({
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-company-id",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  });
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Vary", "Origin");
+  }
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    },
+    headers,
   });
 }

@@ -2,7 +2,50 @@ import { createClient } from "@/utils/supabase/server";
 import { NextResponse } from "next/server";
 import { withTenant } from "@/utils/tenant-auth";
 
-export const GET = withTenant(async (request, { companyId, company }) => {
+function isUserAdmin(membership: any, memberships: any[]): boolean {
+    const role = (membership?.role || "").toLowerCase().trim();
+    if (role === "super_admin" || role === "company_admin" || role === "admin" || role === "administrator") {
+        return true;
+    }
+    if (Array.isArray(memberships) && memberships.some((m: any) => {
+        const r = (m?.role || "").toLowerCase().trim();
+        return r === "super_admin" || r === "company_admin" || r === "admin";
+    })) {
+        return true;
+    }
+    return false;
+}
+
+function maskStorageSecrets(config: any): any {
+    if (!config || typeof config !== "object") return {};
+    const masked: Record<string, any> = { ...config };
+    const sensitiveKeys = [
+        "secretAccessKey", "secret_access_key", "secretKey", "secret_key",
+        "applicationKey", "application_key", "b2AppKey", "appKey", "app_key",
+        "accessKeyId", "access_key_id", "keyId", "key_id", "b2KeyId", "applicationKeyId",
+        "serviceAccount", "service_account", "clientSecret", "client_secret",
+        "private_key", "api_secret", "apiKey", "api_key", "token", "password"
+    ];
+    for (const k of Object.keys(masked)) {
+        const lower = k.toLowerCase();
+        if (
+            sensitiveKeys.includes(k) ||
+            lower.includes("secret") ||
+            lower.includes("key") ||
+            lower.includes("token") ||
+            lower.includes("password")
+        ) {
+            if (typeof masked[k] === "string" && masked[k].length > 0) {
+                masked[k] = "********";
+            } else if (typeof masked[k] === "object" && masked[k] !== null) {
+                masked[k] = "********";
+            }
+        }
+    }
+    return masked;
+}
+
+export const GET = withTenant(async (request, { companyId, company, membership, memberships }) => {
     try {
         const supabase = createClient();
 
@@ -68,6 +111,11 @@ export const GET = withTenant(async (request, { companyId, company }) => {
 
         const clientShort = settings.client_short || settings.storage_config?.client_short || companyRecord?.short_name || "";
 
+        const isAdmin = isUserAdmin(membership, memberships);
+        const finalStorageConfig = isAdmin
+            ? (settings.storage_config || {})
+            : maskStorageSecrets(settings.storage_config || {});
+
         return NextResponse.json({
             data: {
                 ...settings,
@@ -77,7 +125,7 @@ export const GET = withTenant(async (request, { companyId, company }) => {
                 has_structures: hasStructures,
                 def_unit: normalizedUnit,
                 storage_provider: settings.storage_provider || "Supabase",
-                storage_config: settings.storage_config || {}
+                storage_config: finalStorageConfig
             },
         });
     } catch (error: any) {
@@ -89,8 +137,16 @@ export const GET = withTenant(async (request, { companyId, company }) => {
     }
 });
 
-export const PUT = withTenant(async (request, { companyId, company }) => {
+export const PUT = withTenant(async (request, { companyId, company, membership, memberships }) => {
     try {
+        const isAdmin = isUserAdmin(membership, memberships);
+        if (!isAdmin) {
+            return NextResponse.json(
+                { error: "Forbidden: Only administrators can modify company settings and storage configuration" },
+                { status: 403 }
+            );
+        }
+
         const supabase = createClient();
         const body = await request.json();
 
@@ -105,6 +161,22 @@ export const PUT = withTenant(async (request, { companyId, company }) => {
             client_short: client_short !== undefined ? client_short : (storage_config?.client_short || "")
         };
 
+        // Check if a row already exists for this company
+        const { data: existing } = await (supabase as any)
+            .from("company_settings")
+            .select("id, storage_config")
+            .eq("company_id", companyId)
+            .maybeSingle();
+
+        // Preserve existing secrets if masked values ("********") were sent back
+        if (existing?.storage_config && typeof existing.storage_config === "object") {
+            for (const [k, v] of Object.entries(mergedStorageConfig)) {
+                if (v === "********" && existing.storage_config[k]) {
+                    mergedStorageConfig[k] = existing.storage_config[k];
+                }
+            }
+        }
+
         const updateData: any = {
             company_name: company_name || company?.name || "Company",
             department_name: department_name || null,
@@ -114,13 +186,6 @@ export const PUT = withTenant(async (request, { companyId, company }) => {
             company_id: companyId,
             updated_at: new Date().toISOString(),
         };
-
-        // Check if a row already exists for this company
-        const { data: existing } = await (supabase as any)
-            .from("company_settings")
-            .select("id")
-            .eq("company_id", companyId)
-            .maybeSingle();
 
         let resultData: any;
         let resultError: any;

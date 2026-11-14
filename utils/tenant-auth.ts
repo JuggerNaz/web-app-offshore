@@ -103,7 +103,7 @@ export function withTenantLight(handler: TenantPartialHandler) {
       if (!resolvedCompanyId) {
         const { data: memberships } = await (supabase as any)
           .from("company_memberships")
-          .select("company_id, company:companies!company_id(is_active)")
+          .select("company_id, role, company:companies!company_id(is_active)")
           .eq("user_id", user.id)
           .eq("is_active", true)
           .order("updated_at", { ascending: false });
@@ -123,6 +123,39 @@ export function withTenantLight(handler: TenantPartialHandler) {
 
         if (comp && (comp.is_active === false || comp.is_active === 0)) {
           return apiForbidden("Organization is inactive");
+        }
+
+        // Verify that the user is an active member of this requested company, or is a super admin
+        const { data: userMembership } = await (supabase as any)
+          .from("company_memberships")
+          .select("company_id, role, is_active")
+          .eq("user_id", user.id)
+          .eq("company_id", resolvedCompanyId)
+          .eq("is_active", true)
+          .maybeSingle();
+
+        if (!userMembership) {
+          // Check if user is a global super admin
+          const { data: superAdminMembership } = await (supabase as any)
+            .from("company_memberships")
+            .select("role")
+            .eq("user_id", user.id)
+            .eq("role", "super_admin")
+            .eq("is_active", true)
+            .maybeSingle();
+
+          const { data: userRole } = await (supabase as any)
+            .from("user_roles")
+            .select("role")
+            .eq("user_id", user.id)
+            .maybeSingle();
+
+          const roleStr = (userRole?.role || "").toLowerCase().trim();
+          const isSuper = !!superAdminMembership || roleStr === "super admin" || roleStr === "super_admin" || roleStr === "superadmin";
+
+          if (!isSuper) {
+            return apiForbidden("You do not have access to this organization");
+          }
         }
       }
 

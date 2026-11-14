@@ -4,6 +4,7 @@ import { getStorageHandler } from "@/utils/storage-factory";
 import { getCurrentUser } from "@/utils/with-auth";
 import fs from "fs";
 import path from "path";
+import os from "os";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -27,7 +28,6 @@ function buildFreshResponse(buffer: Uint8Array, contentType: string, extraHeader
   headers.set("Surrogate-Control", "no-store");
   headers.set("CDN-Cache-Control", "no-store");
   headers.set("Netlify-CDN-Cache-Control", "no-store");
-  headers.set("Access-Control-Allow-Origin", "*");
   headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
   for (const [k, v] of Object.entries(extraHeaders)) {
     headers.set(k, v);
@@ -60,38 +60,144 @@ function getMimeType(filePath: string): string {
   return map[ext] || "application/octet-stream";
 }
 
+function isSafeLocalPath(candidatePath: string): boolean {
+  if (!candidatePath) return false;
+  const normalized = path.resolve(candidatePath);
+
+  // Path traversal check
+  if (candidatePath.includes("..")) return false;
+
+  // Never allow reading files inside the web application codebase/working dir itself
+  // (prevents reading .env, .env.local, source code, node_modules, keys, etc.)
+  const cwd = path.resolve(process.cwd());
+  if (normalized.toLowerCase().startsWith(cwd.toLowerCase())) {
+    const safeUploads = path.resolve(cwd, "public", "uploads").toLowerCase();
+    if (!normalized.toLowerCase().startsWith(safeUploads)) {
+      return false;
+    }
+  }
+
+  // Never allow reading system root directories
+  const forbiddenDirs = [
+    "c:\\windows",
+    "c:\\program files",
+    "c:\\program files (x86)",
+    "/etc",
+    "/proc",
+    "/sys",
+    "/var",
+    "/root",
+  ];
+  const lowerNorm = normalized.toLowerCase();
+  for (const f of forbiddenDirs) {
+    if (lowerNorm.startsWith(f)) return false;
+  }
+
+  // Check if candidate matches allowed attachment storage roots:
+  // Allowed patterns:
+  // - Project drive paths (Y:\, W:\, Z:\, D:\, E:\, X:\, V:\)
+  // - Designated legacy Offshore dirs: C:\Offshore, C:\Offshore10, C:\Offshore12
+  // - Designated OffshoreAttachments folder in user home
+  // - Folders containing Attach, Profile, Drawing, or uploads
+  const allowedRoots = [
+    "y:\\", "w:\\", "z:\\", "d:\\", "e:\\", "x:\\", "v:\\",
+    "c:\\offshore", "c:\\offshore10", "c:\\offshore12",
+    path.join(os.homedir(), "offshoreattachments").toLowerCase()
+  ];
+
+  const hasAllowedRoot = allowedRoots.some(r => lowerNorm.startsWith(r));
+  const hasAllowedFolderKeyword =
+    lowerNorm.includes("\\attach") ||
+    lowerNorm.includes("/attach") ||
+    lowerNorm.includes("\\profile") ||
+    lowerNorm.includes("/profile") ||
+    lowerNorm.includes("\\drawing") ||
+    lowerNorm.includes("/drawing") ||
+    lowerNorm.includes("\\uploads") ||
+    lowerNorm.includes("/uploads");
+
+  return hasAllowedRoot || hasAllowedFolderKeyword;
+}
+
+function isSafeHttpUrl(urlString: string): boolean {
+  try {
+    const parsed = new URL(urlString);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return false;
+    }
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Block localhost / loopback
+    if (
+      hostname === "localhost" ||
+      hostname === "127.0.0.1" ||
+      hostname === "::1" ||
+      hostname === "0.0.0.0" ||
+      hostname.endsWith(".local") ||
+      hostname.endsWith(".internal")
+    ) {
+      return false;
+    }
+
+    // Block cloud metadata endpoints
+    if (hostname === "169.254.169.254" || hostname === "metadata.google.internal") {
+      return false;
+    }
+
+    // Block private IP ranges (RFC 1918 & carrier grade NAT)
+    const ipMatch = hostname.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+    if (ipMatch) {
+      const b0 = parseInt(ipMatch[1], 10);
+      const b1 = parseInt(ipMatch[2], 10);
+      if (b0 === 10) return false; // 10.0.0.0/8
+      if (b0 === 127) return false; // 127.0.0.0/8
+      if (b0 === 169 && b1 === 254) return false; // 169.254.0.0/16
+      if (b0 === 172 && b1 >= 16 && b1 <= 31) return false; // 172.16.0.0/12
+      if (b0 === 192 && b1 === 168) return false; // 192.168.0.0/16
+      if (b0 === 0) return false;
+    }
+
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function resolveLocalPath(dirOrPath: string, preferredFileName: string): string | null {
   if (!dirOrPath) return null;
   const clean = dirOrPath.trim();
+  if (clean.includes("..")) return null;
+
+  const rawFName = preferredFileName || (path.extname(clean) ? path.basename(clean) : "");
+  const fName = rawFName ? path.basename(rawFName) : "";
+  if (fName.includes("..")) return null;
+
+  const checkCandidate = (cand: string): string | null => {
+    try {
+      if (!isSafeLocalPath(cand)) return null;
+      if (fs.existsSync(cand) && fs.statSync(cand).isFile()) {
+        return cand;
+      }
+    } catch {}
+    return null;
+  };
 
   // 1. Direct file check
-  try {
-    if (fs.existsSync(clean) && fs.statSync(clean).isFile()) {
-      return clean;
-    }
-  } catch {}
+  const direct = checkCandidate(clean);
+  if (direct) return direct;
 
-  const fName = preferredFileName || (path.extname(clean) ? path.basename(clean) : "");
   if (!fName) return null;
 
   // 2. Direct join
-  try {
-    const joined = path.join(clean, fName);
-    if (fs.existsSync(joined) && fs.statSync(joined).isFile()) {
-      return joined;
-    }
-  } catch {}
+  const joined = checkCandidate(path.join(clean, fName));
+  if (joined) return joined;
 
-  // 3. Alternative drive letters on host (Y:, W:, C:, Z:, D:, E:, X:, V:)
-  const driveLetters = ["Y:", "W:", "C:", "Z:", "D:", "E:", "X:", "V:"];
+  // 3. Alternative drive letters on host (Y:, W:, Z:, D:, E:, X:, V:)
+  const driveLetters = ["Y:", "W:", "Z:", "D:", "E:", "X:", "V:"];
   const strippedDrive = clean.replace(/^[A-Za-z]:[\\\/]/, "");
   for (const drive of driveLetters) {
-    try {
-      const altFile = path.join(drive, strippedDrive, fName);
-      if (fs.existsSync(altFile) && fs.statSync(altFile).isFile()) {
-        return altFile;
-      }
-    } catch {}
+    const altFile = checkCandidate(path.join(drive, strippedDrive, fName));
+    if (altFile) return altFile;
   }
 
   // 4. Project code matching on common network/local shares (e.g. Y:\SKO252\Attach)
@@ -109,12 +215,8 @@ function resolveLocalPath(dirOrPath: string, preferredFileName: string): string 
       path.join("W:\\", proj),
     ];
     for (const cDir of candidateDirs) {
-      try {
-        const cFile = path.join(cDir, fName);
-        if (fs.existsSync(cFile) && fs.statSync(cFile).isFile()) {
-          return cFile;
-        }
-      } catch {}
+      const cFile = checkCandidate(path.join(cDir, fName));
+      if (cFile) return cFile;
     }
   }
 
@@ -127,12 +229,8 @@ function resolveLocalPath(dirOrPath: string, preferredFileName: string): string 
     "C:\\Offshore10\\Profile",
   ];
   for (const appDir of legacyAppDirs) {
-    try {
-      const appFile = path.join(appDir, fName);
-      if (fs.existsSync(appFile) && fs.statSync(appFile).isFile()) {
-        return appFile;
-      }
-    } catch {}
+    const appFile = checkCandidate(path.join(appDir, fName));
+    if (appFile) return appFile;
   }
 
   return null;
@@ -628,6 +726,55 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // If queried by path alone, locate attachment record to verify tenant ownership
+  if (!attachmentRecord && fallbackPath) {
+    const { data: attByPath } = await (supabase as any)
+      .from("attachment")
+      .select("id, name, meta, path, company_id, source_id, source_type")
+      .eq("path", fallbackPath)
+      .limit(1)
+      .maybeSingle();
+
+    if (attByPath) {
+      attachmentRecord = attByPath;
+      companyId = attByPath.company_id || companyId;
+      const meta = (attByPath.meta || {}) as any;
+      originalTitle = attByPath.name || meta?.title || "";
+      fileName = meta?.original_file_name || (attByPath.name && attByPath.name.includes(".") ? attByPath.name : "");
+      fileType = meta?.file_type || "";
+      recordProvider = meta?.storage_provider || "Supabase";
+      bucket = meta?.bucket || "attachments";
+    }
+  }
+
+  // Enforce tenant authorization: prevent cross-tenant IDOR file access
+  if (attachmentRecord?.company_id) {
+    const { data: membership } = await (supabase as any)
+      .from("company_memberships")
+      .select("id")
+      .eq("user_id", authUser.id)
+      .eq("company_id", attachmentRecord.company_id)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!membership) {
+      const { data: userRole } = await (supabase as any)
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", authUser.id)
+        .maybeSingle();
+      const role = (userRole?.role || "").toLowerCase().trim();
+      const isSuperAdmin = role === "super_admin" || role === "super admin" || role === "superadmin";
+
+      if (!isSuperAdmin) {
+        return NextResponse.json(
+          { error: "Access denied to attachment outside your organization", code: "FORBIDDEN" },
+          { status: 403 }
+        );
+      }
+    }
+  }
+
   const targetUrlOrPath = filePath || fileUrl || fallbackPath || "";
 
   if (!targetUrlOrPath) {
@@ -655,6 +802,32 @@ export async function GET(request: NextRequest) {
 
   let settings: any = null;
   if (targetCompanyId) {
+    // Verify caller has membership in targetCompanyId (or is super admin)
+    const { data: targetMembership } = await (supabase as any)
+      .from("company_memberships")
+      .select("id")
+      .eq("user_id", authUser.id)
+      .eq("company_id", targetCompanyId)
+      .eq("is_active", true)
+      .maybeSingle();
+
+    if (!targetMembership) {
+      const { data: userRole } = await (supabase as any)
+        .from("user_roles")
+        .select("role")
+        .eq("user_id", authUser.id)
+        .maybeSingle();
+      const role = (userRole?.role || "").toLowerCase().trim();
+      const isSuperAdmin = role === "super_admin" || role === "super admin" || role === "superadmin";
+
+      if (!isSuperAdmin) {
+        return NextResponse.json(
+          { error: "Access denied to target organization storage", code: "FORBIDDEN" },
+          { status: 403 }
+        );
+      }
+    }
+
     const { data: compSettings } = await (supabase as any)
       .from("company_settings")
       .select("storage_provider, storage_config")
@@ -663,17 +836,7 @@ export async function GET(request: NextRequest) {
     if (compSettings) settings = compSettings;
   }
 
-  if (!settings?.storage_provider) {
-    const { data: fallbackSettings } = await (supabase as any)
-      .from("company_settings")
-      .select("storage_provider, storage_config")
-      .not("storage_config", "is", null)
-      .filter("storage_config", "neq", "{}")
-      .limit(1)
-      .maybeSingle();
-    if (fallbackSettings) settings = fallbackSettings;
-  }
-
+  // Never borrow storage credentials from another organization (strict tenant isolation)
   const defaultProvider = settings?.storage_provider || "Supabase";
   const defaultStorageConfig = settings?.storage_config || {};
 
@@ -730,13 +893,15 @@ export async function GET(request: NextRequest) {
 
   // Check all possible candidate URLs for direct HTTP(S) access (deduplicated)
   // Note: Skip private cloud endpoints like backblazeb2.com that require signed auth headers and will 401
+  // Validates against SSRF (blocks loopback, private ranges, metadata IPs)
   const directHttpCandidates = Array.from(
     new Set(
       [fileUrl, fallbackPath, filePath, targetUrlOrPath].filter(
         (u): u is string =>
           typeof u === "string" &&
           (u.startsWith("http://") || u.startsWith("https://")) &&
-          !u.includes("backblazeb2.com")
+          !u.includes("backblazeb2.com") &&
+          isSafeHttpUrl(u)
       )
     )
   );
@@ -892,14 +1057,19 @@ export async function GET(request: NextRequest) {
   );
 }
 
-export async function OPTIONS() {
+export async function OPTIONS(request: NextRequest) {
+  const origin = request.headers.get("origin");
+  const headers = new Headers({
+    "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-company-id",
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+  });
+  if (origin) {
+    headers.set("Access-Control-Allow-Origin", origin);
+    headers.set("Vary", "Origin");
+  }
   return new NextResponse(null, {
     status: 204,
-    headers: {
-      "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
-      "Access-Control-Allow-Headers": "Content-Type, Authorization",
-      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
-    },
+    headers,
   });
 }
