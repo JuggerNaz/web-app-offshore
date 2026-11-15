@@ -69,10 +69,10 @@ export async function GET(request: NextRequest) {
             console.warn("[AnomalyReport] View query error, attempting direct query fallback:", viewError);
         }
 
-        // Robust Fallback: If view query returned 0 rows or errored and specific inspectionId or anomalyId is requested
-        if (anomalies.length === 0 && (inspectionId || anomalyId)) {
+        // Robust Fallback: If view query returned 0 rows or errored and specific inspectionId, anomalyId, jobpackId, or structureId is requested
+        if (anomalies.length === 0 && (inspectionId || anomalyId || jobpackId || structureId)) {
             try {
-                console.log(`[AnomalyReport] View returned 0 rows for inspectionId=${inspectionId}, anomalyId=${anomalyId}. Attempting direct query fallback...`);
+                console.log(`[AnomalyReport] View returned 0 rows. Attempting direct query fallback...`);
                 let directQuery = (supabase as any)
                     .from("insp_anomalies")
                     .select("*, insp_records!inner(*, structure_components(*), insp_video_tapes(*), insp_dive_jobs(*), insp_rov_jobs(*))");
@@ -81,6 +81,13 @@ export async function GET(request: NextRequest) {
                     directQuery = directQuery.eq("anomaly_id", anomalyId);
                 } else if (inspectionId) {
                     directQuery = directQuery.eq("inspection_id", inspectionId);
+                } else {
+                    if (jobpackId) {
+                        directQuery = directQuery.eq("insp_records.jobpack_id", jobpackId);
+                    }
+                    if (structureId) {
+                        directQuery = directQuery.eq("insp_records.structure_id", structureId);
+                    }
                 }
 
                 const { data: directAnoms, error: directErr } = await directQuery;
