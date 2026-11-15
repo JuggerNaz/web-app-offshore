@@ -15,6 +15,7 @@
     "allowJs": true,
     "skipLibCheck": true,
     "strict": true,
+    "noImplicitAny": false,
     "noEmit": true,
     "esModuleInterop": true,
     "module": "esnext",
@@ -39,6 +40,9 @@
   "exclude": [
     "node_modules",
     "scripts",
-    ".next/dev"
+    ".next/dev",
+    "scratch",
+    "vitest.config.ts",
+    "vitest.no-setup.config.ts"
   ]
 }

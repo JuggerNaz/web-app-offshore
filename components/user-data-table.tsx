@@ -66,10 +66,10 @@ export function UserDataTable() {
     const { onlineUserIds } = usePresence();
     const supabase = useMemo(() => createClient(), []);
 
-    const { profile, user: authUser } = useUserProfile();
+    const { profile } = useUserProfile();
     const { activeCompanyId, isAdmin: isContextAdmin, role: effectiveRole, systemRole } = useUserRole();
 
-    const currentUserId = profile?.id || authUser?.id || null;
+    const currentUserId = profile?.id || null;
     const localMetadata = profile ? {
         full_name: profile.full_name || undefined,
         designation: profile.designation || undefined,

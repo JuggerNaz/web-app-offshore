@@ -379,7 +379,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 1. Resolve component record
-    let comp = null;
+    let comp: any = null;
     if (insp.component_id) {
       comp =
         componentMap.get(insp.component_id) ||
