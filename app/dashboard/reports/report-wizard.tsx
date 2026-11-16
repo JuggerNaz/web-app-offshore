@@ -86,6 +86,7 @@ interface ReportConfig {
     showPageNumbers: boolean;
     printFriendly: boolean;
     showSignatures: boolean;
+    show3DViews?: boolean;
 }
 
 interface SelectionState {
@@ -172,6 +173,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         showPageNumbers: true,
         printFriendly: false,
         showSignatures: true,
+        show3DViews: false,
     });
 
     useEffect(() => {
@@ -1718,6 +1720,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     onCheckedChange={(c: boolean) => setConfig({ ...config, printFriendly: c })}
                                 />
                             </div>
+                            {(selections.templateId === "defect-anomaly-report" ||
+                                (selections.templateId === "final-inspection-datasheet" && selectedTemplates.includes("defect-anomaly-report"))) && (
+                                <div className="flex items-center justify-between pt-2 border-t border-dashed border-slate-200 dark:border-slate-700">
+                                    <div className="space-y-0.5">
+                                        <Label className="cursor-pointer" htmlFor="show-3d-views">Add 3D Elevation &amp; Face View</Label>
+                                        <p className="text-[10px] text-muted-foreground">Include the 3D face view and framing plan (as in the Debris Location report) on each anomaly page</p>
+                                    </div>
+                                    <Switch
+                                        id="show-3d-views"
+                                        checked={config.show3DViews === true}
+                                        onCheckedChange={(c: boolean) => setConfig({ ...config, show3DViews: c })}
+                                    />
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
 

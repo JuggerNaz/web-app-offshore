@@ -1884,18 +1884,8 @@ export const drawElevationView = (
     // 3. Draw Target Member / Component in 3D-shaded bright RED on top of context
     drawTarget3D(doc, view, target, flags, (p) => projectElevation(p, axis), "elevation", drawnTarget, false, placer);
 
-    // 3b. Amber callouts for other anomaly-highlighted members/components (auto-placed, no overlaps)
-    drawAnomalyCallouts(
-        doc,
-        [
-            ...braces.filter(m => m.hasAnomaly),
-            ...anodeComps.filter(m => m.hasAnomaly),
-            ...weldComps.filter(m => m.hasAnomaly)
-        ],
-        p => projectElevation(p, axis),
-        view,
-        placer
-    );
+    // 3b. Anomaly callouts of OTHER members are intentionally not drawn: each page only labels
+    // its own section's anomaly/debris (the red target callout above).
 
     // 4. Draw Top Leg Badges ("Leg A1", "Leg B1") and Side Node Badges (node numbers only, e.g. "378")
     legColsRaw.forEach((col) => {
@@ -2167,18 +2157,7 @@ export const drawPlanView = (
     // 4. Draw Red Callout Tag(s) on the target member on top of everything
     drawTarget3D(doc, view, target, flags, projectPlan, "plan", drawnTarget, true, placer);
 
-    // 4b. Amber callouts for other anomaly-highlighted members/components (auto-placed, no overlaps)
-    drawAnomalyCallouts(
-        doc,
-        [
-            ...framingLines.filter(f => f.m.hasAnomaly).map(f => f.m),
-            ...anodeComps.filter(m => m.hasAnomaly),
-            ...weldComps.filter(m => m.hasAnomaly)
-        ],
-        projectPlan,
-        view,
-        placer
-    );
+    // 4b. Anomaly callouts of OTHER members are intentionally not drawn (only this section's own callout).
 
     // 5. Corner Leg badges with node number (e.g. "A2" over "378")
     legBadges.forEach(b => {

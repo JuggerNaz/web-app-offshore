@@ -216,7 +216,7 @@ export const buildDebrisItems = (records: any[], member: SketchMember | null): D
 /* -------------------------------------------------------------------------- */
 
 /** Pull every 3D member of the structure (webapp_3d coordinates enriched by the platform API) */
-const fetchStructureMembers = async (structureId: string | number | undefined) => {
+export const fetchStructureMembers = async (structureId: string | number | undefined) => {
     const all: (SketchMember & { compId: number | null; isFoundation?: boolean })[] = [];
     if (!structureId || String(structureId) === "0") return all;
     try {

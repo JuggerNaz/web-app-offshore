@@ -29,6 +29,8 @@ export interface ReportConfig {
     prefix?: string;
     isFindingsReport?: boolean;
     showSignatures?: boolean;
+    /** Adds the 3D Face View + 3D Framing Plan (as in the Debris Location report) to each anomaly page */
+    show3DViews?: boolean;
     structureId?: string | number;
     jobPackId?: string | number;
     [key: string]: any;
@@ -418,6 +420,11 @@ export const generateDefectAnomalyReport = async (
     const anomalyPageRanges: { start: number; end: number }[] = [];
     const pageNoCellCoordinates: { [anomalyIndex: number]: { x: number; y: number; w: number; h: number } } = {};
 
+    // Optional 3D Face View / Framing Plan section (only loaded when switched on in the report configuration)
+    const show3DViews = (config as any).show3DViews === true && !(config as any).isBlankReport;
+    const anomaly3D = show3DViews ? await import("./anomaly-3d-views") : null;
+    const anomaly3DContexts = new Map<string, Awaited<ReturnType<NonNullable<typeof anomaly3D>["loadAnomaly3DContext"]>>>();
+
     for (let i = 0; i < anomalies.length; i++) {
         const anomaly = anomalies[i];
         const record = anomaly;
@@ -795,6 +802,63 @@ export const generateDefectAnomalyReport = async (
         doc.text(descLines, margin + textPadding, lastY + boxHeaderH + 4);
 
         lastY += totalBoxH + 5;
+
+        // --- Optional 3D Face View + 3D Framing Plan (same views as the Debris Location report) ---
+        if (show3DViews && anomaly3D && !(config as any).isBlankReport) {
+            try {
+                const structIdFor3D = structure?.id || structure?.str_id || structure?.plat_id || (structure as any)?.structure_id || config?.structureId || record.structure_id;
+                const cacheKey = String(structIdFor3D || "");
+                if (!anomaly3DContexts.has(cacheKey)) {
+                    anomaly3DContexts.set(cacheKey, await anomaly3D.loadAnomaly3DContext(structIdFor3D));
+                }
+                const prepared = anomaly3D.prepareAnomaly3D(anomaly3DContexts.get(cacheKey) || null, record);
+                if (prepared) {
+                    const panelH = anomaly3D.ANOMALY_3D_PANEL_H;
+                    if (maxYForContent - lastY < panelH + 2) {
+                        // Not enough room on this page: continue on a new page (same continuation layout as photos)
+                        doc.addPage();
+                        globalPage++;
+                        drawHeader(doc);
+                        const subBarH = 6;
+                        const subBarY = margin + headerH + 2;
+                        doc.setDrawColor(200, 200, 200);
+                        doc.setLineWidth(0.1);
+                        if (isPrintFriendly) {
+                            doc.setFillColor(240, 240, 240);
+                            doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                            doc.setTextColor(7, 78, 136);
+                        } else {
+                            doc.setFillColor(7, 78, 136);
+                            doc.rect(margin, subBarY, contentWidth, subBarH, 'FD');
+                            doc.setTextColor(255, 255, 255);
+                        }
+                        doc.setFontSize(7.5);
+                        doc.setFont("helvetica", "bold");
+                        doc.text(`${config.isFindingsReport ? "Findings Ref:" : "Anomaly Ref:"} ${ref}  |  Structure: ${install}  |  Component: ${compVal || "N/A"}`, margin + 3, subBarY + 4.2);
+                        doc.setTextColor(0, 0, 0);
+                        lastY = margin + headerH + 10;
+                    }
+
+                    anomaly3D.drawAnomaly3DViews(
+                        doc,
+                        prepared,
+                        { x: margin, y: lastY, w: contentWidth, h: panelH },
+                        {
+                            isPrintFriendly,
+                            isFindingsReport: Boolean(config.isFindingsReport),
+                            meta: {
+                                region: structure?.region || structure?.area || jobPack?.metadata?.region || undefined,
+                                field: (field && field !== "N/A") ? field : undefined,
+                                structure: structure?.str_name || jobPack?.name || undefined
+                            }
+                        }
+                    );
+                    lastY += panelH + 5;
+                }
+            } catch (e) {
+                console.warn("[DefectAnomalyReport] 3D views skipped for anomaly", ref, e);
+            }
+        }
 
         // Load all images for this record in parallel while maintaining association with metadata and aspect ratio
         const images = rawImages;
