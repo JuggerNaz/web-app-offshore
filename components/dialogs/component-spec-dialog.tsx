@@ -38,7 +38,7 @@ import { toast } from "sonner";
 import specAdditionalDetails from "@/utils/spec-additional-details.json";
 import specUiConfig from "@/utils/spec-ui-config.json";
 import { getUnitOptions, getDefaultUnit } from "@/utils/unit-helpers";
-import { Wrench, Settings2, Save, X, Plus, Link2, Unlink, Search as SearchIcon, CheckCircle2, AlertCircle } from "lucide-react";
+import { Wrench, Settings2, Save, X, Plus, Link2, Unlink, Search as SearchIcon, CheckCircle2, AlertCircle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 type Component = {
@@ -214,6 +214,10 @@ export function ComponentSpecDialog({
   const defUnit = companyData?.data?.def_unit || "METRIC";
   const isImperial = defUnit === "IMPERIAL";
 
+  // Pipelines list for cross-structure Riser association (single pipeline per riser)
+  const { data: pipelinesData } = useSWR("/api/pipeline?pageSize=1000", fetcher);
+  const pipelinesList = (pipelinesData?.data || []) as any[];
+
   const [selectorOpen, setSelectorOpen] = useState(false);
   const [assocSearch, setAssocSearch] = useState("");
   const [isSavingAssoc, setIsSavingAssoc] = useState(false);
@@ -288,6 +292,8 @@ export function ComponentSpecDialog({
     top_und: "",
     comp_group: "",
     associated_comp_id: null as number | null,
+    associated_pipeline_id: null as number | null,
+    associated_pipeline_title: "" as string,
     kp: "",
     kp_unit: "",
     start_kp: "",
@@ -596,6 +602,8 @@ export function ComponentSpecDialog({
         top_und: component.metadata?.top_und ?? "",
         comp_group: component.metadata?.comp_group ?? "",
         associated_comp_id: component.metadata?.associated_comp_id ?? null,
+        associated_pipeline_id: component.metadata?.associated_pipeline_id ?? null,
+        associated_pipeline_title: component.metadata?.associated_pipeline_title ?? "",
         kp: component.metadata?.kp ?? "",
         kp_unit: component.metadata?.kp_unit ?? "",
         start_kp: component.metadata?.start_kp ?? "",
@@ -879,6 +887,8 @@ export function ComponentSpecDialog({
         q_id: "",
         comp_group: "",
         associated_comp_id: null,
+        associated_pipeline_id: null,
+        associated_pipeline_title: "",
         kp: "",
         kp_unit:
           getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) ||
@@ -1196,6 +1206,8 @@ export function ComponentSpecDialog({
         top_und: formData.top_und,
         comp_group: formData.comp_group,
         associated_comp_id: formData.associated_comp_id,
+        associated_pipeline_id: formData.associated_pipeline_id,
+        associated_pipeline_title: formData.associated_pipeline_title,
         kp: formData.kp,
         kp_unit: formData.kp_unit,
         start_kp: formData.start_kp,
@@ -1273,6 +1285,8 @@ export function ComponentSpecDialog({
         top_und: "",
         comp_group: "",
         associated_comp_id: null,
+        associated_pipeline_id: null,
+        associated_pipeline_title: "",
         kp: "",
         kp_unit:
           getDefaultUnit("DISTANCE", isImperial, "kp", defaultCode || undefined) ||
@@ -1354,6 +1368,8 @@ export function ComponentSpecDialog({
         top_und: formData.top_und,
         comp_group: formData.comp_group,
         associated_comp_id: formData.associated_comp_id,
+        associated_pipeline_id: formData.associated_pipeline_id,
+        associated_pipeline_title: formData.associated_pipeline_title,
         kp: formData.kp,
         kp_unit: formData.kp_unit,
         easting: formData.easting,
@@ -2170,6 +2186,65 @@ export function ComponentSpecDialog({
                         </SelectContent>
                       </Select>
                     </div>
+
+                    {/* Cross-structure association for Riser (RS) components (Main Property Sheet) */}
+                    {(effectiveCode?.toLowerCase() === "rs" || formData.code?.toLowerCase() === "rs" || component?.code?.toLowerCase() === "rs" || typeName?.trim().toLowerCase() === "riser") && (
+                      <div className="col-span-12 space-y-2 p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-800/50 shadow-sm transition-all mt-2">
+                        <div className="flex items-center justify-between">
+                          <Label
+                            htmlFor="associatedPipeline"
+                            className="text-[11px] font-black uppercase tracking-widest text-blue-700 dark:text-blue-300 ml-1 flex items-center gap-2"
+                          >
+                            <GitBranch className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                            Associated Pipeline Structure (Connected Pipeline)
+                          </Label>
+                          <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-900 px-2.5 py-0.5 rounded-full border border-blue-200/50 dark:border-blue-800/40">
+                            Single Pipeline Association Only
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 ml-1">
+                          Select the pipeline structure connected to this riser. The linked riser will be inspected and included in the pipeline datasheet reports.
+                        </p>
+                        <Select
+                          value={
+                            (isCreateMode || isEditMode
+                              ? (formData.associated_pipeline_id ? String(formData.associated_pipeline_id) : "none")
+                              : (component?.metadata?.associated_pipeline_id ? String(component.metadata.associated_pipeline_id) : "none"))
+                          }
+                          onValueChange={(val) => {
+                            if (val === "none") {
+                              handleInputChange("associated_pipeline_id", null);
+                              handleInputChange("associated_pipeline_title", "");
+                            } else {
+                              const selectedPipe = pipelinesList.find((p: any) => String(p.pipe_id) === String(val));
+                              handleInputChange("associated_pipeline_id", Number(val));
+                              handleInputChange("associated_pipeline_title", selectedPipe?.title || `Pipeline #${val}`);
+                            }
+                          }}
+                          disabled={!(isCreateMode || isEditMode)}
+                        >
+                          <SelectTrigger
+                            id="associatedPipeline"
+                            className={cn(
+                              "rounded-xl border-blue-200 dark:border-blue-900 bg-white dark:bg-slate-950 h-11 font-bold",
+                              (isCreateMode || isEditMode ? formData.associated_pipeline_id : component?.metadata?.associated_pipeline_id)
+                                ? "text-blue-700 dark:text-blue-300 ring-1 ring-blue-500/20"
+                                : "text-slate-500"
+                            )}
+                          >
+                            <SelectValue placeholder="-- Select Connected Pipeline Structure --" />
+                          </SelectTrigger>
+                          <SelectContent className="rounded-xl max-h-[300px]">
+                            <SelectItem value="none">-- None (Not Connected) --</SelectItem>
+                            {pipelinesList.map((p: any) => (
+                              <SelectItem key={p.pipe_id} value={String(p.pipe_id)}>
+                                {p.title} {p.field_name || p.pfield ? `(${p.field_name || p.pfield})` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <>

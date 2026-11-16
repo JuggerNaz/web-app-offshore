@@ -197,45 +197,67 @@ export function ROVConnectionProvider({ children }: { children: React.ReactNode 
                     }
                 }
 
-                setFields(prev => prev.map(f => {
-                    const fieldDef = fieldsDef.find((fd: any) => (fd.targetField || fd.label) === f.targetField);
-                    if (!fieldDef) return f;
+                setFields(prev => {
+                    const nextList = prev.map(f => {
+                        const fieldDef = fieldsDef.find((fd: any) => (fd.targetField || fd.label) === f.targetField);
+                        if (!fieldDef) return f;
 
-                    let val = '';
-                    if (fieldDef.defaultDataOption === 'system_date') {
-                        val = new Date().toISOString().split('T')[0];
-                    } else if (fieldDef.defaultDataOption === 'system_time') {
-                        val = new Date().toTimeString().split(' ')[0];
-                    } else if (parseMethod === 'position') {
-                        const start = parseInt(fieldDef.positionValue || '0');
-                        if (!isNaN(start) && start < processedData.length) {
-                            val = processedData.substring(start, Math.min(start + (fieldDef.length || 1), processedData.length));
+                        let val = '';
+                        if (fieldDef.defaultDataOption === 'system_date') {
+                            val = new Date().toISOString().split('T')[0];
+                        } else if (fieldDef.defaultDataOption === 'system_time') {
+                            val = new Date().toTimeString().split(' ')[0];
+                        } else if (parseMethod === 'position') {
+                            const start = parseInt(fieldDef.positionValue || '0');
+                            if (!isNaN(start) && start < processedData.length) {
+                                val = processedData.substring(start, Math.min(start + (fieldDef.length || 1), processedData.length));
+                                if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
+                            }
+                        } else {
+                            const idPrefix = fieldDef.idValue || fieldDef.label;
+                            const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                            const regex = new RegExp(`${escapedPrefix}([^,]+)`);
+                            const match = processedData.match(regex);
+                            val = match ? match[1].substring(0, fieldDef.length || 10) : '';
                             if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
                         }
-                    } else {
-                        const idPrefix = fieldDef.idValue || fieldDef.label;
-                        const escapedPrefix = idPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-                        const regex = new RegExp(`${escapedPrefix}([^,]+)`);
-                        const match = processedData.match(regex);
-                        val = match ? match[1].substring(0, fieldDef.length || 10) : '';
-                        if (val.length > 0 && /[a-zA-Z]/.test(val[0])) val = val.substring(1);
-                    }
 
-                    // Apply modification
-                    if (fieldDef.modify && fieldDef.modify !== 'none' && val && !/[a-zA-Z]/.test(val)) {
-                        const numVal = parseFloat(val);
-                        if (!isNaN(numVal)) {
-                            switch (fieldDef.modify) {
-                                case 'add': val = (numVal + (fieldDef.modifyValue || 0)).toString(); break;
-                                case 'subtract': val = (numVal - (fieldDef.modifyValue || 0)).toString(); break;
-                                case 'multiply': val = (numVal * (fieldDef.modifyValue || 1)).toString(); break;
-                                case 'divide': val = (fieldDef.modifyValue ? (numVal / fieldDef.modifyValue) : numVal).toString(); break;
+                        // Apply modification
+                        if (fieldDef.modify && fieldDef.modify !== 'none' && val && !/[a-zA-Z]/.test(val)) {
+                            const numVal = parseFloat(val);
+                            if (!isNaN(numVal)) {
+                                switch (fieldDef.modify) {
+                                    case 'add': val = (numVal + (fieldDef.modifyValue || 0)).toString(); break;
+                                    case 'subtract': val = (numVal - (fieldDef.modifyValue || 0)).toString(); break;
+                                    case 'multiply': val = (numVal * (fieldDef.modifyValue || 1)).toString(); break;
+                                    case 'divide': val = (fieldDef.modifyValue ? (numVal / fieldDef.modifyValue) : numVal).toString(); break;
+                                }
                             }
                         }
+
+                        return { ...f, value: val || '--' };
+                    });
+
+                    if (typeof window !== 'undefined') {
+                        nextList.forEach(item => {
+                            if (item.value && item.value !== '--') {
+                                const tf = (item.targetField || item.label || '').toLowerCase();
+                                if (tf.includes('northing')) (window as any).rovTelemetryNorthing = item.value;
+                                if (tf.includes('easting')) (window as any).rovTelemetryEasting = item.value;
+                                if (tf.includes('depth') || tf === 'elevation' || tf === 'water_depth') (window as any).rovTelemetryDepth = item.value;
+                                if (tf.includes('kp') || tf === 'fp_kp' || tf === 'kilometer_post') (window as any).rovTelemetryKp = item.value;
+                                if (tf.includes('gradient') || tf === 'cp_fg_rdg' || tf === 'cp_fg' || tf === 'cp_gradient') (window as any).rovTelemetryCpFg = item.value;
+                                if (tf === 'cp_reading' || tf === 'cp_rdg' || tf === 'cp') (window as any).rovTelemetryCp = item.value;
+                                if (tf.includes('heading') || tf === 'rov_heading') (window as any).rovTelemetryHeading = item.value;
+                                if (tf.includes('pitch')) (window as any).rovTelemetryPitch = item.value;
+                                if (tf.includes('roll')) (window as any).rovTelemetryRoll = item.value;
+                                if (tf.includes('altitude')) (window as any).rovTelemetryAltitude = item.value;
+                            }
+                        });
                     }
 
-                    return { ...f, value: val || '--' };
-                }));
+                    return nextList;
+                });
             }, 200);
         };
 

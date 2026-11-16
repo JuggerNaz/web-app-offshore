@@ -572,6 +572,24 @@ const generatePipelineReport = async (
     }
   }
 
+  // Ensure associated risers connected to this pipeline are fetched for the final datasheet
+  let associatedRisers: any[] = [];
+  const rawPipeId = (structure as any)?.id || structure.str_id || (structure as any)?.pipe_id || (structure as any)?.structure_id;
+  if (rawPipeId) {
+    const cleanPipeId = String(rawPipeId).replace(/^(platform|pipeline)-/, "").trim();
+    try {
+      const risersRes = await fetch(`/api/pipeline/${cleanPipeId}/associated-risers`);
+      if (risersRes.ok) {
+        const risersJson = await risersRes.json();
+        if (risersJson.data && Array.isArray(risersJson.data)) {
+          associatedRisers = risersJson.data;
+        }
+      }
+    } catch (err) {
+      console.warn("Could not fetch associated risers for pipeline report:", err);
+    }
+  }
+
   // Contractor logo is printed by default (including when printing/attaching to Final DOC) unless explicitly disabled
   const showContractorLogo = (config as any)?.showContractorLogo !== false;
 
@@ -804,6 +822,90 @@ const generatePipelineReport = async (
   } else {
     drawSectionBar(10, yPos, pageWidth - 20, 5, "COMMENTS", 12, yPos + 3.5);
     yPos += 5 + 4;
+  }
+
+  // ===== CONNECTED / ASSOCIATED RISER COMPONENTS =====
+  if (associatedRisers.length > 0) {
+    if (yPos > pageHeight - 50) {
+      doc.addPage();
+      yPos = 15;
+    }
+
+    const riserRows = associatedRisers.map((r: any) => {
+      const md = r.metadata || {};
+      const addInfo = md.additionalInfo || {};
+      const nodes = md.s_node && md.f_node ? `${md.s_node} -> ${md.f_node}` : (md.s_node || md.f_node || "-");
+      const elv = (md.elv_1 !== undefined && md.elv_1 !== "") || (md.elv_2 !== undefined && md.elv_2 !== "")
+        ? `${md.elv_1 ?? "-"} / ${md.elv_2 ?? "-"} ${md.elv_1_unit || "m"}`
+        : "-";
+      const od = addInfo.diameter || md.diameter || (structure as any).od
+        ? `${addInfo.diameter || md.diameter || (structure as any).od} in`
+        : "-";
+      const wt = addInfo.wall_thk || md.wall_thk || (structure as any).wall_thickness
+        ? `${addInfo.wall_thk || md.wall_thk || (structure as any).wall_thickness} mm`
+        : "-";
+      const plat = r.platform_title || (r.structure_id ? `Platform #${r.structure_id}` : "-");
+
+      return [
+        r.q_id || "-",
+        r.id_no || "-",
+        plat,
+        nodes,
+        elv,
+        od,
+        wt,
+      ];
+    });
+
+    autoTable(doc, {
+      startY: yPos,
+      head: [
+        [{
+          content: 'ASSOCIATED RISER COMPONENTS (CONNECTED PLATFORM RISERS)',
+          colSpan: 7,
+          styles: {
+            halign: 'left',
+            fontStyle: 'bold',
+            fontSize: 8,
+            fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+            textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+            cellPadding: { top: 1.5, bottom: 1.5, left: 2, right: 2 },
+          }
+        }],
+        ['Riser Q ID', 'System ID No', 'Platform Structure', 'Nodes (S/E)', 'Elevation', 'Outer Dia', 'Wall Thick']
+      ],
+      body: riserRows,
+      theme: 'grid',
+      styles: {
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+        cellPadding: 1.8,
+        valign: 'middle',
+        fontSize: 7,
+      },
+      headStyles: {
+        fillColor: isPrintFriendly ? [240, 240, 240] : sectionBlue,
+        textColor: isPrintFriendly ? [0, 0, 0] : [255, 255, 255],
+        fontSize: 7,
+        halign: 'left',
+        fontStyle: 'bold',
+        lineWidth: 0.2,
+        lineColor: [200, 200, 200],
+      },
+      columnStyles: {
+        0: { fontStyle: 'bold', cellWidth: 32 },
+        1: { cellWidth: 36 },
+        2: { cellWidth: 32 },
+        3: { cellWidth: 22, halign: 'center' },
+        4: { cellWidth: 22, halign: 'center' },
+        5: { cellWidth: 18, halign: 'center' },
+        6: { cellWidth: 18, halign: 'center' },
+      },
+      margin: { left: 10, right: 10 },
+      tableWidth: pageWidth - 20,
+    });
+
+    yPos = (doc as any).lastAutoTable.finalY + 4;
   }
 
   // ===== SIGNATURES =====

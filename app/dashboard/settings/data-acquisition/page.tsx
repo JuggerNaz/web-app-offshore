@@ -7,6 +7,7 @@ import { ArrowLeft, Wifi, Cable, Activity, Settings2, Play, Square, Trash2, Down
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { createClient } from '@/utils/supabase/client';
 import { useROVConnection } from '@/components/rov-connection-provider';
+import inspectionRegistry from '@/utils/types/inspection-types.json';
 import { toast } from 'sonner';
 
 type ConnectionType = 'serial' | 'network';
@@ -62,6 +63,36 @@ const STORAGE_KEYS = {
     pipeline: 'data_acquisition_pipeline_v1',
 };
 
+export const TARGET_FIELD_CANONICAL_MAP: Record<string, string> = {
+    // CP Readings (Deduplicate cp_rdg / cp / cp_reading_mv -> cp_reading)
+    cp_rdg: 'cp_reading',
+    cp: 'cp_reading',
+    cp_reading_mv: 'cp_reading',
+
+    // CP Gradients (Deduplicate cp_fg_rdg / cp_fg / gradient -> cp_gradient)
+    cp_fg_rdg: 'cp_gradient',
+    cp_fg: 'cp_gradient',
+    gradient: 'cp_gradient',
+
+    // Heading (Deduplicate rov_heading / gyro -> heading)
+    rov_heading: 'heading',
+    gyro: 'heading',
+
+    // Depth / Elevation (Deduplicate depth / water_depth / verification_depth -> elevation)
+    depth: 'elevation',
+    water_depth: 'elevation',
+    verification_depth: 'elevation',
+
+    // Location / KP (Deduplicate kp / kilometer_post / raw_fp -> fp_kp)
+    kp: 'fp_kp',
+    kilometer_post: 'fp_kp',
+    raw_fp: 'fp_kp',
+
+    // Coordinates (Deduplicate raw_northing / raw_easting)
+    raw_northing: 'northing',
+    raw_easting: 'easting',
+};
+
 export default function DataAcquisitionPage() {
     const searchParams = useSearchParams();
     const returnTo = searchParams.get('returnTo') || '/dashboard/settings';
@@ -102,40 +133,115 @@ export default function DataAcquisitionPage() {
 
     useEffect(() => {
         const fetchTargetFields = async () => {
-            const supabase = createClient();
-            const { data, error } = await supabase
-                .from('inspection_type')
-                .select('default_properties, metadata')
-                .eq('is_active', true);
+            const uniqueFields = new Map<string, { name: string, label: string }>();
+            const seenNormalizedLabels = new Set<string>();
 
-            if (data && !error) {
-                const uniqueFields = new Map<string, { name: string, label: string }>();
+            const addCanonicalField = (rawName: string, rawLabel: string) => {
+                if (!rawName || !rawLabel) return;
+                const name = rawName.trim();
+                const label = rawLabel.trim();
 
-                // Base insp_record generic fields
-                uniqueFields.set('inspection_date', { name: 'inspection_date', label: 'Record Date (System)' });
-                uniqueFields.set('inspection_time', { name: 'inspection_time', label: 'Record Time (System)' });
-                uniqueFields.set('northing', { name: 'northing', label: 'Northing' });
-                uniqueFields.set('easting', { name: 'easting', label: 'Easting' });
-                uniqueFields.set('elevation', { name: 'elevation', label: 'Elevation/Depth' });
-                uniqueFields.set('fp_kp', { name: 'fp_kp', label: 'FP/KP (Location)' });
-                uniqueFields.set('tape_count_no', { name: 'tape_count_no', label: 'Tape Counter' });
+                // Skip unit fields, numeric indices, metadata, and hidden/internal properties
+                if (name.endsWith('_unit') || /^\d+$/.test(name) || name.startsWith('_')) return;
 
-                data.forEach(row => {
-                    const metadata = row.metadata as any;
-                    // Filter specifically where ROV applies and matches current structure
-                    if (metadata && metadata.rov === 1 && metadata[structureType] === 1) {
-                        const fields = row.default_properties?.fields || [];
-                        fields.forEach((f: any) => {
-                            if (f.name && f.label && f.type !== 'repeater') {
-                                uniqueFields.set(f.name, { name: f.name, label: f.label });
-                            }
-                        });
+                const canonicalName = TARGET_FIELD_CANONICAL_MAP[name] || name;
+                const normalizedLabel = label.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+                // Deduplicate strictly by canonical name and normalized label (prevents duplicates like "CP Reading" / "CP Rdg")
+                if (uniqueFields.has(canonicalName) || seenNormalizedLabels.has(normalizedLabel)) {
+                    return;
+                }
+
+                uniqueFields.set(canonicalName, { name: canonicalName, label });
+                seenNormalizedLabels.add(normalizedLabel);
+            };
+
+            // 1. Core Telemetry, Navigation & Survey Coordinates (Strictly Deduplicated)
+            addCanonicalField('easting', 'Easting');
+            addCanonicalField('northing', 'Northing');
+            addCanonicalField('elevation', 'Elevation/Depth');
+            addCanonicalField('fp_kp', 'FP/KP (Location)');
+            addCanonicalField('heading', 'Heading');
+            addCanonicalField('pitch', 'ROV Pitch');
+            addCanonicalField('roll', 'ROV Roll');
+            addCanonicalField('altitude', 'ROV Altitude');
+
+            // 2. CP (Cathodic Protection) Readings & Gradients (Strictly Deduplicated)
+            addCanonicalField('cp_reading', 'CP Reading');
+            addCanonicalField('cp_gradient', 'CP Gradient');
+            addCanonicalField('anode_cp', 'Anode CP');
+            addCanonicalField('member_cp', 'Member CP');
+
+            // 3. System & Log Fields
+            addCanonicalField('inspection_date', 'Record Date (System)');
+            addCanonicalField('inspection_time', 'Record Time (System)');
+            addCanonicalField('tape_count_no', 'Tape Counter');
+
+            // 4. Load from inspectionRegistry schema
+            if (inspectionRegistry) {
+                const shared = (inspectionRegistry as any).sharedFields || {};
+                Object.values(shared).forEach((sf: any) => {
+                    if (sf && sf.name && sf.label && sf.type !== 'repeater' && !sf.hidden) {
+                        addCanonicalField(sf.name, sf.label);
                     }
                 });
 
-                setAvailableTargetFields(Array.from(uniqueFields.values()).sort((a, b) => a.label.localeCompare(b.label)));
+                const inspTypes = (inspectionRegistry as any).inspectionTypes || [];
+                inspTypes.forEach((it: any) => {
+                    const isRovMethod = !it.methods || it.methods.includes('ROV');
+                    if (isRovMethod) {
+                        const checkFields = (fieldsList: any[]) => {
+                            if (!Array.isArray(fieldsList)) return;
+                            fieldsList.forEach((f: any) => {
+                                if (f.$ref && shared[f.$ref]) {
+                                    const refItem = shared[f.$ref];
+                                    if (refItem.type !== 'repeater' && !refItem.hidden) {
+                                        addCanonicalField(refItem.name, refItem.label);
+                                    }
+                                } else if (f.name && f.label && f.type !== 'repeater' && !f.hidden) {
+                                    addCanonicalField(f.name, f.label);
+                                }
+                            });
+                        };
+                        checkFields(it.fields);
+                        if (Array.isArray(it.component_overrides)) {
+                            it.component_overrides.forEach((cov: any) => checkFields(cov.fields));
+                        }
+                    }
+                });
             }
+
+            // 5. Query Supabase database inspection_type table
+            try {
+                const supabase = createClient();
+                const { data, error } = await supabase
+                    .from('inspection_type')
+                    .select('default_properties, metadata')
+                    .eq('is_active', true);
+
+                if (data && !error) {
+                    data.forEach(row => {
+                        const metadata = (row.metadata || {}) as any;
+                        const isRov = metadata.rov === 1 || metadata.rov === true || metadata.rov === '1' || metadata.rov === 'true';
+                        const matchesStructure = metadata[structureType] === 1 || metadata[structureType] === true || metadata[structureType] === '1' || !metadata.structure_type || metadata.structure_type === structureType;
+                        
+                        if (isRov && matchesStructure) {
+                            const fields = row.default_properties?.fields || [];
+                            fields.forEach((f: any) => {
+                                if (f.name && f.label && f.type !== 'repeater' && !f.hidden) {
+                                    addCanonicalField(f.name, f.label);
+                                }
+                            });
+                        }
+                    });
+                }
+            } catch (err) {
+                console.warn("[Data Acquisition] Target fields DB query fallback:", err);
+            }
+
+            setAvailableTargetFields(Array.from(uniqueFields.values()).sort((a, b) => a.label.localeCompare(b.label)));
         };
+
         fetchTargetFields();
     }, [structureType]);
 
@@ -314,7 +420,7 @@ export default function DataAcquisitionPage() {
                 dataType: 'number',
                 defaultDataOption: 'online',
                 defaultDataValue: '0',
-                targetField: 'depth'
+                targetField: 'elevation'
             },
             {
                 id: '4',
@@ -328,6 +434,32 @@ export default function DataAcquisitionPage() {
                 defaultDataOption: 'online',
                 defaultDataValue: '0',
                 targetField: 'cp_reading'
+            },
+            {
+                id: '5',
+                label: 'HDG',
+                positionValue: '28',
+                idValue: 'HDG',
+                length: 5,
+                modify: 'none',
+                modifyValue: 0,
+                dataType: 'number',
+                defaultDataOption: 'online',
+                defaultDataValue: '0',
+                targetField: 'heading'
+            },
+            {
+                id: '6',
+                label: 'CPG',
+                positionValue: '33',
+                idValue: 'CPG',
+                length: 6,
+                modify: 'none',
+                modifyValue: 0,
+                dataType: 'number',
+                defaultDataOption: 'online',
+                defaultDataValue: '0',
+                targetField: 'cp_gradient'
             },
         ];
 
@@ -343,7 +475,7 @@ export default function DataAcquisitionPage() {
                 dataType: 'text',
                 defaultDataOption: 'online',
                 defaultDataValue: '',
-                targetField: 'kilometer_post'
+                targetField: 'fp_kp'
             },
             {
                 id: '2',
@@ -356,7 +488,7 @@ export default function DataAcquisitionPage() {
                 dataType: 'number',
                 defaultDataOption: 'online',
                 defaultDataValue: '0',
-                targetField: 'depth'
+                targetField: 'elevation'
             },
             {
                 id: '3',
@@ -370,6 +502,32 @@ export default function DataAcquisitionPage() {
                 defaultDataOption: 'online',
                 defaultDataValue: '0',
                 targetField: 'cp_reading'
+            },
+            {
+                id: '4',
+                label: 'CPG',
+                positionValue: '22',
+                idValue: 'CPG',
+                length: 6,
+                modify: 'none',
+                modifyValue: 0,
+                dataType: 'number',
+                defaultDataOption: 'online',
+                defaultDataValue: '0',
+                targetField: 'cp_gradient'
+            },
+            {
+                id: '5',
+                label: 'HDG',
+                positionValue: '28',
+                idValue: 'HDG',
+                length: 5,
+                modify: 'none',
+                modifyValue: 0,
+                dataType: 'number',
+                defaultDataOption: 'online',
+                defaultDataValue: '0',
+                targetField: 'heading'
             },
         ];
 
@@ -414,19 +572,22 @@ export default function DataAcquisitionPage() {
                 // Migrate old format to new format if needed
                 if (settings.fields && settings.fields.length > 0) {
                     settings.fields = settings.fields.map((field: any) => {
+                        const canonicalTf = field.targetField ? (TARGET_FIELD_CANONICAL_MAP[field.targetField] || field.targetField) : '';
                         // Check if field has old format (startIdOrPosition) instead of new format
                         if ('startIdOrPosition' in field && !('positionValue' in field)) {
                             return {
                                 ...field,
                                 positionValue: /^\d+$/.test(field.startIdOrPosition) ? field.startIdOrPosition : '0',
                                 idValue: /^\d+$/.test(field.startIdOrPosition) ? (field.label || '') : field.startIdOrPosition,
+                                targetField: canonicalTf,
                             } as FieldMapping;
                         }
-                        // Ensure both fields exist with default values
+                        // Ensure both fields exist with default values and canonicalize legacy targetField aliases
                         return {
                             ...field,
                             positionValue: field.positionValue || '0',
                             idValue: field.idValue || field.label || '',
+                            targetField: canonicalTf,
                         } as FieldMapping;
                     });
                 }
@@ -1175,7 +1336,9 @@ export default function DataAcquisitionPage() {
                                                 >
                                                     <option value="">-- Select Field --</option>
                                                     {availableTargetFields.map(tf => (
-                                                        <option key={tf.name} value={tf.name}>{tf.label} ({tf.name})</option>
+                                                        <option key={tf.name} value={tf.name}>
+                                                            {tf.label.includes(`(${tf.name})`) ? tf.label : `${tf.label} (${tf.name})`}
+                                                        </option>
                                                     ))}
                                                 </select>
                                                 {field.targetField && !availableTargetFields.find(tf => tf.name === field.targetField) && (

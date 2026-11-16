@@ -75,6 +75,19 @@ export interface QuickShortcutsPanelProps {
     findings?: string;
     kp?: string | number;
     kpSource?: "ROV_DATA_STRING" | "CALCULATED";
+    northing?: string;
+    easting?: string;
+    depth?: string;
+    cp_reading?: string;
+    cp_rdg?: string;
+    cp_gradient?: string;
+    cp_fg_rdg?: string;
+    cp_fg?: string;
+    heading?: string;
+    rov_heading?: string;
+    pitch?: string;
+    roll?: string;
+    altitude?: string;
   }) => void;
   /** Current KP for display only */
   currentKp?: number | string;
@@ -247,6 +260,7 @@ export function QuickShortcutsPanel({
     }
 
     const kp = parseFloat(String(currentKp)) || 0;
+    const win = typeof window !== "undefined" ? (window as any) : {};
     onSelectEvent({
       eventName: sc.cat,
       eventType: sc.sub,
@@ -257,6 +271,19 @@ export function QuickShortcutsPanel({
       eventDescription: sc.event,
       kp: kp.toFixed(4),
       kpSource: "CALCULATED",
+      northing: win.rovTelemetryNorthing,
+      easting: win.rovTelemetryEasting,
+      depth: win.rovTelemetryDepth,
+      cp_reading: win.rovTelemetryCp,
+      cp_rdg: win.rovTelemetryCp,
+      cp_gradient: win.rovTelemetryCpFg,
+      cp_fg_rdg: win.rovTelemetryCpFg,
+      cp_fg: win.rovTelemetryCpFg,
+      heading: win.rovTelemetryHeading,
+      rov_heading: win.rovTelemetryHeading,
+      pitch: win.rovTelemetryPitch,
+      roll: win.rovTelemetryRoll,
+      altitude: win.rovTelemetryAltitude,
     });
   }, [activeToggles, currentKp, onSelectEvent]);
 
@@ -311,6 +338,7 @@ export function QuickShortcutsPanel({
     localStorage.setItem(LS_TOGGLES, JSON.stringify(next));
 
     const kp = parseFloat(String(currentKp)) || 0;
+    const win = typeof window !== "undefined" ? (window as any) : {};
     onSelectEvent({
       eventName: sc.cat,
       eventType: sc.sub,
@@ -321,6 +349,19 @@ export function QuickShortcutsPanel({
       eventDescription: sc.event,
       kp: kp.toFixed(4),
       kpSource: "CALCULATED",
+      northing: win.rovTelemetryNorthing,
+      easting: win.rovTelemetryEasting,
+      depth: win.rovTelemetryDepth,
+      cp_reading: win.rovTelemetryCp,
+      cp_rdg: win.rovTelemetryCp,
+      cp_gradient: win.rovTelemetryCpFg,
+      cp_fg_rdg: win.rovTelemetryCpFg,
+      cp_fg: win.rovTelemetryCpFg,
+      heading: win.rovTelemetryHeading,
+      rov_heading: win.rovTelemetryHeading,
+      pitch: win.rovTelemetryPitch,
+      roll: win.rovTelemetryRoll,
+      altitude: win.rovTelemetryAltitude,
     });
   }, [activeToggles, allFlattenedEvents, currentKp, onSelectEvent]);
 

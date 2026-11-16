@@ -41,6 +41,7 @@ import {
   Sparkles,
   Layers,
   CheckCircle2,
+  GitBranch,
 } from "lucide-react";
 import { DeleteConfirmDialog } from "../dialogs/delete-confirm-dialog";
 import { cn } from "@/lib/utils";
@@ -506,6 +507,10 @@ export default function ComponentContent() {
         valA = pageType === "pipeline" ? (a.metadata?.easting || 0) : (a.metadata?.elv_1 || 0);
         valB = pageType === "pipeline" ? (b.metadata?.easting || 0) : (b.metadata?.elv_1 || 0);
         break;
+      case 'associated_pipeline':
+        valA = (a.metadata?.associated_pipeline_title || (a.metadata?.associated_pipeline_id ? String(a.metadata.associated_pipeline_id) : '')).toLowerCase();
+        valB = (b.metadata?.associated_pipeline_title || (b.metadata?.associated_pipeline_id ? String(b.metadata.associated_pipeline_id) : '')).toLowerCase();
+        break;
       case 'created_at':
         valA = a.created_at || '';
         valB = b.created_at || '';
@@ -518,6 +523,7 @@ export default function ComponentContent() {
   });
 
   const totalPages = Math.ceil(sortedComponents.length / pageSize);
+  const isRiserTypeView = selectedCode?.toLowerCase() === "rs" || selectedType?.trim().toLowerCase() === "riser";
   const paginatedComponents = sortedComponents.slice(
     (currentPage - 1) * pageSize,
     currentPage * pageSize
@@ -1219,17 +1225,20 @@ export default function ComponentContent() {
                   <TableTh className="w-[180px]" onClick={() => handleSort('kp_node')} sortDirection={sortConfig?.key === 'kp_node' ? sortConfig.direction : null}>{pageType === "pipeline" ? "KP" : "start node / end node"}</TableTh>
                   <TableTh className="w-[160px]" onClick={() => handleSort('depth_leg')} sortDirection={sortConfig?.key === 'depth_leg' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Depth" : "start leg / end leg"}</TableTh>
                   <TableTh className="w-[160px]" onClick={() => handleSort('easting_elv')} sortDirection={sortConfig?.key === 'easting_elv' ? sortConfig.direction : null}>{pageType === "pipeline" ? "Easting Northing" : "elevation (s/e)"}</TableTh>
+                  {isRiserTypeView && (
+                    <TableTh className="w-[170px]" onClick={() => handleSort('associated_pipeline')} sortDirection={sortConfig?.key === 'associated_pipeline' ? sortConfig.direction : null}>Associated Pipeline</TableTh>
+                  )}
                   <TableTh className="w-[80px] text-center">Actions</TableTh>
                 </tr>
               </thead>
               <tbody>
                 {isLoadingComponents ? (
                   <tr className="animate-pulse">
-                    <td colSpan={7} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
+                    <td colSpan={isRiserTypeView ? 8 : 7} className="p-20 text-center text-slate-400 font-bold uppercase tracking-widest">Initialising Database...</td>
                   </tr>
                 ) : paginatedComponents.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="p-20 text-center">
+                    <td colSpan={isRiserTypeView ? 8 : 7} className="p-20 text-center">
                       <div className="flex flex-col items-center gap-2">
                         <Activity className="h-8 w-8 text-slate-200 mb-2" />
                         <p className="font-black text-slate-400 uppercase tracking-widest text-xs">No Records Found</p>
@@ -1425,6 +1434,23 @@ export default function ComponentContent() {
                           </div>
                         </div>
                       </td>
+                      {isRiserTypeView && (
+                        <td className="px-4 py-4 align-middle">
+                          {comp.metadata?.associated_pipeline_title || comp.metadata?.associated_pipeline_id ? (
+                            <span
+                              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-blue-200/60 dark:border-blue-800/40"
+                              title={`Pipeline ID: ${comp.metadata?.associated_pipeline_id}`}
+                            >
+                              <GitBranch className="h-3 w-3 shrink-0 text-blue-600 dark:text-blue-400" />
+                              <span className="truncate max-w-[140px]">
+                                {comp.metadata?.associated_pipeline_title || `Pipeline #${comp.metadata?.associated_pipeline_id}`}
+                              </span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 font-medium italic">Unassigned</span>
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-4 align-middle text-center">
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>

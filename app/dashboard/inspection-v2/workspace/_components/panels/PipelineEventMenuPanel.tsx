@@ -1838,7 +1838,11 @@ export function PipelineEventMenuPanel({
     let telemetryEasting = "";
     let telemetryDepth = "";
     let telemetryCpFg = "";
+    let telemetryCpReading = "";
     let telemetryHeading = "";
+    let telemetryPitch = "";
+    let telemetryRoll = "";
+    let telemetryAltitude = "";
 
     if (effectiveConnected && Array.isArray(rovConnectionFields)) {
       rovConnectionFields.forEach((f) => {
@@ -1846,9 +1850,14 @@ export function PipelineEventMenuPanel({
           const tf = (f.targetField || f.label || "").toLowerCase().trim();
           if (tf.includes("northing") || tf === "northing") telemetryNorthing = f.value;
           if (tf.includes("easting") || tf === "easting") telemetryEasting = f.value;
-          if (tf.includes("depth") || tf === "depth") telemetryDepth = f.value;
-          if (tf.includes("cp") || tf === "cp_fg_rdg" || tf === "cp_fg") telemetryCpFg = f.value;
+          if (tf.includes("depth") || tf === "depth" || tf === "elevation" || tf === "water_depth") telemetryDepth = f.value;
+          if (tf.includes("gradient") || tf === "cp_fg_rdg" || tf === "cp_fg" || tf === "cp_gradient") telemetryCpFg = f.value;
+          if (tf === "cp_reading" || tf === "cp_rdg" || tf === "cp") telemetryCpReading = f.value;
+          else if (!telemetryCpFg && (tf.includes("cp") || tf === "potential")) telemetryCpReading = f.value;
           if (tf.includes("heading") || tf === "rov_heading") telemetryHeading = f.value;
+          if (tf.includes("pitch")) telemetryPitch = f.value;
+          if (tf.includes("roll")) telemetryRoll = f.value;
+          if (tf.includes("altitude")) telemetryAltitude = f.value;
         }
       });
     }
@@ -1858,7 +1867,11 @@ export function PipelineEventMenuPanel({
       if (!telemetryEasting && (window as any).rovTelemetryEasting) telemetryEasting = String((window as any).rovTelemetryEasting);
       if (!telemetryDepth && (window as any).rovTelemetryDepth) telemetryDepth = String((window as any).rovTelemetryDepth);
       if (!telemetryCpFg && (window as any).rovTelemetryCpFg) telemetryCpFg = String((window as any).rovTelemetryCpFg);
+      if (!telemetryCpReading && (window as any).rovTelemetryCp) telemetryCpReading = String((window as any).rovTelemetryCp);
       if (!telemetryHeading && (window as any).rovTelemetryHeading) telemetryHeading = String((window as any).rovTelemetryHeading);
+      if (!telemetryPitch && (window as any).rovTelemetryPitch) telemetryPitch = String((window as any).rovTelemetryPitch);
+      if (!telemetryRoll && (window as any).rovTelemetryRoll) telemetryRoll = String((window as any).rovTelemetryRoll);
+      if (!telemetryAltitude && (window as any).rovTelemetryAltitude) telemetryAltitude = String((window as any).rovTelemetryAltitude);
     }
 
     onSelectEvent({
@@ -1878,8 +1891,14 @@ export function PipelineEventMenuPanel({
       depth: telemetryDepth,
       cp_fg: telemetryCpFg,
       cp_fg_rdg: telemetryCpFg,
+      cp_gradient: telemetryCpFg,
+      cp_reading: telemetryCpReading,
+      cp_rdg: telemetryCpReading,
       heading: telemetryHeading,
       rov_heading: telemetryHeading,
+      pitch: telemetryPitch,
+      roll: telemetryRoll,
+      altitude: telemetryAltitude,
     });
 
     // Automatically bring back the main menu after logging the event

@@ -77,6 +77,31 @@ export const GET = withTenant(async (request, { companyId }) => {
       return !(md.del === 1 || md.del === "1" || md.del === true || md.status === "archived" || md.status === "deleted");
     });
 
+    // Also include any Riser components associated with this pipeline structure
+    try {
+      const { data: assocRisers } = await (supabase as any)
+        .from("structure_components")
+        .select("id, q_id, id_no, code, comp_id, metadata, is_deleted")
+        .or("code.ilike.RS,code.ilike.rs")
+        .or("is_deleted.is.null,is_deleted.eq.false");
+
+      if (assocRisers && assocRisers.length > 0) {
+        assocRisers.forEach((r: any) => {
+          let md: any = r.metadata;
+          if (typeof md === "string") {
+            try { md = JSON.parse(md); } catch { md = {}; }
+          }
+          if (md && (Number(md.associated_pipeline_id) === structure_id || String(md.associated_pipeline_id) === String(structure_id))) {
+            if (!rawComps.some((c: any) => c.id === r.id)) {
+              rawComps.push(r);
+            }
+          }
+        });
+      }
+    } catch (riserErr) {
+      console.warn("Could not query associated risers in workspace-components:", riserErr);
+    }
+
     // 4. Fetch SOW Items if SOW exists
     let sowItems: any[] = [];
     const sowId = sowRes.data?.id;

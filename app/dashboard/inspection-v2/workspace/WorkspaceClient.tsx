@@ -464,6 +464,8 @@ function V10PreviewLayout() {
       { id: "elev", label: "Elev/KP", visible: true },
       { id: "anomaly_ref", label: "Anom. Ref", visible: true },
       { id: "cp_reading", label: "CP (mV)", visible: true },
+      { id: "cp_gradient", label: "CP Gradient", visible: false },
+      { id: "heading", label: "Heading (°)", visible: false },
       { id: "dive_no", label: "Dive No", visible: true },
       { id: "tape_no", label: "Tape No", visible: true },
     ];
@@ -995,16 +997,48 @@ function V10PreviewLayout() {
             a.inspection_data?.cp_rdg ??
               a.inspection_data?.cp_reading_mv ??
               a.inspection_data?.cp ??
+              a.inspection_data?.cp_reading ??
               ""
           );
           const bCp = parseFloat(
             b.inspection_data?.cp_rdg ??
               b.inspection_data?.cp_reading_mv ??
               b.inspection_data?.cp ??
+              b.inspection_data?.cp_reading ??
               ""
           );
           aVal = isNaN(aCp) ? -Infinity : aCp;
           bVal = isNaN(bCp) ? -Infinity : bCp;
+          break;
+        case "cp_gradient":
+          const aCpg = parseFloat(
+            a.inspection_data?.cp_fg_rdg ??
+              a.inspection_data?.cp_gradient ??
+              a.inspection_data?.cp_fg ??
+              ""
+          );
+          const bCpg = parseFloat(
+            b.inspection_data?.cp_fg_rdg ??
+              b.inspection_data?.cp_gradient ??
+              b.inspection_data?.cp_fg ??
+              ""
+          );
+          aVal = isNaN(aCpg) ? -Infinity : aCpg;
+          bVal = isNaN(bCpg) ? -Infinity : bCpg;
+          break;
+        case "heading":
+          const aHdg = parseFloat(
+            a.inspection_data?.heading ??
+              a.inspection_data?.rov_heading ??
+              ""
+          );
+          const bHdg = parseFloat(
+            b.inspection_data?.heading ??
+              b.inspection_data?.rov_heading ??
+              ""
+          );
+          aVal = isNaN(aHdg) ? -Infinity : aHdg;
+          bVal = isNaN(bHdg) ? -Infinity : bHdg;
           break;
         case "dive_no":
           aVal = (a.insp_dive_jobs?.job_no || a.insp_rov_jobs?.job_no || a.dive_no || a.deployment_no || "").toLowerCase();
@@ -1357,16 +1391,50 @@ function V10PreviewLayout() {
             a.inspection_data?.cp_rdg ??
               a.inspection_data?.cp_reading_mv ??
               a.inspection_data?.cp ??
+              a.inspection_data?.cp_reading ??
               ""
           );
           const bCp = parseFloat(
             b.inspection_data?.cp_rdg ??
               b.inspection_data?.cp_reading_mv ??
               b.inspection_data?.cp ??
+              b.inspection_data?.cp_reading ??
               ""
           );
           aVal = isNaN(aCp) ? -Infinity : aCp;
           bVal = isNaN(bCp) ? -Infinity : bCp;
+          break;
+        }
+        case "cp_gradient": {
+          const aCpg = parseFloat(
+            a.inspection_data?.cp_fg_rdg ??
+              a.inspection_data?.cp_gradient ??
+              a.inspection_data?.cp_fg ??
+              ""
+          );
+          const bCpg = parseFloat(
+            b.inspection_data?.cp_fg_rdg ??
+              b.inspection_data?.cp_gradient ??
+              b.inspection_data?.cp_fg ??
+              ""
+          );
+          aVal = isNaN(aCpg) ? -Infinity : aCpg;
+          bVal = isNaN(bCpg) ? -Infinity : bCpg;
+          break;
+        }
+        case "heading": {
+          const aHdg = parseFloat(
+            a.inspection_data?.heading ??
+              a.inspection_data?.rov_heading ??
+              ""
+          );
+          const bHdg = parseFloat(
+            b.inspection_data?.heading ??
+              b.inspection_data?.rov_heading ??
+              ""
+          );
+          aVal = isNaN(aHdg) ? -Infinity : aHdg;
+          bVal = isNaN(bHdg) ? -Infinity : bHdg;
           break;
         }
         case "dive_no":
@@ -4689,6 +4757,59 @@ function V10PreviewLayout() {
     }
   }, [inspMethod, dataAcqConnected, dataAcqDisconnect]);
 
+  // Auto-populate active inspection fields from live Data Acquisition string when connected
+  useEffect(() => {
+    if (!dataAcqConnected || !dataAcqFields || dataAcqFields.length === 0) return;
+
+    setDynamicProps((prev: any) => {
+      let updated = false;
+      const next = { ...(prev || {}) };
+
+      dataAcqFields.forEach((field) => {
+        if (!field.targetField || !field.value || field.value === "--") return;
+        const target = field.targetField;
+        const val = field.value;
+
+        // Auto-fill if current value is empty or missing
+        if (next[target] === undefined || next[target] === "" || next[target] === null) {
+          next[target] = val;
+          updated = true;
+        }
+
+        // Also sync aliases if empty
+        if (target === "cp_reading" && (next.cp_rdg === undefined || next.cp_rdg === "")) {
+          next.cp_rdg = val;
+          updated = true;
+        }
+        if (target === "cp_rdg" && (next.cp_reading === undefined || next.cp_reading === "")) {
+          next.cp_reading = val;
+          updated = true;
+        }
+        if ((target === "cp_gradient" || target === "cp_fg_rdg") && (next.cp_fg === undefined || next.cp_fg === "")) {
+          next.cp_fg = val;
+          next.cp_gradient = val;
+          next.cp_fg_rdg = val;
+          updated = true;
+        }
+        if (target === "heading" || target === "rov_heading") {
+          if (next.heading === undefined || next.heading === "") { next.heading = val; updated = true; }
+          if (next.rov_heading === undefined || next.rov_heading === "") { next.rov_heading = val; updated = true; }
+        }
+        if (target === "fp_kp" || target === "kp" || target === "kilometer_post") {
+          if (next.fp_kp === undefined || next.fp_kp === "") { next.fp_kp = val; updated = true; }
+          if (next.kp === undefined || next.kp === "") { next.kp = val; updated = true; }
+        }
+        if (target === "depth" || target === "elevation" || target === "verification_depth") {
+          if (next.depth === undefined || next.depth === "") { next.depth = val; updated = true; }
+          if (next.elevation === undefined || next.elevation === "") { next.elevation = val; updated = true; }
+          if (next.verification_depth === undefined || next.verification_depth === "") { next.verification_depth = val; updated = true; }
+        }
+      });
+
+      return updated ? next : prev;
+    });
+  }, [dataAcqConnected, dataAcqFields]);
+
   // Load Settings on Mount
   useEffect(() => {
     const settings = loadSettings();
@@ -7949,6 +8070,20 @@ function V10PreviewLayout() {
         activeProps.inspection_location = dynamicProps?.insp_mode || dynamicProps?.inspection_location || inspectionLocation;
       }
 
+      // Synchronize field aliases for Data Acquisition telemetry
+      if (activeProps.cp_reading !== undefined && activeProps.cp_rdg === undefined) activeProps.cp_rdg = activeProps.cp_reading;
+      if (activeProps.cp_rdg !== undefined && activeProps.cp_reading === undefined) activeProps.cp_reading = activeProps.cp_rdg;
+      if (activeProps.cp_gradient !== undefined && activeProps.cp_fg_rdg === undefined) activeProps.cp_fg_rdg = activeProps.cp_gradient;
+      if (activeProps.cp_fg_rdg !== undefined && activeProps.cp_gradient === undefined) activeProps.cp_gradient = activeProps.cp_fg_rdg;
+      if (activeProps.cp_fg_rdg !== undefined && activeProps.cp_fg === undefined) activeProps.cp_fg = activeProps.cp_fg_rdg;
+      if (activeProps.cp_fg !== undefined && activeProps.cp_fg_rdg === undefined) activeProps.cp_fg_rdg = activeProps.cp_fg;
+      if (activeProps.heading !== undefined && activeProps.rov_heading === undefined) activeProps.rov_heading = activeProps.heading;
+      if (activeProps.rov_heading !== undefined && activeProps.heading === undefined) activeProps.heading = activeProps.rov_heading;
+      if (activeProps.fp_kp !== undefined && activeProps.kp === undefined) activeProps.kp = activeProps.fp_kp;
+      if (activeProps.kp !== undefined && activeProps.fp_kp === undefined) activeProps.fp_kp = activeProps.kp;
+      if (activeProps.elevation !== undefined && activeProps.depth === undefined) activeProps.depth = activeProps.elevation;
+      if (activeProps.depth !== undefined && activeProps.elevation === undefined) activeProps.elevation = activeProps.depth;
+
       // Apply synchronous auto-calculations to guarantee computed fields are saved 
       // even if the user clicks 'Save' before the React useEffect finishes its cycle.
       const specStr = String(activeSpec || '').toUpperCase();
@@ -8102,7 +8237,8 @@ function V10PreviewLayout() {
           "incomplete_reason", "has_anomaly",
           "flow_direction", "insp_mode", "inspection_direction", "inspection_location",
           "tape_id", "tape_no", "chapter_no", "dive_id", "dive_no", "deployment_no", "dive_job_id", "rov_job_id",
-          "counter", "fp_kp", "kp", "elevation", "depth", "northing", "easting", "rov_heading", "heading", "cp_fg_rdg", "cp_fg",
+          "counter", "fp_kp", "kp", "kilometer_post", "elevation", "depth", "water_depth", "northing", "easting", "rov_heading", "heading", "pitch", "roll", "altitude",
+          "cp_reading", "cp_rdg", "cp", "cp_gradient", "cp_fg_rdg", "cp_fg", "gradient", "anode_cp", "member_cp",
           "nominal_thickness", "nominal_wall_thickness", "wall_thickness", "nom_wt",
           "avg_reading", "min_reading", "max_reading", "nom_wt_12_percent", "nom_wt_25_percent",
           "wall_thickness_loss", "%_wall_thickness_loss", "effective_thickness", "effectiveThickness",
@@ -9798,8 +9934,9 @@ function V10PreviewLayout() {
     eventName: string; eventType: string; eventPosition?: string; actionName?: string;
     eventCategory: string; description: string; eventDescription?: string; findingType?: string;
     findings?: string; kp?: string | number; kpSource?: "ROV_DATA_STRING" | "CALCULATED";
-    northing?: string; easting?: string; depth?: string; cp_fg?: string; cp_fg_rdg?: string;
-    heading?: string; rov_heading?: string;
+    northing?: string; easting?: string; depth?: string; cp_reading?: string; cp_rdg?: string;
+    cp_fg?: string; cp_fg_rdg?: string; cp_gradient?: string; heading?: string; rov_heading?: string;
+    pitch?: string; roll?: string; altitude?: string;
   }) => {
     if (!manualOverride) {
       if (!activeDep?.id || activeDep?.id === "AWAITING") {
@@ -9855,10 +9992,16 @@ function V10PreviewLayout() {
       fp_kp: evtData.kp || headerData.kp || "0.0000",
       northing: evtData.northing || "", easting: evtData.easting || "",
       depth: evtData.depth || "", verification_depth: evtData.depth || "",
-      cp_fg_rdg: evtData.cp_fg_rdg || evtData.cp_fg || "",
-      cp_fg: evtData.cp_fg_rdg || evtData.cp_fg || "",
+      cp_reading: evtData.cp_reading || evtData.cp_rdg || "",
+      cp_rdg: evtData.cp_reading || evtData.cp_rdg || "",
+      cp_gradient: evtData.cp_gradient || evtData.cp_fg_rdg || evtData.cp_fg || "",
+      cp_fg_rdg: evtData.cp_gradient || evtData.cp_fg_rdg || evtData.cp_fg || "",
+      cp_fg: evtData.cp_gradient || evtData.cp_fg_rdg || evtData.cp_fg || "",
       rov_heading: evtData.rov_heading || evtData.heading || "",
       heading: evtData.rov_heading || evtData.heading || "",
+      pitch: evtData.pitch || "",
+      roll: evtData.roll || "",
+      altitude: evtData.altitude || "",
       tape_count_no: currentCounter, counter: currentCounter, _meta_timecode: currentCounter,
     };
 

@@ -87,6 +87,8 @@ const DEFAULT_COLUMN_WIDTHS: Record<string, number> = {
   elev: 95,
   anomaly_ref: 130,
   cp_reading: 90,
+  cp_gradient: 110,
+  heading: 95,
   dive_no: 95,
   tape_no: 130,
 };
@@ -997,7 +999,32 @@ export function EventsTablePanel({
                       );
                     }
                     case "cp_reading":
-                      return <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">{(() => { const cp = r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp; return cp ? <span className="font-mono text-xs truncate block">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>; })()}</td>;
+                      return (
+                        <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">
+                          {(() => {
+                            const cp = r.inspection_data?.cp_reading ?? r.inspection_data?.cp_rdg ?? r.inspection_data?.cp_reading_mv ?? r.inspection_data?.cp;
+                            return cp !== undefined && cp !== null && cp !== "" ? <span className="font-mono text-xs truncate block">{cp}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>;
+                          })()}
+                        </td>
+                      );
+                    case "cp_gradient":
+                      return (
+                        <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">
+                          {(() => {
+                            const grad = r.inspection_data?.cp_fg_rdg ?? r.inspection_data?.cp_gradient ?? r.inspection_data?.cp_fg;
+                            return grad !== undefined && grad !== null && grad !== "" ? <span className="font-mono text-xs truncate block">{grad}</span> : <span className="text-slate-300 dark:text-slate-600">-</span>;
+                          })()}
+                        </td>
+                      );
+                    case "heading":
+                      return (
+                        <td key={col.id} style={cellStyle} className="px-3 py-3 text-center text-sm font-medium text-slate-600 dark:text-slate-300 align-top overflow-hidden">
+                          {(() => {
+                            const hdg = r.inspection_data?.heading ?? r.inspection_data?.rov_heading;
+                            return hdg !== undefined && hdg !== null && hdg !== "" ? <span className="font-mono text-xs truncate block">{hdg}°</span> : <span className="text-slate-300 dark:text-slate-600">-</span>;
+                          })()}
+                        </td>
+                      );
                     case "dive_no": {
                       const matchedDep = deployments?.find((d: any) => 
                         (r.dive_job_id && String(d.id) === String(r.dive_job_id)) ||
