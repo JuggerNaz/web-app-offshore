@@ -15,9 +15,7 @@ import { getAttachmentCategory, isMediaAttachment } from "@/utils/attachment-cat
 import { refreshAttachmentCaches } from "@/utils/attachment-sync";
 import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { createClient } from "@/utils/supabase/client";
-import { fetcher } from "@/utils/utils";
-import { useEffect, useMemo, useRef, useState } from "react";
-import useSWR from "swr";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Calendar, HardDrive, ExternalLink, Trash2, Save, Loader2, Upload, RefreshCw, Film, Tag, Copy, Paperclip, AlertTriangle, Download } from "lucide-react";
 import { cn } from "@/lib/utils";
 import moment from "moment";
@@ -36,7 +34,6 @@ async function readError(res: Response, fallback: string) {
 
 export function AttachmentSlideOver() {
     const { isSlideOverOpen, closeSlideOver, activeAttachment, addPreset, selectedPlatformId } = useAttachmentStore();
-    const supabase = useMemo(() => createClient(), []);
 
     const [name, setName] = useState("");
     const [title, setTitle] = useState("");
@@ -53,36 +50,80 @@ export function AttachmentSlideOver() {
     const [targetInspectionId, setTargetInspectionId] = useState<string>("");
     const [inspectionOptions, setInspectionOptions] = useState<{ id: number; label: string }[]>([]);
 
+    // Component and Platform data (fetched safely without external hook issues)
+    const [components, setComponents] = useState<any[]>([]);
+    const [platformTitle, setPlatformTitle] = useState<string>("");
+
     const replaceInputRef = useRef<HTMLInputElement>(null);
     const newInputRef = useRef<HTMLInputElement>(null);
 
     const isAddMode = !activeAttachment;
     const isMedia = activeAttachment ? isMediaAttachment(activeAttachment) : false;
 
-    // Components of the selected platform (add mode, slim projection)
-    const { data: componentsData } = useSWR(
-        isSlideOverOpen && isAddMode && selectedPlatformId
-            ? `/api/structure-components/lookup?structure_id=${selectedPlatformId}&pageSize=1000`
-            : null,
-        fetcher
+    // Derived metadata and file attributes
+    const { fileUrl, fileType } = activeAttachment
+        ? processAttachmentUrl(activeAttachment)
+        : { fileUrl: "", fileType: "" };
+    const category = activeAttachment ? getAttachmentCategory(activeAttachment) : "OTHER";
+    const enriched = (activeAttachment as any) || {};
+    const meta = (enriched.meta || {}) as any;
+    const isLegacy = !meta.file_url && (
+        /^[A-Za-z]:[\\\/]/.test((activeAttachment as any)?.path || "") ||
+        ((activeAttachment as any)?.path || "").startsWith("\\\\") ||
+        ((activeAttachment as any)?.path || "").includes("\\")
     );
-    const components: any[] = componentsData?.data || [];
 
-    // Platform data for resolving platform title
-    const { data: platformsData } = useSWR(
-        isSlideOverOpen && selectedPlatformId ? '/api/platform?pageSize=1000' : null,
-        fetcher
-    );
-    const activePlatform = useMemo(() => {
-        return (platformsData?.data || []).find((p: any) => p.plat_id === selectedPlatformId);
-    }, [platformsData, selectedPlatformId]);
+    const actualFileName = (() => {
+        if (!activeAttachment) return "";
+        const a = activeAttachment as any;
+        const m = (a.meta || {}) as any;
+        if (m.original_file_name) return m.original_file_name;
+        if (a.file_name) return a.file_name;
+        if (m.file_name) return m.file_name;
+        const rawPath = a.path || "";
+        if (rawPath) {
+            const cleanPath = rawPath.split("?")[0].split("#")[0];
+            const seg = cleanPath.split(/[/\\]/).pop();
+            if (seg && seg.includes(".")) return seg;
+        }
+        if (a.name && a.name.includes(".")) return a.name;
+        return a.name || "File";
+    })();
 
+    const detailedFileType = (() => {
+        if (!activeAttachment) return { label: "Unknown", ext: "", mime: "" };
+        const a = activeAttachment as any;
+        const m = (a.meta || {}) as any;
+        const fn = actualFileName || a.name || "";
+        const extMatch = fn.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = extMatch ? extMatch[1].toUpperCase() : "";
+        const mime = m.mime || m.file_type || m.type || (fileType?.includes("/") ? fileType : "");
+
+        let label = ext ? `${ext} File` : "File";
+        if (category === "PHOTO" || String(mime).toLowerCase().includes("image") || ["PNG", "JPG", "JPEG", "WEBP", "GIF", "SVG", "BMP", "TIFF"].includes(ext)) {
+            label = ext ? `${ext} Image` : "Image";
+        } else if (category === "VIDEO" || String(mime).toLowerCase().includes("video") || ["MP4", "MOV", "AVI", "MKV", "WEBM"].includes(ext)) {
+            label = ext ? `${ext} Video` : "Video";
+        } else if (ext === "PDF" || String(mime).toLowerCase().includes("pdf")) {
+            label = "PDF Document";
+        } else if (["DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "CSV"].includes(ext)) {
+            label = `${ext} Document`;
+        }
+
+        return {
+            label,
+            ext: ext ? `.${ext.toLowerCase()}` : "",
+            mime: typeof mime === "string" ? mime : ""
+        };
+    })();
+
+    // 1. Sync form fields when activeAttachment or slideover open status changes
     useEffect(() => {
         if (activeAttachment) {
-            const meta = ((activeAttachment as any).meta || {}) as any;
+            const m = ((activeAttachment as any).meta || {}) as any;
             setName(activeAttachment.name || "");
-            setTitle(meta.title || activeAttachment.name || "");
-            setDescription(meta.description || "");
+            setTitle(m.title || activeAttachment.name || "");
+            setDescription(m.description || "");
         } else {
             setName("");
             setTitle("");
@@ -95,12 +136,56 @@ export function AttachmentSlideOver() {
         setTargetInspectionId(addPreset?.sourceType === "inspection" && addPreset.sourceId ? String(addPreset.sourceId) : "");
     }, [activeAttachment, addPreset, isSlideOverOpen]);
 
-    // Inspection record options for add mode
+    // 2. Fetch components for selected platform in add mode
+    useEffect(() => {
+        if (!isSlideOverOpen || !isAddMode || !selectedPlatformId) {
+            setComponents([]);
+            return;
+        }
+        let cancelled = false;
+        fetch(`/api/structure-components/lookup?structure_id=${selectedPlatformId}&pageSize=1000`)
+            .then((res) => res.json())
+            .then((json) => {
+                if (!cancelled) setComponents(json?.data || []);
+            })
+            .catch(() => {
+                if (!cancelled) setComponents([]);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isSlideOverOpen, isAddMode, selectedPlatformId]);
+
+    // 3. Resolve active platform title
+    useEffect(() => {
+        if (!isSlideOverOpen || !selectedPlatformId) {
+            setPlatformTitle("");
+            return;
+        }
+        let cancelled = false;
+        fetch("/api/platform?pageSize=1000")
+            .then((res) => res.json())
+            .then((json) => {
+                if (!cancelled) {
+                    const p = (json?.data || []).find((item: any) => item.plat_id === selectedPlatformId);
+                    setPlatformTitle(p?.title || `Platform #${selectedPlatformId}`);
+                }
+            })
+            .catch(() => {
+                if (!cancelled) setPlatformTitle(`Platform #${selectedPlatformId}`);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isSlideOverOpen, selectedPlatformId]);
+
+    // 4. Inspection record options for add mode
     useEffect(() => {
         if (!isSlideOverOpen || !isAddMode || !selectedPlatformId) return;
         let cancelled = false;
 
         (async () => {
+            const supabase = createClient();
             const compIds = components.map((c: any) => c.id).filter(Boolean);
             let query = (supabase as any)
                 .from("insp_records")
@@ -159,7 +244,7 @@ export function AttachmentSlideOver() {
         return () => {
             cancelled = true;
         };
-    }, [isSlideOverOpen, isAddMode, selectedPlatformId, components.length, addPreset, supabase]);
+    }, [isSlideOverOpen, isAddMode, selectedPlatformId, components, addPreset]);
 
     const onSave = async () => {
         try {
@@ -314,64 +399,6 @@ export function AttachmentSlideOver() {
             }
         }
     };
-
-    if (!activeAttachment && !isSlideOverOpen) return null;
-
-    const { fileUrl, fileType } = activeAttachment
-        ? processAttachmentUrl(activeAttachment)
-        : { fileUrl: "", fileType: "" };
-    const category = activeAttachment ? getAttachmentCategory(activeAttachment) : "OTHER";
-    const enriched = (activeAttachment as any) || {};
-    const meta = (enriched.meta || {}) as any;
-    const isLegacy = !meta.file_url && (
-        /^[A-Za-z]:[\\\/]/.test((activeAttachment as any)?.path || "") ||
-        ((activeAttachment as any)?.path || "").startsWith("\\\\") ||
-        ((activeAttachment as any)?.path || "").includes("\\")
-    );
-
-    const actualFileName = (() => {
-        if (!activeAttachment) return "";
-        const a = activeAttachment as any;
-        const m = (a.meta || {}) as any;
-        if (m.original_file_name) return m.original_file_name;
-        if (a.file_name) return a.file_name;
-        if (m.file_name) return m.file_name;
-        const rawPath = a.path || "";
-        if (rawPath) {
-            const cleanPath = rawPath.split("?")[0].split("#")[0];
-            const seg = cleanPath.split(/[/\\]/).pop();
-            if (seg && seg.includes(".")) return seg;
-        }
-        if (a.name && a.name.includes(".")) return a.name;
-        return a.name || "File";
-    })();
-
-    const detailedFileType = (() => {
-        if (!activeAttachment) return { label: "Unknown", ext: "", mime: "" };
-        const a = activeAttachment as any;
-        const m = (a.meta || {}) as any;
-        const fn = actualFileName || a.name || "";
-        const extMatch = fn.match(/\.([a-zA-Z0-9]+)$/);
-        const ext = extMatch ? extMatch[1].toUpperCase() : "";
-        const mime = m.mime || m.file_type || m.type || (fileType?.includes("/") ? fileType : "");
-
-        let label = ext ? `${ext} File` : "File";
-        if (category === "PHOTO" || String(mime).toLowerCase().includes("image") || ["PNG", "JPG", "JPEG", "WEBP", "GIF", "SVG", "BMP", "TIFF"].includes(ext)) {
-            label = ext ? `${ext} Image` : "Image";
-        } else if (category === "VIDEO" || String(mime).toLowerCase().includes("video") || ["MP4", "MOV", "AVI", "MKV", "WEBM"].includes(ext)) {
-            label = ext ? `${ext} Video` : "Video";
-        } else if (ext === "PDF" || String(mime).toLowerCase().includes("pdf")) {
-            label = "PDF Document";
-        } else if (["DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "CSV"].includes(ext)) {
-            label = `${ext} Document`;
-        }
-
-        return {
-            label,
-            ext: ext ? `.${ext.toLowerCase()}` : "",
-            mime: typeof mime === "string" ? mime : ""
-        };
-    })();
 
     return (
         <Sheet open={isSlideOverOpen} onOpenChange={(open: boolean) => !open && closeSlideOver()}>
@@ -589,7 +616,7 @@ export function AttachmentSlideOver() {
                                 <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 text-xs">
                                     <span className="font-semibold text-blue-800 dark:text-blue-300">Target Structure: </span>
                                     <span className="font-bold text-blue-900 dark:text-blue-200">
-                                        {activePlatform?.title || (selectedPlatformId ? `Platform #${selectedPlatformId}` : "No platform selected")}
+                                        {platformTitle || (selectedPlatformId ? `Platform #${selectedPlatformId}` : "No platform selected")}
                                     </span>
                                     <p className="text-[11px] text-blue-700/80 dark:text-blue-400 mt-1">
                                         This file will be attached directly to this platform structure.

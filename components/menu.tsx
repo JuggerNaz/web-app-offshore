@@ -347,7 +347,7 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 icon={<Laptop className="h-[18px] w-[18px] text-amber-500" />}
                 text="Device Registry"
               />
-              <RoleGate minRole="super_admin" hide>
+              <RoleGate minRole="company_admin" hide>
                 <MenuLink
                   href="/dashboard/admin/organizations"
                   isCollapsed={isCollapsed}

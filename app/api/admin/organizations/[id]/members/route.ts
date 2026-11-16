@@ -7,6 +7,7 @@ import {
   apiError,
   apiNotFound,
   apiBadRequest,
+  apiForbidden,
 } from "@/utils/api-response";
 
 function getClient() {
@@ -22,10 +23,10 @@ function getClient() {
 
 /**
  * GET /api/admin/organizations/[id]/members
- * Returns members of the organization. If ?available=true, also returns all active profiles.
+ * Returns members of the organization. If ?available=true, also returns all active profiles. Admins only.
  */
 export const GET = withRole(
-  ["super_admin"],
+  ["company_admin", "super_admin"],
   async (request, { params }) => {
     try {
       const { id } = await params;
@@ -86,12 +87,24 @@ export const GET = withRole(
  * POST /api/admin/organizations/[id]/members
  * 1. If { sync_all: true } -> connects all system profiles to this company.
  * 2. If { user_id, role } -> adds/updates a single member.
+ * Allowed for super_admin or assigned organization admin.
  */
 export const POST = withRole(
-  ["super_admin"],
-  async (request, { params, user }) => {
+  ["company_admin", "super_admin"],
+  async (request, context) => {
     try {
-      const { id } = await params;
+      const { id } = await context.params;
+      const { user, isSuperAdmin, memberships } = context;
+
+      if (!isSuperAdmin) {
+        const isOrgAdmin = (memberships || []).some(
+          (m: any) => m.company_id === id && m.is_active && (m.role === "company_admin" || m.role === "super_admin")
+        );
+        if (!isOrgAdmin) {
+          return apiForbidden("You can only manage members in organizations where you are an active administrator");
+        }
+      }
+
       let json: any;
       try {
         json = await request.json();

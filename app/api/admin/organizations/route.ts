@@ -11,9 +11,9 @@ import {
 
 /**
  * GET /api/admin/organizations
- * List all organizations. Super admin only.
+ * List all organizations. Visible to Admins (company_admin & super_admin).
  */
-export const GET = withRole(["super_admin"], async (request) => {
+export const GET = withRole(["company_admin", "super_admin"], async (request) => {
   try {
     let clientToUse: any;
     try {
@@ -51,9 +51,10 @@ export const GET = withRole(["super_admin"], async (request) => {
 
 /**
  * POST /api/admin/organizations
- * Create a new organization with complete company details. Super admin only.
+ * Create a new organization with complete company details. Admins only.
  */
-export const POST = withRole(["super_admin"], async (request, { user }) => {
+export const POST = withRole(["company_admin", "super_admin"], async (request, context) => {
+  const { user, isSuperAdmin } = context;
   try {
     let json: any;
     try {
@@ -155,7 +156,7 @@ export const POST = withRole(["super_admin"], async (request, { user }) => {
       return apiError(`Failed to create organization: ${error.message}`, 500);
     }
 
-    // Auto-create super_admin membership for the creator in this company
+    // Auto-create admin membership for the creator in this company
     if (data?.id && user?.id) {
       try {
         await clientToUse
@@ -163,7 +164,7 @@ export const POST = withRole(["super_admin"], async (request, { user }) => {
           .upsert({
             company_id: data.id,
             user_id: user.id,
-            role: "super_admin",
+            role: isSuperAdmin ? "super_admin" : "company_admin",
             is_active: true,
             updated_at: new Date().toISOString(),
           }, { onConflict: "user_id,company_id" });

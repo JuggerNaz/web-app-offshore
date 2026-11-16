@@ -6,14 +6,15 @@ import {
   apiError,
   apiNotFound,
   apiBadRequest,
+  apiForbidden,
   apiNoContent,
 } from "@/utils/api-response";
 
 /**
  * GET /api/admin/organizations/[id]
- * Get a single organization with member details. Super admin only.
+ * Get a single organization with member details. Admins only.
  */
-export const GET = withRole(["super_admin"], async (request, { params }) => {
+export const GET = withRole(["company_admin", "super_admin"], async (request, { params }) => {
   try {
     const { id } = await params;
     let clientToUse: any;
@@ -81,15 +82,26 @@ export const GET = withRole(["super_admin"], async (request, { params }) => {
 
 /**
  * PATCH /api/admin/organizations/[id]
- * Update an organization. Super admin only.
+ * Update an organization. Super admin or assigned organization admin.
  */
 export const PATCH = withRole(
-  ["super_admin"],
-  async (request, { params }) => {
+  ["company_admin", "super_admin"],
+  async (request, context) => {
     try {
-      const { id } = await params;
+      const { id } = await context.params;
+      const { isSuperAdmin, memberships } = context;
+
+      if (!isSuperAdmin) {
+        const isOrgAdmin = (memberships || []).some(
+          (m: any) => m.company_id === id && m.is_active && (m.role === "company_admin" || m.role === "super_admin")
+        );
+        if (!isOrgAdmin) {
+          return apiForbidden("You can only modify organizations where you are an active administrator");
+        }
+      }
+
       const json = await request.json();
-      
+
       let clientToUse: any;
       try {
         if (isServiceRoleConfigured()) {
@@ -187,13 +199,23 @@ export const PATCH = withRole(
 
 /**
  * DELETE /api/admin/organizations/[id]
- * Deactivate (soft-delete) an organization. Super admin only.
+ * Deactivate (soft-delete) an organization. Super admin or assigned organization admin.
  */
 export const DELETE = withRole(
-  ["super_admin"],
-  async (request, { params }) => {
+  ["company_admin", "super_admin"],
+  async (request, context) => {
     try {
-      const { id } = await params;
+      const { id } = await context.params;
+      const { isSuperAdmin, memberships } = context;
+
+      if (!isSuperAdmin) {
+        const isOrgAdmin = (memberships || []).some(
+          (m: any) => m.company_id === id && m.is_active && (m.role === "company_admin" || m.role === "super_admin")
+        );
+        if (!isOrgAdmin) {
+          return apiForbidden("You can only deactivate organizations where you are an active administrator");
+        }
+      }
       let clientToUse: any;
       try {
         if (isServiceRoleConfigured()) {

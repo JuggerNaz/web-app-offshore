@@ -68,8 +68,15 @@ export async function GET(request: NextRequest) {
  * POST /api/company-settings/logo
  * Uploads a logo for the active tenant organization.
  */
-export const POST = withTenant(async (request, { companyId }) => {
+export const POST = withTenant(async (request, { companyId, membership, memberships }) => {
     try {
+        const role = (membership?.role || "").toLowerCase().trim();
+        const isAdmin = role === "super_admin" || role === "company_admin" || role === "admin" || 
+            (Array.isArray(memberships) && memberships.some(m => m.role === "super_admin" || m.role === "company_admin"));
+        if (!isAdmin) {
+            return NextResponse.json({ error: "Only administrators can update the company logo" }, { status: 403 });
+        }
+
         const supabase = createClient();
         const formData = await request.formData();
         const file = formData.get("file") as File;
@@ -191,8 +198,15 @@ export const POST = withTenant(async (request, { companyId }) => {
  * DELETE /api/company-settings/logo
  * Removes the logo for the active tenant organization.
  */
-export const DELETE = withTenant(async (request, { companyId }) => {
+export const DELETE = withTenant(async (request, { companyId, membership, memberships }) => {
     try {
+        const role = (membership?.role || "").toLowerCase().trim();
+        const isAdmin = role === "super_admin" || role === "company_admin" || role === "admin" || 
+            (Array.isArray(memberships) && memberships.some(m => m.role === "super_admin" || m.role === "company_admin"));
+        if (!isAdmin) {
+            return NextResponse.json({ error: "Only administrators can remove the company logo" }, { status: 403 });
+        }
+
         const supabase = createClient();
 
         const { data: settings } = await (supabase as any)

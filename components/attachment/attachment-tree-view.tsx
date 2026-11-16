@@ -89,7 +89,7 @@ export default function AttachmentTreeView() {
             const desc = f.lib_desc || f.lib_name || f.description;
             if (f.lib_id && desc) {
                 const rawId = String(f.lib_id).trim();
-                const cleanDesc = String(desc).trim();
+                const cleanDesc = String(desc).trim().replace(/\.+$/, "").trim();
                 map.set(rawId, cleanDesc);
                 map.set(rawId.toLowerCase(), cleanDesc);
                 const noDot = rawId.replace(/\.+$/, "").trim();
@@ -105,24 +105,32 @@ export default function AttachmentTreeView() {
         const rawPfield = platform.pfield ? String(platform.pfield).trim() : "";
         const fieldName = platform.field_name ? String(platform.field_name).trim() : "";
 
+        let resolved = "Unassigned Field";
+
         // 1. Check fieldDescriptionMap by raw pfield
         if (rawPfield) {
-            if (fieldDescriptionMap.has(rawPfield)) return fieldDescriptionMap.get(rawPfield)!;
-            if (fieldDescriptionMap.has(rawPfield.toLowerCase())) return fieldDescriptionMap.get(rawPfield.toLowerCase())!;
-            const noDot = rawPfield.replace(/\.+$/, "").trim().toLowerCase();
-            if (fieldDescriptionMap.has(noDot)) return fieldDescriptionMap.get(noDot)!;
+            if (fieldDescriptionMap.has(rawPfield)) resolved = fieldDescriptionMap.get(rawPfield)!;
+            else if (fieldDescriptionMap.has(rawPfield.toLowerCase())) resolved = fieldDescriptionMap.get(rawPfield.toLowerCase())!;
+            else {
+                const noDot = rawPfield.replace(/\.+$/, "").trim().toLowerCase();
+                if (fieldDescriptionMap.has(noDot)) resolved = fieldDescriptionMap.get(noDot)!;
+            }
         }
 
         // 2. Check field_name returned from API
-        if (fieldName && fieldName !== rawPfield) {
-            return fieldName;
+        if (resolved === "Unassigned Field" && fieldName && fieldName !== rawPfield) {
+            resolved = fieldName;
         }
-        if (fieldName && fieldDescriptionMap.has(fieldName)) {
-            return fieldDescriptionMap.get(fieldName)!;
+        if (resolved === "Unassigned Field" && fieldName && fieldDescriptionMap.has(fieldName)) {
+            resolved = fieldDescriptionMap.get(fieldName)!;
         }
 
         // 3. Fallback: return raw pfield stripped of trailing dot
-        return rawPfield ? rawPfield.replace(/\.+$/, "") : "Unassigned Field";
+        if (resolved === "Unassigned Field" && rawPfield) {
+            resolved = rawPfield;
+        }
+
+        return resolved.replace(/\.+$/, "").trim();
     };
 
     // Fetch real attachment counts aggregated per platform
@@ -819,7 +827,7 @@ function InspectionAttachmentsTab({
                                         <div className="flex items-center gap-2 flex-1 text-left">
                                             <span className="font-bold text-sm text-slate-800 dark:text-slate-100">{jobpack}</span>
                                             {jobpack === latestJobpackName && (
-                                                 <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
+                                                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300">
                                                     Current
                                                 </span>
                                             )}
@@ -929,7 +937,7 @@ function InspectionAttachmentsTab({
                                                     return (
                                                         <Collapsible key={inspType} defaultOpen className="border border-slate-200 dark:border-slate-800 rounded-lg bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
                                                             <CollapsibleTrigger asChild>
-                                                                 <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
+                                                                <Button variant="ghost" className="w-full flex items-center justify-start p-2 h-auto hover:bg-slate-50 dark:hover:bg-slate-900 group rounded-none border-b border-slate-100 dark:border-slate-800">
                                                                     <ChevronDown className="h-3.5 w-3.5 shrink-0 mr-2 text-slate-400 transition-transform duration-200 group-data-[state=closed]:-rotate-90" />
                                                                     <span className="font-bold text-[12px] text-slate-600 dark:text-slate-300 flex-1 text-left">{inspType}</span>
                                                                     <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded shadow-sm">
@@ -1192,8 +1200,8 @@ function InspectionAttachmentsTab({
                                                                                                                 <span className={cn(
                                                                                                                     "text-[9px] font-black uppercase px-1.5 py-0.2 rounded tracking-wider inline-flex items-center gap-1",
                                                                                                                     isImage ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" :
-                                                                                                                    isVideo ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" :
-                                                                                                                    "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                                                                                                                        isVideo ? "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" :
+                                                                                                                            "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                                                                                                                 )}>
                                                                                                                     <span>{category}</span>
                                                                                                                     {fileName.includes(".") && (
