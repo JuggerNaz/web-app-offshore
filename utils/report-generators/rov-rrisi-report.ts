@@ -399,22 +399,22 @@ export const generateROVRRISIReport = async (
             if (sMax >= 0 && sMin <= 0) {
                 const seaY = eToY(0);
                 doc.setDrawColor(59, 130, 246); doc.setLineWidth(0.4);
-                doc.line(gX + 2, seaY, gX + gW - 2, seaY);
+                doc.line(gX + 11, seaY, gX + gW - 2, seaY);
                 doc.setFontSize(5); doc.setTextColor(59, 130, 246); doc.setFont("helvetica", "bold");
-                doc.text("SEA LEVEL (0.00m)", gX + 2.5, seaY - 1.2);
+                doc.text("SEA LEVEL (0.00m)", gX + 12, seaY - 1.5);
             }
 
             // 2. Seabed Mudline Line
             doc.setDrawColor(...colors.mudline); doc.setLineWidth(1.2);
             if (suspGap === 0) {
-                doc.line(gX + 2, mudY, gX + gW - 2, mudY);
+                doc.line(gX + 11, mudY, gX + gW - 2, mudY);
                 doc.setFontSize(5); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
-                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 2.5, mudY - 1.5);
+                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 12, mudY - 1.5);
             } else {
                 const startMudY = mudY;
                 const endMudY = pipeY + (rWidth / 2);
                 const touchMudX = Math.min(pipeCenterX + bRadius + (mudTouchDist * (gW / 60)), gX + gW - 4);
-                doc.line(gX + 2, startMudY, pipeCenterX - 10, startMudY);
+                doc.line(gX + 11, startMudY, pipeCenterX - 10, startMudY);
                 let lx = pipeCenterX - 10; let ly = startMudY;
                 const segs = 20;
                 for (let j = 1; j <= segs; j++) {
@@ -426,7 +426,7 @@ export const generateROVRRISIReport = async (
                 doc.line(lx, ly, gX + gW - 2, ly);
                 doc.setFontSize(5); doc.setTextColor(...colors.mudline); doc.setFont("helvetica", "bold");
                 doc.text(`SUSPENSION (${suspGap}m)`, pipeCenterX, startMudY + 4, { align: 'center' });
-                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 2.5, startMudY - 1.5);
+                doc.text(`SEABED (${bottomElev.toFixed(1)}m)`, gX + 12, startMudY - 1.5);
             }
 
             // --- Draw Riser ---
@@ -516,35 +516,51 @@ export const generateROVRRISIReport = async (
                 const ey = eToY(e);
                 if (ey <= gMudlineY + 15) {
                     doc.line(gX + 7, ey, gX + 10, ey);
+                    if (Math.abs(e) < 0.01 && (sMax >= 0 && sMin <= 0)) continue;
                     doc.setFontSize(5); doc.setTextColor(150, 150, 150); doc.text(`${e}m`, gX + 2, ey + 1);
                 }
             }
 
-            // Mark Points
-            recordsInGroup.forEach(r => {
+            // Mark Points and Draw Components (Clamps first to avoid duplicates)
+            const sortedForDrawing = [...recordsInGroup].sort((a, b) => {
+                const cA = a.structure_components || {};
+                const cB = b.structure_components || {};
+                const isCompA = cA.code === 'CL' || a.inspection_data?.clamp_type || cA.q_id?.includes('SUPP') || cA.q_id?.includes('CLP') || (cA.name || '').toLowerCase().includes('clamp');
+                const isCompB = cB.code === 'CL' || b.inspection_data?.clamp_type || cB.q_id?.includes('SUPP') || cB.q_id?.includes('CLP') || (cB.name || '').toLowerCase().includes('clamp');
+                if (isCompA && !isCompB) return -1;
+                if (!isCompA && isCompB) return 1;
+                return 0;
+            });
+            const drawnElevations = new Set<string>();
+            sortedForDrawing.forEach(r => {
                 const c = r.structure_components || {}; const d = r.inspection_data || {};
                 const el = parseFloat(r.elevation ?? d.elevation); if (isNaN(el)) return;
                 const py = eToY(el);
                 const isA = r.has_anomaly || (r.insp_anomalies && r.insp_anomalies.length > 0);
                 const col = isA ? colors.anomaly : colors.navy;
-                if (c.code === 'CL' || d.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP')) {
-                    const cw = rWidth + 8; const ch = 4.5; const fw = 3;
+                const isClamp = c.code === 'CL' || d.clamp_type || c.q_id?.includes('SUPP') || c.q_id?.includes('CLP') || (c.name || '').toLowerCase().includes('clamp');
+                const elevKey = el.toFixed(1);
+
+                if (isClamp) {
+                    const cw = rWidth + 4; const ch = 2.8; const fw = 1.4;
                     doc.setFillColor(255, 255, 255); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'F');
-                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.8); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
-                    doc.rect(cX - cw/2 - fw, py - 1, fw, 2, 'S'); doc.rect(cX + cw/2, py - 1, fw, 2, 'S');
-                    doc.setFillColor(...colors.navy); doc.circle(cX - cw/2 - fw/2, py, 0.5, 'F'); doc.circle(cX + cw/2 + fw/2, py, 0.5, 'F');
+                    doc.setDrawColor(...colors.navy); doc.setLineWidth(0.5); doc.rect(cX - cw/2, py - ch/2, cw, ch, 'S');
+                    doc.rect(cX - cw/2 - fw, py - 0.7, fw, 1.4, 'S'); doc.rect(cX + cw/2, py - 0.7, fw, 1.4, 'S');
                     
                     // Left Side: Elevation Value
-                    doc.setLineWidth(0.3); doc.setDrawColor(...colors.navy);
-                    const leftLineStart = cX - cw/2 - fw;
-                    const leftLineEnd = leftLineStart - 5;
-                    doc.line(leftLineStart, py, leftLineEnd, py);
-                    doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
-                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    doc.setLineWidth(0.2); doc.setDrawColor(...colors.navy);
+                    if (!drawnElevations.has(elevKey)) {
+                        drawnElevations.add(elevKey);
+                        const leftLineStart = cX - cw/2 - fw;
+                        const leftLineEnd = leftLineStart - 4;
+                        doc.line(leftLineStart, py, leftLineEnd, py);
+                        doc.setFontSize(5.5); doc.setTextColor(...colors.navy); 
+                        doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    }
 
                     // Right Side: Object Name / QID
                     const lineStart = cX + cw/2 + fw;
-                    const lineEnd = Math.min(lineStart + 5, gX + gW - 20);
+                    const lineEnd = Math.min(lineStart + 4, gX + gW - 20);
                     doc.line(lineStart, py, lineEnd, py);
                     doc.setFontSize(5.5); doc.setTextColor(...colors.navy);
                     let qidText = c.q_id || 'Clamp';
@@ -557,14 +573,17 @@ export const generateROVRRISIReport = async (
                     }
                     doc.text(qidText, lineEnd + 1, py + 1);
                 } else {
-                    doc.setFillColor(...col); doc.circle(cX, py, 1.8, 'F');
+                    doc.setFillColor(...col); doc.circle(cX, py, 1.5, 'F');
                     doc.setDrawColor(...col); doc.setLineWidth(0.1); 
 
                     // Left Side: Elevation Value
-                    const leftLineEnd = cX - 2 - 5;
-                    doc.line(cX - 2, py, leftLineEnd, py);
-                    doc.setFontSize(5.5); doc.setTextColor(...col);
-                    doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    if (!drawnElevations.has(elevKey)) {
+                        drawnElevations.add(elevKey);
+                        const leftLineEnd = cX - (rWidth / 2) - 4;
+                        doc.line(cX - (rWidth / 2), py, leftLineEnd, py);
+                        doc.setFontSize(5.5); doc.setTextColor(...col);
+                        doc.text(`${el}m`, leftLineEnd - 1, py + 1, { align: "right" });
+                    }
                 }
             });
 
@@ -594,7 +613,7 @@ export const generateROVRRISIReport = async (
                 startY: currentY,
                 margin: { left: dX, right: margin, top: margin + hH + 6 },
                 tableWidth: dW,
-                head: [['No.', 'Loc / Elev', 'Dive No.', 'CP (mV)', 'Findings / Anomalies']],
+                head: [['No.', 'Loc /\nElev (m)', 'Dive\nNo.', 'CP\n(mV)', 'Findings / Anomalies']],
                 body: sortedR.length > 0 ? sortedR.map((r, idx) => {
                     const itemNo = idx + 1;
                     const rd = r.inspection_data || {};
@@ -634,7 +653,7 @@ export const generateROVRRISIReport = async (
                 theme: 'grid',
                 headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                 styles: {fontSize: 7, cellPadding: 2, lineWidth: 0.1, lineColor: colors.border},
-                columnStyles: { 0: { cellWidth: 10 }, 1: { cellWidth: 16 }, 2: { cellWidth: 14 }, 3: { cellWidth: 14 }, 4: { cellWidth: 'auto' } },
+                columnStyles: { 0: { cellWidth: 7 }, 1: { cellWidth: 12 }, 2: { cellWidth: 12 }, 3: { cellWidth: 11 }, 4: { cellWidth: 'auto' } },
                 didParseCell: (data) => {
                 if (data.section !== "body") return;
                 const r = sortedR[data.row.index];

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useUserRole } from "@/utils/hooks/use-user-role";
 import {
   Table,
@@ -22,8 +22,21 @@ import {
   ToggleLeft, 
   ToggleRight,
   Clipboard,
-  Check
+  Check,
+  Search,
+  X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogContent,
@@ -46,6 +59,96 @@ export default function DeviceRegistryPage() {
   // Show new token dialog state
   const [newToken, setNewToken] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+
+  // Search and Sort State
+  type SortKey = "device_name" | "registrar" | "created_at" | "status";
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey; direction: "asc" | "desc" } | null>(null);
+
+  const requestSort = (key: SortKey) => {
+    setSortConfig((prev) => {
+      if (prev?.key !== key) {
+        return { key, direction: "asc" };
+      }
+      if (prev.direction === "asc") {
+        return { key, direction: "desc" };
+      }
+      return null;
+    });
+  };
+
+  const renderSortIcon = (key: SortKey) => {
+    if (sortConfig?.key !== key) {
+      return (
+        <ArrowUpDown className="h-3.5 w-3.5 text-slate-400/50 group-hover:text-amber-500 transition-colors shrink-0 ml-1" />
+      );
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 font-bold shrink-0 ml-1" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 font-bold shrink-0 ml-1" />
+    );
+  };
+
+  const filteredAndSortedDevices = useMemo(() => {
+    let result = [...devices];
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase().trim();
+      result = result.filter((device) => {
+        const name = (device.device_name || "").toLowerCase();
+        const registrarName = (device.registrar?.full_name || "").toLowerCase();
+        const registrarEmail = (device.registrar?.email || "").toLowerCase();
+        const statusText = device.is_active ? "authorized active" : "revoked inactive";
+        const dateStr = device.created_at
+          ? new Date(device.created_at)
+              .toLocaleDateString(undefined, {
+                year: "numeric",
+                month: "long",
+                day: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+              .toLowerCase()
+          : "";
+
+        return (
+          name.includes(q) ||
+          registrarName.includes(q) ||
+          registrarEmail.includes(q) ||
+          statusText.includes(q) ||
+          dateStr.includes(q)
+        );
+      });
+    }
+
+    if (sortConfig) {
+      const { key, direction } = sortConfig;
+      result.sort((a, b) => {
+        let comp = 0;
+        if (key === "device_name") {
+          const aName = (a.device_name || "").toLowerCase();
+          const bName = (b.device_name || "").toLowerCase();
+          comp = aName.localeCompare(bName, undefined, { numeric: true, sensitivity: "base" });
+        } else if (key === "registrar") {
+          const aReg = (a.registrar?.full_name || a.registrar?.email || "Unknown").toLowerCase();
+          const bReg = (b.registrar?.full_name || b.registrar?.email || "Unknown").toLowerCase();
+          comp = aReg.localeCompare(bReg, undefined, { numeric: true, sensitivity: "base" });
+        } else if (key === "created_at") {
+          const timeA = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const timeB = b.created_at ? new Date(b.created_at).getTime() : 0;
+          comp = timeA - timeB;
+        } else if (key === "status") {
+          const statusA = a.is_active ? 1 : 0;
+          const statusB = b.is_active ? 1 : 0;
+          comp = statusA - statusB;
+        }
+        return direction === "asc" ? comp : -comp;
+      });
+    }
+
+    return result;
+  }, [devices, searchQuery, sortConfig]);
 
   const isAdmin = role === "super_admin" || role === "company_admin";
 
@@ -237,6 +340,81 @@ export default function DeviceRegistryPage() {
         </Button>
       </div>
 
+      {/* Search & Sort Controls Toolbar */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 bg-white dark:bg-slate-900 p-3.5 rounded-2xl border border-slate-100 dark:border-slate-850 shadow-sm">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
+          <Input
+            type="search"
+            placeholder="Search by device name, registrar, status..."
+            className="pl-9 pr-8 h-10 w-full bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus-visible:ring-amber-500 rounded-xl font-medium text-sm text-slate-900 dark:text-white"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded-full"
+              title="Clear search"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2">
+          <Select
+            value={sortConfig?.key || "default"}
+            onValueChange={(val) => {
+              if (val === "default") {
+                setSortConfig(null);
+              } else {
+                setSortConfig((prev) => ({
+                  key: val as SortKey,
+                  direction: prev?.key === val ? prev.direction : "asc",
+                }));
+              }
+            }}
+          >
+            <SelectTrigger className="h-10 px-3 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-xs font-bold rounded-xl shadow-sm gap-2 min-w-[170px] text-slate-700 dark:text-slate-300">
+              <ArrowUpDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+              <SelectValue placeholder="Sort by column..." />
+            </SelectTrigger>
+            <SelectContent align="end" className="bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+              <SelectItem value="default" className="text-xs font-medium">Default Order</SelectItem>
+              <SelectItem value="device_name" className="text-xs font-medium">Device Name</SelectItem>
+              <SelectItem value="registrar" className="text-xs font-medium">Registrar</SelectItem>
+              <SelectItem value="created_at" className="text-xs font-medium">Enrolled Date</SelectItem>
+              <SelectItem value="status" className="text-xs font-medium">Status</SelectItem>
+            </SelectContent>
+          </Select>
+
+          {sortConfig && (
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() =>
+                setSortConfig((prev) =>
+                  prev
+                    ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" }
+                    : null
+                )
+              }
+              className="h-10 w-10 shrink-0 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 text-amber-600 dark:text-amber-400 hover:bg-slate-100 dark:hover:bg-slate-900 rounded-xl shadow-sm"
+              title={`Sorting ${sortConfig.direction === "asc" ? "Ascending" : "Descending"}. Click to toggle.`}
+            >
+              {sortConfig.direction === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+            </Button>
+          )}
+
+          <div className="text-xs font-semibold text-slate-500 dark:text-slate-400 pl-2 hidden sm:block whitespace-nowrap">
+            {searchQuery ? `${filteredAndSortedDevices.length} of ${devices.length} devices` : `${devices.length} ${devices.length === 1 ? "device" : "devices"}`}
+          </div>
+        </div>
+      </div>
+
       {/* Main Registry Table */}
       <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-100 dark:border-slate-850 shadow-md overflow-hidden">
         {errorMsg ? (
@@ -261,19 +439,87 @@ export default function DeviceRegistryPage() {
               No devices are registered for this organization yet. Click "Register This Device" to add one.
             </p>
           </div>
+        ) : filteredAndSortedDevices.length === 0 ? (
+          <div className="flex flex-col items-center justify-center p-16 text-center space-y-3">
+            <Search className="h-10 w-10 text-slate-400" />
+            <h3 className="text-base font-bold text-slate-700 dark:text-slate-300">No matching devices found</h3>
+            <p className="text-sm text-slate-400 max-w-xs">
+              No registered devices match "{searchQuery}". Try a different keyword or clear your search.
+            </p>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setSearchQuery("")}
+              className="mt-2 rounded-xl border-amber-500/30 text-amber-600 dark:text-amber-400 hover:bg-amber-500/10"
+            >
+              Clear Search
+            </Button>
+          </div>
         ) : (
           <Table>
             <TableHeader className="bg-slate-50 dark:bg-slate-950/60">
               <TableRow className="border-b border-slate-100 dark:border-slate-850">
-                <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-400">Device Name</TableHead>
-                <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-400">Registrar</TableHead>
-                <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-400">Enrolled On</TableHead>
-                <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-400">Status</TableHead>
+                <TableHead
+                  className={cn(
+                    "font-bold text-xs uppercase tracking-wider text-slate-400 cursor-pointer hover:text-amber-600 hover:bg-slate-100/60 dark:hover:bg-slate-900/60 transition-colors select-none py-3.5 group",
+                    sortConfig?.key === "device_name" && "text-amber-600 dark:text-amber-400 bg-amber-500/5"
+                  )}
+                  onClick={() => requestSort("device_name")}
+                  title={`Sort by Device Name (${sortConfig?.key === "device_name" && sortConfig.direction === "asc" ? "Descending" : "Ascending"})`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Device Name</span>
+                    {renderSortIcon("device_name")}
+                  </div>
+                </TableHead>
+
+                <TableHead
+                  className={cn(
+                    "font-bold text-xs uppercase tracking-wider text-slate-400 cursor-pointer hover:text-amber-600 hover:bg-slate-100/60 dark:hover:bg-slate-900/60 transition-colors select-none py-3.5 group",
+                    sortConfig?.key === "registrar" && "text-amber-600 dark:text-amber-400 bg-amber-500/5"
+                  )}
+                  onClick={() => requestSort("registrar")}
+                  title={`Sort by Registrar (${sortConfig?.key === "registrar" && sortConfig.direction === "asc" ? "Descending" : "Ascending"})`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Registrar</span>
+                    {renderSortIcon("registrar")}
+                  </div>
+                </TableHead>
+
+                <TableHead
+                  className={cn(
+                    "font-bold text-xs uppercase tracking-wider text-slate-400 cursor-pointer hover:text-amber-600 hover:bg-slate-100/60 dark:hover:bg-slate-900/60 transition-colors select-none py-3.5 group",
+                    sortConfig?.key === "created_at" && "text-amber-600 dark:text-amber-400 bg-amber-500/5"
+                  )}
+                  onClick={() => requestSort("created_at")}
+                  title={`Sort by Enrolled Date (${sortConfig?.key === "created_at" && sortConfig.direction === "asc" ? "Descending" : "Ascending"})`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Enrolled On</span>
+                    {renderSortIcon("created_at")}
+                  </div>
+                </TableHead>
+
+                <TableHead
+                  className={cn(
+                    "font-bold text-xs uppercase tracking-wider text-slate-400 cursor-pointer hover:text-amber-600 hover:bg-slate-100/60 dark:hover:bg-slate-900/60 transition-colors select-none py-3.5 group",
+                    sortConfig?.key === "status" && "text-amber-600 dark:text-amber-400 bg-amber-500/5"
+                  )}
+                  onClick={() => requestSort("status")}
+                  title={`Sort by Status (${sortConfig?.key === "status" && sortConfig.direction === "asc" ? "Descending" : "Ascending"})`}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span>Status</span>
+                    {renderSortIcon("status")}
+                  </div>
+                </TableHead>
+
                 <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-400 text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {devices.map((device) => {
+              {filteredAndSortedDevices.map((device) => {
                 const isPending = actionInProgress === device.id;
                 const dateStr = new Date(device.created_at).toLocaleDateString(undefined, {
                   year: "numeric",

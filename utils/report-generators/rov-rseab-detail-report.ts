@@ -29,6 +29,91 @@ interface ReportConfig {
     sowReportNo?: string;
 }
 
+/**
+ * Helper to format debris dimensions without short forms
+ */
+const formatDebrisDimensions = (d: any): string => {
+    const l = d.size_length || d.length || '';
+    const lu = d.size_length_unit || d.lengthUnit || 'm';
+    const w = d.size_width || d.width || '';
+    const wu = d.size_width_unit || d.widthUnit || 'm';
+    const h = d.size_height || d.height || '';
+    const hu = d.size_height_unit || d.heightUnit || 'm';
+    const dia = d.size_diameter || d.diameter || '';
+    const diau = d.size_diameter_unit || d.diameterUnit || 'm';
+
+    const parts: string[] = [];
+    if (l) parts.push(`Length: ${l}${lu}`);
+    if (w) parts.push(`Width: ${w}${wu}`);
+    if (h) parts.push(`Height: ${h}${hu}`);
+    if (dia) parts.push(`Diameter: ${dia}${diau}`);
+
+    if (parts.length > 0) {
+        return parts.join(', ');
+    }
+
+    const rawSize = d.size_dimensions || d.dimension_1 || d.size;
+    if (rawSize && rawSize !== 'm x m' && rawSize !== ' x ') {
+        return String(rawSize)
+            .replace(/\bL:\s*/gi, 'Length: ')
+            .replace(/\bW:\s*/gi, 'Width: ')
+            .replace(/\bH:\s*/gi, 'Height: ')
+            .replace(/\bDia:\s*/gi, 'Diameter: ');
+    }
+
+    return '—';
+};
+
+/**
+ * Helper to clean redundant dimensions/prefixes from findings text
+ */
+const cleanDebrisFindings = (rawFinding: string, sizeDisplay: string): string => {
+    let clean = (rawFinding || '')
+        .replace(/^(Debris|Seabed Debris)(:\s*|\s*$)/i, '')
+        .trim();
+
+    if (clean && sizeDisplay && sizeDisplay !== '—' && sizeDisplay !== 'N/A') {
+        clean = clean
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?(?:\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?)?/gi, '')
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\s*(?:in\s+)?(?:length|width|height|depth|diameter|dia\.?)\b/gi, '')
+            .replace(/\b(?:length|width|height|depth|diameter|dia\.?|L|W|H|Dia)\s*[:=]?\s*(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\b/gi, '')
+            .replace(/\(\s*(?:[,;xX×\s]|and)*\s*\)/g, '');
+    }
+
+    if (clean) {
+        clean = clean
+            .replace(/\bapprox\.(?=\s|$)/gi, 'approximately')
+            .replace(/\bdia\.(?=\s|$)/gi, 'diameter')
+            .replace(/\bdist\.(?=\s|$)/gi, 'distance');
+
+        const segments = clean
+            .split(/(?:\s*;\s*|\s*\.\s+|\s*,\s*|\r?\n)+/)
+            .map((s: string) => s.replace(/^[\s,.;:-]+|[\s,.;:-]+$/g, '').trim())
+            .filter(Boolean);
+        const uniqueSegments: string[] = [];
+        for (const seg of segments) {
+            const lower = seg.toLowerCase();
+            if (!uniqueSegments.some(existing => existing.toLowerCase() === lower || existing.toLowerCase().includes(lower))) {
+                const containedIdx = uniqueSegments.findIndex(existing => lower.includes(existing.toLowerCase()));
+                if (containedIdx !== -1) {
+                    uniqueSegments[containedIdx] = seg;
+                } else {
+                    uniqueSegments.push(seg);
+                }
+            }
+        }
+        clean = uniqueSegments.join(', ').replace(/\s{2,}/g, ' ').trim();
+    }
+
+    return clean || 'No significant findings';
+};
+
+/**
+ * ROV Seabed Survey Debris Inspection Report (Portrait)
+ * Columns: No. | QID | Dive No. | Tape No. | Dimensions | Findings
+ *
+ * Filtered by item category = Debris. Ordered by leg name and distance.
+ */
 export const generateROVRSEABDetailReport = async (
     records: any[],
     headerData: any,
@@ -204,13 +289,18 @@ export const generateROVRSEABDetailReport = async (
             const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.dive_job_id || r.rov_job_id || "—";
             const tapeNo = extractRecordTapeNo(r);
 
-            // Format Findings
-            const findings = formatReportFindingText(r, r.description || d.findings || d.description || d.debris_desc);
+            // Format Dimensions & Findings
+            const dimensions = formatDebrisDimensions(d);
+            const rawFindingText = r.description || d.findings || d.description || d.debris_desc || '';
+            const cleanedFinding = cleanDebrisFindings(rawFindingText, dimensions);
+            const findings = formatReportFindingText(r, cleanedFinding);
+
             return [
                 { content: String(rIdx + 1) },
                 { content: qid },
                 { content: String(diveNo) },
                 { content: String(tapeNo) },
+                { content: dimensions },
                 { content: findings }
             ];
         });
@@ -224,6 +314,7 @@ export const generateROVRSEABDetailReport = async (
                     { content: "QID" },
                     { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dimensions" },
                     { content: "Findings" }
                 ]
             ],
@@ -232,17 +323,19 @@ export const generateROVRSEABDetailReport = async (
                 { content: "-" },
                 { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-" },
                 { content: "No seabed debris observations recorded for this scope." }
             ]],
             theme: "grid",
             headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
-            styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
+            styles: {fontSize: 7.5, cellPadding: 2.2, lineWidth: 0.1, lineColor: colors.border},
             columnStyles: {
-                0: { cellWidth: 12 }, // No.
-                1: { cellWidth: 42 }, // QID
-                2: { cellWidth: 18 }, // Dive No.
-                3: { cellWidth: 38 }, // Tape No.
-                4: { cellWidth: "auto" } // Findings
+                0: { cellWidth: 10, halign: "center" as const }, // No.
+                1: { cellWidth: 38 }, // QID
+                2: { cellWidth: 18, halign: "center" as const }, // Dive No.
+                3: { cellWidth: 32 }, // Tape No.
+                4: { cellWidth: 34 }, // Dimensions
+                5: { cellWidth: "auto" } // Findings
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;

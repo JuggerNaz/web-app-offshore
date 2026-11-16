@@ -153,7 +153,8 @@ class LocalStorageHandler implements StorageHandler {
   }
 
   async upload(file: Buffer | File, fileName: string, contentType: string) {
-    const filePath = path.join(this.basePath, "uploads", fileName);
+    const safeName = path.basename(fileName);
+    const filePath = path.join(this.basePath, "uploads", safeName);
     const dir = path.dirname(filePath);
 
     // Ensure directory exists
@@ -164,13 +165,15 @@ class LocalStorageHandler implements StorageHandler {
 
     // For local storage, the public URL is a local file path or a specialized route
     // We'll use a virtual path that the app can interpret
-    const virtualUrl = `local://${fileName}`;
+    const virtualUrl = `local://${safeName}`;
     return { publicUrl: virtualUrl, filePath: filePath };
   }
 
   async delete(filePath: string) {
     try {
-      await fs.unlink(filePath);
+      const safeName = path.basename(filePath);
+      const target = path.join(this.basePath, "uploads", safeName);
+      await fs.unlink(target);
     } catch (err) {
       console.warn("Failed to delete local file:", err);
     }
@@ -186,10 +189,16 @@ class LocalStorageHandler implements StorageHandler {
     try {
       let realPath = filePath;
       if (filePath.startsWith("local://")) {
-        const filename = filePath.replace("local://", "");
+        const filename = path.basename(filePath.replace("local://", ""));
         realPath = path.join(this.basePath, "uploads", filename);
       } else if (!path.isAbsolute(filePath)) {
-        realPath = path.join(this.basePath, filePath);
+        const resolved = path.resolve(this.basePath, filePath);
+        if (!resolved.startsWith(path.resolve(this.basePath))) return null;
+        realPath = resolved;
+      } else {
+        const resolved = path.resolve(filePath);
+        if (!resolved.startsWith(path.resolve(this.basePath))) return null;
+        realPath = resolved;
       }
       const buffer = await fs.readFile(realPath);
       const ext = path.extname(realPath).toLowerCase();

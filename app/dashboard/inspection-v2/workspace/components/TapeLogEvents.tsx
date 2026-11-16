@@ -49,6 +49,7 @@ import {
     SelectTrigger,
     SelectValue
 } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { 
     formatClientDateTime, 
@@ -66,7 +67,7 @@ import { useUserProfile } from "@/components/user-profile-provider";
 
 interface TapeLogEventsProps {
     videoEvents: any[];
-    handleDeleteEvent: (id: string, logType: string, realId: number) => void;
+    handleDeleteEvent: (id: string, logType: string, realId: number) => Promise<void> | void;
     onEditEvent: (ev: any) => void;
     expanded?: boolean;
     setExpanded?: (v: boolean) => void;
@@ -78,6 +79,10 @@ interface TapeLogEventsProps {
     inspMethod?: "DIVING" | "ROV";
     jobPackId?: string | number | null;
     structureId?: string | number | null;
+    jobTapes?: any[];
+    activeTapeNo?: string | null;
+    activeTapeId?: number | string | null;
+    activeChapter?: number | string | null;
 }
 
 const STANDARD_ACTIONS = [
@@ -108,9 +113,35 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
     inspMethod = "DIVING",
     jobPackId,
     structureId,
+    jobTapes = [],
+    activeTapeNo,
+    activeTapeId,
+    activeChapter,
 }) => {
     const { activeCompanyId } = useUserProfile();
     const supabase = useMemo(() => createClient(), []);
+
+    const currentTapeName = useMemo(() => {
+        if (activeTapeNo && activeTapeNo.trim() && activeTapeNo !== "N/A") return activeTapeNo.trim();
+        if (activeTapeId && jobTapes && jobTapes.length > 0) {
+            const found = jobTapes.find((t: any) => String(t.tape_id) === String(activeTapeId));
+            if (found?.tape_no) return found.tape_no.trim();
+        }
+        return "";
+    }, [activeTapeNo, activeTapeId, jobTapes]);
+
+    const currentChapterStr = useMemo(() => {
+        if (activeChapter != null && String(activeChapter) !== "N/A" && String(activeChapter).trim() !== "") {
+            return String(activeChapter).trim();
+        }
+        if (activeTapeId && jobTapes && jobTapes.length > 0) {
+            const found = jobTapes.find((t: any) => String(t.tape_id) === String(activeTapeId));
+            if (found?.chapter_no != null && String(found.chapter_no) !== "N/A") {
+                return String(found.chapter_no).trim();
+            }
+        }
+        return "1";
+    }, [activeChapter, activeTapeId, jobTapes]);
 
     // Local events list synchronized with initial prop
     const [localEvents, setLocalEvents] = useState<any[]>(initialVideoEvents || []);
@@ -119,7 +150,10 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
         setLocalEvents(initialVideoEvents || []);
     }, [initialVideoEvents]);
 
-    const [selectedTapeFilter, setSelectedTapeFilter] = useState<string>("ALL");
+    const [selectedTapeFilter, setSelectedTapeFilter] = useState<string>(() => {
+        if (activeTapeNo && activeTapeNo.trim() && activeTapeNo !== "N/A") return activeTapeNo.trim();
+        return "ALL";
+    });
     const [showInspectionLogs, setShowInspectionLogs] = useState<boolean>(true);
     const [searchQuery, setSearchQuery] = useState<string>("");
     const [expandedTapes, setExpandedTapes] = useState<Set<string>>(new Set());
@@ -210,7 +244,34 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
     // Sort events latest first: 1. Inspection Date & Time, 2. Counter No (Timecode), 3. ID
     const sortedEvents = useMemo(() => {
-        return [...localEvents].sort((a, b) => {
+        const normalized = (localEvents || []).map((ev) => {
+            let tNo = ev.tapeNo;
+            let chNo = ev.chapterNo;
+            let dNo = ev.diveNo;
+            let struct = ev.structure;
+
+            const tId = ev.tapeId || ev.tape_id;
+            if (tId && jobTapes && jobTapes.length > 0) {
+                const matched = jobTapes.find((t: any) => String(t.tape_id) === String(tId));
+                if (matched) {
+                    if (!tNo || tNo === "Unassigned" || tNo === "N/A") tNo = matched.tape_no;
+                    if (!chNo || chNo === "N/A" || chNo === "No Chapter") {
+                        if (matched.chapter_no != null) chNo = String(matched.chapter_no);
+                    }
+                    if (!dNo || dNo === "N/A") dNo = matched.dive_job_no || matched.rov_job_no || activeDep?.jobNo || dNo;
+                    if (!struct || struct === "N/A") struct = matched.structure_name || struct;
+                }
+            }
+            return {
+                ...ev,
+                tapeNo: tNo,
+                chapterNo: chNo,
+                diveNo: dNo,
+                structure: struct,
+            };
+        });
+
+        return normalized.sort((a, b) => {
             const timeA = a.eventTime ? parseClientDate(a.eventTime).getTime() : 0;
             const timeB = b.eventTime ? parseClientDate(b.eventTime).getTime() : 0;
             if (timeA !== timeB) {
@@ -227,11 +288,25 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             }
             return (b.realId || b.id || 0) - (a.realId || a.id || 0);
         });
-    }, [localEvents]);
+    }, [localEvents, jobTapes, activeDep]);
 
     // Distinct tapes summary
     const distinctTapes = useMemo(() => {
         const tapeCounts: Record<string, { total: number; tapeLogs: number; inspLogs: number; chapters: Set<string> }> = {};
+
+        // Ensure all jobTapes are registered in distinctTapes so their tabs and chapters appear
+        (jobTapes || []).forEach((jt: any) => {
+            if (jt.tape_no) {
+                const tName = jt.tape_no.trim();
+                const ch = jt.chapter_no != null ? String(jt.chapter_no) : "1";
+                if (!tapeCounts[tName]) {
+                    tapeCounts[tName] = { total: 0, tapeLogs: 0, inspLogs: 0, chapters: new Set([ch]) };
+                } else {
+                    tapeCounts[tName].chapters.add(ch);
+                }
+            }
+        });
+
         sortedEvents.forEach(ev => {
             const tNo = ev.tapeNo && ev.tapeNo !== "N/A" ? ev.tapeNo : "Unassigned";
             const chNo = ev.chapterNo != null && String(ev.chapterNo) !== "N/A" ? String(ev.chapterNo) : "1";
@@ -247,8 +322,18 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                 tapeCounts[tNo].tapeLogs += 1;
             }
         });
+
+        // Ensure current active tape & chapter is in distinctTapes
+        if (currentTapeName) {
+            if (!tapeCounts[currentTapeName]) {
+                tapeCounts[currentTapeName] = { total: 0, tapeLogs: 0, inspLogs: 0, chapters: new Set([currentChapterStr]) };
+            } else {
+                tapeCounts[currentTapeName].chapters.add(currentChapterStr);
+            }
+        }
+
         return tapeCounts;
-    }, [sortedEvents]);
+    }, [sortedEvents, jobTapes, currentTapeName, currentChapterStr]);
 
     // Available tape list for dropdowns
     const availableTapeList = useMemo(() => {
@@ -342,6 +427,52 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             else tapesMap[tNo].tapeCount += 1;
         });
 
+        // Ensure jobTapes and active tape are represented in tapesMap (so newly added tapes or empty active chapters appear)
+        (jobTapes || []).forEach((jt: any) => {
+            if (jt.tape_no) {
+                const tNo = jt.tape_no.trim();
+                if (selectedTapeFilter !== "ALL" && selectedTapeFilter !== tNo) return;
+                const chNo = jt.chapter_no != null && String(jt.chapter_no) !== "N/A" ? String(jt.chapter_no) : "1";
+
+                if (!tapesMap[tNo]) {
+                    tapesMap[tNo] = {
+                        tapeNo: tNo,
+                        tapeId: jt.tape_id,
+                        diveNo: jt.dive_job_no || jt.rov_job_no || activeDep?.jobNo || "N/A",
+                        structure: jt.structure_name || "N/A",
+                        chapters: {},
+                        sortedChapterKeys: [],
+                        totalCount: 0,
+                        tapeCount: 0,
+                        inspCount: 0,
+                    };
+                }
+
+                if (!tapesMap[tNo].chapters[chNo]) {
+                    tapesMap[tNo].chapters[chNo] = [];
+                }
+            }
+        });
+
+        if (currentTapeName && (selectedTapeFilter === "ALL" || selectedTapeFilter === currentTapeName)) {
+            if (!tapesMap[currentTapeName]) {
+                tapesMap[currentTapeName] = {
+                    tapeNo: currentTapeName,
+                    tapeId: activeTapeId || undefined,
+                    diveNo: activeDep?.jobNo || "N/A",
+                    structure: "N/A",
+                    chapters: {},
+                    sortedChapterKeys: [],
+                    totalCount: 0,
+                    tapeCount: 0,
+                    inspCount: 0,
+                };
+            }
+            if (currentChapterStr && !tapesMap[currentTapeName].chapters[currentChapterStr]) {
+                tapesMap[currentTapeName].chapters[currentChapterStr] = [];
+            }
+        }
+
         // Sort tapes
         const sortedTapeKeys = Object.keys(tapesMap).sort((a, b) => {
             if (a === "Unassigned") return 1;
@@ -368,7 +499,57 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
             tapesMap,
             sortedTapeKeys,
         };
-    }, [filteredEvents]);
+    }, [filteredEvents, jobTapes, selectedTapeFilter, currentTapeName, currentChapterStr, activeTapeId, activeDep]);
+
+    // When the history modal opens (expanded becomes true), default focus to current tape and chapter
+    const prevExpandedRef = React.useRef(false);
+
+    useEffect(() => {
+        if (expanded && !prevExpandedRef.current) {
+            if (currentTapeName) {
+                setSelectedTapeFilter(currentTapeName);
+                setExpandedTapes(prev => new Set(prev).add(currentTapeName));
+            }
+            if (currentTapeName && currentChapterStr) {
+                const fullChKey = `${currentTapeName}___${currentChapterStr}`;
+                setExpandedChapters(prev => new Set(prev).add(fullChKey));
+            }
+
+            // Smoothly scroll target tape/chapter into view and highlight it
+            const timer = setTimeout(() => {
+                const targetChId = currentTapeName && currentChapterStr 
+                    ? `chapter-node-${currentTapeName}-${currentChapterStr}`.replace(/[^\w-]/g, "_")
+                    : "";
+                const el = targetChId ? document.getElementById(targetChId) : null;
+                if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el.classList.add("ring-2", "ring-cyan-400", "ring-offset-2", "ring-offset-slate-900");
+                    setTimeout(() => {
+                        el.classList.remove("ring-2", "ring-cyan-400", "ring-offset-2", "ring-offset-slate-900");
+                    }, 2500);
+                } else if (currentTapeName) {
+                    const tapeEl = document.getElementById(`tape-node-${currentTapeName}`.replace(/[^\w-]/g, "_"));
+                    if (tapeEl) {
+                        tapeEl.scrollIntoView({ behavior: "smooth", block: "center" });
+                    }
+                }
+            }, 300);
+
+            return () => clearTimeout(timer);
+        }
+        prevExpandedRef.current = !!expanded;
+    }, [expanded, currentTapeName, currentChapterStr]);
+
+    // Ensure active chapter is expanded whenever currentTapeName or currentChapterStr updates
+    useEffect(() => {
+        if (expanded && currentTapeName && currentChapterStr) {
+            const fullChKey = `${currentTapeName}___${currentChapterStr}`;
+            setExpandedChapters(prev => {
+                if (prev.has(fullChKey)) return prev;
+                return new Set(prev).add(fullChKey);
+            });
+        }
+    }, [expanded, currentTapeName, currentChapterStr]);
 
     // Auto-expand all top-level tapes on first load
     useEffect(() => {
@@ -1331,50 +1512,91 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
 
                 {/* 2. Tape Pills Filter Bar */}
                 {tapeKeys.length > 0 && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 custom-scrollbar">
-                        <button
-                            type="button"
-                            onClick={() => setSelectedTapeFilter("ALL")}
-                            className={`px-3 py-1.5 text-[11px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-2 border ${
-                                selectedTapeFilter === "ALL"
-                                    ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/20"
-                                    : "bg-slate-900/80 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                            }`}
-                        >
-                            <Video className="w-3.5 h-3.5" />
-                            All Tapes
-                            <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
-                                selectedTapeFilter === "ALL" ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
-                            }`}>
-                                {filteredEvents.length}
-                            </span>
-                        </button>
+                    <TooltipProvider delayDuration={100}>
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 shrink-0 custom-scrollbar">
+                            <Tooltip>
+                                <TooltipTrigger asChild>
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedTapeFilter("ALL")}
+                                        title="Show all tapes"
+                                        className={`px-3 py-1.5 text-[11px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-2 border ${
+                                            selectedTapeFilter === "ALL"
+                                                ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/20"
+                                                : "bg-slate-900/80 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                                        }`}
+                                    >
+                                        <Video className="w-3.5 h-3.5" />
+                                        All Tapes
+                                        <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
+                                            selectedTapeFilter === "ALL" ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
+                                        }`}>
+                                            {filteredEvents.length}
+                                        </span>
+                                    </button>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="bg-slate-950 text-white border border-slate-700 shadow-xl px-2.5 py-1.5 text-xs">
+                                    Show all tapes ({filteredEvents.length} events)
+                                </TooltipContent>
+                            </Tooltip>
 
-                        {tapeKeys.map(tNo => {
-                            const stats = distinctTapes[tNo];
-                            const isSelected = selectedTapeFilter === tNo;
-                            return (
-                                <button
-                                    key={tNo}
-                                    type="button"
-                                    onClick={() => setSelectedTapeFilter(tNo)}
-                                    className={`px-3 py-1.5 text-[11px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-2 border ${
-                                        isSelected
-                                            ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/20"
-                                            : "bg-slate-900/80 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
-                                    }`}
-                                >
-                                    <Film className="w-3.5 h-3.5 text-cyan-400 opacity-80" />
-                                    <span className="truncate max-w-[200px]">{tNo}</span>
-                                    <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold ${
-                                        isSelected ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
-                                    }`}>
-                                        {showInspectionLogs ? stats.total : stats.tapeLogs}
-                                    </span>
-                                </button>
-                            );
-                        })}
-                    </div>
+                            {tapeKeys.map(tNo => {
+                                const stats = distinctTapes[tNo];
+                                const isSelected = selectedTapeFilter === tNo;
+                                const isCurrent = (tNo === currentTapeName);
+                                return (
+                                    <Tooltip key={tNo}>
+                                        <TooltipTrigger asChild>
+                                            <button
+                                                type="button"
+                                                onClick={() => setSelectedTapeFilter(tNo)}
+                                                title={tNo}
+                                                className={`px-3 py-1.5 text-[11px] font-black uppercase rounded-lg transition-all shrink-0 flex items-center gap-2 border ${
+                                                    isSelected
+                                                        ? "bg-gradient-to-r from-blue-600 to-indigo-600 text-white border-blue-400 shadow-md shadow-blue-500/20"
+                                                        : isCurrent
+                                                        ? "bg-cyan-950/40 border-cyan-500/50 text-cyan-300 hover:bg-cyan-900/40"
+                                                        : "bg-slate-900/80 border-slate-800 text-slate-400 hover:bg-slate-800 hover:text-slate-200"
+                                                }`}
+                                            >
+                                                <Film className="w-3.5 h-3.5 text-cyan-400 opacity-80 shrink-0" />
+                                                <span className="truncate max-w-[220px]" title={tNo}>{tNo}</span>
+                                                {isCurrent && (
+                                                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" title="Active Recording Tape" />
+                                                )}
+                                                <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-mono font-bold shrink-0 ${
+                                                    isSelected ? "bg-white/20 text-white" : "bg-slate-800 text-slate-400"
+                                                }`}>
+                                                    {showInspectionLogs ? (stats?.total || 0) : (stats?.tapeLogs || 0)}
+                                                </span>
+                                            </button>
+                                        </TooltipTrigger>
+                                        <TooltipContent side="bottom" className="bg-slate-950 text-white border border-slate-700 shadow-2xl p-2.5 max-w-sm z-50">
+                                            <div className="flex flex-col gap-1">
+                                                <div className="flex items-center gap-1.5 text-cyan-400 font-mono font-bold text-xs break-all">
+                                                    <Film className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                                                    <span>{tNo}</span>
+                                                    {isCurrent && (
+                                                        <span className="ml-1 text-[9px] bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 px-1.5 py-0.2 rounded font-bold">
+                                                            ACTIVE TAPE
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {stats?.chapters && stats.chapters.size > 0 && (
+                                                    <div className="text-[10px] text-slate-400">
+                                                        Chapter(s): <span className="text-slate-200 font-mono font-bold">{Array.from(stats.chapters).sort().join(", ")}</span>
+                                                    </div>
+                                                )}
+                                                <div className="text-[10px] text-slate-400">
+                                                    Total Events: <span className="text-slate-200 font-bold">{stats?.total || 0}</span> ({stats?.tapeLogs || 0} tape logs, {stats?.inspLogs || 0} inspection logs)
+                                                </div>
+                                            </div>
+                                        </TooltipContent>
+                                    </Tooltip>
+                                );
+                            })}
+                        </div>
+                    </TooltipProvider>
                 )}
 
                 {/* 3. Tree View Container */}
@@ -1403,19 +1625,32 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                         treeData.sortedTapeKeys.map(tKey => {
                             const tapeData = treeData.tapesMap[tKey];
                             const isTapeExpanded = expandedTapes.has(tKey);
+                            const isCurrentTape = (tKey === currentTapeName);
+                            const tapeNodeId = `tape-node-${tKey}`.replace(/[^\w-]/g, "_");
 
                             return (
                                 <div 
                                     key={tKey} 
-                                    className="bg-slate-900/70 border border-slate-800 rounded-xl overflow-hidden shadow-md transition-all"
+                                    id={tapeNodeId}
+                                    className={`rounded-xl overflow-hidden shadow-md transition-all ${
+                                        isCurrentTape 
+                                            ? "bg-slate-900/90 border border-cyan-500/50 ring-1 ring-cyan-500/30" 
+                                            : "bg-slate-900/70 border border-slate-800"
+                                    }`}
                                 >
                                     {/* Level 1: Tape Header Node */}
                                     <div
                                         onClick={() => toggleTapeExpand(tKey)}
-                                        className="p-3 bg-gradient-to-r from-slate-900 via-slate-900/90 to-slate-900/60 hover:bg-slate-800/80 cursor-pointer flex items-center justify-between border-b border-slate-800/80 select-none transition-colors group"
+                                        className={`p-3 bg-gradient-to-r hover:bg-slate-800/80 cursor-pointer flex items-center justify-between border-b select-none transition-colors group ${
+                                            isCurrentTape 
+                                                ? "from-slate-900 via-slate-900/95 to-cyan-950/30 border-cyan-500/30" 
+                                                : "from-slate-900 via-slate-900/90 to-slate-900/60 border-slate-800/80"
+                                        }`}
                                     >
                                         <div className="flex items-center gap-2.5 min-w-0">
-                                            <div className="w-6 h-6 rounded-md bg-blue-950/60 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:border-blue-400 transition-colors">
+                                            <div className={`w-6 h-6 rounded-md flex items-center justify-center transition-colors ${
+                                                isCurrentTape ? "bg-cyan-950/70 border border-cyan-500/50 text-cyan-400" : "bg-blue-950/60 border border-blue-500/30 text-blue-400 group-hover:border-blue-400"
+                                            }`}>
                                                 {isTapeExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
                                             </div>
                                             {isTapeExpanded ? (
@@ -1424,9 +1659,15 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                 <Folder className="w-4 h-4 text-cyan-400 shrink-0" />
                                             )}
                                             <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                                                <span className="text-xs font-black uppercase text-slate-100 tracking-wide truncate">
-                                                    Tape: <span className="text-cyan-400 font-mono">{tKey}</span>
+                                                <span className="text-xs font-black uppercase text-slate-100 tracking-wide truncate" title={tKey}>
+                                                    Tape: <span className="text-cyan-400 font-mono" title={tKey}>{tKey}</span>
                                                 </span>
+                                                {isCurrentTape && (
+                                                    <span className="text-[9px] px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/50 font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                                                        Active Tape
+                                                    </span>
+                                                )}
                                                 {tapeData.diveNo && tapeData.diveNo !== "N/A" && (
                                                     <span className="text-[9px] px-2 py-0.5 rounded bg-emerald-950/60 text-emerald-400 border border-emerald-500/30 font-bold uppercase">
                                                         Dive: {tapeData.diveNo}
@@ -1481,28 +1722,49 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                     {isTapeExpanded && (
                                         <div className="p-3 space-y-3 bg-slate-950/40">
                                             {tapeData.sortedChapterKeys.map(chKey => {
-                                                const chapterEvents = tapeData.chapters[chKey];
+                                                const chapterEvents = tapeData.chapters[chKey] || [];
                                                 const fullChKey = `${tKey}___${chKey}`;
                                                 const isChapterExpanded = expandedChapters.has(fullChKey);
+                                                const isCurrentChapter = (tKey === currentTapeName && chKey === currentChapterStr);
+                                                const chapterNodeId = `chapter-node-${tKey}-${chKey}`.replace(/[^\w-]/g, "_");
 
                                                 return (
                                                     <div 
                                                         key={fullChKey}
-                                                        className="ml-3 sm:ml-5 border-l-2 border-slate-800 pl-3 sm:pl-4 space-y-2 relative before:content-[''] before:absolute before:left-[-2px] before:top-3 before:w-3 before:h-[2px] before:bg-slate-800"
+                                                        id={chapterNodeId}
+                                                        className={`ml-3 sm:ml-5 border-l-2 pl-3 sm:pl-4 space-y-2 relative transition-all rounded-r-lg ${
+                                                            isCurrentChapter 
+                                                                ? "border-cyan-500 bg-cyan-950/15 p-1.5 shadow-sm" 
+                                                                : "border-slate-800"
+                                                        } before:content-[''] before:absolute before:left-[-2px] before:top-3 before:w-3 before:h-[2px] ${
+                                                            isCurrentChapter ? "before:bg-cyan-500" : "before:bg-slate-800"
+                                                        }`}
                                                     >
                                                         {/* Chapter Node Header */}
                                                         <div
                                                             onClick={() => toggleChapterExpand(tKey, chKey)}
-                                                            className="p-2 bg-slate-900/90 hover:bg-slate-800/80 rounded-lg border border-slate-800/90 cursor-pointer flex items-center justify-between transition-all select-none group/ch shadow-sm"
+                                                            className={`p-2 rounded-lg border cursor-pointer flex items-center justify-between transition-all select-none group/ch shadow-sm ${
+                                                                isCurrentChapter
+                                                                    ? "bg-slate-900 border-cyan-500/50 shadow-cyan-950/40"
+                                                                    : "bg-slate-900/90 hover:bg-slate-800/80 border-slate-800/90"
+                                                            }`}
                                                         >
                                                             <div className="flex items-center gap-2 min-w-0">
-                                                                <div className="w-5 h-5 rounded bg-slate-800 flex items-center justify-center text-slate-400 group-hover/ch:text-purple-400 transition-colors">
+                                                                <div className={`w-5 h-5 rounded flex items-center justify-center transition-colors ${
+                                                                    isCurrentChapter ? "bg-cyan-950/60 text-cyan-400" : "bg-slate-800 text-slate-400 group-hover/ch:text-purple-400"
+                                                                }`}>
                                                                     {isChapterExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
                                                                 </div>
-                                                                <Bookmark className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                                                                <Bookmark className={`w-3.5 h-3.5 shrink-0 ${isCurrentChapter ? "text-cyan-400" : "text-purple-400"}`} />
                                                                 <span className="text-[11px] font-black uppercase text-slate-200 tracking-wider">
                                                                     {chKey === "No Chapter" ? "General Log" : `Chapter: ${chKey}`}
                                                                 </span>
+                                                                {isCurrentChapter && (
+                                                                    <span className="text-[9px] px-1.5 py-0.5 rounded bg-cyan-950/80 text-cyan-300 border border-cyan-500/50 font-bold uppercase tracking-wider flex items-center gap-1 shadow-sm">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse shrink-0" />
+                                                                        Active Chapter
+                                                                    </span>
+                                                                )}
                                                             </div>
 
                                                             <div className="flex items-center gap-2">
@@ -1517,7 +1779,9 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                                 >
                                                                     <Plus className="w-2.5 h-2.5" /> Add
                                                                 </button>
-                                                                <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-purple-950/50 text-purple-300 border border-purple-800/40">
+                                                                <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${
+                                                                    isCurrentChapter ? "bg-cyan-950/50 text-cyan-300 border-cyan-800/40" : "bg-purple-950/50 text-purple-300 border-purple-800/40"
+                                                                }`}>
                                                                     {chapterEvents.length} {chapterEvents.length === 1 ? "event" : "events"}
                                                                 </span>
                                                             </div>
@@ -1526,7 +1790,13 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                         {/* Level 3: Leaf Event Items */}
                                                         {isChapterExpanded && (
                                                             <div className="space-y-1.5 ml-2 sm:ml-3 pl-2 sm:pl-3 border-l-2 border-slate-800/50">
-                                                                {chapterEvents.map((ev, idx) => {
+                                                                {chapterEvents.length === 0 ? (
+                                                                    <div className="p-3 text-center text-[11px] text-slate-500 border border-dashed border-slate-800/70 rounded-lg bg-slate-900/30 flex items-center justify-center gap-2">
+                                                                        <Bookmark className="w-3.5 h-3.5 text-slate-600" />
+                                                                        <span>No events recorded in Chapter {chKey} yet. Ready to log.</span>
+                                                                    </div>
+                                                                ) : (
+                                                                    chapterEvents.map((ev, idx) => {
                                                                     const style = getActionStyle(ev.action);
                                                                     const isInsp = ev.logType === "insp" || ev.action === "INSPECTION" || ev.action === "ANOMALY" || ev.action === "DEFECT";
 
@@ -1632,7 +1902,10 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                                                 <Button
                                                                                     variant="ghost"
                                                                                     size="sm"
-                                                                                    onClick={() => handleDeleteEvent(ev.id, ev.logType, ev.realId)}
+                                                                                    onClick={async () => {
+                                                                                        await handleDeleteEvent(ev.id, ev.logType, ev.realId);
+                                                                                        setLocalEvents(prev => prev.filter(x => x.id !== ev.id));
+                                                                                    }}
                                                                                     className="h-7 px-2 text-[10px] font-bold text-slate-400 hover:text-red-400 hover:bg-red-950/50 rounded-md border border-slate-800"
                                                                                     title="Delete event"
                                                                                 >
@@ -1641,8 +1914,9 @@ export const TapeLogEvents: React.FC<TapeLogEventsProps> = ({
                                                                             </div>
                                                                         </div>
                                                                     );
-                                                                })}
-                                                            </div>
+                                                                })
+                                                            )}
+                                                        </div>
                                                         )}
                                                     </div>
                                                 );

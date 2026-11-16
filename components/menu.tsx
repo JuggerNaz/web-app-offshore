@@ -89,14 +89,6 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
               text="Manager Overview"
             />
           </RoleGate>
-
-          <MenuLink
-            href="/dashboard/user-data"
-            isCollapsed={isCollapsed}
-            label="User Data"
-            icon={<UserIcon className="h-[18px] w-[18px]" />}
-            text="User Data"
-          />
         </div>
 
         {/* Assets Section */}
@@ -220,7 +212,8 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
           isModuleAllowed("Smart Query") ||
           isModuleAllowed("QA-QC") ||
           isModuleAllowed("Interface") ||
-          isModuleAllowed("Oracle Migration")) && (
+          isModuleAllowed("Oracle Migration") ||
+          isModuleAllowed("User Data")) && (
           <div className="space-y-1">
             {!isCollapsed && (
               <p className="px-3 mb-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground/60">
@@ -317,6 +310,15 @@ const DashboardMenu = ({ isCollapsed }: { isCollapsed?: boolean }) => {
                 label="Interface"
                 icon={<ArrowRightLeft className="h-[18px] w-[18px] text-cyan-500" />}
                 text="Interface"
+              />
+            )}
+            {isModuleAllowed("User Data") && (
+              <MenuLink
+                href="/dashboard/user-data"
+                isCollapsed={isCollapsed}
+                label="User Data"
+                icon={<UserIcon className="h-[18px] w-[18px]" />}
+                text="User Data"
               />
             )}
           </div>

@@ -2,7 +2,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, draw3SectionHeader } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, extractRecordTapeNo, draw3SectionHeader, toProperCase, resolveOilFieldDescription } from "./shared-logo";
 import { CompanySettings, ReportConfig } from "./defect-anomaly-report";
 
 // ─── Priority colour mapping ─────────────────────────────────────────────────
@@ -243,6 +243,9 @@ export const generateDefectSummaryReport = async (
         }
     }
 
+    const rawFieldVal = structure?.pfield || structure?.field_name || (structure as any)?.field;
+    const resolvedField = rawFieldVal ? await resolveOilFieldDescription(rawFieldVal) : (structure?.str_name || "N/A");
+
     // ── Layout ───────────────────────────────────────────────────────────────
     const doc = new jsPDF({ orientation: "landscape" }); // Landscape for wider table
     const pageWidth = doc.internal.pageSize.getWidth();
@@ -277,13 +280,13 @@ export const generateDefectSummaryReport = async (
 
     // ── Draw Sub-Header info table ───────────────────────────────────────────
     const drawSubHeader = (d: jsPDF, startY: number) => {
-        const field = structure?.field_name || structure?.str_name || "N/A";
+        const field = resolvedField || "N/A";
         const structureTitle = structure?.str_name || structure?.title || structure?.str_desc || "N/A";
         let vessel = "N/A";
         if (jobPack?.metadata?.vessel_history && Array.isArray(jobPack.metadata.vessel_history) && jobPack.metadata.vessel_history.length > 0) {
-            vessel = jobPack.metadata.vessel_history.map((v: any) => v.name || v).join(" / ");
+            vessel = toProperCase(jobPack.metadata.vessel_history.map((v: any) => v.name || v).join(" / "));
         } else if (jobPack?.metadata?.vessel) {
-            vessel = jobPack.metadata.vessel;
+            vessel = toProperCase(jobPack.metadata.vessel);
         }
         const jobpackName = jobPack?.name || "N/A";
 

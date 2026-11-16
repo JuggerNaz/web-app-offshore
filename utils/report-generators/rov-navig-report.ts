@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling , REPORT_FOOTER_APP_TEXT, toProperCase } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 export interface CompanySettings {
@@ -383,7 +383,7 @@ export const generateROVNavigReport = async (
 
         const structName = structure?.str_name || structure?.name || hData.platformName || "N/A";
         const jobPackName = jobPack?.name || hData.jobpackName || "N/A";
-        const vessel = hData.vessel || "N/A";
+        const vessel = hData.vessel && hData.vessel !== "N/A" ? toProperCase(hData.vessel) : (hData.vessel || "N/A");
         const reportNo = sowReportNo || hData.sowReportNo || `${config.reportNoPrefix || "REP"}-NAVIG-01`;
         const inspDate = getInspectionDateRange(rawRecords, hData, config);
 

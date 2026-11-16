@@ -1,5 +1,5 @@
 import { NextRequest } from "next/server";
-import { createClient, createAdminClient } from "@/utils/supabase/server";
+import { createClient, createAdminClient, isServiceRoleConfigured } from "@/utils/supabase/server";
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
@@ -20,7 +20,7 @@ export const PATCH = withAuth(
     { params }: { params: Promise<{ id: string }>; user: any }
   ) => {
     const supabase = createClient();
-    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const useAdmin = isServiceRoleConfigured();
     const adminSupabase = useAdmin ? createAdminClient() : supabase;
     const { id } = await params;
     const body =
@@ -84,10 +84,21 @@ export const PATCH = withAuth(
     }
 
     if (data?.structure_id) {
-      // Trigger synchronous 3D coordinates recalculation for this structure
-      await syncWebapp3D(adminSupabase, data.structure_id).catch((err) => {
-        console.error("[3D Sync Error]", err);
-      });
+      try {
+        const { data: plat } = await (supabase as any)
+          .from("platform")
+          .select("plat_id")
+          .eq("plat_id", data.structure_id)
+          .maybeSingle();
+
+        if (plat) {
+          await syncWebapp3D(adminSupabase, data.structure_id).catch((err) => {
+            console.error("[3D Sync Error]", err);
+          });
+        }
+      } catch (err) {
+        console.warn("[3D Sync Check Error]", err);
+      }
     }
 
     return apiSuccess(data);
@@ -103,7 +114,7 @@ export const DELETE = withAuth(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }>; user: any }
   ) => {
-    const useAdmin = !!process.env.SUPABASE_SERVICE_ROLE_KEY;
+    const useAdmin = isServiceRoleConfigured();
     const supabase = useAdmin ? createAdminClient() : createClient();
     const adminSupabase = supabase;
     const { id } = await params;
@@ -133,9 +144,21 @@ export const DELETE = withAuth(
     }
 
     if (existingComp?.structure_id) {
-      await syncWebapp3D(adminSupabase, existingComp.structure_id).catch((err) => {
-        console.error("[3D Sync Error on DELETE]", err);
-      });
+      try {
+        const { data: plat } = await (supabase as any)
+          .from("platform")
+          .select("plat_id")
+          .eq("plat_id", existingComp.structure_id)
+          .maybeSingle();
+
+        if (plat) {
+          await syncWebapp3D(adminSupabase, existingComp.structure_id).catch((err) => {
+            console.error("[3D Sync Error on DELETE]", err);
+          });
+        }
+      } catch (err) {
+        console.warn("[3D Sync Check Error on DELETE]", err);
+      }
     }
 
     return apiSuccess({ success: true });

@@ -3,7 +3,7 @@ import { createClient, createAdminClient } from "@/utils/supabase/server";
 import { getPaginationParams, createPaginationMeta, applyPagination, getSearchParam, buildSearchFilter } from "@/utils/pagination";
 import { apiPaginated } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
-import { exec } from "child_process";
+import { execFile } from "child_process";
 import { promisify } from "util";
 import fs from "fs/promises";
 import path from "path";
@@ -12,7 +12,7 @@ import { getStorageHandler } from "@/utils/storage-factory";
 import { withTenant } from "@/utils/tenant-auth";
 import { parseMediaId } from "@/utils/attachment-category";
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 const MEDIA_BUCKET = "inspection-media";
 
@@ -337,102 +337,113 @@ export const POST = withTenant(async (request, { companyId }) => {
     let tempInputPath = "";
     let tempOutputPath = "";
 
-    if (needsTranscoding) {
-      console.log(`[POST /api/attachment] Incompatible format detected (${originalFileExt}). Starting transcoding...`);
-      try {
-        const tempDir = os.tmpdir();
-        tempInputPath = path.join(tempDir, `input-${Date.now()}.${originalFileExt}`);
-        tempOutputPath = path.join(tempDir, `output-${Date.now()}.mp4`);
+    try {
+      if (needsTranscoding) {
+        console.log(`[POST /api/attachment] Incompatible format detected (${originalFileExt}). Starting transcoding...`);
+        try {
+          const tempDir = os.tmpdir();
+          const safeExt = (originalFileExt || "wmv").replace(/[^a-zA-Z0-9]/g, "");
+          tempInputPath = path.join(tempDir, `input-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${safeExt}`);
+          tempOutputPath = path.join(tempDir, `output-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.mp4`);
 
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await fs.writeFile(tempInputPath, buffer);
+          const buffer = Buffer.from(await file.arrayBuffer());
+          await fs.writeFile(tempInputPath, buffer);
 
-        console.log(`[POST /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
-        const { stdout, stderr } = await execAsync(`ffmpeg -i "${tempInputPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -y "${tempOutputPath}"`);
-        
-        if (stderr && stderr.includes('Error')) {
-            console.warn("[POST /api/attachment] FFmpeg warning/error in stderr:", stderr);
+          console.log(`[POST /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
+          const { stdout, stderr } = await execFileAsync("ffmpeg", [
+            "-i", tempInputPath,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-y", tempOutputPath
+          ]);
+          
+          if (stderr && stderr.includes('Error')) {
+              console.warn("[POST /api/attachment] FFmpeg warning/error in stderr:", stderr);
+          }
+
+          fileToUpload = await fs.readFile(tempOutputPath);
+          finalFileExt = "mp4";
+          finalContentType = "video/mp4";
+          console.log(`[POST /api/attachment] Transcoding complete. New size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length}`);
+        } catch (transcodeErr: any) {
+          console.error("[POST /api/attachment] Transcoding failed critical error:", transcodeErr);
+          if (transcodeErr.stderr) {
+              console.error("[POST /api/attachment] FFmpeg Stderr:", transcodeErr.stderr);
+          }
+          fileToUpload = file;
         }
-
-        fileToUpload = await fs.readFile(tempOutputPath);
-        finalFileExt = "mp4";
-        finalContentType = "video/mp4";
-        console.log(`[POST /api/attachment] Transcoding complete. New size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length}`);
-      } catch (transcodeErr: any) {
-        console.error("[POST /api/attachment] Transcoding failed critical error:", transcodeErr);
-        if (transcodeErr.stderr) {
-            console.error("[POST /api/attachment] FFmpeg Stderr:", transcodeErr.stderr);
-        }
-        fileToUpload = file;
       }
-    }
 
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${finalFileExt}`;
-    
-    const adminClient = createAdminClient();
-    const { data: settings, error: settingsError } = await adminClient
-      .from("company_settings" as any)
-      .select("storage_provider, storage_config")
-      .eq("company_id", companyId)
-      .single() as any;
+      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}.${finalFileExt}`;
+      
+      const adminClient = createAdminClient();
+      const { data: settings, error: settingsError } = await adminClient
+        .from("company_settings" as any)
+        .select("storage_provider, storage_config")
+        .eq("company_id", companyId)
+        .single() as any;
 
-    if (settingsError || !settings) {
-      console.error("[POST /api/attachment] Failed to load company settings:", settingsError);
-      return NextResponse.json({ error: "Failed to resolve storage provider configuration. Please check your Preferences." }, { status: 500 });
-    }
+      if (settingsError || !settings) {
+        console.error("[POST /api/attachment] Failed to load company settings:", settingsError);
+        return NextResponse.json({ error: "Failed to resolve storage provider configuration. Please check your Preferences." }, { status: 500 });
+      }
 
-    console.log(`[POST /api/attachment] DB Settings Provider: "${settings.storage_provider}"`);
-    console.log(`[POST /api/attachment] DB Settings Config Keys:`, Object.keys(settings.storage_config || {}));
+      console.log(`[POST /api/attachment] DB Settings Provider: "${settings.storage_provider}"`);
+      console.log(`[POST /api/attachment] DB Settings Config Keys:`, Object.keys(settings.storage_config || {}));
 
-    const handler = await getStorageHandler(settings.storage_provider, settings.storage_config);
-    
-    console.log(`[POST /api/attachment] Resolved Handler Class: ${handler.constructor.name}`);
+      const handler = await getStorageHandler(settings.storage_provider, settings.storage_config);
+      
+      console.log(`[POST /api/attachment] Resolved Handler Class: ${handler.constructor.name}`);
 
-    console.log(`[POST /api/attachment] Starting upload to ${settings.storage_provider}... (Size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length} bytes, Type: ${finalContentType})`);
-    const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, fileName, finalContentType);
-    console.log(`[POST /api/attachment] Upload successful! Provider: ${settings.storage_provider}`);
-    console.log(`[POST /api/attachment] Generated Path: ${storageFilePath}`);
-    console.log(`[POST /api/attachment] Generated Public URL: ${publicUrl}`);
+      console.log(`[POST /api/attachment] Starting upload to ${settings.storage_provider}... (Size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length} bytes, Type: ${finalContentType})`);
+      const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, fileName, finalContentType);
+      console.log(`[POST /api/attachment] Upload successful! Provider: ${settings.storage_provider}`);
+      console.log(`[POST /api/attachment] Generated Path: ${storageFilePath}`);
+      console.log(`[POST /api/attachment] Generated Public URL: ${publicUrl}`);
 
-    const { data, error } = await (supabase as any)
-      .from("attachment")
-      .insert([
-        {
-          name: name,
-          source_type: source_type,
-          source_id: source_id,
-          company_id: companyId,
-          meta: {
-            title: title || name,
-            description: description,
-            sort_order: sort_order !== null && sort_order !== undefined && sort_order !== "" ? Number(sort_order) : 0,
-            file_label: name,
-            original_file_name: file.name,
-            file_url: publicUrl,
-            file_path: storageFilePath,
-            file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
-            file_type: finalContentType,
-            mime: finalContentType,
-            size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
-            type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
-            storage_provider: settings?.storage_provider || 'Supabase'
+      const { data, error } = await (supabase as any)
+        .from("attachment")
+        .insert([
+          {
+            name: name,
+            source_type: source_type,
+            source_id: source_id,
+            company_id: companyId,
+            meta: {
+              title: title || name,
+              description: description,
+              sort_order: sort_order !== null && sort_order !== undefined && sort_order !== "" ? Number(sort_order) : 0,
+              file_label: name,
+              original_file_name: file.name,
+              file_url: publicUrl,
+              file_path: storageFilePath,
+              file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
+              file_type: finalContentType,
+              mime: finalContentType,
+              size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
+              type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
+              storage_provider: settings?.storage_provider || 'Supabase'
+            },
+            path: publicUrl,
           },
-          path: publicUrl,
-        },
-      ])
-      .select();
+        ])
+        .select();
 
-    if (error) {
-      console.error("[POST /api/attachment] DB insertion error:", error.message);
-      return NextResponse.json({ error: `Failed to insert attachment into database: ${error.message}` }, { status: 500 });
+      if (error) {
+        console.error("[POST /api/attachment] DB insertion error:", error.message);
+        return NextResponse.json({ error: `Failed to insert attachment into database: ${error.message}` }, { status: 500 });
+      }
+
+      console.log(`[POST /api/attachment] Successfully uploaded and recorded: ${data?.[0]?.id}`);
+
+      return NextResponse.json({ success: true, attachment: data?.[0] });
+    } finally {
+      if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
+      if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
     }
-
-    console.log(`[POST /api/attachment] Successfully uploaded and recorded: ${data?.[0]?.id}`);
-
-    if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
-    if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
-
-    return NextResponse.json({ success: true, attachment: data?.[0] });
   } catch (err: any) {
     console.error("[POST /api/attachment] Exception:", err);
     return NextResponse.json({ error: `Server error during upload: ${err.message || 'Unknown error'}` }, { status: 500 });
@@ -489,20 +500,10 @@ export const DELETE = withTenant(async (request, { companyId }) => {
       query = query.or(`company_id.eq.${companyId},company_id.is.null`);
     }
 
-    const { data: attachmentData, error: fetchError } = await query.maybeSingle();
-    let attachment = attachmentData;
+    const { data: attachment, error: fetchError } = await query.maybeSingle();
 
     if (!attachment) {
-      const { data: directItem, error: directErr } = await (supabase as any)
-        .from("attachment")
-        .select("path, meta, company_id")
-        .eq("id", attachmentId)
-        .maybeSingle();
-
-      if (directErr || !directItem) {
-        return handleSupabaseError(fetchError || directErr, "Attachment not found");
-      }
-      attachment = directItem;
+      return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
     }
 
     const storagePath = (attachment.meta as any)?.file_path || attachment.path;
@@ -511,7 +512,7 @@ export const DELETE = withTenant(async (request, { companyId }) => {
       const { data: settings } = await (supabase as any)
         .from("company_settings")
         .select("storage_provider, storage_config")
-        .eq("company_id", companyId)
+        .eq("company_id", attachment.company_id || companyId)
         .maybeSingle();
 
       const handler = await getStorageHandler((settings as any)?.storage_provider, (settings as any)?.storage_config);
@@ -529,8 +530,8 @@ export const DELETE = withTenant(async (request, { companyId }) => {
       .delete()
       .eq("id", attachmentId);
 
-    if (companyId && attachment.company_id) {
-      deleteQuery = deleteQuery.eq("company_id", companyId);
+    if (companyId) {
+      deleteQuery = deleteQuery.or(`company_id.eq.${companyId},company_id.is.null`);
     }
 
     const { data: deleteResult, error: deleteError } = await deleteQuery.select();
@@ -608,20 +609,10 @@ export const PATCH = withTenant(async (request, { companyId }) => {
     query = query.or(`company_id.eq.${companyId},company_id.is.null`);
   }
 
-  const { data: currentData, error: fetchError } = await query.maybeSingle();
-  let current = currentData;
+  const { data: current, error: fetchError } = await query.maybeSingle();
 
   if (!current) {
-    const { data: directItem, error: directErr } = await (supabase as any)
-      .from("attachment")
-      .select("id, meta, name, company_id")
-      .eq("id", id)
-      .maybeSingle();
-
-    if (directErr || !directItem) {
-      return handleSupabaseError(fetchError || directErr, "Attachment not found");
-    }
-    current = directItem;
+    return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
   }
 
   const currentMeta = typeof current.meta === "object" && current.meta !== null ? current.meta : {};
@@ -704,11 +695,16 @@ export const PUT = withTenant(async (request, { companyId }) => {
       return NextResponse.json({ error: "Invalid attachment id" }, { status: 400 });
     }
 
-    const { data: currentAttachment } = await (supabase as any)
+    let query = (supabase as any)
       .from("attachment")
       .select("id, meta, path, name, company_id")
-      .eq("id", attachmentId)
-      .maybeSingle();
+      .eq("id", attachmentId);
+
+    if (companyId) {
+      query = query.or(`company_id.eq.${companyId},company_id.is.null`);
+    }
+
+    const { data: currentAttachment } = await query.maybeSingle();
 
     if (!currentAttachment) {
       return NextResponse.json({ error: "Attachment not found" }, { status: 404 });
@@ -752,76 +748,87 @@ export const PUT = withTenant(async (request, { companyId }) => {
     let tempInputPath = "";
     let tempOutputPath = "";
 
-    if (needsTranscoding) {
-      console.log(`[PUT /api/attachment] Incompatible format detected (${originalFileExt}). Starting transcoding...`);
-      try {
-        const tempDir = os.tmpdir();
-        tempInputPath = path.join(tempDir, `edit-input-${Date.now()}.${originalFileExt}`);
-        tempOutputPath = path.join(tempDir, `edit-output-${Date.now()}.mp4`);
+    try {
+      if (needsTranscoding) {
+        console.log(`[PUT /api/attachment] Incompatible format detected (${originalFileExt}). Starting transcoding...`);
+        try {
+          const tempDir = os.tmpdir();
+          const safeExt = (originalFileExt || "wmv").replace(/[^a-zA-Z0-9]/g, "");
+          tempInputPath = path.join(tempDir, `edit-input-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.${safeExt}`);
+          tempOutputPath = path.join(tempDir, `edit-output-${Date.now()}-${Math.random().toString(36).slice(2, 7)}.mp4`);
 
-        const buffer = Buffer.from(await file.arrayBuffer());
-        await fs.writeFile(tempInputPath, buffer);
+          const buffer = Buffer.from(await file.arrayBuffer());
+          await fs.writeFile(tempInputPath, buffer);
 
-        console.log(`[PUT /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
-        await execAsync(`ffmpeg -i "${tempInputPath}" -c:v libx264 -preset fast -crf 23 -c:a aac -b:a 128k -y "${tempOutputPath}"`);
+          console.log(`[PUT /api/attachment] Running FFmpeg: ${tempInputPath} -> ${tempOutputPath}`);
+          await execFileAsync("ffmpeg", [
+            "-i", tempInputPath,
+            "-c:v", "libx264",
+            "-preset", "fast",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-b:a", "128k",
+            "-y", tempOutputPath
+          ]);
 
-        fileToUpload = await fs.readFile(tempOutputPath);
-        finalFileExt = "mp4";
-        finalContentType = "video/mp4";
-        console.log(`[PUT /api/attachment] Transcoding complete. New size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length}`);
-      } catch (transcodeErr) {
-        console.error("[PUT /api/attachment] Transcoding failed:", transcodeErr);
+          fileToUpload = await fs.readFile(tempOutputPath);
+          finalFileExt = "mp4";
+          finalContentType = "video/mp4";
+          console.log(`[PUT /api/attachment] Transcoding complete. New size: ${fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length}`);
+        } catch (transcodeErr) {
+          console.error("[PUT /api/attachment] Transcoding failed:", transcodeErr);
+          fileToUpload = Buffer.from(await file.arrayBuffer());
+        }
+      } else {
         fileToUpload = Buffer.from(await file.arrayBuffer());
       }
-    } else {
-      fileToUpload = Buffer.from(await file.arrayBuffer());
+
+      const newFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}_edited.${finalFileExt}`;
+      
+      console.log(`[PUT /api/attachment] Uploading edited file to ${settings?.storage_provider || "Supabase"}...`);
+      
+      const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, newFileName, finalContentType);
+
+      const title = formData.get("title") as string | null;
+      const description = formData.get("description") as string | null;
+      const sort_order = formData.get("sort_order") as string | null;
+
+      const updatedMeta = {
+        ...((currentAttachment as any)?.meta as object || {}),
+        file_path: storageFilePath,
+        file_url: publicUrl,
+        file_type: finalContentType,
+        mime: finalContentType,
+        original_file_name: file.name || (currentAttachment as any)?.meta?.original_file_name,
+        file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
+        size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
+        type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
+        ...(title !== null && title !== undefined ? { title } : {}),
+        ...(description !== null && description !== undefined ? { description } : {}),
+        ...(sort_order !== null && sort_order !== undefined && sort_order !== "" ? { sort_order: Number(sort_order) } : {}),
+      };
+
+      const updatePayload: any = {
+        path: publicUrl,
+        meta: updatedMeta
+      };
+      if (title) updatePayload.name = title;
+
+      const { error: dbError } = await (supabase as any)
+        .from("attachment")
+        .update(updatePayload)
+        .eq("id", attachmentId);
+
+      if (dbError) {
+        console.error("Failed to update database record after upload:", dbError);
+        return handleSupabaseError(dbError, "Failed to update attachment record with new file");
+      }
+
+      return NextResponse.json({ success: true, url: publicUrl });
+    } finally {
+      if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
+      if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
     }
-
-    const newFileName = `${Date.now()}-${Math.random().toString(36).substring(2, 8)}_edited.${finalFileExt}`;
-    
-    console.log(`[PUT /api/attachment] Uploading edited file to ${settings?.storage_provider || "Supabase"}...`);
-    
-    const { publicUrl, filePath: storageFilePath } = await handler.upload(fileToUpload, newFileName, finalContentType);
-
-    const title = formData.get("title") as string | null;
-    const description = formData.get("description") as string | null;
-    const sort_order = formData.get("sort_order") as string | null;
-
-    const updatedMeta = {
-      ...((currentAttachment as any)?.meta as object || {}),
-      file_path: storageFilePath,
-      file_url: publicUrl,
-      file_type: finalContentType,
-      mime: finalContentType,
-      original_file_name: file.name || (currentAttachment as any)?.meta?.original_file_name,
-      file_size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
-      size: fileToUpload instanceof File ? fileToUpload.size : fileToUpload.length,
-      type: finalContentType.startsWith('video/') ? 'VIDEO' : (finalContentType.startsWith('image/') ? 'PHOTO' : 'DOCUMENT'),
-      ...(title !== null && title !== undefined ? { title } : {}),
-      ...(description !== null && description !== undefined ? { description } : {}),
-      ...(sort_order !== null && sort_order !== undefined && sort_order !== "" ? { sort_order: Number(sort_order) } : {}),
-    };
-
-    const updatePayload: any = {
-      path: publicUrl,
-      meta: updatedMeta
-    };
-    if (title) updatePayload.name = title;
-
-    const { error: dbError } = await (supabase as any)
-      .from("attachment")
-      .update(updatePayload)
-      .eq("id", attachmentId);
-
-    if (dbError) {
-      console.error("Failed to update database record after upload:", dbError);
-      return handleSupabaseError(dbError, "Failed to update attachment record with new file");
-    }
-
-    if (tempInputPath) fs.unlink(tempInputPath).catch(() => {});
-    if (tempOutputPath) fs.unlink(tempOutputPath).catch(() => {});
-
-    return NextResponse.json({ success: true, url: publicUrl });
   } catch (err: any) {
     console.error("Exception in PUT /api/attachment:", err);
     return NextResponse.json({ error: err.message || "Internal server error" }, { status: 500 });

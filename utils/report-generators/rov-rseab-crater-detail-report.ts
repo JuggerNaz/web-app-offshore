@@ -26,8 +26,82 @@ interface ReportConfig {
 }
 
 /**
+ * Helper to format crater dimensions without short forms
+ */
+const formatCraterDimensions = (d: any): string => {
+    const cDia = d.crater_diameter || d.craterDiameter || d.diameter || '';
+    const cDiaUnit = d.crater_diameter_unit || d.craterDiameterUnit || d.diameter_unit || 'm';
+    const cDep = d.crater_depth || d.craterDepth || d.depth || '';
+    const cDepUnit = d.crater_depth_unit || d.craterDepthUnit || d.depth_unit || 'm';
+
+    if (cDia || cDep) {
+        const parts: string[] = [];
+        if (cDia) parts.push(`Diameter: ${cDia}${cDiaUnit}`);
+        if (cDep) parts.push(`Depth: ${cDep}${cDepUnit}`);
+        return parts.join(', ');
+    }
+
+    const rawCraterSize = d.size_dimensions || d.dimension_1 || d.size || '';
+    if (rawCraterSize && rawCraterSize !== 'm x m' && rawCraterSize !== ' x ') {
+        return String(rawCraterSize)
+            .replace(/\bDia:\s*/gi, 'Diameter: ')
+            .replace(/\bDep:\s*/gi, 'Depth: ')
+            .replace(/\bL:\s*/gi, 'Length: ')
+            .replace(/\bW:\s*/gi, 'Width: ')
+            .replace(/\bH:\s*/gi, 'Height: ');
+    }
+
+    return '—';
+};
+
+/**
+ * Helper to clean redundant crater dimensions/prefixes from findings text
+ */
+const cleanCraterFindings = (rawFinding: string, sizeDisplay: string): string => {
+    let clean = (rawFinding || '')
+        .replace(/^(Crater|Seabed Crater)(:\s*|\s*$)/i, '')
+        .trim();
+
+    if (clean && sizeDisplay && sizeDisplay !== '—' && sizeDisplay !== 'N/A') {
+        clean = clean
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?(?:\s*[xX×]\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)?)?/gi, '')
+            .replace(/(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\s*(?:in\s+)?(?:depth|diameter|dia\.?)\b/gi, '')
+            .replace(/\b(?:depth|diameter|dia\.?|Dia)\s*[:=]?\s*(?:approx\.?|approximately)?\s*\d+(?:\.\d+)?\s*(?:m|cm|mm|ft|in)\b/gi, '')
+            .replace(/\(\s*(?:[,;xX×\s]|and)*\s*\)/g, '');
+    }
+
+    if (clean) {
+        clean = clean
+            .replace(/\bapprox\.(?=\s|$)/gi, 'approximately')
+            .replace(/\bdia\.(?=\s|$)/gi, 'diameter')
+            .replace(/\bdist\.(?=\s|$)/gi, 'distance');
+
+        const segments = clean
+            .split(/(?:\s*;\s*|\s*\.\s+|\s*,\s*|\r?\n)+/)
+            .map(s => s.trim().replace(/^[,;.\-\s]+|[,;.\-\s]+$/g, ''))
+            .filter(Boolean);
+
+        const uniqueSegments: string[] = [];
+        for (const seg of segments) {
+            const lower = seg.toLowerCase();
+            if (!uniqueSegments.some(existing => existing.toLowerCase() === lower || existing.toLowerCase().includes(lower))) {
+                const containedIdx = uniqueSegments.findIndex(existing => lower.includes(existing.toLowerCase()));
+                if (containedIdx !== -1) {
+                    uniqueSegments[containedIdx] = seg;
+                } else {
+                    uniqueSegments.push(seg);
+                }
+            }
+        }
+        clean = uniqueSegments.join(', ');
+    }
+
+    return clean || '-';
+};
+
+/**
  * ROV Seabed Survey Crater Inspection Report (Portrait)
- * Columns: No. | QID | Dive No. | Tape No. | Findings
+ * Columns: No. | QID | Dive No. | Tape No. | Dimensions | Findings
  *
  * Filtered by item category = Crater. Ordered by leg name and distance.
  */
@@ -165,6 +239,7 @@ export const generateROVRSEABCraterDetailReport = async (
 
         // Helper to extract legs and distance from QID
         const parseQid = (q: string) => {
+            if (!q) return { legs: "", distance: 0 };
             const match = q.match(/S\/BED\(([^)]+)\)-(\d+)M/i);
             if (match) {
                 return { legs: match[1].trim(), distance: parseInt(match[2], 10) };
@@ -178,8 +253,8 @@ export const generateROVRSEABCraterDetailReport = async (
 
         // Sort records by leg name and distance value
         const sortedRecords = [...filteredRecords].sort((a, b) => {
-            const qA = (a.structure_components?.q_id || a.qid || '').toUpperCase();
-            const qB = (b.structure_components?.q_id || b.qid || '').toUpperCase();
+            const qA = (a.structure_components?.q_id || a.qid || a.q_id || '').toUpperCase();
+            const qB = (b.structure_components?.q_id || b.qid || b.q_id || '').toUpperCase();
             
             const parsedA = parseQid(qA);
             const parsedB = parseQid(qB);
@@ -193,21 +268,26 @@ export const generateROVRSEABCraterDetailReport = async (
         // Map records to autoTable RowInput[]
         const tableRows = sortedRecords.map((r, rIdx) => {
             const qid = r.structure_components?.q_id || r.component?.q_id || r.q_id || "—";
-            const d = r.inspection_data || {};
+            const d = r.inspection_data || r.inspection_dat || {};
             const anoms = r.insp_anomalies || [];
             const isAnom = anoms.length > 0;
 
             // Dive & Tape No
-            const diveNo = r.insp_rov_jobs?.job_no || r.insp_dive_jobs?.job_no || r.dive_no || "—";
+            const diveNo = r.insp_rov_jobs?.job_no || r.insp_rov_jobs?.name || r.dive_no || r.dive_job_id || r.rov_job_id || "—";
             const tapeNo = extractRecordTapeNo(r);
 
-            // Format Findings
-            const findings = formatReportFindingText(r, r.description || d.findings);
+            // Format Dimensions & Findings
+            const dimensions = formatCraterDimensions(d);
+            const rawFindingText = r.description || d.findings || d.description || '';
+            const cleanedFinding = cleanCraterFindings(rawFindingText, dimensions);
+            const findings = formatReportFindingText(r, cleanedFinding);
+
             return [
                 { content: String(rIdx + 1) },
                 { content: qid },
                 { content: String(diveNo) },
                 { content: String(tapeNo) },
+                { content: dimensions },
                 { content: findings }
             ];
         });
@@ -221,6 +301,7 @@ export const generateROVRSEABCraterDetailReport = async (
                     { content: "QID" },
                     { content: "Dive No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Tape No.", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "Dimensions" },
                     { content: "Findings" }
                 ]
             ],
@@ -229,17 +310,19 @@ export const generateROVRSEABCraterDetailReport = async (
                 { content: "-" },
                 { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
                 { content: "-", styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
+                { content: "-" },
                 { content: "No seabed crater observations recorded for this scope." }
             ]],
             theme: "grid",
             headStyles: {fillColor: colors.navy, textColor: [255, 255, 255], fontSize: 8, fontStyle: "bold", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
-            styles: {fontSize: 7.5, cellPadding: 2.5, lineWidth: 0.1, lineColor: colors.border},
+            styles: {fontSize: 7.5, cellPadding: 2.2, lineWidth: 0.1, lineColor: colors.border},
             columnStyles: {
-                0: { cellWidth: 12 }, // No.
-                1: { cellWidth: 42 }, // QID
-                2: { cellWidth: 18 }, // Dive No.
-                3: { cellWidth: 38 }, // Tape No.
-                4: { cellWidth: "auto" } // Findings
+                0: { cellWidth: 10, halign: "center" as const }, // No.
+                1: { cellWidth: 38 }, // QID
+                2: { cellWidth: 18, halign: "center" as const }, // Dive No.
+                3: { cellWidth: 32, halign: "center" as const }, // Tape No.
+                4: { cellWidth: 34 }, // Dimensions
+                5: { cellWidth: "auto" } // Findings
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;

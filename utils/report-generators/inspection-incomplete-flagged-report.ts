@@ -265,7 +265,7 @@ export const generateInspectionIncompleteFlaggedReport = async (
             const reportNo = baseReportNo.includes("/ INC") ? baseReportNo : `${baseReportNo} / INC`;
 
             draw3SectionHeader(d, {
-                reportTitle: "Inspection Incomplete Summary Report",
+                reportTitle: "Incomplete Inspection Summary Report",
                 reportNo,
                 structureName: headerData.platformName 
                     ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` 

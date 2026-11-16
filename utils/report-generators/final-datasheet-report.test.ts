@@ -121,7 +121,7 @@ describe("final-datasheet-report", () => {
     });
 
     it("generates a valid Section Divider Page Blob", async () => {
-        const dividerBlob = await generateSectionDividerPage("Cathodic Protection Potential Survey", {
+        const dividerBlob = await generateSectionDividerPage("Cathodic Protection Survey", {
             structureName: "BODP-A",
             jobPackName: "UIMC2026/SKA/PLAT01"
         });

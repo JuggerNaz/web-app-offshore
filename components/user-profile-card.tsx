@@ -18,8 +18,10 @@ import {
     User as UserIcon,
     CheckCircle2,
     Lock,
-    Sparkles
+    Sparkles,
+    Edit2
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
 
 interface UserProfileCardProps {
@@ -31,9 +33,11 @@ interface UserProfileCardProps {
         designation?: string;
         avatar_url?: string;
     } | null;
+    canEdit?: boolean;
+    onEdit?: () => void;
 }
 
-export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: UserProfileCardProps) {
+export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata, canEdit, onEdit }: UserProfileCardProps) {
     const getInitials = (name: string, email: string) => {
         if (name) {
             const parts = name.split(' ');
@@ -65,11 +69,13 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
         ? currentUserMetadata.avatar_url
         : (user.avatar_url || "");
 
+    const isDeactivated = user.is_active === false && !isMe;
+
     return (
         <Card className="border-0 shadow-none bg-transparent overflow-hidden">
             {/* Header / Avatar Area */}
             <div className="relative h-40 bg-gradient-to-br from-indigo-600 via-blue-600 to-emerald-500 dark:from-indigo-900 dark:via-blue-900 dark:to-emerald-900">
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] opacity-10" />
+                <div className="absolute inset-0 bg-[radial-gradient(#ffffff18_1px,transparent_1px)] [background-size:16px_16px] opacity-40" />
                 <div className="absolute -bottom-16 left-8">
                     <motion.div
                         initial={{ scale: 0.5, opacity: 0 }}
@@ -85,10 +91,21 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
                                 </AvatarFallback>
                             </Avatar>
                         </div>
-                        <div className={`absolute bottom-3 right-3 h-7 w-7 rounded-full border-4 border-white dark:border-slate-950 shadow-lg ${isOnline ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)]' : 'bg-slate-400'}`} />
+                        <div className={`absolute bottom-3 right-3 h-7 w-7 rounded-full border-4 border-white dark:border-slate-950 shadow-lg ${
+                            isDeactivated 
+                                ? 'bg-rose-500 shadow-[0_0_15px_rgba(244,63,94,0.8)]' 
+                                : isOnline 
+                                    ? 'bg-green-500 shadow-[0_0_15px_rgba(34,197,94,0.8)]' 
+                                    : 'bg-slate-400'
+                        }`} />
                     </motion.div>
                 </div>
                 <div className="absolute top-6 right-6 flex flex-col items-end gap-2 text-white">
+                    {isDeactivated && (
+                        <Badge className="bg-rose-600 text-white border-0 px-3 py-1 font-black text-[9px] uppercase shadow-lg">
+                            Inactive
+                        </Badge>
+                    )}
                     <Badge variant={user.role === 'Admin' ? 'default' : 'secondary'} className={`${user.role === 'Admin' ? "bg-amber-500 text-white" : "bg-white/20 backdrop-blur-md text-white border-0"} px-4 py-1.5 font-black uppercase text-[10px] tracking-widest shadow-lg`}>
                         {user.role || 'User'}
                     </Badge>
@@ -99,17 +116,30 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
             <CardContent className="pt-20 pb-8 px-8 space-y-8 bg-white dark:bg-slate-950">
                 {/* Essential Info */}
                 <div className="space-y-2">
-                    <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 }}
-                        className="flex items-center gap-3"
-                    >
-                        <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
-                            {resolvedName}
-                        </h2>
-                        <Sparkles className="h-5 w-5 text-amber-500 animate-pulse" />
-                    </motion.div>
+                    <div className="flex items-start justify-between gap-4">
+                        <motion.div
+                            initial={{ opacity: 0, x: -20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            transition={{ delay: 0.1 }}
+                            className="flex items-center gap-3"
+                        >
+                            <h2 className="text-3xl font-black text-slate-900 dark:text-white tracking-tight">
+                                {resolvedName}
+                            </h2>
+                            <Sparkles className="h-5 w-5 text-amber-500 animate-pulse" />
+                        </motion.div>
+                        {canEdit && onEdit && !isDeactivated && (
+                            <Button
+                                onClick={onEdit}
+                                size="sm"
+                                variant="outline"
+                                className="rounded-xl gap-2 font-bold border-slate-200 dark:border-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/40 shrink-0 shadow-sm"
+                            >
+                                <Edit2 className="h-4 w-4 text-blue-600" />
+                                Edit Profile
+                            </Button>
+                        )}
+                    </div>
                     <motion.p 
                         initial={{ opacity: 0, x: -20 }}
                         animate={{ opacity: 1, x: 0 }}
@@ -181,30 +211,51 @@ export function UserProfileCard({ user, isOnline, isMe, currentUserMetadata }: U
                 </motion.div>
                 
                 {/* Connection Status Footnote */}
-                <motion.div 
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    transition={{ delay: 0.6 }}
-                    className={`p-4 rounded-xl border flex items-center gap-4 ${
-                        isOnline 
-                        ? "bg-green-50 border-green-100 text-green-700 dark:bg-green-950/20 dark:border-green-900/50 dark:text-green-400" 
-                        : "bg-slate-50 border-slate-100 text-slate-600 dark:bg-slate-900/50 dark:border-slate-800 dark:text-slate-400"
-                    }`}
-                >
-                    <div className="relative flex h-3 w-3">
-                        {isOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
-                        <span className={`relative inline-flex rounded-full h-3 w-3 ${isOnline ? 'bg-green-500' : 'bg-slate-400'}`}></span>
-                    </div>
-                    <div>
-                        <p className="text-xs font-black uppercase tracking-widest leading-none">
-                            {isOnline ? "Connected to platform" : "Currently Offline / Disconnected"}
-                        </p>
-                        <p className="text-[10px] opacity-70 mt-1 font-bold">
-                            {isOnline ? "Real-time presence confirmed via encrypted socket heartbeat" : "Last recorded heartbeat was successful"}
-                        </p>
-                    </div>
-                    {isOnline && <CheckCircle2 className="h-5 w-5 ml-auto opacity-50" />}
-                </motion.div>
+                {isDeactivated ? (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.6 }}
+                        className="p-4 rounded-xl border flex items-center gap-4 bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-950/30 dark:border-rose-900/50 dark:text-rose-400"
+                    >
+                        <div className="relative flex h-3 w-3">
+                            <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+                        </div>
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-widest leading-none">
+                                Account Inactive
+                            </p>
+                            <p className="text-[10px] opacity-70 mt-1 font-bold">
+                                Access to platform, modules, and password reset is suspended
+                            </p>
+                        </div>
+                    </motion.div>
+                ) : (
+                    <motion.div 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.6 }}
+                        className={`p-4 rounded-xl border flex items-center gap-4 ${
+                            isOnline 
+                            ? "bg-green-50 border-green-100 text-green-700 dark:bg-green-950/20 dark:border-green-900/50 dark:text-green-400" 
+                            : "bg-slate-50 border-slate-100 text-slate-600 dark:bg-slate-900/50 dark:border-slate-800 dark:text-slate-400"
+                        }`}
+                    >
+                        <div className="relative flex h-3 w-3">
+                            {isOnline && <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>}
+                            <span className={`relative inline-flex rounded-full h-3 w-3 ${isOnline ? 'bg-green-500' : 'bg-slate-400'}`}></span>
+                        </div>
+                        <div>
+                            <p className="text-xs font-black uppercase tracking-widest leading-none">
+                                {isOnline ? "Connected to platform" : "Currently Offline / Disconnected"}
+                            </p>
+                            <p className="text-[10px] opacity-70 mt-1 font-bold">
+                                {isOnline ? "Real-time presence confirmed via encrypted socket heartbeat" : "Last recorded heartbeat was successful"}
+                            </p>
+                        </div>
+                        {isOnline && <CheckCircle2 className="h-5 w-5 ml-auto opacity-50" />}
+                    </motion.div>
+                )}
             </CardContent>
         </Card>
     );

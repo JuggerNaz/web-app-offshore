@@ -22,7 +22,7 @@ export default async function SelectTenantPage({
   const user = userData.user;
 
   // Fetch active memberships and company data
-  const { data: rawMemberships, error: membershipError } = await (supabase as any)
+  let { data: rawMemberships, error: membershipError } = await (supabase as any)
     .from("company_memberships")
     .select(`
       id,
@@ -34,9 +34,35 @@ export default async function SelectTenantPage({
     .eq("user_id", user.id)
     .eq("is_active", true);
 
-  // Exclude any memberships belonging to deactivated organizations
+  // If RLS blocked joined query, fallback to admin client
+  if (membershipError || !rawMemberships || rawMemberships.length === 0) {
+    try {
+      const { createAdminClient, isServiceRoleConfigured } = await import("@/utils/supabase/server");
+      if (isServiceRoleConfigured()) {
+        const adminClient = createAdminClient();
+        const { data: adminMemberships } = await (adminClient as any)
+          .from("company_memberships")
+          .select(`
+            id,
+            role,
+            is_active,
+            company_id,
+            company:companies!company_id(id, name, slug, logo_url, is_active)
+          `)
+          .eq("user_id", user.id)
+          .eq("is_active", true);
+        if (adminMemberships && adminMemberships.length > 0) {
+          rawMemberships = adminMemberships;
+          membershipError = null;
+        }
+      }
+    } catch (_) {}
+  }
+
+  // Exclude any memberships belonging to explicitly deactivated organizations
   const memberships = (rawMemberships || []).filter((m: any) => {
-    return m.is_active && m.company && m.company.is_active !== false && m.company.is_active !== 0;
+    const comp = Array.isArray(m.company) ? m.company[0] : m.company;
+    return m.is_active && (!comp || (comp.is_active !== false && comp.is_active !== 0));
   });
 
   if (membershipError || memberships.length === 0) {
@@ -98,7 +124,8 @@ export default async function SelectTenantPage({
       {/* Organization Cards List */}
       <div className="flex flex-col gap-3">
         {memberships.map((m: any) => {
-          const company = m.company || {};
+          const rawComp = m.company;
+          const company = (Array.isArray(rawComp) ? rawComp[0] : rawComp) || {};
           const roleFormatted = (m.role || "viewer").replace("_", " ");
 
           return (

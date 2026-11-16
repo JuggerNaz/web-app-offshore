@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { formatReportFindingText, getRecordStatusInfo } from "./finding-color-helper";
+import { formatReportFindingText, getRecordStatusInfo, applyRecordCellStyling, REPORT_COLORS } from "./finding-color-helper";
 import { 
     normalizeRecordFindings, 
     normalizeReportRecords, 
@@ -253,4 +253,70 @@ describe("Purely Incomplete Filtering and Partial Incomplete Retention", () => {
         const normalizedForIncompleteReport = normalizeReportRecords(records, { allowPurelyIncomplete: true });
         expect(normalizedForIncompleteReport.length).toBe(4);
     });
+
+    describe("Anomaly vs Non-Anomaly Color Styling", () => {
+        it("does NOT classify record as ANOMALY or set red text color if findings is 'No significant findings' and has no anomaly details", () => {
+            const recordWithResidualFlag = {
+                insp_id: 251,
+                elevation: -10,
+                status: "COMPLETED",
+                has_anomaly: true, // residual flag in database
+                description: "",
+                inspection_data: {
+                    _meta_status: "Anomaly",
+                    mgi_hard_thickness_at_12: "70"
+                },
+                insp_anomalies: []
+            };
+
+            const statusInfo = getRecordStatusInfo(recordWithResidualFlag);
+            expect(statusInfo.type).toBe("NORMAL");
+            expect(statusInfo.textColor).toEqual(REPORT_COLORS.text);
+
+            const findingText = formatReportFindingText(recordWithResidualFlag);
+            expect(findingText).toBe("No significant findings");
+
+            const cellMock = {
+                raw: { content: "No significant findings" },
+                styles: { textColor: [0, 0, 0], fontStyle: "normal" }
+            };
+            applyRecordCellStyling(cellMock, recordWithResidualFlag);
+            expect(cellMock.styles.textColor).toEqual(REPORT_COLORS.text);
+            expect(cellMock.styles.fontStyle).toBe("normal");
+        });
+
+        it("classifies record as ANOMALY and sets red text color when substantive anomaly details are present", () => {
+            const genuineAnomalyRecord = {
+                insp_id: 251,
+                elevation: -10,
+                status: "COMPLETED",
+                has_anomaly: true,
+                insp_anomalies: [
+                    {
+                        anomaly_id: 3023,
+                        anomaly_ref_no: "2026 / PLAT-C / A-010A",
+                        defect_description: "MGI Thickness threshold breached. Depth: -10m. Threshold: 61.0mm. Measured: 70mm.",
+                        status: "OPEN"
+                    }
+                ]
+            };
+
+            const statusInfo = getRecordStatusInfo(genuineAnomalyRecord);
+            expect(statusInfo.type).toBe("ANOMALY");
+            expect(statusInfo.textColor).toEqual(REPORT_COLORS.anomaly);
+
+            const findingText = formatReportFindingText(genuineAnomalyRecord);
+            expect(findingText).toContain("MGI Thickness threshold breached");
+            expect(findingText).toContain("Please refer to Anomaly No.: 2026 / PLAT-C / A-010A");
+
+            const cellMock = {
+                raw: { content: findingText },
+                styles: { textColor: [0, 0, 0], fontStyle: "normal" }
+            };
+            applyRecordCellStyling(cellMock, genuineAnomalyRecord);
+            expect(cellMock.styles.textColor).toEqual(REPORT_COLORS.anomaly);
+            expect(cellMock.styles.fontStyle).toBe("bold");
+        });
+    });
 });
+

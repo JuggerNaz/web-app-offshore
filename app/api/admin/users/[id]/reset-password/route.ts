@@ -28,22 +28,24 @@ export const POST = withRole(
       const json = await request.json().catch(() => ({}));
       const { customPassword } = json;
 
-      if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
-        return apiError(
-          "SUPABASE_SERVICE_ROLE_KEY is not configured in environment variables. Admin credentials are required to reset user passwords.",
-          500
-        );
-      }
-
       const supabase = createClient() as any;
-      const adminClient = createAdminClient() as any;
+      const hasServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
+      let adminClient: any = null;
+      let dbClient: any = supabase;
+
+      if (hasServiceRole) {
+        try {
+          adminClient = createAdminClient() as any;
+          dbClient = adminClient;
+        } catch (_) {}
+      }
 
       // 1. Retrieve the membership or profile to get the target user ID
       // ID can be either a company_membership id or a user profile id
       let targetUserId = id;
       let targetEmail = "";
 
-      const { data: membership } = await supabase
+      const { data: membership } = await dbClient
         .from("company_memberships")
         .select("user_id, company_id, user:profiles!user_id(email, full_name)")
         .eq("id", id)
@@ -54,7 +56,7 @@ export const POST = withRole(
         targetEmail = membership.user?.email || "";
       } else {
         // Try searching directly in profiles
-        const { data: profile } = await supabase
+        const { data: profile } = await dbClient
           .from("profiles")
           .select("id, email")
           .eq("id", id)
@@ -75,12 +77,39 @@ export const POST = withRole(
         return apiError("Cannot reset your own password via admin tool. Please use Account Settings.", 400);
       }
 
-      // 3. Determine the temporary password
+      // 3. If service role key is not configured, send standard Supabase password recovery email
+      if (!hasServiceRole || !adminClient) {
+        const { createClient: createSupabaseJsClient } = await import("@supabase/supabase-js");
+        const authClient = createSupabaseJsClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL!,
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        );
+
+        if (!targetEmail) {
+          return apiError("Could not locate email address for this user to send reset link", 400);
+        }
+
+        const { error: resetError } = await authClient.auth.resetPasswordForEmail(targetEmail, {
+          redirectTo: `${new URL(request.url).origin}/auth/callback?type=recovery`,
+        });
+
+        if (resetError) {
+          return apiError(resetError.message || "Failed to send password reset email", 400);
+        }
+
+        return apiSuccess({
+          temporaryPassword: "(Sent to user email)",
+          message: `Password reset link emailed to ${targetEmail}. (Configure SUPABASE_SERVICE_ROLE_KEY in .env.local to set one-time passwords directly).`,
+        });
+      }
+
+      // 4. Determine the temporary password
       const tempPassword = (customPassword && typeof customPassword === "string" && customPassword.trim().length >= 6)
         ? customPassword.trim()
         : generateTemporaryPassword();
 
-      // 4. Fetch existing auth user to preserve metadata
+      // 5. Fetch existing auth user to preserve metadata
       const { data: userData, error: getUserError } = await adminClient.auth.admin.getUserById(targetUserId);
       if (getUserError || !userData?.user) {
         console.error("[POST /api/admin/users/[id]/reset-password] getUserById error:", getUserError);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useEffect, useCallback } from "react";
+import { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
     ChevronRight,
@@ -27,14 +27,21 @@ import {
     ChevronUp,
     Sparkles,
     Filter,
-    CheckCheck
+    CheckCheck,
+    Plus,
+    Trash2,
+    Edit2,
+    Save,
+    ArrowUp,
+    ArrowDown,
+    Building2
 } from "lucide-react";
 import { format } from "date-fns";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 import { isBLRecord, isSGRecord, isCURecord, isRGRecord } from "@/app/dashboard/inspection-v2/workspace/components/ReportWizardDialog";
-import { REPORT_TEMPLATES, TOC_SECTIONS } from "./report-template-catalog";
+import { REPORT_TEMPLATES, TOC_SECTIONS, PIPELINE_TOC_SECTIONS, type TocSectionItem } from "./report-template-catalog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -67,6 +74,7 @@ import { generatePipelineDefectSummaryReport } from "@/utils/report-generators/d
 import { generateInspectionSummaryReport } from "@/utils/report-generators/inspection-summary-report";
 import { generateInspectionSummaryGraphReport } from "@/utils/report-generators/inspection-summary-graph-report";
 import { generateDefectSummaryReport } from "@/utils/report-generators/defect-summary-report";
+import { toProperCase, resolveOilFieldDescription } from "@/utils/report-generators/shared-logo";
 
 // Types
 type WizardStep = "template" | "context" | "toc" | "configuration" | "preview";
@@ -131,6 +139,64 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         printBlankReport: false,
     });
 
+    // Fetch real company settings from API to identify Client and saved TOC configuration
+    const { data: companySettingsRes, mutate: mutateCompanySettings } = useSWR("/api/company-settings", fetcher);
+    const companySettings = companySettingsRes?.data;
+    const clientName = companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)";
+    const clientShort = companySettings?.client_short || "";
+    const companyId = companySettings?.company_id || "default";
+
+    // Data Fetching for Structures
+    const { data: structuresData } = useSWR("/api/structures", fetcher);
+    const structures = structuresData?.data || [];
+
+    // Detect Structure Type (Platform vs Pipeline)
+    const cleanStructureId = selections.structureId ? String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim() : "";
+    const selectedStructureObj = useMemo(() => {
+        return structures.find((s: any) => String(s.id) === String(cleanStructureId) || String(s.str_name) === String(cleanStructureId));
+    }, [structures, cleanStructureId]);
+
+    const detectedStructureType: "PLATFORM" | "PIPELINE" = useMemo(() => {
+        return (selectedStructureObj?.str_type?.toUpperCase() === "PIPELINE" || 
+                selections.structureId?.startsWith("pipeline-") || 
+                selectedStructureObj?.type === "pipeline" || 
+                selections.category?.toLowerCase() === "pipeline") 
+            ? "PIPELINE" 
+            : "PLATFORM";
+    }, [selectedStructureObj, selections.structureId, selections.category]);
+
+    const [structureTypeForToc, setStructureTypeForToc] = useState<"PLATFORM" | "PIPELINE">("PLATFORM");
+
+    // Dynamic TOC Sections State (Customizable per client & structure type)
+    const [tocSections, setTocSections] = useState<TocSectionItem[]>(TOC_SECTIONS);
+    const [isSavingToc, setIsSavingToc] = useState(false);
+    const [saveSuccessMsg, setSaveSuccessMsg] = useState("");
+    const [editingSectionId, setEditingSectionId] = useState<string | number | null>(null);
+    const [editingSectionName, setEditingSectionName] = useState("");
+    const [isAddingSection, setIsAddingSection] = useState(false);
+    const [newSectionName, setNewSectionName] = useState("");
+    const [addingTemplateToSecId, setAddingTemplateToSecId] = useState<string | number | null>(null);
+    const [templateSearchTerm, setTemplateSearchTerm] = useState("");
+
+    // Pre-populate context from URL query parameters when navigated from Platform 3D QID Details
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const structureId = params.get("structureId") || params.get("structure_id") || "";
+        const jobPackId = params.get("jobpackId") || params.get("jobpack_id") || "";
+        const sowReportNo = params.get("sowReportNo") || params.get("sow_report_no") || "";
+        const componentId = params.get("componentId") || params.get("component_id") || "";
+        if (structureId || jobPackId || sowReportNo || componentId) {
+            setSelections((prev) => ({
+                ...prev,
+                structureId: structureId || prev.structureId,
+                jobPackId: jobPackId || prev.jobPackId,
+                sowReportNo: sowReportNo || prev.sowReportNo,
+                componentId: componentId || prev.componentId,
+            }));
+        }
+    }, []);
+
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
         const allIds: string[] = [];
         TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
@@ -141,6 +207,99 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [tocSearch, setTocSearch] = useState("");
     const [tocModeFilter, setTocModeFilter] = useState<"all" | "ROV" | "Diving" | "General" | "selected">("all");
     const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+    // Load Client's Saved TOC configuration for specific structure type
+    const loadTocForStructureType = useCallback((type: "PLATFORM" | "PIPELINE", settingsObj: any) => {
+        const isPipe = type === "PIPELINE";
+        const defaultSections = isPipe ? PIPELINE_TOC_SECTIONS : TOC_SECTIONS;
+        const defaultIds: string[] = [];
+        defaultSections.forEach(s => s.templates.forEach(t => defaultIds.push(t.id)));
+
+        const normalizeSections = (secs: TocSectionItem[]): TocSectionItem[] => {
+            return secs.map(s => ({
+                ...s,
+                name: (s.name || "").trim().toLowerCase() === "structure details" ? "Structure Summary" : s.name,
+                templates: (s.templates || []).map(t => {
+                    let tName = t.name;
+                    if (t.id === "defect-criteria-report" || tName === "Defect Criteria Report") {
+                        tName = "Defect Criteria Specification Report";
+                    } else if (t.id === "inspection-summary-graph" || tName === "Inspection Summary by Graph") {
+                        tName = "Inspection Summary";
+                    } else if (t.id === "inspection-incomplete-flagged-report" || tName === "Inspection Incomplete Summary Report") {
+                        tName = "Incomplete Inspection Summary Report";
+                    } else if (t.id === "rov-anode-report" || (tName && tName.includes("General Visual Anode Inspection"))) {
+                        tName = "General Visual Anode Inspection Report (ROV)";
+                    } else if (t.id === "rov-anode-rsani-report" || (tName && tName.includes("Selected Anode Inspection") && (tName.includes("SANI") || tName.includes("ROV")))) {
+                        tName = "Selected Anode Inspection Report (ROV)";
+                    } else if (t.id === "defect-summary" || tName === "Defect Summary Report") {
+                        tName = "Anomaly Summary Report";
+                    } else if (t.id === "defect-anomaly-report" || tName === "Defect / Anomaly Report") {
+                        tName = "Anomaly Report";
+                    } else if (t.id === "defect-summary-pipeline" || tName === "Defect Summary Report (Pipeline)") {
+                        tName = "Anomaly Summary Report (Pipeline)";
+                    }
+                    return { ...t, name: tName };
+                })
+            }));
+        };
+
+        // 1. Check backend storage_config.toc_config
+        const backendTocConfig = settingsObj?.storage_config?.toc_config;
+        const typeConfig = isPipe ? backendTocConfig?.pipeline_toc : backendTocConfig?.platform_toc;
+        if (typeConfig && Array.isArray(typeConfig.sections) && typeConfig.sections.length > 0) {
+            setTocSections(normalizeSections(typeConfig.sections));
+            if (Array.isArray(typeConfig.selectedTemplates)) {
+                setSelectedTemplates(typeConfig.selectedTemplates);
+            }
+            return;
+        }
+
+        // 2. Check legacy backend config (if platform)
+        if (!isPipe && backendTocConfig && Array.isArray(backendTocConfig.sections) && backendTocConfig.sections.length > 0) {
+            setTocSections(normalizeSections(backendTocConfig.sections));
+            if (Array.isArray(backendTocConfig.selectedTemplates)) {
+                setSelectedTemplates(backendTocConfig.selectedTemplates);
+            }
+            return;
+        }
+
+        // 3. Check localStorage cache for this client and structure type
+        if (typeof window !== "undefined") {
+            const cacheKey = `toc_config_${settingsObj?.company_id || 'default'}_${type.toLowerCase()}`;
+            const localSaved = localStorage.getItem(cacheKey);
+            if (localSaved) {
+                try {
+                    const parsed = JSON.parse(localSaved);
+                    if (Array.isArray(parsed?.sections) && parsed.sections.length > 0) {
+                        setTocSections(normalizeSections(parsed.sections));
+                        if (Array.isArray(parsed?.selectedTemplates)) {
+                            setSelectedTemplates(parsed.selectedTemplates);
+                        }
+                        return;
+                    }
+                } catch (_) {}
+            }
+        }
+
+        // 4. Default standard fallback
+        setTocSections(normalizeSections(defaultSections));
+        setSelectedTemplates(defaultIds);
+    }, []);
+
+    // Auto-sync TOC to detected structure type when user selects a structure
+    useEffect(() => {
+        if (selections.structureId) {
+            setStructureTypeForToc(detectedStructureType);
+            loadTocForStructureType(detectedStructureType, companySettings);
+        }
+    }, [selections.structureId, detectedStructureType, companySettings, loadTocForStructureType]);
+
+    // Initial load when companySettings arrives (if no structure selected yet)
+    useEffect(() => {
+        if (companySettings && !selections.structureId) {
+            loadTocForStructureType(structureTypeForToc, companySettings);
+        }
+    }, [companySettings, selections.structureId, structureTypeForToc, loadTocForStructureType]);
 
     const [config, setConfig] = useState<ReportConfig>({
         reportNoPrefix: "RPT",
@@ -160,10 +319,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             (window as any).__reportConfig = config;
         }
     }, [config]);
-
-    // Data Fetching
-    const { data: structuresData } = useSWR("/api/structures", fetcher);
-    const structures = structuresData?.data || [];
 
     // Inspection-specific categories that should only show jobpacks with inspection data
     const INSPECTION_CATEGORIES = ["inspection", "final_report"];
@@ -220,7 +375,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             })
             .catch(err => {
                 if (!isCurrent) return;
-                console.error("Error fetching inspection filters for structure:", err);
+                console.warn("Error fetching inspection filters for structure:", err);
                 setStructureInspectionFilters([]);
             })
             .finally(() => {
@@ -250,7 +405,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     }
                 })
                 .catch(err => {
-                    console.error("Error fetching inspection filters:", err);
+                    console.warn("Error fetching inspection filters:", err);
                     setInspectionFilters([]);
                 });
         } else {
@@ -272,7 +427,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .then(data => {
                     if (data.data) setAvailableComponents(data.data);
                 })
-                .catch(err => console.error(err))
+                .catch(err => console.warn(err))
                 .finally(() => setIsLoadingComponents(false));
         }
     }, [selections.structureId, selections.templateId]);
@@ -332,7 +487,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 })
                 .catch(err => {
                     if (!isCurrent) return;
-                    console.error("Error fetching inspection filters:", err);
+                    console.warn("Error fetching inspection filters:", err);
                     setAvailableSowReports([]);
                     setSelections(prev => ({ ...prev, sowReportNo: "" }));
                 })
@@ -360,7 +515,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 })
                 .catch(err => {
                     if (!isCurrent) return;
-                    console.error("Error fetching SOW reports:", err);
+                    console.warn("Error fetching SOW reports:", err);
                     setAvailableSowReports([]);
                     setSelections(prev => ({ ...prev, sowReportNo: "" }));
                 })
@@ -389,6 +544,38 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     // Consolidated preview generation logic is handled below near line 1170.
 
 
+
+    const [isGenerating, setIsGenerating] = useState(false);
+    const [generationProgress, setGenerationProgress] = useState<number>(0);
+    const [currentGeneratingTemplate, setCurrentGeneratingTemplate] = useState<string>("");
+    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+
+    // Abort controller and cancellation flag for stopping report generation immediately
+    const cancelGenerationRef = useRef<boolean>(false);
+    const abortControllerRef = useRef<AbortController | null>(null);
+
+    const handleCancelGeneration = useCallback(() => {
+        console.log("[report-wizard] Cancelling report generation in progress...");
+        cancelGenerationRef.current = true;
+        if (abortControllerRef.current) {
+            try { abortControllerRef.current.abort(); } catch (_) {}
+            abortControllerRef.current = null;
+        }
+        setIsGenerating(false);
+        setGenerationProgress(0);
+        setCurrentGeneratingTemplate("");
+    }, []);
+
+    // Cleanup when component unmounts
+    useEffect(() => {
+        return () => {
+            cancelGenerationRef.current = true;
+            if (abortControllerRef.current) {
+                try { abortControllerRef.current.abort(); } catch (_) {}
+            }
+        };
+    }, []);
+
     const handleNext = () => {
         if (step === "template") setStep("context");
         else if (step === "context") {
@@ -403,6 +590,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const handleBack = () => {
+        handleCancelGeneration();
         if (step === "preview") {
             setStep("configuration");
             setPreviewUrl(null);
@@ -1160,8 +1348,221 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const allTocTemplates = useMemo(() => {
-        return TOC_SECTIONS.flatMap(sec => sec.templates);
+        return tocSections.flatMap(sec => sec.templates);
+    }, [tocSections]);
+
+    // Flat catalog of all available templates to allow adding to any section
+    const catalogTemplates = useMemo(() => {
+        const list: Array<{ id: string; name: string; mode: string }> = [];
+        const seen = new Set<string>();
+
+        // Default TOC_SECTIONS templates (Platform)
+        TOC_SECTIONS.forEach(s => {
+            s.templates.forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    list.push({ id: t.id, name: t.name, mode: t.mode || "General" });
+                }
+            });
+        });
+
+        // Pipeline TOC templates
+        PIPELINE_TOC_SECTIONS.forEach(s => {
+            s.templates.forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    list.push({ id: t.id, name: t.name, mode: t.mode || "General" });
+                }
+            });
+        });
+
+        // Other templates from catalog
+        Object.entries(REPORT_TEMPLATES).forEach(([_, tList]) => {
+            (tList as any[]).forEach(t => {
+                if (!seen.has(t.id)) {
+                    seen.add(t.id);
+                    const isROV = t.id.startsWith("rov-") || t.id.includes("rov");
+                    const isDiving = t.id.startsWith("diving-") || t.id.includes("diving");
+                    const mode = isROV ? "ROV" : (isDiving ? "Diving" : "General");
+                    list.push({ id: t.id, name: t.name, mode });
+                }
+            });
+        });
+
+        return list.sort((a, b) => a.name.localeCompare(b.name));
     }, []);
+
+    // Save Client's Default TOC (Scoped by Structure Type: Platform or Pipeline)
+    const handleSaveClientTOC = async () => {
+        setIsSavingToc(true);
+        setSaveSuccessMsg("");
+        try {
+            const isPipe = structureTypeForToc === "PIPELINE";
+            const existingConfig = companySettings?.storage_config?.toc_config || {};
+            const typePayload = {
+                structure_type: structureTypeForToc,
+                sections: tocSections,
+                selectedTemplates: selectedTemplates,
+                updated_at: new Date().toISOString()
+            };
+
+            const tocConfigToSave = {
+                ...existingConfig,
+                client_name: clientName,
+                client_short: clientShort,
+                company_id: companyId,
+                [isPipe ? "pipeline_toc" : "platform_toc"]: typePayload,
+                // Fallback root for backwards compatibility
+                sections: tocSections,
+                selectedTemplates: selectedTemplates,
+                updated_at: new Date().toISOString()
+            };
+
+            // 1. Save in localStorage
+            if (typeof window !== "undefined") {
+                const cacheKey = `toc_config_${companyId}_${structureTypeForToc.toLowerCase()}`;
+                localStorage.setItem(cacheKey, JSON.stringify(typePayload));
+                localStorage.setItem(`toc_config_${companyId}`, JSON.stringify(tocConfigToSave));
+                localStorage.setItem(`toc_config_${clientName}`, JSON.stringify(tocConfigToSave));
+            }
+
+            // 2. Persist to company settings backend
+            const res = await fetch("/api/company-settings", {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    company_name: companySettings?.company_name,
+                    client_short: companySettings?.client_short,
+                    department_name: companySettings?.department_name,
+                    def_unit: companySettings?.def_unit,
+                    storage_provider: companySettings?.storage_provider,
+                    storage_config: {
+                        ...(companySettings?.storage_config || {}),
+                        toc_config: tocConfigToSave
+                    }
+                })
+            });
+
+            const typeLabel = structureTypeForToc === "PIPELINE" ? "Pipeline" : "Platform";
+            if (res.ok) {
+                mutateCompanySettings();
+                setSaveSuccessMsg(`Table of Contents saved as default for ${clientName} (${typeLabel})!`);
+            } else {
+                setSaveSuccessMsg(`Saved to local workspace for ${clientName} (${typeLabel})!`);
+            }
+            setTimeout(() => setSaveSuccessMsg(""), 5000);
+        } catch (err) {
+            console.error("Error saving Client TOC:", err);
+            const typeLabel = structureTypeForToc === "PIPELINE" ? "Pipeline" : "Platform";
+            setSaveSuccessMsg(`Saved to local workspace for ${clientName} (${typeLabel})!`);
+            setTimeout(() => setSaveSuccessMsg(""), 5000);
+        } finally {
+            setIsSavingToc(false);
+        }
+    };
+
+    // Reset back to Master catalog (Platform 20 sections or Pipeline 12 sections)
+    const handleResetToMasterTOC = () => {
+        const isPipe = structureTypeForToc === "PIPELINE";
+        const typeLabel = isPipe ? "Pipeline" : "Platform";
+        const defaultCatalog = isPipe ? PIPELINE_TOC_SECTIONS : TOC_SECTIONS;
+        const count = isPipe ? "12 sections" : "20 sections";
+
+        if (confirm(`Reset ${typeLabel} Table of Contents for "${clientName}" back to the standard master catalog (${count})?`)) {
+            setTocSections(defaultCatalog);
+            const allIds: string[] = [];
+            defaultCatalog.forEach(s => s.templates.forEach(t => allIds.push(t.id)));
+            setSelectedTemplates(allIds);
+            if (typeof window !== "undefined") {
+                localStorage.removeItem(`toc_config_${companyId}_${structureTypeForToc.toLowerCase()}`);
+            }
+            setSaveSuccessMsg(`Reset ${typeLabel} TOC to standard master catalog.`);
+            setTimeout(() => setSaveSuccessMsg(""), 4000);
+        }
+    };
+
+    // Add New Custom Section
+    const handleAddSection = () => {
+        if (!newSectionName.trim()) return;
+        const newSec: TocSectionItem = {
+            id: `sec-${Date.now()}`,
+            name: newSectionName.trim(),
+            templates: []
+        };
+        setTocSections(prev => [...prev, newSec]);
+        setNewSectionName("");
+        setIsAddingSection(false);
+    };
+
+    // Rename Section
+    const handleStartRenameSection = (secId: string | number, currentName: string) => {
+        setEditingSectionId(secId);
+        setEditingSectionName(currentName);
+    };
+
+    const handleSaveRenameSection = (secId: string | number) => {
+        if (!editingSectionName.trim()) return;
+        setTocSections(prev => prev.map(s => s.id === secId ? { ...s, name: editingSectionName.trim() } : s));
+        setEditingSectionId(null);
+        setEditingSectionName("");
+    };
+
+    // Delete Section
+    const handleDeleteSection = (secId: string | number, secName: string) => {
+        if (confirm(`Are you sure you want to delete section "${secName}"?`)) {
+            setTocSections(prev => {
+                const secToDelete = prev.find(s => s.id === secId);
+                const templateIdsToDelete = (secToDelete?.templates || []).map(t => t.id);
+                setSelectedTemplates(st => st.filter(id => !templateIdsToDelete.includes(id)));
+                return prev.filter(s => s.id !== secId);
+            });
+        }
+    };
+
+    // Move Section Up/Down
+    const handleMoveSection = (index: number, direction: "up" | "down") => {
+        setTocSections(prev => {
+            const next = [...prev];
+            const targetIndex = direction === "up" ? index - 1 : index + 1;
+            if (targetIndex < 0 || targetIndex >= next.length) return prev;
+            const temp = next[index];
+            next[index] = next[targetIndex];
+            next[targetIndex] = temp;
+            return next;
+        });
+    };
+
+    // Add Template into Section
+    const handleAddTemplateToSection = (secId: string | number, templateId: string) => {
+        const templateMeta = catalogTemplates.find(t => t.id === templateId);
+        if (!templateMeta) return;
+
+        setTocSections(prev => prev.map(s => {
+            if (s.id !== secId) return s;
+            if (s.templates.some(t => t.id === templateId)) return s;
+            return {
+                ...s,
+                templates: [...s.templates, { id: templateMeta.id, name: templateMeta.name, mode: templateMeta.mode }]
+            };
+        }));
+
+        setSelectedTemplates(prev => Array.from(new Set([...prev, templateId])));
+        setAddingTemplateToSecId(null);
+        setTemplateSearchTerm("");
+    };
+
+    // Remove Template from Section
+    const handleRemoveTemplateFromSection = (secId: string | number, templateId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setTocSections(prev => prev.map(s => {
+            if (s.id !== secId) return s;
+            return {
+                ...s,
+                templates: s.templates.filter(t => t.id !== templateId)
+            };
+        }));
+        setSelectedTemplates(prev => prev.filter(id => id !== templateId));
+    };
 
     const toggleTemplate = (id: string) => {
         setSelectedTemplates(prev => 
@@ -1170,7 +1571,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const toggleSectionAll = (sectionIndex: number, checked: boolean) => {
-        const secTemplates = TOC_SECTIONS[sectionIndex].templates.map(t => t.id);
+        const targetSec = tocSections[sectionIndex];
+        if (!targetSec) return;
+        const secTemplates = targetSec.templates.map(t => t.id);
         if (checked) {
             setSelectedTemplates(prev => Array.from(new Set([...prev, ...secTemplates])));
         } else {
@@ -1207,7 +1610,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     const collapseAllSections = () => {
         const allCollapsed: Record<string, boolean> = {};
-        TOC_SECTIONS.forEach(s => {
+        tocSections.forEach(s => {
             allCollapsed[String(s.id)] = true;
         });
         setCollapsedSections(allCollapsed);
@@ -1222,16 +1625,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const divingCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "diving").length;
         const generalCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "general").length;
 
-        const selectedRovCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "rov" && selectedTemplates.includes(t.id)).length;
-        const selectedDivingCount = allTocTemplates.filter(t => t.mode?.toLowerCase() === "diving" && selectedTemplates.includes(t.id)).length;
-
         // Filter sections and templates based on search & mode filter
-        const filteredSections = TOC_SECTIONS.map((sec, secIdx) => {
+        const filteredSections = tocSections.map((sec, secIdx) => {
             const matchesSearch = (text: string) => 
                 !tocSearch.trim() || text.toLowerCase().includes(tocSearch.trim().toLowerCase());
 
             const matchingTemplates = sec.templates.filter(t => {
-                const matchesText = matchesSearch(t.name) || matchesSearch(t.mode) || matchesSearch(sec.name) || matchesSearch(t.id);
+                const matchesText = matchesSearch(t.name) || matchesSearch(t.mode || "") || matchesSearch(sec.name) || matchesSearch(t.id);
                 if (!matchesText) return false;
 
                 if (tocModeFilter === "all") return true;
@@ -1247,8 +1647,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
         }).filter(sec => sec.hasMatches);
 
-        const totalVisibleTemplates = filteredSections.reduce((sum, sec) => sum + sec.filteredTemplates.length, 0);
-
         return (
             <div className="space-y-6 max-w-5xl mx-auto pb-6">
                 {/* Header Section */}
@@ -1263,6 +1661,174 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     <p className="text-sm text-slate-500 max-w-lg mx-auto">
                         Select which inspection report sections and datasheets should be compiled into the final document.
                     </p>
+                </div>
+
+                {/* Client Standard TOC Header Card */}
+                <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-indigo-950 rounded-2xl p-5 text-white shadow-lg space-y-4 border border-blue-800/40">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                        <div className="space-y-1">
+                            <div className="flex items-center gap-2">
+                                <Building2 className="w-4 h-4 text-blue-400" />
+                                <span className="text-[11px] font-bold uppercase tracking-wider text-blue-300">
+                                    Client Standard Table of Contents
+                                </span>
+                                {clientShort && (
+                                    <Badge variant="outline" className="text-[10px] text-blue-200 border-blue-400/40 bg-blue-500/10">
+                                        {clientShort}
+                                    </Badge>
+                                )}
+                            </div>
+                            <h3 className="text-lg font-bold text-white tracking-tight flex items-center gap-2">
+                                {clientName}
+                            </h3>
+                            <p className="text-xs text-blue-200/80 max-w-xl">
+                                All datasheets and reports under this client workspace follow this customized TOC list and sequence.
+                            </p>
+                        </div>
+
+                        {/* Action Buttons */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <Button
+                                size="sm"
+                                onClick={handleSaveClientTOC}
+                                disabled={isSavingToc}
+                                className="bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs h-9 gap-1.5 shadow-sm"
+                            >
+                                {isSavingToc ? (
+                                    <RotateCcw className="w-3.5 h-3.5 animate-spin" />
+                                ) : (
+                                    <Save className="w-3.5 h-3.5" />
+                                )}
+                                Save as Client Default TOC
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setIsAddingSection(prev => !prev)}
+                                className="bg-white/10 hover:bg-white/20 text-white border-white/20 text-xs h-9 gap-1.5"
+                            >
+                                <Plus className="w-3.5 h-3.5" />
+                                Add Section
+                            </Button>
+
+                            <Button
+                                size="sm"
+                                variant="ghost"
+                                onClick={handleResetToMasterTOC}
+                                className="text-blue-200 hover:text-white hover:bg-white/10 text-xs h-9 gap-1.5"
+                            >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                                Reset Master
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Structure Type Selector Tabs */}
+                    <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-white/10">
+                        <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[11px] font-semibold text-blue-200 uppercase tracking-wider">
+                                Asset Type TOC:
+                            </span>
+                            <div className="inline-flex p-1 rounded-xl bg-slate-900/60 border border-white/10 gap-1">
+                                <button
+                                    onClick={() => {
+                                        if (structureTypeForToc !== "PLATFORM") {
+                                            setStructureTypeForToc("PLATFORM");
+                                            loadTocForStructureType("PLATFORM", companySettings);
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                        structureTypeForToc === "PLATFORM"
+                                            ? "bg-blue-600 text-white shadow-sm ring-1 ring-blue-400/40"
+                                            : "text-slate-300 hover:text-white hover:bg-white/10"
+                                    }`}
+                                >
+                                    <Building2 className="w-3.5 h-3.5" />
+                                    Platform (Jacket / Topsides)
+                                    {detectedStructureType === "PLATFORM" && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/30 text-blue-200 font-normal">
+                                            Detected
+                                        </span>
+                                    )}
+                                </button>
+
+                                <button
+                                    onClick={() => {
+                                        if (structureTypeForToc !== "PIPELINE") {
+                                            setStructureTypeForToc("PIPELINE");
+                                            loadTocForStructureType("PIPELINE", companySettings);
+                                        }
+                                    }}
+                                    className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                                        structureTypeForToc === "PIPELINE"
+                                            ? "bg-amber-600 text-white shadow-sm ring-1 ring-amber-400/40"
+                                            : "text-slate-300 hover:text-white hover:bg-white/10"
+                                    }`}
+                                >
+                                    <Layers className="w-3.5 h-3.5" />
+                                    Subsea Pipeline
+                                    {detectedStructureType === "PIPELINE" && (
+                                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/30 text-amber-200 font-normal">
+                                            Detected
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        </div>
+
+                        {selectedStructureObj && (
+                            <span className="text-xs text-blue-200/90 italic">
+                                Active Asset: <strong className="text-white not-italic font-semibold">{selectedStructureObj.str_name}</strong> ({selectedStructureObj.str_type || detectedStructureType})
+                            </span>
+                        )}
+                    </div>
+
+                    {/* Success Notification */}
+                    {saveSuccessMsg && (
+                        <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-500/20 border border-emerald-400/30 text-emerald-200 text-xs font-medium">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                            <span>{saveSuccessMsg}</span>
+                        </div>
+                    )}
+
+                    {/* Inline Add Section Form */}
+                    {isAddingSection && (
+                        <div className="p-3 bg-white/10 backdrop-blur-md rounded-xl border border-white/20 space-y-2">
+                            <Label className="text-xs font-semibold text-blue-200">
+                                New Section Title:
+                            </Label>
+                            <div className="flex items-center gap-2">
+                                <Input
+                                    placeholder="e.g. 'Pipeline Free Span Survey' or 'Riser Clamps Survey'..."
+                                    value={newSectionName}
+                                    onChange={(e) => setNewSectionName(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleAddSection()}
+                                    className="h-9 text-xs bg-slate-900/80 border-blue-400/30 text-white placeholder:text-slate-400"
+                                    autoFocus
+                                />
+                                <Button
+                                    size="sm"
+                                    onClick={handleAddSection}
+                                    disabled={!newSectionName.trim()}
+                                    className="h-9 px-3 text-xs bg-blue-600 hover:bg-blue-500 text-white"
+                                >
+                                    Add Section
+                                </Button>
+                                <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                        setIsAddingSection(false);
+                                        setNewSectionName("");
+                                    }}
+                                    className="h-9 px-2 text-xs text-slate-300 hover:text-white hover:bg-white/10"
+                                >
+                                    Cancel
+                                </Button>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 {/* Top Control Dashboard */}
@@ -1476,12 +2042,22 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     </div>
                 ) : (
                     <div className="space-y-4">
-                        {filteredSections.map((sec) => {
+                        {filteredSections.map((sec, secIdx) => {
                             const secTemplates = sec.templates.map(t => t.id);
                             const secSelectedTemplates = sec.templates.filter(t => selectedTemplates.includes(t.id));
                             const allSelected = secTemplates.length > 0 && secSelectedTemplates.length === secTemplates.length;
                             const someSelected = secSelectedTemplates.length > 0 && !allSelected;
                             const isCollapsed = !!collapsedSections[sec.id];
+                            const isEditingThisSection = editingSectionId === sec.id;
+                            const isAddingTemplateToThisSec = addingTemplateToSecId === sec.id;
+
+                            // Filter catalog for templates not already in this section
+                            const availableToAdd = catalogTemplates.filter(ct => 
+                                !sec.templates.some(st => st.id === ct.id) &&
+                                (!templateSearchTerm.trim() || 
+                                 ct.name.toLowerCase().includes(templateSearchTerm.toLowerCase()) || 
+                                 ct.id.toLowerCase().includes(templateSearchTerm.toLowerCase()))
+                            );
 
                             return (
                                 <div
@@ -1490,7 +2066,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 >
                                     {/* Section Header */}
                                     <div className="p-4 bg-slate-50/70 dark:bg-slate-900/90 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 select-none">
-                                        <div className="flex items-center gap-3 min-w-0">
+                                        <div className="flex items-center gap-3 min-w-0 flex-1">
                                             <input
                                                 type="checkbox"
                                                 id={`sec-${sec.id}`}
@@ -1502,15 +2078,44 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 onChange={(e) => toggleSectionAll(sec.originalIndex, e.target.checked)}
                                                 disabled={sec.templates.length === 0}
                                             />
-                                            <label
-                                                htmlFor={`sec-${sec.id}`}
-                                                className="font-bold text-slate-900 dark:text-slate-100 text-sm md:text-base cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 truncate"
-                                            >
-                                                <span>{sec.name}</span>
-                                            </label>
+
+                                            {isEditingThisSection ? (
+                                                <div className="flex items-center gap-2 flex-1 max-w-md">
+                                                    <Input
+                                                        value={editingSectionName}
+                                                        onChange={(e) => setEditingSectionName(e.target.value)}
+                                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveRenameSection(sec.id)}
+                                                        className="h-8 text-sm"
+                                                        autoFocus
+                                                    />
+                                                    <Button
+                                                        size="sm"
+                                                        onClick={() => handleSaveRenameSection(sec.id)}
+                                                        className="h-8 px-2.5 bg-blue-600 text-white"
+                                                    >
+                                                        <Check className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => setEditingSectionId(null)}
+                                                        className="h-8 px-2 text-slate-400"
+                                                    >
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <label
+                                                    htmlFor={`sec-${sec.id}`}
+                                                    className="font-bold text-slate-900 dark:text-slate-100 text-sm md:text-base cursor-pointer hover:text-blue-600 transition-colors flex items-center gap-2 truncate"
+                                                >
+                                                    <span>{sec.name}</span>
+                                                </label>
+                                            )}
+
                                             <Badge
                                                 variant="secondary"
-                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                                                className={`text-[11px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
                                                     allSelected
                                                         ? "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
                                                         : someSelected
@@ -1522,7 +2127,55 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                             </Badge>
                                         </div>
 
-                                        <div className="flex items-center gap-1.5 shrink-0">
+                                        {/* Section Control Tools */}
+                                        <div className="flex items-center gap-1 shrink-0">
+                                            {/* Reorder Buttons */}
+                                            <button
+                                                onClick={() => handleMoveSection(sec.originalIndex, "up")}
+                                                disabled={sec.originalIndex === 0}
+                                                title="Move Section Up"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                            >
+                                                <ArrowUp className="w-3.5 h-3.5" />
+                                            </button>
+                                            <button
+                                                onClick={() => handleMoveSection(sec.originalIndex, "down")}
+                                                disabled={sec.originalIndex === tocSections.length - 1}
+                                                title="Move Section Down"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 dark:hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                                            >
+                                                <ArrowDown className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Rename Section Button */}
+                                            {!isEditingThisSection && (
+                                                <button
+                                                    onClick={() => handleStartRenameSection(sec.id, sec.name)}
+                                                    title="Rename Section"
+                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40 transition-colors"
+                                                >
+                                                    <Edit2 className="w-3.5 h-3.5" />
+                                                </button>
+                                            )}
+
+                                            {/* Add Template to Section Button */}
+                                            <button
+                                                onClick={() => {
+                                                    setAddingTemplateToSecId(prev => prev === sec.id ? null : sec.id);
+                                                    setTemplateSearchTerm("");
+                                                }}
+                                                title="Add Report Template to this Section"
+                                                className={`p-1.5 rounded-lg text-xs font-medium flex items-center gap-1 transition-colors ${
+                                                    isAddingTemplateToThisSec 
+                                                        ? "bg-blue-600 text-white" 
+                                                        : "text-slate-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                                                }`}
+                                            >
+                                                <Plus className="w-3.5 h-3.5" />
+                                                <span className="hidden lg:inline text-xs">Add Report</span>
+                                            </button>
+
+                                            {/* Clear / Select All in Section */}
                                             {sec.templates.length > 0 && (
                                                 <button
                                                     onClick={() => toggleSectionAll(sec.originalIndex, !allSelected)}
@@ -1532,9 +2185,19 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                 </button>
                                             )}
 
+                                            {/* Delete Section Button */}
+                                            <button
+                                                onClick={() => handleDeleteSection(sec.id, sec.name)}
+                                                title="Delete this Section"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </button>
+
+                                            {/* Collapse Chevron */}
                                             <button
                                                 onClick={() => toggleCollapseSection(sec.id)}
-                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+                                                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors ml-1"
                                                 title={isCollapsed ? "Expand section" : "Collapse section"}
                                             >
                                                 {isCollapsed ? (
@@ -1546,13 +2209,76 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                         </div>
                                     </div>
 
+                                    {/* Inline Template Picker for Adding to this Section */}
+                                    {isAddingTemplateToThisSec && (
+                                        <div className="p-3 bg-blue-50/70 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-900/40 space-y-2 animate-fadeIn">
+                                            <div className="flex items-center justify-between gap-2">
+                                                <span className="text-xs font-bold text-blue-900 dark:text-blue-200">
+                                                    Add Report Template to "{sec.name}":
+                                                </span>
+                                                <button
+                                                    onClick={() => setAddingTemplateToSecId(null)}
+                                                    className="text-slate-400 hover:text-slate-600 text-xs"
+                                                >
+                                                    <X className="w-3.5 h-3.5" />
+                                                </button>
+                                            </div>
+                                            <Input
+                                                placeholder="Filter templates from master catalog..."
+                                                value={templateSearchTerm}
+                                                onChange={(e) => setTemplateSearchTerm(e.target.value)}
+                                                className="h-8 text-xs bg-white dark:bg-slate-900"
+                                            />
+                                            <div className="max-h-48 overflow-y-auto space-y-1 pr-1">
+                                                {availableToAdd.length === 0 ? (
+                                                    <p className="text-xs text-slate-400 italic py-1">
+                                                        No matching templates available to add.
+                                                    </p>
+                                                ) : (
+                                                    availableToAdd.slice(0, 15).map((at) => (
+                                                        <div
+                                                            key={at.id}
+                                                            onClick={() => handleAddTemplateToSection(sec.id, at.id)}
+                                                            className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-slate-900 hover:bg-blue-100/60 dark:hover:bg-blue-900/50 cursor-pointer border border-slate-200/70 dark:border-slate-800 transition-colors"
+                                                        >
+                                                            <div className="flex items-center gap-2 truncate">
+                                                                <span className="text-xs font-medium text-slate-800 dark:text-slate-200 truncate">
+                                                                    {at.name}
+                                                                </span>
+                                                                <span className="text-[10px] uppercase font-bold text-slate-500">
+                                                                    ({at.mode})
+                                                                </span>
+                                                            </div>
+                                                            <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-blue-600 font-semibold">
+                                                                + Add
+                                                            </Button>
+                                                        </div>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Section Item Cards */}
                                     {!isCollapsed && (
                                         <div className="p-4">
                                             {sec.templates.length === 0 ? (
-                                                <p className="text-xs text-muted-foreground italic py-2">
-                                                    No templates configured for this section yet.
-                                                </p>
+                                                <div className="text-center py-4 space-y-2 border border-dashed rounded-xl border-slate-200 dark:border-slate-800">
+                                                    <p className="text-xs text-muted-foreground italic">
+                                                        No templates in this section yet.
+                                                    </p>
+                                                    <Button
+                                                        size="sm"
+                                                        variant="outline"
+                                                        onClick={() => {
+                                                            setAddingTemplateToSecId(sec.id);
+                                                            setTemplateSearchTerm("");
+                                                        }}
+                                                        className="text-xs h-7 gap-1"
+                                                    >
+                                                        <Plus className="w-3 h-3" /> Add Report Template
+                                                    </Button>
+                                                </div>
                                             ) : sec.filteredTemplates.length === 0 ? (
                                                 <p className="text-xs text-muted-foreground italic py-2">
                                                     No reports in this section match the current search or filter.
@@ -1595,17 +2321,28 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                                                         }`}>
                                                                             {t.name}
                                                                         </span>
-                                                                        <span
-                                                                            className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md shrink-0 ${
-                                                                                isROV
-                                                                                    ? "bg-amber-100 text-amber-800 border border-amber-200/70 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900/50"
-                                                                                    : isDiving
-                                                                                    ? "bg-indigo-100 text-indigo-800 border border-indigo-200/70 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-900/50"
-                                                                                    : "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
-                                                                            }`}
-                                                                        >
-                                                                            {t.mode}
-                                                                        </span>
+                                                                        <div className="flex items-center gap-1 shrink-0">
+                                                                            <span
+                                                                                className={`text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md ${
+                                                                                    isROV
+                                                                                        ? "bg-amber-100 text-amber-800 border border-amber-200/70 dark:bg-amber-950/70 dark:text-amber-300 dark:border-amber-900/50"
+                                                                                        : isDiving
+                                                                                        ? "bg-indigo-100 text-indigo-800 border border-indigo-200/70 dark:bg-indigo-950/70 dark:text-indigo-300 dark:border-indigo-900/50"
+                                                                                        : "bg-slate-100 text-slate-700 border border-slate-200 dark:bg-slate-800 dark:text-slate-300 dark:border-slate-700"
+                                                                                }`}
+                                                                            >
+                                                                                {t.mode}
+                                                                            </span>
+
+                                                                            {/* Remove Template from Section Button */}
+                                                                            <button
+                                                                                onClick={(e) => handleRemoveTemplateFromSection(sec.id, t.id, e)}
+                                                                                title="Remove template from this section"
+                                                                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 rounded hover:bg-red-50 dark:hover:bg-red-950/40 transition-opacity"
+                                                                            >
+                                                                                <X className="w-3.5 h-3.5" />
+                                                                            </button>
+                                                                        </div>
                                                                     </div>
 
                                                                     {t.id && (
@@ -1836,10 +2573,6 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         </div>
     );
 
-    const [isGenerating, setIsGenerating] = useState(false);
-    const [generationProgress, setGenerationProgress] = useState<number>(0);
-    const [currentGeneratingTemplate, setCurrentGeneratingTemplate] = useState<string>("");
-    const [previewUrl, setPreviewUrl] = useState<string | null>(null);
 
     // Invalidate preview when selections or config change
     useEffect(() => {
@@ -1855,6 +2588,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 generatePreview();
             }
         }
+        return () => {
+            // Cancel report generation immediately if leaving preview step or dependencies change
+            handleCancelGeneration();
+        };
     }, [
         step,
         previewMode,
@@ -1870,6 +2607,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     ]);
 
     const fetchStructureData = async () => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
         if (!selections.structureId) {
             console.log("[fetchStructureData] No structureId selected");
             return null;
@@ -1877,7 +2615,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         const cleanId = String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim();
         console.log(`[fetchStructureData] Fetching data for structure ID: ${cleanId}`);
         try {
-            const res = await fetch(`/api/structures/${cleanId}`);
+            const res = await fetch(`/api/structures/${cleanId}`, { signal: abortControllerRef.current?.signal });
             if (res.ok) {
                 const data = await res.json();
                 const structureData = data.data || data;
@@ -1887,7 +2625,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     // Fetch discussion/comment records for this structure
                     try {
                         const strType = structureData.str_type?.toLowerCase() || "platform";
-                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`);
+                        const commentRes = await fetch(`/api/comment/${strType}/${cleanId}`, { signal: abortControllerRef.current?.signal });
                         if (commentRes.ok) {
                             const commentText = await commentRes.text();
                             if (commentText.trim()) {
@@ -1897,15 +2635,32 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 }
                             }
                         }
-                    } catch (commentErr) {
-                        console.warn("Error fetching structure comments for report:", commentErr);
+                    } catch (commentErr: any) {
+                        if (commentErr?.name !== "AbortError") {
+                            console.warn("Error fetching structure comments for report:", commentErr);
+                        }
+                    }
+
+                    // Resolve oilfield description from library in Proper Case
+                    const rawField = structureData.pfield || structureData.field_name || structureData.field;
+                    if (rawField) {
+                        try {
+                            const properDesc = await resolveOilFieldDescription(rawField);
+                            if (properDesc) {
+                                structureData.pfield = properDesc;
+                                structureData.field_name = properDesc;
+                                structureData.field = properDesc;
+                            }
+                        } catch (_) {}
                     }
 
                     return structureData;
                 }
             }
-        } catch (e) {
-            console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
+        } catch (e: any) {
+            if (e?.name !== "AbortError") {
+                console.warn("[fetchStructureData] API fetch failed, falling back to cached structures:", e);
+            }
         }
 
         // Cache fallback: Check if structure exists in structures from useSWR
@@ -1916,20 +2671,33 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         );
         if (found) {
             console.log(`[fetchStructureData] Using cached structure: ${found.str_name || found.name}`);
-            return found;
+            const cloned = { ...found };
+            const rawField = cloned.pfield || cloned.field_name || cloned.field;
+            if (rawField) {
+                try {
+                    const properDesc = await resolveOilFieldDescription(rawField);
+                    if (properDesc) {
+                        cloned.pfield = properDesc;
+                        cloned.field_name = properDesc;
+                        cloned.field = properDesc;
+                    }
+                } catch (_) {}
+            }
+            return cloned;
         }
 
         return { id: cleanId, str_name: selections.structureName || "Structure " + cleanId };
     };
 
     const fetchJobPackData = async () => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
         if (!selections.jobPackId) {
             console.log("[fetchJobPackData] No jobPackId selected");
             return null;
         }
         console.log(`[fetchJobPackData] Fetching data for job pack ID: ${selections.jobPackId}`);
         try {
-            const res = await fetch(`/api/jobpack/${selections.jobPackId}`);
+            const res = await fetch(`/api/jobpack/${selections.jobPackId}`, { signal: abortControllerRef.current?.signal });
             if (res.ok) {
                 const data = await res.json();
                 if (data.data) {
@@ -1938,8 +2706,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 }
                 return data;
             }
-        } catch (e) {
-            console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
+        } catch (e: any) {
+            if (e?.name !== "AbortError") {
+                console.warn("[fetchJobPackData] API fetch failed, falling back to cached jobpacks:", e);
+            }
         }
 
         const found = (jobPacks || []).find((jp: any) => String(jp.id) === String(selections.jobPackId));
@@ -1961,12 +2731,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const resolveVessel = (jobPack: any) => {
-        if (!jobPack?.metadata) return "N/A";
-        const history = jobPack.metadata.vessel_history;
+        if (!jobPack) return "N/A";
+        const history = jobPack.metadata?.vessel_history || jobPack.metadata?.vessels;
         if (Array.isArray(history) && history.length > 0) {
-            return history.map((v: any) => v.name || v).join(", ");
+            const list = history.map((v: any) => typeof v === "string" ? v : (v?.name || v?.vessel || v?.vessel_name || "")).filter(Boolean);
+            if (list.length > 0) {
+                return toProperCase(list.join(", "));
+            }
         }
-        return jobPack.metadata.vessel || "N/A";
+        const raw = jobPack.metadata?.vessel || jobPack.metadata?.vessel_name || jobPack.vessel || "N/A";
+        return raw === "N/A" ? "N/A" : toProperCase(raw);
     };
 
     const generateCoverPage = async (templateName: string): Promise<Blob> => {
@@ -2000,6 +2774,9 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     };
 
     const generateReportAction = async (returnBlob: boolean = false, templateIdOverride?: string): Promise<any> => {
+        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) {
+            return null;
+        }
         const currentTemplateId = templateIdOverride || selections.templateId;
         const originalTemplateId = selections.templateId;
 
@@ -2070,7 +2847,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             // Fetch real company settings from API
             let companySettings: any = { company_name: "NasQuest Resources Sdn Bhd" };
         try {
-            const response = await fetch("/api/company-settings");
+            const response = await fetch("/api/company-settings", { signal: abortControllerRef.current?.signal });
             if (response.ok) {
                 const result = await response.json();
                 if (result.data) {
@@ -2082,8 +2859,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     };
                 }
             }
-        } catch (error) {
-            console.error("Error fetching company settings for report:", error);
+        } catch (error: any) {
+            if (error?.name !== "AbortError") {
+                console.error("Error fetching company settings for report:", error);
+            }
         }
 
         const cleanStructureId = selections.structureId ? String(selections.structureId).replace(/^(platform|pipeline)-/, "").trim() : "";
@@ -2106,7 +2885,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         // Universal Blank Report Interceptor — guarantees ALL report templates produce an authentic blank report
         if (selections.printBlankReport) {
             const { generateBlankInspectionReport } = await import("@/utils/report-generators/blank-inspection-report");
-            const targetT = getCurrentTemplate() || TOC_SECTIONS.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
+            const targetT = getCurrentTemplate() || tocSections.flatMap(s => s.templates).find(t => t.id === currentTemplateId);
             const templateTitle = targetT?.name || currentTemplateId;
             return await generateBlankInspectionReport(currentTemplateId, templateTitle, companySettings, reportConfig as any);
         }
@@ -2115,7 +2894,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
         // Final Inspection Datasheet Interceptor
         if (currentTemplateId === "final-inspection-datasheet") {
-            const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
+            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
+            const selectedTOC = tocSections.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
             if (previewMode === "individual") {
                 const targetId = activePreviewTemplate || (selectedTOC[0]?.id || "");
@@ -2131,6 +2911,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             } else {
                 // All-in-One: Combine all selected templates with cover sheets and interactive Table of Contents (TOC)!
                 if (selectedTOC.length === 0) return null;
+                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                 const originalAlert = window.alert;
                 window.alert = () => {}; 
@@ -2149,7 +2930,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     if (contracId) {
                         try {
-                            const cRes = await fetch(`/api/library/CONTR_NAM`);
+                            const cRes = await fetch(`/api/library/CONTR_NAM`, { signal: abortControllerRef.current?.signal });
                             if (cRes.ok) {
                                 const cJson = await cRes.json();
                                 const cList = Array.isArray(cJson?.data) ? cJson.data : (Array.isArray(cJson) ? cJson : []);
@@ -2189,13 +2970,198 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                        selectedStructureObj?.type === "pipeline" || 
                                        activeCategory === "Pipeline";
 
-                    const vessel = jobPackData?.metadata?.vessel || 
-                                   selectedJobPack?.metadata?.vessel || 
-                                   jobPackData?.vessel || 
-                                   selectedJobPack?.vessel || 
-                                   (jobPackData?.metadata?.vessel_history?.[0]?.name) || 
-                                   (selectedJobPack?.metadata?.vessel_history?.[0]?.name) || 
-                                   "MEO RESOLUTION";
+                    const {
+                        generateMainCoverPage,
+                        generateTOCPages,
+                        generateSectionDividerPage,
+                        generateEndOfReportCoverPage,
+                        applyTOCLinksToPdf,
+                        toProperCase
+                    } = await import("@/utils/report-generators/final-datasheet-report");
+
+                    // ── 1. Resolve Vessels (Multiple based on Jobpack, SOW report no, & Structure ID in Proper Case) ──
+                    const vesselCandidates = new Set<string>();
+
+                    const addVesselString = (raw: any) => {
+                        if (!raw || typeof raw !== "string") return;
+                        raw.split(/[,;\n\/&]+/).forEach(part => {
+                            const cleaned = part.replace(/[.]+$/, "").trim();
+                            const upper = cleaned.toUpperCase();
+                            if (cleaned && upper !== "N/A" && upper !== "NONE" && upper !== "NULL" && upper !== "UNDEFINED") {
+                                vesselCandidates.add(cleaned);
+                            }
+                        });
+                    };
+
+                    const extractVesselsFromList = (list: any) => {
+                        if (!Array.isArray(list)) return;
+                        list.forEach((item: any) => {
+                            if (typeof item === "string") {
+                                addVesselString(item);
+                            } else if (item && typeof item === "object") {
+                                addVesselString(item.name || item.vessel || item.vessel_name);
+                            }
+                        });
+                    };
+
+                    extractVesselsFromList(jobPackData?.metadata?.vessel_history);
+                    extractVesselsFromList(selectedJobPack?.metadata?.vessel_history);
+                    extractVesselsFromList(jobPackData?.metadata?.vessels);
+                    extractVesselsFromList(selectedJobPack?.metadata?.vessels);
+
+                    addVesselString(jobPackData?.metadata?.vessel);
+                    addVesselString(selectedJobPack?.metadata?.vessel);
+                    addVesselString(jobPackData?.vessel);
+                    addVesselString(selectedJobPack?.vessel);
+
+                    // Query inspection records, dive jobs, and rov jobs matching (jobpack, structure, sowReportNo)
+                    try {
+                        const { createClient } = await import("@/utils/supabase/client");
+                        const supabase = createClient();
+                        const cleanSow = (selections.sowReportNo && selections.sowReportNo !== "all" && selections.sowReportNo !== "N/A") 
+                            ? selections.sowReportNo.trim() 
+                            : null;
+
+                        // Check insp_records
+                        let rQuery = (supabase as any)
+                            .from("insp_records")
+                            .select("vessel, inspection_data, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) rQuery = rQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) rQuery = rQuery.eq("structure_id", structId);
+                        if (cleanSow) rQuery = rQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: recData } = await rQuery.limit(200);
+                        if (recData && Array.isArray(recData)) {
+                            recData.forEach((r: any) => {
+                                addVesselString(r.vessel);
+                                addVesselString(r.inspection_data?.vessel);
+                                addVesselString(r.inspection_data?.vessel_name);
+                                addVesselString(r.metadata?.vessel);
+                                addVesselString(r.metadata?.vessel_name);
+                            });
+                        }
+
+                        // Check insp_dive_jobs
+                        let dQuery = (supabase as any)
+                            .from("insp_dive_jobs")
+                            .select("vessel, vessel_name, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) dQuery = dQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) dQuery = dQuery.eq("structure_id", structId);
+                        if (cleanSow) dQuery = dQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: diveJobsData } = await dQuery.limit(50);
+                        if (diveJobsData && Array.isArray(diveJobsData)) {
+                            diveJobsData.forEach((dj: any) => {
+                                addVesselString(dj.vessel);
+                                addVesselString(dj.vessel_name);
+                                addVesselString(dj.metadata?.vessel);
+                                addVesselString(dj.metadata?.vessel_name);
+                            });
+                        }
+
+                        // Check insp_rov_jobs
+                        let rovQuery = (supabase as any)
+                            .from("insp_rov_jobs")
+                            .select("vessel, vessel_name, rov_vessel, metadata");
+                        if (!isNaN(jobPackIdNum) && jobPackIdNum > 0) rovQuery = rovQuery.eq("jobpack_id", jobPackIdNum);
+                        if (!isNaN(structId) && structId > 0) rovQuery = rovQuery.eq("structure_id", structId);
+                        if (cleanSow) rovQuery = rovQuery.eq("sow_report_no", cleanSow);
+
+                        const { data: rovJobsData } = await rovQuery.limit(50);
+                        if (rovJobsData && Array.isArray(rovJobsData)) {
+                            rovJobsData.forEach((rj: any) => {
+                                addVesselString(rj.vessel);
+                                addVesselString(rj.vessel_name);
+                                addVesselString(rj.rov_vessel);
+                                addVesselString(rj.metadata?.vessel);
+                                addVesselString(rj.metadata?.vessel_name);
+                            });
+                        }
+                    } catch (vErr) {
+                        console.warn("[CoverPage] Could not query extra vessel records:", vErr);
+                    }
+
+                    // Format each unique vessel in Proper Case
+                    const formattedVessels: string[] = [];
+                    const seenVessels = new Set<string>();
+
+                    vesselCandidates.forEach(raw => {
+                        const formatted = toProperCase(raw);
+                        const key = formatted.toLowerCase();
+                        if (formatted && !seenVessels.has(key)) {
+                            seenVessels.add(key);
+                            formattedVessels.push(formatted);
+                        }
+                    });
+
+                    let vessel = formattedVessels.join(", ");
+                    if (!vessel) {
+                        vessel = "Meo Resolution";
+                    }
+
+                    // ── 2. Resolve Oil Field Name (Fetch Description from Library, not ID, in Proper Case) ──
+                    let resolvedFieldDesc = "";
+                    const rawFieldIdentifier = (
+                        structureData?.pfield || 
+                        structureData?.field_name || 
+                        structureData?.field || 
+                        selectedStructureObj?.field_name || 
+                        selectedStructureObj?.pfield || 
+                        jobPackData?.field || 
+                        selectedJobPack?.field ||
+                        "BOKOR"
+                    ).toString().trim();
+
+                    const cleanFieldKey = rawFieldIdentifier.replace(/\.+$/, "").trim().toLowerCase();
+
+                    try {
+                        // A. Fetch from /api/library/fields-stats (pre-aggregated oilfield list)
+                        const fStatsRes = await fetch("/api/library/fields-stats", { signal: abortControllerRef.current?.signal });
+                        let fieldLibItems: any[] = [];
+                        if (fStatsRes.ok) {
+                            const fJson = await fStatsRes.json();
+                            if (Array.isArray(fJson?.data)) fieldLibItems = fJson.data;
+                        }
+
+                        // B. Direct database query fallback on u_lib_list
+                        if (fieldLibItems.length === 0) {
+                            const { createClient } = await import("@/utils/supabase/client");
+                            const supabase = createClient();
+                            const { data: uLibData } = await (supabase as any)
+                                .from("u_lib_list")
+                                .select("lib_id, lib_desc, lib_val, lib_code")
+                                .eq("lib_code", "OILFIELD")
+                                .or("lib_delete.is.null,lib_delete.neq.1");
+                            if (uLibData && Array.isArray(uLibData)) {
+                                fieldLibItems = uLibData;
+                            }
+                        }
+
+                        // C. Match by code/ID or value or description
+                        const matchedField = fieldLibItems.find((item: any) => {
+                            const libIdClean = String(item.lib_id || "").replace(/\.+$/, "").trim().toLowerCase();
+                            const libValClean = String(item.lib_val || "").replace(/\.+$/, "").trim().toLowerCase();
+                            const libDescClean = String(item.lib_desc || "").replace(/\.+$/, "").trim().toLowerCase();
+                            return libIdClean === cleanFieldKey || libValClean === cleanFieldKey || libDescClean === cleanFieldKey;
+                        });
+
+                        if (matchedField && matchedField.lib_desc) {
+                            resolvedFieldDesc = String(matchedField.lib_desc).replace(/\.+$/, "").trim();
+                        }
+                    } catch (fErr) {
+                        console.warn("[CoverPage] Failed to fetch field description from library:", fErr);
+                    }
+
+                    // Fallback if not found in library
+                    if (!resolvedFieldDesc) {
+                        if (cleanFieldKey === "bokor") {
+                            resolvedFieldDesc = "Bokor Field";
+                        } else {
+                            resolvedFieldDesc = rawFieldIdentifier.replace(/\.+$/, "").trim();
+                        }
+                    }
+
+                    const fieldName = toProperCase(resolvedFieldDesc);
 
                     let inspectionDateRange = (reportConfig as any)?.dateRange || 
                                               (reportConfig as any)?.inspDateRange || 
@@ -2218,7 +3184,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     const coverOptions = {
                         structureName: structureData?.str_name || structureData?.name || selectedStructureObj?.str_name || selectedStructureObj?.name || selections.structureName || "BODP-A",
-                        fieldName: structureData?.field_name || structureData?.field || jobPackData?.field || "BOKOR FIELD",
+                        fieldName,
                         jobPackName: jobPackData?.name || jobPackData?.title || selectedJobPack?.name || "UIMC2026/SKA/PLAT01",
                         sowReportNo: selections.sowReportNo || reportConfig?.sowReportNo || "AM26-016-01",
                         clientName: companySettings?.company_name || "Petronas Carigali Sdn Bhd (SKA)",
@@ -2239,49 +3205,47 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         approvedBy: reportConfig?.approvedBy?.name ? reportConfig.approvedBy : undefined,
                     };
 
-                    const {
-                        generateMainCoverPage,
-                        generateTOCPages,
-                        generateSectionDividerPage,
-                        generateEndOfReportCoverPage,
-                        applyTOCLinksToPdf
-                    } = await import("@/utils/report-generators/final-datasheet-report");
-
                     const collectedSections: Array<{
-                        section: typeof TOC_SECTIONS[0];
+                        section: typeof tocSections[0];
                         dividerDonorDoc: any;
                         reports: Array<{
-                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            template: typeof tocSections[0]["templates"][0];
                             donorDoc: any;
                             pageCount: number;
                         }>;
                     }> = [];
 
                     let count = 0;
-                    for (const s of TOC_SECTIONS) {
+                    for (const s of tocSections) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const sectionTemplates = s.templates.filter(t => selectedTemplates.includes(t.id));
                         if (sectionTemplates.length === 0) continue;
 
                         const activeReports: Array<{
-                            template: typeof TOC_SECTIONS[0]["templates"][0];
+                            template: typeof tocSections[0]["templates"][0];
                             donorDoc: any;
                             pageCount: number;
                         }> = [];
 
                         for (const t of sectionTemplates) {
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                             count++;
                             setCurrentGeneratingTemplate(t.name);
                             setGenerationProgress(Math.min(90, 5 + Math.round(((count - 1) / selectedTOC.length) * 85)));
                             await new Promise(resolve => setTimeout(resolve, 300));
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                             try {
                                 let sectionResult = await generateReportAction(true, t.id); // Must ask for Blob
+                                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                 if (sectionResult && !(sectionResult instanceof Blob) && (sectionResult as any).output) {
                                     sectionResult = (sectionResult as any).output('blob');
                                 }
                                 if (sectionResult instanceof Blob) {
                                     const sectionArrayBuffer = await sectionResult.arrayBuffer();
+                                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                     const donorSectionPdf = await PDFDocument.load(sectionArrayBuffer);
+                                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                     activeReports.push({
                                         template: t,
                                         donorDoc: donorSectionPdf,
@@ -2290,14 +3254,18 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 } else {
                                     console.warn(`Skipping template ${t.name} as it yielded no records.`);
                                 }
-                            } catch (err) {
+                            } catch (err: any) {
+                                if (err?.name === "AbortError" || cancelGenerationRef.current) return null;
                                 console.error(`Error generating template report for ${t.name}:`, err);
                             }
                         }
 
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
+
                         if (activeReports.length > 0) {
                             try {
                                 const dividerBlob = await generateSectionDividerPage(s.name, coverOptions);
+                                if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                                 const dividerBuffer = await dividerBlob.arrayBuffer();
                                 const dividerDonor = await PDFDocument.load(dividerBuffer);
 
@@ -2306,12 +3274,14 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     dividerDonorDoc: dividerDonor,
                                     reports: activeReports
                                 });
-                            } catch (err) {
+                            } catch (err: any) {
+                                if (err?.name === "AbortError" || cancelGenerationRef.current) return null;
                                 console.error(`Error preparing section divider for ${s.name}:`, err);
                             }
                         }
                     }
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     if (collectedSections.length === 0) return null;
 
                     // 1. Calculate Exact Page Numbers for TOC
@@ -2353,16 +3323,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     const totalDocumentPages = runningPageNum - 1;
 
                     // 2. Generate Main Cover & TOC Pages
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setCurrentGeneratingTemplate("Creating Main Cover Page & Interactive TOC...");
                     const coverBlob = await generateMainCoverPage(coverOptions);
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const coverBuffer = await coverBlob.arrayBuffer();
                     const coverDonor = await PDFDocument.load(coverBuffer);
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const { blobs: tocBlobs, linkTargets } = await generateTOCPages(
                         sectionsWithPages,
                         totalDocumentPages,
                         coverOptions
                     );
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
 
                     // 3. Assemble in mergedPdf
                     const mergedPdf = await PDFDocument.create();
@@ -2374,6 +3348,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     // 3B. TOC Pages (Pages 2 .. 1 + tocPagesCount)
                     const addedTocPages: any[] = [];
                     for (const tBlob of tocBlobs) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const tBuffer = await tBlob.arrayBuffer();
                         const tDonor = await PDFDocument.load(tBuffer);
                         const [copiedToc] = await mergedPdf.copyPages(tDonor, [0]);
@@ -2383,24 +3358,29 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
                     // 3C. Section Dividers & Reports
                     for (const cs of collectedSections) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const [copiedDiv] = await mergedPdf.copyPages(cs.dividerDonorDoc, [0]);
                         mergedPdf.addPage(copiedDiv);
 
                         for (const r of cs.reports) {
+                            if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                             const pages = await mergedPdf.copyPages(r.donorDoc, r.donorDoc.getPageIndices());
                             pages.forEach(p => mergedPdf.addPage(p));
                         }
                     }
 
                     // 3D. End of Report Cover Page
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setCurrentGeneratingTemplate("Adding End of Report Cover Page...");
                     const endCoverBlob = await generateEndOfReportCoverPage(coverOptions);
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const endCoverBuffer = await endCoverBlob.arrayBuffer();
                     const endCoverDonor = await PDFDocument.load(endCoverBuffer);
                     const [copiedEndCover] = await mergedPdf.copyPages(endCoverDonor, [0]);
                     mergedPdf.addPage(copiedEndCover);
 
                     // 4. Attach Interactive PDF Link Annotations to the TOC page(s)
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     applyTOCLinksToPdf(mergedPdf, addedTocPages, linkTargets);
 
                     // 5. Stamp global continuous page numbers on all merged pages
@@ -2408,6 +3388,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     const font = await mergedPdf.embedFont(StandardFonts.Helvetica);
 
                     for (let idx = 0; idx < totalPagesCount; idx++) {
+                        if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                         const p = mergedPdf.getPage(idx);
                         const { width } = p.getSize();
                         const pageStr = `Page ${idx + 1} of ${totalPagesCount}`;
@@ -2424,10 +3405,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         });
                     }
 
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     setGenerationProgress(100);
                     setCurrentGeneratingTemplate("Finalizing combined PDF package...");
                     await new Promise(resolve => setTimeout(resolve, 500));
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const mergedPdfBytes = await mergedPdf.save();
+                    if (cancelGenerationRef.current || abortControllerRef.current?.signal.aborted) return null;
                     const finalBlob = new Blob([mergedPdfBytes as any], { type: 'application/pdf' });
 
                     if (returnBlob) {
@@ -2676,6 +3660,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
             return await generateDefectAnomalyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
+        }
+
+        // Debris Location Report (debris flagged on elevation / plan sketches of each member QID)
+        if (currentTemplateId === "debris-location-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            const { generateDebrisLocationReport } = await import("@/utils/report-generators/debris-location-report");
+            return await generateDebrisLocationReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig as any);
         }
 
         // Diver Log Report
@@ -3096,7 +4090,8 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 .select(`
                     *,
                     inspection_type:inspection_type_id!left(id, code, name),
-                    structure_components:component_id!left(q_id, code)
+                    structure_components:component_id!left(q_id, code),
+                    insp_anomalies(anomaly_id, anomaly_ref_no, status, defect_type_code, defect_category_code, priority_code, defect_description, inspection_id)
                 `)
                 .eq('structure_id', structId);
 
@@ -4287,7 +5282,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             }
         }
 
-        // ROV Selected Node Report
+        // ROV Selected Node Inspection Report
         if (currentTemplateId === "rov-selected-node-report") {
             const supabase = (await import("@/utils/supabase/client")).createClient();
             const structure = await fetchStructureData();
@@ -4353,7 +5348,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     { ...reportConfig, returnBlob } as any
                 );
             } catch (error) {
-                console.error("Selected Node Report Generator Error:", error);
+                console.error("Selected Node Inspection Report Generator Error:", error);
                 throw error;
             }
         }
@@ -6787,7 +7782,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
-            let records: any[] = [];
+            const records: any[] = [];
             let recFrom = 0;
             const recPageSize = 1000;
             let recHasMore = true;
@@ -7068,7 +8063,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
-            let records: any[] = [];
+            const records: any[] = [];
             let recFrom = 0;
             const recPageSize = 1000;
             let recHasMore = true;
@@ -7524,7 +8519,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
             let incompleteRecords: any[] = [];
-            let allRecords: any[] = [];
+            const allRecords: any[] = [];
             if (!selections.printBlankReport) {
                 try {
                     const supabase = (await import("@/utils/supabase/client")).createClient();
@@ -7745,6 +8740,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 };
 
     const generatePreview = async () => {
+        handleCancelGeneration();
+        cancelGenerationRef.current = false;
+        const currentAbort = new AbortController();
+        abortControllerRef.current = currentAbort;
+
         setIsGenerating(true);
         setPreviewUrl(null);
         setGenerationProgress(5);
@@ -7753,6 +8753,12 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
         try {
             console.log("[generatePreview] Calling generateReportAction(true)...");
             const result = await generateReportAction(true); // Return Blob
+
+            if (cancelGenerationRef.current || currentAbort.signal.aborted) {
+                console.log("[generatePreview] Preview generation was cancelled, discarding result.");
+                return;
+            }
+
             console.log("[generatePreview] generateReportAction completed, result type:", result ? (result instanceof Blob ? "Blob" : typeof result) : "null/undefined");
 
             if (result instanceof Blob) {
@@ -7767,10 +8773,13 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 setPreviewUrl(url);
             } else {
                 console.warn("Generator did not return a blob. It might have saved directly or failed.");
-                // If it failed to return a blob, we can't show preview.
             }
-        } catch (error) {
-            console.error("Preview generation failed", error);
+        } catch (error: any) {
+            if (error?.name === "AbortError" || cancelGenerationRef.current) {
+                console.log("[generatePreview] Caught abort error - generation stopped cleanly.");
+            } else {
+                console.error("Preview generation failed", error);
+            }
         } finally {
             console.log("[generatePreview] Finished preview generation, setting isGenerating to false");
             setIsGenerating(false);
@@ -7784,7 +8793,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             a.download = `${selections.templateId}_${selections.structureId}.pdf`;
             a.click();
         } else {
-            await generateReportAction(false);
+            handleCancelGeneration();
+            cancelGenerationRef.current = false;
+            const currentAbort = new AbortController();
+            abortControllerRef.current = currentAbort;
+            setIsGenerating(true);
+            try {
+                await generateReportAction(false);
+            } catch (err: any) {
+                if (err?.name !== "AbortError" && !cancelGenerationRef.current) {
+                    console.error("Download generation failed", err);
+                }
+            } finally {
+                setIsGenerating(false);
+            }
         }
     };
 
@@ -7850,7 +8872,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
 
     const renderPreview = () => {
         const isFinalDatasheet = selections.templateId === "final-inspection-datasheet";
-        const selectedTOC = TOC_SECTIONS.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
+        const selectedTOC = tocSections.flatMap(s => s.templates).filter(t => selectedTemplates.includes(t.id));
 
         return (
             <div className="h-full flex flex-col space-y-4">
@@ -7889,6 +8911,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                     {generationProgress > 0 ? `${generationProgress}% Complete` : 'Processing...'}
                                 </span>
                             </div>
+
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={handleCancelGeneration}
+                                className="mt-2 text-xs border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-900/50 dark:text-red-400 dark:hover:bg-red-950/40 shadow-sm transition-all"
+                            >
+                                <X className="w-3.5 h-3.5 mr-1.5" />
+                                Cancel Generation
+                            </Button>
                         </div>
                     ) : previewUrl ? (
                         <iframe
@@ -7974,6 +9006,20 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                         )}
                     </h1>
                 </div>
+                {onClose && (
+                    <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        onClick={() => {
+                            handleCancelGeneration();
+                            onClose();
+                        }}
+                        className="rounded-full h-8 w-8 text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                        title="Close Wizard"
+                    >
+                        <X className="w-4 h-4" />
+                    </Button>
+                )}
             </div>
 
             {/* Progress Bar */}
@@ -8001,7 +9047,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                                 key={s}
                                 className={`relative z-10 flex flex-col items-center gap-2 ${isClickable ? "cursor-pointer group" : "cursor-default"}`}
                                 onClick={() => {
-                                    if (isClickable) setStep(s);
+                                    if (isClickable) {
+                                        handleCancelGeneration();
+                                        setStep(s);
+                                    }
                                 }}
                             >
                                 <div className={`
@@ -8062,18 +9111,30 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     </Button>
                 ) : (
                     <div className="flex gap-2">
-                        <Button variant="outline" className="gap-2" onClick={handlePreview}>
-                            <Eye className="w-4 h-4" /> Open PDF
-                        </Button>
-                        <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
-                            <Download className="w-4 h-4" /> Download
-                        </Button>
-                        <Button variant="outline" className="gap-2" onClick={handleShare}>
-                            <Share2 className="w-4 h-4" /> Share
-                        </Button>
-                        <Button variant="secondary" className="gap-2" onClick={handlePrint}>
-                            <Printer className="w-4 h-4" /> Print
-                        </Button>
+                        {isGenerating ? (
+                            <Button
+                                variant="destructive"
+                                className="gap-2 shadow-sm"
+                                onClick={handleCancelGeneration}
+                            >
+                                <X className="w-4 h-4" /> Cancel Generation
+                            </Button>
+                        ) : (
+                            <>
+                                <Button variant="outline" className="gap-2" onClick={handlePreview}>
+                                    <Eye className="w-4 h-4" /> Open PDF
+                                </Button>
+                                <Button className="gap-2 bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/20" onClick={handleDownload}>
+                                    <Download className="w-4 h-4" /> Download
+                                </Button>
+                                <Button variant="outline" className="gap-2" onClick={handleShare}>
+                                    <Share2 className="w-4 h-4" /> Share
+                                </Button>
+                                <Button variant="secondary" className="gap-2" onClick={handlePrint}>
+                                    <Printer className="w-4 h-4" /> Print
+                                </Button>
+                            </>
+                        )}
                     </div>
                 )}
             </div>

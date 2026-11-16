@@ -9,4 +9,5 @@ export type UserData = {
     full_name: string | null;
     designation: string | null;
     avatar_url: string | null;
+    is_active?: boolean;
 };

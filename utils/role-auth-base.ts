@@ -25,6 +25,14 @@ export interface Profile {
   designation: string;
   is_active: boolean;
   must_change_password?: boolean;
+  login_restriction_type?: string;
+  allowed_start_time?: string;
+  allowed_end_time?: string;
+  allowed_days?: number[];
+  timezone?: string;
+  device_restriction_type?: string;
+  allowed_start_date?: string | null;
+  allowed_end_date?: string | null;
   last_sign_in: string | null;
   created_at: string;
   updated_at: string;

@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 import { createClient } from "@/utils/supabase/client";
 
 interface CompanySettings {
@@ -281,12 +281,12 @@ export const generateDivingDCONDReport = async (
                 autoTable(doc, {
                     startY: currentY,
                     margin: { left: margin, right: margin },
-                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Marine Growth %", "Findings"]],
+                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "Coating Condition", "Component Condition", "Hard Growth %", "Soft Growth %", "Findings"]],
                     body: recsGVINS.map((r, i) => {
                         const d = r.inspection_data || {};
                         const el = r.elevation ?? d.elevation ?? "—";
                         const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
-                        const mg = d.marine_growth_pct ? `${d.marine_growth_pct}%` : (d.marine_growth_coverage || d.marine_growth || "—");
+                        const { hard, soft } = extractHardSoftGrowth(d, r);
                         return [
                             i + 1,
                             r.structure_components?.q_id || r.component?.q_id || "N/A",
@@ -294,7 +294,8 @@ export const generateDivingDCONDReport = async (
                             diveNo,
                             d.coating_condition || "—",
                             d.component_condition || "—",
-                            mg,
+                            hard,
+                            soft,
                             formatFindings(r)
                         ];
                     }),
@@ -302,14 +303,15 @@ export const generateDivingDCONDReport = async (
                     headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
-                        0: { cellWidth: 12, halign: "center" },
-                        1: { cellWidth: 28 },
+                        0: { cellWidth: 10, halign: "center" },
+                        1: { cellWidth: 26 },
                         2: { cellWidth: 18, halign: "center" },
-                        3: { cellWidth: 16, halign: "center" },
-                        4: { cellWidth: 22 },
-                        5: { cellWidth: 22 },
-                        6: { cellWidth: 22 },
-                        7: { cellWidth: "auto" }
+                        3: { cellWidth: 15, halign: "center" },
+                        4: { cellWidth: 20 },
+                        5: { cellWidth: 20 },
+                        6: { cellWidth: 17, halign: "center" },
+                        7: { cellWidth: 17, halign: "center" },
+                        8: { cellWidth: "auto" }
                     },
                     didParseCell: (data) => {
                         if (data.section === "body") applyCellColoring(data, recsGVINS[data.row.index]);
@@ -367,13 +369,13 @@ export const generateDivingDCONDReport = async (
                 autoTable(doc, {
                     startY: currentY,
                     margin: { left: margin, right: margin },
-                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "CP Reading", "Anode Condition", "Marine Growth %", "Findings"]],
+                    head: [["No.", "QID", "Elevation (m)", "Dive No.", "CP Reading", "Anode Condition", "Hard Growth %", "Soft Growth %", "Findings"]],
                     body: recsCPSURV.map((r, i) => {
                         const d = r.inspection_data || {};
                         const el = r.elevation ?? d.elevation ?? "—";
                         const diveNo = r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name || r.dive_job_id || "—";
                         const cp = d.cp_rdg ? `${d.cp_rdg} mV` : (d.cp_reading ? `${d.cp_reading} mV` : "—");
-                        const mg = d.marine_growth_pct ? `${d.marine_growth_pct}%` : (d.marine_growth || "—");
+                        const { hard, soft } = extractHardSoftGrowth(d, r);
                         return [
                             i + 1,
                             r.structure_components?.q_id || r.component?.q_id || "N/A",
@@ -381,7 +383,8 @@ export const generateDivingDCONDReport = async (
                             diveNo,
                             cp,
                             d.anode_condition || "—",
-                            mg,
+                            hard,
+                            soft,
                             formatFindings(r)
                         ];
                     }),
@@ -389,14 +392,15 @@ export const generateDivingDCONDReport = async (
                     headStyles: {fillColor: colors.navy, textColor: 255, fontStyle: "bold", fontSize: 7, halign: "center", lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
                     bodyStyles: { fontSize: 6.5, textColor: colors.text },
                     columnStyles: {
-                        0: { cellWidth: 12, halign: "center" },
-                        1: { cellWidth: 28 },
+                        0: { cellWidth: 10, halign: "center" },
+                        1: { cellWidth: 26 },
                         2: { cellWidth: 18, halign: "center" },
-                        3: { cellWidth: 16, halign: "center" },
-                        4: { cellWidth: 22, halign: "center" },
-                        5: { cellWidth: 22 },
-                        6: { cellWidth: 22 },
-                        7: { cellWidth: "auto" }
+                        3: { cellWidth: 15, halign: "center" },
+                        4: { cellWidth: 20, halign: "center" },
+                        5: { cellWidth: 20 },
+                        6: { cellWidth: 17, halign: "center" },
+                        7: { cellWidth: 17, halign: "center" },
+                        8: { cellWidth: "auto" }
                     },
                     didParseCell: (data) => {
                         if (data.section === "body") applyCellColoring(data, recsCPSURV[data.row.index]);

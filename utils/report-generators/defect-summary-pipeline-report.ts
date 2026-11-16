@@ -2,7 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
 import { createClient } from "@/utils/supabase/client";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords , applyRecordCellStyling, formatReportFindingText, REPORT_FOOTER_APP_TEXT, toProperCase, resolveOilFieldDescription } from "./shared-logo";
 
 export interface CompanySettings {
     company_name?: string;
@@ -673,9 +673,12 @@ export const generatePipelineDefectSummaryReport = async (
     const structRef = pipelineInfo?.code || pipelineInfo?.title || structure?.title || "PIPELINE";
     const reportNo = `${prefix}-${year}-${jpRef}-${structRef}-001`;
 
+    const rawPField = pipelineInfo?.pfield || pipelineInfo?.field_name || jobPack?.metadata?.field || "-";
+    const resolvedPField = rawPField !== "-" ? await resolveOilFieldDescription(rawPField) : "-";
+
     // ── Header Box ───────────────────────────────────────────────────────────
     const drawHeader = (d: jsPDF) => {
-        const reportTitle = isFindingsReport ? "Finding Summary Report (Pipeline)" : "Defect Summary Report (Pipeline)";
+        const reportTitle = isFindingsReport ? "Finding Summary Report (Pipeline)" : "Anomaly Summary Report (Pipeline)";
         const structName = pipelineInfo?.title || pipelineInfo?.structure_name || structure?.name || structure?.title;
         draw3SectionHeader(d, {
             reportTitle,
@@ -716,9 +719,10 @@ export const generatePipelineDefectSummaryReport = async (
         const col3X = sx + 190;
 
         const pName = pipelineInfo?.title || pipelineInfo?.structure_name || structure?.name || structure?.title || "-";
-        const pField = pipelineInfo?.pfield || pipelineInfo?.field_name || jobPack?.metadata?.field || "-";
+        const pField = resolvedPField || "-";
         const jpName = jobPack?.name || jobPack?.title || "-";
-        const vessel = jobPack?.metadata?.vessel || "-";
+        const rawVessel = jobPack?.metadata?.vessel_history?.length ? jobPack.metadata.vessel_history.map((v: any) => v.name || v).join(", ") : (jobPack?.metadata?.vessel || "-");
+        const vessel = rawVessel !== "-" && rawVessel !== "N/A" ? toProperCase(rawVessel) : rawVessel;
         const inspDate = formatPdfDate(new Date());
 
         // Row 1

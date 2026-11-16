@@ -1053,8 +1053,8 @@ export default function JobpackForm({ id: propId }: { id?: string }) {
               <div className="xl:col-span-8 space-y-6">
                 {/* 1. Asset Inventory (Add to Scope) - Hidden if Closed */}
                 {!isClosed && (
-                  <Card className="rounded-[2rem] border-slate-200/60 dark:border-slate-800/60 shadow-lg overflow-hidden border-orange-100 dark:border-slate-800 bg-orange-50/10 dark:bg-slate-900/20">
-                  <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 py-3">
+                  <Card className="rounded-[2rem] border-slate-200/60 dark:border-slate-800/60 shadow-lg overflow-visible relative z-30 border-orange-100 dark:border-slate-800 bg-orange-50/10 dark:bg-slate-900/20">
+                  <CardHeader className="bg-white/50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800 p-4 py-3 rounded-t-[2rem]">
                       <div className="flex items-center gap-3">
                         <div className="p-2 bg-orange-100 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 rounded-lg"><Search className="w-4 h-4" /></div>
                         <span className="font-bold text-sm uppercase text-slate-700 dark:text-slate-200">Add Structure to Scope</span>

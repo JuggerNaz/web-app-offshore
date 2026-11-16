@@ -73,7 +73,7 @@ export const generateROVAnodeRSANIReport = async (
         const headerH = 25;
         const drawHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `Selected Anode Report (ROV) - ${extraTitleInfo}` : "Selected Anode Report (ROV)",
+                reportTitle: extraTitleInfo ? `Selected Anode Inspection Report (ROV) - ${extraTitleInfo}` : "Selected Anode Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,

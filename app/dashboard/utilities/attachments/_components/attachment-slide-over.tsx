@@ -13,11 +13,13 @@ import { DeleteConfirmDialog } from "@/components/dialogs/delete-confirm-dialog"
 import { processAttachmentUrl, formatBytes } from "@/utils/storage";
 import { getAttachmentCategory, isMediaAttachment } from "@/utils/attachment-category";
 import { refreshAttachmentCaches } from "@/utils/attachment-sync";
+import { getAttachmentUrl } from "@/utils/attachment-utils";
 import { createClient } from "@/utils/supabase/client";
 import { fetcher } from "@/utils/utils";
 import { useEffect, useMemo, useRef, useState } from "react";
 import useSWR from "swr";
-import { FileText, Calendar, HardDrive, ExternalLink, Trash2, Save, Loader2, Upload, RefreshCw, Film } from "lucide-react";
+import { FileText, Calendar, HardDrive, ExternalLink, Trash2, Save, Loader2, Upload, RefreshCw, Film, Tag, Copy, Paperclip, AlertTriangle, Download } from "lucide-react";
+import { cn } from "@/lib/utils";
 import moment from "moment";
 import { toast } from "sonner";
 
@@ -66,6 +68,15 @@ export function AttachmentSlideOver() {
     );
     const components: any[] = componentsData?.data || [];
 
+    // Platform data for resolving platform title
+    const { data: platformsData } = useSWR(
+        isSlideOverOpen && selectedPlatformId ? '/api/platform?pageSize=1000' : null,
+        fetcher
+    );
+    const activePlatform = useMemo(() => {
+        return (platformsData?.data || []).find((p: any) => p.plat_id === selectedPlatformId);
+    }, [platformsData, selectedPlatformId]);
+
     useEffect(() => {
         if (activeAttachment) {
             const meta = ((activeAttachment as any).meta || {}) as any;
@@ -80,8 +91,8 @@ export function AttachmentSlideOver() {
         setReplaceFile(null);
         setNewFile(null);
         setTargetType(addPreset?.sourceType || "platform");
-        setTargetComponentId(addPreset?.sourceType === "component" ? String(addPreset.sourceId) : "");
-        setTargetInspectionId(addPreset?.sourceType === "inspection" ? String(addPreset.sourceId) : "");
+        setTargetComponentId(addPreset?.sourceType === "component" && addPreset.sourceId ? String(addPreset.sourceId) : "");
+        setTargetInspectionId(addPreset?.sourceType === "inspection" && addPreset.sourceId ? String(addPreset.sourceId) : "");
     }, [activeAttachment, addPreset, isSlideOverOpen]);
 
     // Inspection record options for add mode
@@ -91,42 +102,64 @@ export function AttachmentSlideOver() {
 
         (async () => {
             const compIds = components.map((c: any) => c.id).filter(Boolean);
-            const orFilter = `structure_id.eq.${selectedPlatformId}${compIds.length ? `,component_id.in.(${compIds.join(",")})` : ""}`;
-            const { data: recs } = await (supabase as any)
+            let query = (supabase as any)
                 .from("insp_records")
-                .select("insp_id, component_id, inspection_date, inspection_type_code, jobpack_id")
-                .or(orFilter)
-                .order("inspection_date", { ascending: false })
-                .limit(300);
-            if (cancelled || !recs) return;
+                .select("insp_id, component_id, inspection_date, inspection_type_code, jobpack_id, sow_report_no")
+                .order("inspection_date", { ascending: false });
 
-            const jpIds = Array.from(new Set(recs.map((r: any) => r.jobpack_id).filter(Boolean)));
+            if (compIds.length > 0) {
+                query = query.or(`structure_id.eq.${selectedPlatformId},component_id.in.(${compIds.join(",")})`);
+            } else {
+                query = query.eq("structure_id", selectedPlatformId);
+            }
+
+            const { data: recs } = await query.limit(300);
+            if (cancelled) return;
+
+            let allRecs = recs || [];
+            // If preset sourceId was provided but not in loaded recs, fetch it directly
+            if (addPreset?.sourceType === "inspection" && addPreset.sourceId && !allRecs.some((r: any) => r.insp_id === addPreset.sourceId)) {
+                const { data: presetRec } = await (supabase as any)
+                    .from("insp_records")
+                    .select("insp_id, component_id, inspection_date, inspection_type_code, jobpack_id, sow_report_no")
+                    .eq("insp_id", addPreset.sourceId)
+                    .single();
+                if (presetRec && !cancelled) {
+                    allRecs = [presetRec, ...allRecs];
+                }
+            }
+
+            const jpIds = Array.from(new Set(allRecs.map((r: any) => r.jobpack_id).filter(Boolean)));
             const jpMap = new Map<number, string>();
             if (jpIds.length) {
                 const { data: jps } = await (supabase as any).from("jobpack").select("id, name").in("id", jpIds);
                 (jps || []).forEach((j: any) => jpMap.set(j.id, j.name));
             }
-            const compMap = new Map<number, string>(components.map((c: any) => [c.id, c.q_id || c.comp_id]));
+            const compMap = new Map<number, string>(components.map((c: any) => [c.id, c.q_id || c.comp_id || c.code]));
 
             setInspectionOptions(
-                recs.map((r: any) => ({
-                    id: r.insp_id,
-                    label: [
+                allRecs.map((r: any) => {
+                    const qid = compMap.get(r.component_id);
+                    const labelParts = [
+                        r.inspection_date ? moment(r.inspection_date).format("DD/MM/YYYY") : null,
+                        r.inspection_type_code || null,
+                        qid ? `QID: ${qid}` : null,
+                        r.sow_report_no ? `SOW: ${r.sow_report_no}` : null,
                         jpMap.get(r.jobpack_id) || (r.jobpack_id ? `JP ${r.jobpack_id}` : null),
-                        r.inspection_date ? moment(r.inspection_date).format("DD MMM YYYY") : null,
-                        r.inspection_type_code,
-                        compMap.get(r.component_id),
-                    ]
-                        .filter(Boolean)
-                        .join(" • "),
-                }))
+                    ].filter(Boolean);
+
+                    return {
+                        id: r.insp_id,
+                        label: labelParts.length > 0 ? labelParts.join(" • ") : `Inspection Record #${r.insp_id}`,
+                    };
+                })
             );
         })();
 
         return () => {
             cancelled = true;
         };
-    }, [isSlideOverOpen, isAddMode, selectedPlatformId, components.length, supabase]);
+    }, [isSlideOverOpen, isAddMode, selectedPlatformId, components.length, addPreset, supabase]);
 
     const onSave = async () => {
         try {
@@ -165,17 +198,24 @@ export function AttachmentSlideOver() {
 
                 const sourceType: TargetType = targetType;
                 let sourceId: number | null = null;
-                if (targetType === "platform") sourceId = selectedPlatformId;
-                if (targetType === "component") sourceId = targetComponentId ? Number(targetComponentId) : null;
-                if (targetType === "inspection") sourceId = targetInspectionId ? Number(targetInspectionId) : null;
-
-                if (!sourceId) {
-                    toast.error(
-                        targetType === "platform"
-                            ? "Select a platform in the left pane first"
-                            : `Select the ${targetType} to attach this file to`
-                    );
-                    return;
+                if (targetType === "platform") {
+                    sourceId = selectedPlatformId;
+                    if (!sourceId) {
+                        toast.error("Please select a platform in the left pane first");
+                        return;
+                    }
+                } else if (targetType === "component") {
+                    sourceId = targetComponentId ? Number(targetComponentId) : null;
+                    if (!sourceId) {
+                        toast.error("Please select a component QID to attach this file to");
+                        return;
+                    }
+                } else if (targetType === "inspection") {
+                    sourceId = targetInspectionId ? Number(targetInspectionId) : null;
+                    if (!sourceId) {
+                        toast.error("You must select an existing inspection record. Creating a new inspection record is not allowed.");
+                        return;
+                    }
                 }
 
                 const form = new FormData();
@@ -217,6 +257,64 @@ export function AttachmentSlideOver() {
         }
     };
 
+    const handleDownload = async () => {
+        if (!activeAttachment) return;
+        try {
+            const publicUrl = getAttachmentUrl(activeAttachment);
+            const { fileUrl: rawFileUrl, fileName: processedName } = processAttachmentUrl(activeAttachment);
+            const url = publicUrl || rawFileUrl;
+
+            const saveName = actualFileName || (activeAttachment as any).name || processedName || "attachment";
+            if (!url) {
+                toast.error("Download URL not found for this attachment.");
+                return;
+            }
+
+            toast.info(`Preparing download for "${saveName}"...`);
+
+            const downloadUrl = url.includes("/api/attachment/")
+                ? `${url}${url.includes("?") ? "&" : "?"}download=true`
+                : url;
+
+            const res = await fetch(downloadUrl);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const blob = await res.blob();
+            const blobUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement("a");
+            a.href = blobUrl;
+            a.download = saveName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(blobUrl);
+
+            toast.success(`Downloaded "${saveName}" to your local drive`);
+        } catch (err: any) {
+            console.warn("Direct blob download failed, falling back to anchor:", err);
+            const publicUrl = getAttachmentUrl(activeAttachment);
+            const { fileUrl: rawFileUrl } = processAttachmentUrl(activeAttachment);
+            const url = publicUrl || rawFileUrl;
+            const saveName = actualFileName || (activeAttachment as any).name || "attachment";
+            if (url) {
+                const downloadUrl = url.includes("/api/attachment/")
+                    ? `${url}${url.includes("?") ? "&" : "?"}download=true`
+                    : url;
+                const a = document.createElement("a");
+                a.href = downloadUrl;
+                a.download = saveName;
+                a.target = "_blank";
+                a.rel = "noopener noreferrer";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                toast.success(`Downloading "${saveName}"`);
+            } else {
+                toast.error("Failed to download attachment.");
+            }
+        }
+    };
+
     if (!activeAttachment && !isSlideOverOpen) return null;
 
     const { fileUrl, fileType } = activeAttachment
@@ -230,6 +328,50 @@ export function AttachmentSlideOver() {
         ((activeAttachment as any)?.path || "").startsWith("\\\\") ||
         ((activeAttachment as any)?.path || "").includes("\\")
     );
+
+    const actualFileName = (() => {
+        if (!activeAttachment) return "";
+        const a = activeAttachment as any;
+        const m = (a.meta || {}) as any;
+        if (m.original_file_name) return m.original_file_name;
+        if (a.file_name) return a.file_name;
+        if (m.file_name) return m.file_name;
+        const rawPath = a.path || "";
+        if (rawPath) {
+            const cleanPath = rawPath.split("?")[0].split("#")[0];
+            const seg = cleanPath.split(/[/\\]/).pop();
+            if (seg && seg.includes(".")) return seg;
+        }
+        if (a.name && a.name.includes(".")) return a.name;
+        return a.name || "File";
+    })();
+
+    const detailedFileType = (() => {
+        if (!activeAttachment) return { label: "Unknown", ext: "", mime: "" };
+        const a = activeAttachment as any;
+        const m = (a.meta || {}) as any;
+        const fn = actualFileName || a.name || "";
+        const extMatch = fn.match(/\.([a-zA-Z0-9]+)$/);
+        const ext = extMatch ? extMatch[1].toUpperCase() : "";
+        const mime = m.mime || m.file_type || m.type || (fileType?.includes("/") ? fileType : "");
+
+        let label = ext ? `${ext} File` : "File";
+        if (category === "PHOTO" || String(mime).toLowerCase().includes("image") || ["PNG", "JPG", "JPEG", "WEBP", "GIF", "SVG", "BMP", "TIFF"].includes(ext)) {
+            label = ext ? `${ext} Image` : "Image";
+        } else if (category === "VIDEO" || String(mime).toLowerCase().includes("video") || ["MP4", "MOV", "AVI", "MKV", "WEBM"].includes(ext)) {
+            label = ext ? `${ext} Video` : "Video";
+        } else if (ext === "PDF" || String(mime).toLowerCase().includes("pdf")) {
+            label = "PDF Document";
+        } else if (["DOC", "DOCX", "XLS", "XLSX", "PPT", "PPTX", "CSV"].includes(ext)) {
+            label = `${ext} Document`;
+        }
+
+        return {
+            label,
+            ext: ext ? `.${ext.toLowerCase()}` : "",
+            mime: typeof mime === "string" ? mime : ""
+        };
+    })();
 
     return (
         <Sheet open={isSlideOverOpen} onOpenChange={(open: boolean) => !open && closeSlideOver()}>
@@ -277,28 +419,94 @@ export function AttachmentSlideOver() {
                             </div>
 
                             {/* File Info Grid */}
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-                                    <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600">
-                                        <HardDrive className="h-4 w-4" />
+                            <div className="grid grid-cols-2 gap-3">
+                                {/* Actual File Name */}
+                                <div className="col-span-2 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center justify-between gap-3 shadow-2xs">
+                                    <div className="flex items-center gap-3 min-w-0 flex-1">
+                                        <div className="h-8 w-8 rounded-full bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center text-blue-600 shrink-0">
+                                            <FileText className="h-4 w-4" />
+                                        </div>
+                                        <div className="min-w-0 flex-1">
+                                            <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Actual File Name</p>
+                                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate font-mono select-all" title={actualFileName}>
+                                                {actualFileName}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-400 uppercase font-bold">File Size</p>
-                                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">{formatBytes(meta.file_size || meta.size || 0)}</p>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-7 w-7 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 shrink-0"
+                                        onClick={() => {
+                                            navigator.clipboard.writeText(actualFileName);
+                                            toast.success("File name copied to clipboard");
+                                        }}
+                                        title="Copy actual file name"
+                                    >
+                                        <Copy className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+
+                                {/* File Type */}
+                                <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center gap-3 shadow-2xs">
+                                    <div className="h-8 w-8 rounded-full bg-emerald-50 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 shrink-0">
+                                        <Tag className="h-4 w-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">File Type</p>
+                                        <div className="flex items-center gap-1.5 mt-0.5">
+                                            <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate">
+                                                {detailedFileType.label}
+                                            </p>
+                                            {detailedFileType.ext && (
+                                                <span className="text-[9px] font-mono px-1 py-0.2 rounded bg-slate-100 dark:bg-slate-800 text-slate-500 font-bold">
+                                                    {detailedFileType.ext}
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
-                                <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center gap-3">
-                                    <div className="h-8 w-8 rounded-full bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600">
+
+                                {/* File Size */}
+                                <div className="p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center gap-3 shadow-2xs">
+                                    <div className="h-8 w-8 rounded-full bg-indigo-50 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 shrink-0">
+                                        <HardDrive className="h-4 w-4" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">File Size</p>
+                                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate mt-0.5">
+                                            {formatBytes(meta.file_size || meta.size || 0)}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                {/* Uploaded Date */}
+                                <div className="col-span-2 p-3 rounded-lg bg-white dark:bg-slate-900 border border-slate-100 dark:border-slate-800 flex items-center gap-3 shadow-2xs">
+                                    <div className="h-8 w-8 rounded-full bg-purple-50 dark:bg-purple-900/30 flex items-center justify-center text-purple-600 shrink-0">
                                         <Calendar className="h-4 w-4" />
                                     </div>
-                                    <div>
-                                        <p className="text-[10px] text-slate-400 uppercase font-bold">Uploaded</p>
-                                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200">
-                                            {moment(activeAttachment.created_at || enriched.cr_date).format("DD MMM YYYY")}
+                                    <div className="min-w-0">
+                                        <p className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Uploaded Date</p>
+                                        <p className="text-xs font-semibold text-slate-700 dark:text-slate-200 truncate mt-0.5">
+                                            {moment(activeAttachment.created_at || enriched.cr_date).format("DD MMM YYYY, HH:mm")}
                                         </p>
                                     </div>
                                 </div>
                             </div>
+
+                            {/* Download to Local Drive */}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={handleDownload}
+                                className="w-full bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 font-bold text-xs h-9 transition-colors gap-2 shadow-2xs"
+                                title="Download this attachment to your local drive"
+                            >
+                                <Download className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                                <span>Download File to Local Drive</span>
+                            </Button>
 
                             {isLegacy && (
                                 <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-600 dark:text-amber-400 text-xs flex flex-col gap-1.5">
@@ -359,38 +567,106 @@ export function AttachmentSlideOver() {
 
                             <div className="space-y-2">
                                 <Label className="text-xs font-bold uppercase tracking-wide text-slate-500">Attach to</Label>
-                                <Select value={targetType} onValueChange={(v) => setTargetType(v as TargetType)}>
+                                <Select
+                                    value={targetType}
+                                    onValueChange={(v) => {
+                                        setTargetType(v as TargetType);
+                                        if (v !== "inspection") setTargetInspectionId("");
+                                        if (v !== "component") setTargetComponentId("");
+                                    }}
+                                >
                                     <SelectTrigger className="bg-white dark:bg-slate-900"><SelectValue /></SelectTrigger>
                                     <SelectContent>
-                                        <SelectItem value="platform">Platform</SelectItem>
-                                        <SelectItem value="component">Component</SelectItem>
-                                        <SelectItem value="inspection">Inspection record (shows in Captured Events)</SelectItem>
+                                        <SelectItem value="platform">Platform Structure</SelectItem>
+                                        <SelectItem value="component">Component (select by QID)</SelectItem>
+                                        <SelectItem value="inspection">Inspection record (existing record only)</SelectItem>
                                     </SelectContent>
                                 </Select>
                             </div>
 
-                            {targetType === "component" && (
-                                <Select value={targetComponentId} onValueChange={setTargetComponentId}>
-                                    <SelectTrigger className="bg-white dark:bg-slate-900"><SelectValue placeholder="Select component" /></SelectTrigger>
-                                    <SelectContent className="max-h-72">
-                                        {components.map((c: any) => (
-                                            <SelectItem key={c.id} value={String(c.id)}>
-                                                {c.q_id || c.comp_id} {c.description ? `– ${c.description}` : ""}
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                            {/* Platform Structure Info */}
+                            {targetType === "platform" && (
+                                <div className="p-3 rounded-lg bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 text-xs">
+                                    <span className="font-semibold text-blue-800 dark:text-blue-300">Target Structure: </span>
+                                    <span className="font-bold text-blue-900 dark:text-blue-200">
+                                        {activePlatform?.title || (selectedPlatformId ? `Platform #${selectedPlatformId}` : "No platform selected")}
+                                    </span>
+                                    <p className="text-[11px] text-blue-700/80 dark:text-blue-400 mt-1">
+                                        This file will be attached directly to this platform structure.
+                                    </p>
+                                </div>
                             )}
 
+                            {/* Component QID selection */}
+                            {targetType === "component" && (
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center justify-between">
+                                        <span>Component QID <span className="text-red-500">*</span></span>
+                                        <span className="text-[10px] text-slate-400 font-normal">({components.length} components available)</span>
+                                    </Label>
+                                    <Select value={targetComponentId} onValueChange={setTargetComponentId}>
+                                        <SelectTrigger className="bg-white dark:bg-slate-900">
+                                            <SelectValue placeholder="Select component QID *" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-72">
+                                            {components.map((c: any) => {
+                                                const qid = c.q_id || c.code || c.comp_id || `Component #${c.id}`;
+                                                return (
+                                                    <SelectItem key={c.id} value={String(c.id)}>
+                                                        <span className="font-semibold">{qid}</span>
+                                                        {c.description && c.description.trim().toUpperCase() !== qid.trim().toUpperCase() && (
+                                                            <span className="opacity-70 ml-1.5 text-xs">({c.description})</span>
+                                                        )}
+                                                    </SelectItem>
+                                                );
+                                            })}
+                                        </SelectContent>
+                                    </Select>
+                                    {!targetComponentId && (
+                                        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+                                            Please choose a component QID from the list to attach this file.
+                                        </p>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Inspection Record selection */}
                             {targetType === "inspection" && (
-                                <Select value={targetInspectionId} onValueChange={setTargetInspectionId}>
-                                    <SelectTrigger className="bg-white dark:bg-slate-900"><SelectValue placeholder="Select inspection record" /></SelectTrigger>
-                                    <SelectContent className="max-h-72">
-                                        {inspectionOptions.map((o) => (
-                                            <SelectItem key={o.id} value={String(o.id)}>{o.label || `Record ${o.id}`}</SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                                <div className="space-y-2">
+                                    <Label className="text-xs font-bold uppercase tracking-wide text-slate-500 flex items-center justify-between">
+                                        <span>Select Existing Inspection Record <span className="text-red-500">*</span></span>
+                                        <span className="text-[10px] text-slate-400 font-normal">({inspectionOptions.length} records available)</span>
+                                    </Label>
+                                    <Select value={targetInspectionId} onValueChange={setTargetInspectionId}>
+                                        <SelectTrigger className={cn("bg-white dark:bg-slate-900", !targetInspectionId && "border-amber-400 dark:border-amber-700")}>
+                                            <SelectValue placeholder="Select existing inspection record *" />
+                                        </SelectTrigger>
+                                        <SelectContent className="max-h-72">
+                                            {inspectionOptions.map((o) => (
+                                                <SelectItem key={o.id} value={String(o.id)}>
+                                                    {o.label || `Record #${o.id}`}
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+
+                                    {/* Notice Banner: strictly require existing inspection record, disallow creation */}
+                                    <div className="rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+                                        <div className="space-y-0.5">
+                                            <p className="font-semibold text-[11px]">Inspection Record Required</p>
+                                            <p className="text-[11px] opacity-90 leading-tight">
+                                                Attachments can only be added to an existing, selected inspection record. Creating a new inspection record here is not permitted.
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {!targetInspectionId && (
+                                        <p className="text-[11px] font-medium text-red-600 dark:text-red-400">
+                                            * You must select an existing inspection record from above to proceed.
+                                        </p>
+                                    )}
+                                </div>
                             )}
                         </div>
                     )}
@@ -400,9 +676,16 @@ export function AttachmentSlideOver() {
                     {/* Form Fields */}
                     <div className="space-y-4">
                         <div className="space-y-2">
-                            <Label htmlFor="att-name" className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                                {isMedia ? "Name / Title" : "File Name"}
-                            </Label>
+                            <div className="flex items-center justify-between">
+                                <Label htmlFor="att-name" className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                                    {isMedia ? "Title / Label" : "File Name / Title"}
+                                </Label>
+                                {activeAttachment && actualFileName && actualFileName !== name && (
+                                    <span className="text-[10px] font-mono text-slate-400 truncate max-w-[240px]" title={actualFileName}>
+                                        Physical file: {actualFileName}
+                                    </span>
+                                )}
+                            </div>
                             <Input id="att-name" value={name} onChange={(e) => setName(e.target.value)} className="bg-white dark:bg-slate-900" />
                         </div>
 
@@ -467,10 +750,32 @@ export function AttachmentSlideOver() {
                 {/* Footer actions */}
                 <div className="p-6 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 mt-auto">
                     <SheetFooter className="flex-row gap-3 justify-end w-full">
-                        <Button onClick={onSave} disabled={isSaving} className="bg-blue-600 hover:bg-blue-700" title="Save Changes">
+                        <Button
+                            onClick={onSave}
+                            disabled={
+                                isSaving ||
+                                (isAddMode && !newFile) ||
+                                (isAddMode && targetType === "inspection" && !targetInspectionId) ||
+                                (isAddMode && targetType === "component" && !targetComponentId) ||
+                                (isAddMode && targetType === "platform" && !selectedPlatformId)
+                            }
+                            className="bg-blue-600 hover:bg-blue-700 font-semibold"
+                            title={activeAttachment ? "Save Changes" : "Upload Attachment"}
+                        >
                             {isSaving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
                             {activeAttachment ? "Save" : "Upload"}
                         </Button>
+                        {activeAttachment && (
+                            <Button
+                                variant="outline"
+                                size="icon"
+                                className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 border-emerald-200 dark:border-emerald-900/30 shadow-2xs"
+                                title="Download file to local drive"
+                                onClick={handleDownload}
+                            >
+                                <Download className="h-4 w-4" />
+                            </Button>
+                        )}
                         {activeAttachment && (
                             <Button
                                 variant="outline"

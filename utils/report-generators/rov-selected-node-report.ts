@@ -23,11 +23,87 @@ interface ReportConfig {
     showSignatures?: boolean;
     showPageNumbers?: boolean;
     isBlankReport?: boolean;
+    orientation?: "portrait" | "landscape";
 }
 
+export const formatCoverage = (val: any): string => {
+    if (val === null || val === undefined || val === '' || val === '-' || val === '—') return '—';
+    const str = String(val).trim();
+    if (str === '0' || str === '0%') return '0%';
+    if (/^[0-9]+(?:\.[0-9]+)?$/.test(str)) return `${str}%`;
+    if (str.endsWith('%')) return str;
+    return str;
+};
+
+export const buildROVSelectedNodeRow = (r: any, idx: number): string[] => {
+    const d   = r.inspection_data || {};
+    const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
+    
+    const elevationRaw = r.elevation ?? d.elevation ?? "";
+    const elevation = elevationRaw !== "" && elevationRaw !== null && elevationRaw !== undefined
+        ? `${elevationRaw} m`
+        : "—";
+
+    const diveNo =
+        r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
+        r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
+        r.rov_job_id || r.dive_job_id || "—";
+
+    const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
+    const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
+    const additionalCPs = additionals
+        .map((a: any) => a.reading ?? a.cp_rdg ?? "")
+        .filter((val: any) => val !== "" && val !== null && val !== undefined);
+
+    const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
+    const cpDisplay = cpList.length > 0
+        ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
+        : "—";
+
+    let rawH = d.marine_growth_hard ?? d.mgi_hard_growth ?? d.mgi_hard_coverage ?? d.hard_coverage ?? d.hard_growth ?? r.marine_growth_hard;
+    let rawS = d.marine_growth_soft ?? d.mgi_soft_growth ?? d.mgi_soft_coverage ?? d.soft_coverage ?? d.soft_growth ?? r.marine_growth_soft;
+
+    if ((rawH === undefined || rawH === null || rawS === undefined || rawS === null) && (d.marine_growth || r.marine_growth)) {
+        const mg = String(d.marine_growth || r.marine_growth).trim();
+        const hardMatch = mg.match(/(?:hard|h)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        const softMatch = mg.match(/(?:soft|s)\s*[:=]?\s*([0-9]+(?:\s*-\s*[0-9]+)?%?)/i);
+        if (hardMatch && (rawH === undefined || rawH === null)) rawH = hardMatch[1];
+        if (softMatch && (rawS === undefined || rawS === null)) rawS = softMatch[1];
+
+        if ((rawH === undefined || rawH === null) && (rawS === undefined || rawS === null) && mg.includes('/')) {
+            const parts = mg.split('/');
+            if (parts.length === 2) {
+                rawH = parts[0].trim();
+                rawS = parts[1].trim();
+            }
+        }
+    }
+
+    const hardGrowth = formatCoverage(rawH);
+    const softGrowth = formatCoverage(rawS);
+
+    const compCond = d.component_condition || r.component_condition || "—";
+    const coatCond = d.coating_condition || r.coating_condition || "—";
+
+    const findings = formatReportFindingText(r);
+
+    return [
+        String(idx + 1),
+        qid,
+        String(elevation),
+        String(diveNo),
+        cpDisplay,
+        hardGrowth,
+        softGrowth,
+        String(compCond),
+        String(coatCond),
+        findings,
+    ];
+};
+
 /**
- * ROV Selected Node Inspection Summary Report (Portrait)
- * Columns: No. | QID | Elevation | Dive No. | CP | Component Condition | Coating Condition | Findings
+ * ROV Selected Node Inspection Summary Report (Landscape)
+ * Columns: No. | QID | Elevation | Dive No. | CP | Hard Growth | Soft Growth | Component Condition | Coating Condition | Findings
  */
 export const generateROVSelectedNodeReport = async (
     records: any[],
@@ -41,7 +117,8 @@ export const generateROVSelectedNodeReport = async (
             return null;
         }
 
-        const doc = new jsPDF({ orientation: "portrait" });
+        const orientation = config.orientation || "landscape";
+        const doc = new jsPDF({ orientation });
         const pageWidth  = doc.internal.pageSize.getWidth();
         const pageHeight = doc.internal.pageSize.getHeight();
         const margin = 10;
@@ -75,7 +152,7 @@ export const generateROVSelectedNodeReport = async (
         // ── Page Header ─────────────────────────────────────────────────────────
         const drawPageHeader = (d: jsPDF, extraTitleInfo?: string) => {
             draw3SectionHeader(d, {
-                reportTitle: extraTitleInfo ? `Selected Node Report (ROV) - ${extraTitleInfo}` : "Selected Node Report (ROV)",
+                reportTitle: extraTitleInfo ? `Selected Node Inspection Report (ROV) - ${extraTitleInfo}` : "Selected Node Inspection Report (ROV)",
                 reportNo: (config?.reportNoPrefix || headerData?.sowReportNo) || "N/A",
                 structureName: headerData.platformName ? `${headerData.platformName}${headerData.jobpackName ? ` - ${headerData.jobpackName}` : ''}` : headerData.jobpackName,
                 companySettings,
@@ -108,48 +185,6 @@ export const generateROVSelectedNodeReport = async (
 
         const isPF = config.printFriendly;
 
-        const buildRow = (r: any, idx: number): string[] => {
-            const d   = r.inspection_data || {};
-            const qid = r.structure_components?.q_id || r.component?.q_id || "N/A";
-            
-            const elevationRaw = r.elevation ?? d.elevation ?? "";
-            const elevation = elevationRaw !== "" && elevationRaw !== null && elevationRaw !== undefined
-                ? `${elevationRaw} m`
-                : "—";
-
-            const diveNo =
-                r.insp_rov_jobs?.job_no  || r.insp_rov_jobs?.name  ||
-                r.insp_dive_jobs?.job_no || r.insp_dive_jobs?.name ||
-                r.rov_job_id || r.dive_job_id || "—";
-
-            const primaryCP = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? "";
-            const additionals: any[] = Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : (Array.isArray(d.cp_readings) ? d.cp_readings : []);
-            const additionalCPs = additionals
-                .map((a: any) => a.reading ?? a.cp_rdg ?? "")
-                .filter((val: any) => val !== "" && val !== null && val !== undefined);
-
-            const cpList = [primaryCP, ...additionalCPs].filter((val: any) => val !== "" && val !== null && val !== undefined);
-            const cpDisplay = cpList.length > 0
-                ? cpList.map((val: any) => String(val).toLowerCase().includes("mv") ? String(val) : `${val} mV`).join("\n")
-                : "—";
-
-            const compCond = d.component_condition || r.component_condition || "—";
-            const coatCond = d.coating_condition || r.coating_condition || "—";
-
-            const findings = formatReportFindingText(r);
-
-            return [
-                String(idx + 1),
-                qid,
-                String(elevation),
-                String(diveNo),
-                cpDisplay,
-                String(compCond),
-                String(coatCond),
-                findings,
-            ];
-        };
-
         // ── Draw first page ─────────────────────────────────────────────────────
         drawPageHeader(doc);
         const startY = drawContextRow(doc, margin + HEADER_H + 2);
@@ -164,33 +199,45 @@ export const generateROVSelectedNodeReport = async (
                 { content: "Elevation\n(m)",  styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Dive No.",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "CP\n(mV)",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Hard Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Soft Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Component\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Coating\nCondition", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Findings",        styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} }
             ]],
-            body: sorted.length > 0 ? sorted.map(buildRow) : [["-", "-", "-", "-", "-", "-", "-", "No selected node observations recorded for this scope."]],
+            body: sorted.length > 0 ? sorted.map(buildROVSelectedNodeRow) : [["-", "-", "-", "-", "-", "-", "-", "-", "-", "No selected node observations recorded for this scope."]],
             theme: "grid",
-            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+            headStyles: {
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 8,
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
-            styles: {fontSize: 7,
+                cellPadding: { top: 2.5, bottom: 2.5, left: 1.5, right: 1.5 },
+                minCellHeight: 10,
+                lineWidth: 0.1,
+                lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
+            },
+            styles: {
+                fontSize: 7.5,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak", lineWidth: 0.1,},
+                overflow: "linebreak",
+                lineWidth: 0.1,
+            },
             columnStyles: {
-                0: { cellWidth: 8,   halign: "center" },
-                1: { cellWidth: 18 },
-                2: { cellWidth: 14,   halign: "center" },
-                3: { cellWidth: 14,   halign: "center" },
-                4: { cellWidth: 14,   halign: "center" },
-                5: { cellWidth: 18 },
-                6: { cellWidth: 18 },
-                7: { cellWidth: "auto" },
+                0: { cellWidth: 10, halign: "center" },
+                1: { cellWidth: 24, halign: "center" },
+                2: { cellWidth: 22, halign: "center" },
+                3: { cellWidth: 20, halign: "center" },
+                4: { cellWidth: 20, halign: "center" },
+                5: { cellWidth: 25, halign: "center" },
+                6: { cellWidth: 25, halign: "center" },
+                7: { cellWidth: 30, halign: "center" },
+                8: { cellWidth: 30, halign: "center" },
+                9: { cellWidth: "auto" },
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;
@@ -254,9 +301,9 @@ export const generateROVSelectedNodeReport = async (
         applyWatermarkAndSignaturesGlobal(doc, config);
         if (config.returnBlob) return doc.output("blob");
         applyWatermarkAndSignaturesGlobal(doc, config);
-        doc.save(`ROV_Selected_Node_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
+        doc.save(`ROV_Selected_Node_Inspection_Report_${(config?.reportNoPrefix || headerData?.sowReportNo) || "NOSO"}_${format(new Date(), "yyyyMMdd")}.pdf`);
     } catch (err) {
-        console.error("[ROV Selected Node Report] Error:", err);
+        console.error("[ROV Selected Node Inspection Report] Error:", err);
         throw err;
     }
 };

@@ -51,9 +51,9 @@ const TOC_SECTIONS = [
       { id: "rov-rgvi-report", name: "General Visual Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-gvins-report", name: "General Visual Inspection Report (Diving)", mode: "Diving" }
   ]},
-  { id: 5, name: "Cathodic Protection Potential Survey", templates: [
-      { id: "rov-cp-report", name: "CP Survey Report (ROV)", mode: "ROV" },
-      { id: "diving-cpsurv-report", name: "CP Survey Report (Diving)", mode: "Diving" },
+  { id: 5, name: "Cathodic Protection Survey", templates: [
+      { id: "rov-cp-report", name: "Cathodic Protection Survey Report (ROV)", mode: "ROV" },
+      { id: "diving-cpsurv-report", name: "Cathodic Protection Survey Report (Diving)", mode: "Diving" },
       { id: "diving-cpclb-report", name: "CP Calibration Report (Diving)", mode: "Diving" }
   ]},
   { id: 6, name: "Flooded Member Detection Survey", templates: [
@@ -117,13 +117,13 @@ const TOC_SECTIONS = [
       { id: "rov-rseab-crater-detail-report", name: "Seabed Survey Crater Inspection Report (ROV)", mode: "ROV" }
   ]},
   { id: 14, name: "Specified Node Inspection", templates: [
-      { id: "rov-selected-node-report", name: "Selected Node Report (ROV)", mode: "ROV" },
+      { id: "rov-selected-node-report", name: "Selected Node Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-cvins-report", name: "Close Visual Inspection (Diving)", mode: "Diving" },
       { id: "diving-mpins-report", name: "Magnetic Particle Inspection (Diving)", mode: "Diving" },
       { id: "diving-acfmc-report", name: "ACFM Inspection (Diving)", mode: "Diving" }
   ] },
   { id: 15, name: "Additional Wall Thickness Inspection", templates: [
-      { id: "utwt-report", name: "UT Thickness Report (ROV)", mode: "ROV" },
+      { id: "utwt-report", name: "UT Wall Thickness Inspection Report (ROV)", mode: "ROV" },
       { id: "diving-utwtk-report", name: "UT Wall Thickness Inspection (Diving)", mode: "Diving" },
       { id: "diving-utclb-report", name: "UT Calibration Report (Diving)", mode: "Diving" }
   ]},

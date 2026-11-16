@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, draw3SectionHeader, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, getRecordStatusInfo, REPORT_COLORS, REPORT_FOOTER_APP_TEXT } from "./shared-logo";
 import { calculateInterpolatedMgiThreshold, getMGIProfileForJobpack } from "@/utils/mgi-profile-helper";
 
 interface CompanySettings {
@@ -269,7 +269,7 @@ export const generateDivingMGIReport = async (
                 [
                     { content: "No.", rowSpan: 2 },
                     { content: "Elev\n(m)", rowSpan: 2 },
-                    { content: "Thickness Profile (mm)", rowSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
+                    { content: "", rowSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Coverage %", colSpan: 2, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Circumference Measurement (mm)", colSpan: 5, styles: {halign: "center", lineWidth: 0.1, lineColor: colors.border} },
                     { content: "Max\nGrowth", rowSpan: 2 },
@@ -350,16 +350,52 @@ export const generateDivingMGIReport = async (
                             data.cell.styles.fillColor = [204, 251, 241]; // Light Teal background
                             data.cell.styles.textColor = [15, 118, 110];   // Dark Teal text
                             data.cell.styles.fontStyle = "bold";
-                        } else if (data.column.index === 11) { // Max Allow - Maroon
-                            data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon background
-                            data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
-                            data.cell.styles.fontStyle = "bold";
+                        } else if (data.column.index === 11) { // Max Allow
+                            if (row.maxThick > 0 && row.limit > 0 && row.maxThick > row.limit) {
+                                data.cell.styles.fillColor = [254, 242, 242]; // Light Maroon background
+                                data.cell.styles.textColor = [153, 27, 27];   // Dark Maroon text
+                                data.cell.styles.fontStyle = "bold";
+                            } else {
+                                data.cell.styles.textColor = colors.text;
+                                data.cell.styles.fontStyle = "normal";
+                            }
                         }
 
-                        // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8)
+                        // For other columns, apply anomaly/rectified colors but EXCLUDE Average (index 8), ET (9), Max Growth (10), Max Allow (11)
                         if (data.column.index !== 8 && data.column.index !== 9 && data.column.index !== 10 && data.column.index !== 11) {
                             if (row.record) {
-                                applyRecordCellStyling(data.cell, row.record, isPF);
+                                const statusInfo = getRecordStatusInfo(row.record);
+                                const findingsText = (row.findings || "").trim().toLowerCase();
+                                const isNoSignificantFindings = findingsText === "no significant findings" || 
+                                                                findingsText === "no significant finding" || 
+                                                                findingsText === "no findings" || 
+                                                                findingsText === "no defect" || 
+                                                                findingsText === "no defects" || 
+                                                                findingsText === "none" || 
+                                                                findingsText === "n/a" || 
+                                                                findingsText === "na" || 
+                                                                findingsText === "-" || 
+                                                                findingsText === "—" || 
+                                                                findingsText === "";
+
+                                const hasGenuineAnomaly = statusInfo.type === 'ANOMALY' && !isNoSignificantFindings;
+
+                                if (hasGenuineAnomaly) {
+                                    data.cell.styles.textColor = colors.anomaly;
+                                    data.cell.styles.fontStyle = "bold";
+                                } else if (statusInfo.type === 'RECTIFIED') {
+                                    data.cell.styles.textColor = colors.rectified;
+                                    data.cell.styles.fontStyle = "bold";
+                                } else if (statusInfo.type === 'FINDING' && !isNoSignificantFindings) {
+                                    data.cell.styles.textColor = REPORT_COLORS.finding;
+                                    data.cell.styles.fontStyle = "bold";
+                                } else if (statusInfo.type === 'INCOMPLETE') {
+                                    data.cell.styles.textColor = REPORT_COLORS.incomplete;
+                                    data.cell.styles.fontStyle = "bold";
+                                } else {
+                                    data.cell.styles.textColor = colors.text;
+                                    data.cell.styles.fontStyle = "normal";
+                                }
                             }
                         }
                     }
@@ -369,38 +405,60 @@ export const generateDivingMGIReport = async (
                 if (data.section === "head" && data.column.index === 2 && data.row.index === 0) {
                     const { x, y, width, height } = data.cell;
                     const xRatio = width / GRAPH_MAX_MM;
-                    doc.setFontSize(4.5);
                     doc.setFont("helvetica", "bold");
                     if (isPF) doc.setTextColor(0, 0, 0);
                     else doc.setTextColor(255, 255, 255);
 
+                    const hasEtValues = tableData.some(r => r.et > 0);
+
                     // Legend at top of graph header cell
                     const legY = y + 2.5;
-                    doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
-                    doc.line(x + 2, legY, x + 7, legY);
-                    doc.setFillColor(...colors.limit); doc.circle(x + 4.5, legY, 0.35, 'F');
-                    doc.text("Max Allow", x + 8.5, legY + 1);
+                    doc.setFontSize(4.5);
+                    if (hasEtValues) {
+                        doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
+                        doc.line(x + 2, legY, x + 7, legY);
+                        doc.setFillColor(...colors.limit); doc.circle(x + 4.5, legY, 0.35, 'F');
+                        doc.text("Max Allow", x + 8.5, legY + 0.8);
 
-                    doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
-                    doc.line(x + 26, legY, x + 31, legY);
-                    doc.setFillColor(...colors.actual); doc.circle(x + 28.5, legY, 0.35, 'F');
-                    doc.text("Max Growth", x + 32.5, legY + 1);
+                        doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
+                        doc.line(x + 25, legY, x + 30, legY);
+                        doc.setFillColor(...colors.actual); doc.circle(x + 27.5, legY, 0.35, 'F');
+                        doc.text("Max Growth", x + 31.5, legY + 0.8);
 
-                    doc.setDrawColor(...colors.etLine); doc.setLineWidth(0.5);
-                    doc.setLineDashPattern([1, 1], 0);
-                    doc.line(x + 52, legY, x + 57, legY);
-                    doc.setLineDashPattern([], 0);
-                    doc.setFillColor(...colors.etLine); doc.circle(x + 54.5, legY, 0.35, 'F');
-                    doc.text("ET (Dashed)", x + 58.5, legY + 1);
+                        doc.setDrawColor(...colors.etLine); doc.setLineWidth(0.5);
+                        doc.setLineDashPattern([1, 1], 0);
+                        doc.line(x + 49, legY, x + 54, legY);
+                        doc.setLineDashPattern([], 0);
+                        doc.setFillColor(...colors.etLine); doc.circle(x + 51.5, legY, 0.35, 'F');
+                        doc.text("ET (Dashed)", x + 55.5, legY + 0.8);
+                    } else {
+                        doc.setDrawColor(...colors.limit); doc.setLineWidth(0.4);
+                        doc.line(x + 8, legY, x + 14, legY);
+                        doc.setFillColor(...colors.limit); doc.circle(x + 11, legY, 0.35, 'F');
+                        doc.text("Max Allow", x + 16, legY + 0.8);
+
+                        doc.setDrawColor(...colors.actual); doc.setLineWidth(0.5);
+                        doc.line(x + 38, legY, x + 44, legY);
+                        doc.setFillColor(...colors.actual); doc.circle(x + 41, legY, 0.35, 'F');
+                        doc.text("Max Growth", x + 46, legY + 0.8);
+                    }
+
+                    // Middle Title: Thickness Profile (mm)
+                    doc.setFontSize(5.5);
+                    doc.setFont("helvetica", "bold");
+                    doc.text("Thickness Profile (mm)", x + (width / 2), y + 6.8, { align: 'center' });
 
                     // Ticks and scale numbers at 50mm intervals
+                    doc.setFontSize(4.5);
                     for (let g = 0; g <= GRAPH_MAX_MM; g += 50) {
                         const gx = x + (g * xRatio);
                         const isMajor = g % 100 === 0;
                         doc.setDrawColor(config?.printFriendly ? 100 : 255);
                         doc.setLineWidth(isMajor ? 0.2 : 0.1);
                         doc.line(gx, y + height - (isMajor ? 2.5 : 1.5), gx, y + height);
-                        doc.text(`${g}`, gx, y + height - (isMajor ? 3 : 2), { align: 'center' });
+                        const align = g === 0 ? 'left' : (g === GRAPH_MAX_MM ? 'right' : 'center');
+                        const textX = g === 0 ? gx + 0.5 : (g === GRAPH_MAX_MM ? gx - 0.5 : gx);
+                        doc.text(`${g}`, textX, y + height - (isMajor ? 3 : 2), { align });
                     }
                     doc.setFont("helvetica", "normal");
                 } else if (data.section === "body" && data.column.index === 2) {

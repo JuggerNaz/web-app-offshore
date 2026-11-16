@@ -95,7 +95,7 @@ export const REPORT_TEMPLATE_MAP: Record<string, ReportTemplateOption[]> = {
     { templateId: "rgvi", label: "General Visual (GVI)", code: "RGVI", mode: "ROV" },
   ],
   RSWNI: [
-    { templateId: "rswni", label: "ROV Selected Node Report", code: "RSWNI", mode: "ROV" },
+    { templateId: "rswni", label: "ROV Selected Node Inspection Report", code: "RSWNI", mode: "ROV" },
   ],
   RICMI: [
     { templateId: "ricmi", label: "ROV Inclinometer Survey", code: "RICMI", mode: "ROV" },

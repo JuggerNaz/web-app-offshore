@@ -1,7 +1,7 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
-import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, extractHardSoftGrowth, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
 
 interface CompanySettings {
     company_name?: string;
@@ -171,6 +171,7 @@ export const generateDivingItemReport = async (
                 (typeof r.comments === 'string' && r.comments.trim()) ? r.comments.trim() :
                 "";
 
+            const { hard, soft } = extractHardSoftGrowth(d, r);
             const findingsDisplay = formatReportFindingText(r, mainFinding || (r.description !== String(description) ? r.description : ""));
 
             return [
@@ -200,13 +201,16 @@ export const generateDivingItemReport = async (
                 { content: "CP\n(-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Type of Item", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Description", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Hard Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "Soft Growth\n(%)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
                 { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
             ]],
             body: sorted.map(buildRow),
             theme: "grid",
             headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
-                fontSize: 7.5,
+                fontSize: 7.2,
+                cellPadding: { top: 1.8, bottom: 1.8, left: 1, right: 1 },
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
@@ -219,7 +223,7 @@ export const generateDivingItemReport = async (
             columnStyles: {
                 0: { cellWidth: 10, halign: "center" },  // No.
                 1: { cellWidth: 20 },                     // QID
-                2: { cellWidth: 16, halign: "center" },   // Elevation
+                2: { cellWidth: 18, halign: "center" },   // Elevation
                 3: { cellWidth: 16, halign: "center" },   // Dive No.
                 4: { cellWidth: 18, halign: "center" },   // CP
                 5: { cellWidth: 22 },                     // Type of Item
