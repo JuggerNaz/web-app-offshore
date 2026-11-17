@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
     ChevronRight, 
@@ -24,7 +24,12 @@ import {
     BarChart3,
     FileUp,
     Loader2,
-    History
+    History,
+    AlertTriangle,
+    XCircle,
+    Clock,
+    Timer,
+    Ban
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -37,7 +42,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
@@ -45,6 +50,7 @@ import { formatInspectionTypeName } from "@/utils/inspection-utils";
 import { EXECUTIVE_SUMMARY_TOC, isItemMatchingSection } from "./constants";
 import { SearchableSelect } from "./SearchableSelect";
 import { interpolateAllVariables, evaluateActiveCondition } from "./template-utils";
+import { htmlToWordXml } from "@/utils/report-generators/html-to-docx-xml";
 import dynamic from "next/dynamic";
 
 const ReportSettingsDialog = dynamic(
@@ -141,6 +147,61 @@ export default function ExecutiveSummaryPage() {
         status: "",
         detail: "",
     });
+    const [isConfirmCancelOpen, setIsConfirmCancelOpen] = useState(false);
+    const exportAbortControllerRef = useRef<AbortController | null>(null);
+    const [elapsedTime, setElapsedTime] = useState(0);
+
+    // Live elapsed timer while generating
+    useEffect(() => {
+        let interval: NodeJS.Timeout | null = null;
+        if (isGenerating && exportProgress.isOpen) {
+            setElapsedTime(0);
+            interval = setInterval(() => {
+                setElapsedTime(prev => prev + 1);
+            }, 1000);
+        } else {
+            setElapsedTime(0);
+        }
+        return () => {
+            if (interval) clearInterval(interval);
+        };
+    }, [isGenerating, exportProgress.isOpen]);
+
+    const formattedElapsedTime = useMemo(() => {
+        const mins = Math.floor(elapsedTime / 60);
+        const secs = elapsedTime % 60;
+        return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }, [elapsedTime]);
+
+    const formattedEstimatedRemaining = useMemo(() => {
+        if (exportProgress.percent <= 5 || elapsedTime < 3) {
+            return "Estimating...";
+        }
+        if (exportProgress.percent >= 98) {
+            return "Finalizing file...";
+        }
+        const totalEstimatedSeconds = (elapsedTime / (exportProgress.percent / 100));
+        const remainingSeconds = Math.max(1, Math.round(totalEstimatedSeconds - elapsedTime));
+        const mins = Math.floor(remainingSeconds / 60);
+        const secs = remainingSeconds % 60;
+        if (mins > 0) {
+            return `~${mins}m ${secs}s`;
+        }
+        return `~${secs}s`;
+    }, [elapsedTime, exportProgress.percent]);
+
+    const handleConfirmCancel = () => {
+        setIsConfirmCancelOpen(false);
+        if (exportAbortControllerRef.current) {
+            try {
+                exportAbortControllerRef.current.abort();
+            } catch (_) {}
+            exportAbortControllerRef.current = null;
+        }
+        setIsGenerating(false);
+        setExportProgress(prev => ({ ...prev, isOpen: false }));
+        toast.info("Report generation stopped immediately.");
+    };
 
     // Fetch context data
     const { data: allJobpacksRes } = useSWR("/api/jobpack?limit=1000", fetcher, { revalidateOnFocus: false, dedupingInterval: 60000 });
@@ -620,6 +681,10 @@ export default function ExecutiveSummaryPage() {
         }
 
         setIsGenerating(true);
+        const abortController = new AbortController();
+        exportAbortControllerRef.current = abortController;
+        const signal = abortController.signal;
+
         setExportProgress({
             isOpen: true,
             percent: 3,
@@ -635,6 +700,7 @@ export default function ExecutiveSummaryPage() {
         let reportData: Record<string, any> = {};
 
         try {
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
             // Step 1: Preload template early to inspect required tags and eliminate duplicate download
             setExportProgress(prev => ({
                 ...prev,
@@ -649,7 +715,7 @@ export default function ExecutiveSummaryPage() {
             try {
                 const tPath = template.storage_path;
                 const tUrl = tPath.startsWith("data:") ? tPath : `${tPath}${tPath.includes("?") ? "&" : "?"}_t=${Date.now()}`;
-                const tRes = await fetch(tUrl, { cache: "no-store" });
+                const tRes = await fetch(tUrl, { signal, cache: "no-store" });
                 if (tRes.ok) {
                     preloadedTemplateBuffer = await tRes.arrayBuffer();
 
@@ -788,7 +854,8 @@ export default function ExecutiveSummaryPage() {
             }));
 
             // Fetch Aliases
-            const aliasesRes = await fetch(`/api/report-aliases?_t=${Date.now()}`, { cache: "no-store" });
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+            const aliasesRes = await fetch(`/api/report-aliases?_t=${Date.now()}`, { signal, cache: "no-store" });
             let aliases: any[] = [];
             if (aliasesRes.ok) {
                 const aliasesData = await aliasesRes.json();
@@ -796,7 +863,8 @@ export default function ExecutiveSummaryPage() {
             }
 
             // Fetch Contractors
-            const contractorsRes = await fetch(`/api/jobpack/utils/contractors?_t=${Date.now()}`, { cache: "no-store" });
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
+            const contractorsRes = await fetch(`/api/jobpack/utils/contractors?_t=${Date.now()}`, { signal, cache: "no-store" });
             let contractors: any[] = [];
             if (contractorsRes.ok) {
                 const contrData = await contractorsRes.json();
@@ -828,9 +896,10 @@ export default function ExecutiveSummaryPage() {
             }));
 
             // Fetch Detailed Records
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
             const recordsRes = await fetch(
                 `/api/inspection-records?jobpack_id=${selections.jobpackId}&structure_id=${cleanStructureId || selections.structureId}&sow_report_no=${encodeURIComponent(selections.sowReportNo || "")}&_t=${Date.now()}`,
-                { cache: "no-store" }
+                { signal, cache: "no-store" }
             );
             if (!recordsRes.ok) {
                 const errText = await recordsRes.text();
@@ -839,6 +908,7 @@ export default function ExecutiveSummaryPage() {
             const recordsData = await recordsRes.json();
             allRecords = Array.isArray(recordsData?.data) ? recordsData.data : [];
 
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
             setExportProgress(prev => ({
                 ...prev,
                 percent: 26,
@@ -862,7 +932,8 @@ export default function ExecutiveSummaryPage() {
                         status: info.status || prev.status,
                         detail: info.detail || prev.detail
                     }));
-                }
+                },
+                signal
             );
 
             setExportProgress(prev => ({
@@ -2436,12 +2507,23 @@ export default function ExecutiveSummaryPage() {
                 const raw = sec.content || "";
                 const interpolated = interpolateAllVariables(raw, editorStatsContext, sec.id, sec.title);
                 const docxText = htmlToCleanDocxText(interpolated);
+                const docxXml = htmlToWordXml(interpolated);
                 return {
                     ...sec,
-                    content: docxText,
-                    raw_content: raw,
-                    html_content: interpolated,
+                    content: docxXml,
+                    CONTENT: docxXml,
+                    xml_content: docxXml,
+                    XML_CONTENT: docxXml,
+                    raw_content: docxXml,
+                    RAW_CONTENT: docxXml,
+                    html_content: docxXml,
+                    HTML_CONTENT: docxXml,
+                    section_content: docxXml,
+                    SECTION_CONTENT: docxXml,
                     text_content: docxText,
+                    TEXT_CONTENT: docxText,
+                    plain_content: docxText,
+                    PLAIN_CONTENT: docxText,
                 };
             });
 
@@ -3758,6 +3840,17 @@ export default function ExecutiveSummaryPage() {
                 }
             });
 
+            // Bind section variables for direct template access outside loop
+            finalEnrichedSections.forEach((sec, idx) => {
+                const uId = sec.id.toUpperCase();
+                reportData[`SECTION_${uId}_CONTENT`] = sec.content;
+                reportData[`SECTION_${uId}_XML`] = sec.content;
+                reportData[`SECTION_${uId}`] = sec.content;
+                reportData[`SECTION_${idx + 1}_CONTENT`] = sec.content;
+                reportData[`SECTION_${idx + 1}_XML`] = sec.content;
+                reportData[`SECTION_${idx + 1}`] = sec.content;
+            });
+
             setExportProgress(prev => ({
                 ...prev,
                 percent: 79,
@@ -3766,6 +3859,7 @@ export default function ExecutiveSummaryPage() {
             }));
 
 
+            if (signal.aborted) throw new DOMException("Aborted", "AbortError");
             await generateTemplateReport({
                 templateUrl: template.storage_path,
                 preloadedTemplate: preloadedTemplateBuffer || undefined,
@@ -3773,6 +3867,7 @@ export default function ExecutiveSummaryPage() {
                 fileName: `${str?.str_name || "Structure"}_Executive_Summary_${reportType}.docx`,
                 logoUrl: companySettings?.data?.logo_url,
                 contractorLogoUrl: activeContractor?.logo_url,
+                signal,
                 onProgress: (percent, statusText) => {
                     let detail = "Preparing final Word document";
                     if (percent >= 80 && percent < 93) {
@@ -3803,11 +3898,18 @@ export default function ExecutiveSummaryPage() {
 
             toast.success("Report generated successfully");
         } catch (error: any) {
-            console.error("Export error:", error);
-            setExportProgress(prev => ({ ...prev, isOpen: false }));
-            toast.error(error.message || "Error generating report");
+            if (error?.name === "AbortError" || signal.aborted || String(error?.message || "").includes("AbortError") || String(error?.message || "").includes("cancelled")) {
+                console.log("[ExecutiveSummary] Generation stopped immediately by user.");
+                setExportProgress(prev => ({ ...prev, isOpen: false }));
+                toast.info("Report generation stopped immediately.");
+            } else {
+                console.error("Export error:", error);
+                setExportProgress(prev => ({ ...prev, isOpen: false }));
+                toast.error(error.message || "Error generating report");
+            }
         } finally {
             setIsGenerating(false);
+            exportAbortControllerRef.current = null;
             if (reportData && typeof reportData === "object") {
                 for (const k of Object.keys(reportData)) {
                     delete reportData[k];
@@ -4558,8 +4660,12 @@ export default function ExecutiveSummaryPage() {
             <Dialog 
                 open={exportProgress.isOpen} 
                 onOpenChange={(open) => {
-                    if (!open && !isGenerating) {
-                        setExportProgress(prev => ({ ...prev, isOpen: false }));
+                    if (!open) {
+                        if (isGenerating) {
+                            setIsConfirmCancelOpen(true);
+                        } else {
+                            setExportProgress(prev => ({ ...prev, isOpen: false }));
+                        }
                     }
                 }}
             >
@@ -4603,13 +4709,89 @@ export default function ExecutiveSummaryPage() {
                             )}
                         </div>
 
+                        {/* Timing and Live ETA Indicators */}
+                        <div className="grid grid-cols-2 gap-2 p-2.5 rounded-lg bg-muted/40 border border-border/50 text-xs">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Clock className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                                <span>Elapsed: <strong className="text-foreground font-mono">{formattedElapsedTime}</strong></span>
+                            </div>
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Timer className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                                <span>Est. Remaining: <strong className="text-foreground font-mono">{formattedEstimatedRemaining}</strong></span>
+                            </div>
+                        </div>
+
                         <div className="rounded-lg bg-muted/40 p-3 border border-border/50 text-[11px] text-muted-foreground flex items-start gap-2">
                             <Info className="h-3.5 w-3.5 text-primary mt-0.5 shrink-0" />
-                            <span>
-                                Please remain on this tab while your report and inspection graphics are compiled. Download will initiate automatically upon completion.
-                            </span>
+                            <div className="space-y-1">
+                                <span>
+                                    Please remain on this tab while your report and inspection graphics are compiled. Download will initiate automatically upon completion.
+                                </span>
+                                <p className="text-[10px] text-muted-foreground/80">
+                                    Need to correct anything? Click <strong>Cancel Generation</strong> to stop immediately.
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center justify-between pt-2 border-t border-border/50">
+                            <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
+                                <span className="inline-block h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                <span>Active generation running</span>
+                            </div>
+                            <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => setIsConfirmCancelOpen(true)}
+                                className="h-8 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 border-destructive/30 hover:border-destructive/60"
+                            >
+                                <Ban className="h-3.5 w-3.5 mr-1.5" /> Cancel Generation
+                            </Button>
                         </div>
                     </div>
+                </DialogContent>
+            </Dialog>
+
+            {/* Cancel Confirmation Alert Modal */}
+            <Dialog open={isConfirmCancelOpen} onOpenChange={setIsConfirmCancelOpen}>
+                <DialogContent className="sm:max-w-md border-destructive/30 bg-background/95 backdrop-blur-md shadow-2xl p-6">
+                    <DialogHeader className="space-y-2">
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-destructive/10 text-destructive">
+                                <AlertTriangle className="h-5 w-5" />
+                            </div>
+                            <div className="text-left">
+                                <DialogTitle className="text-base font-semibold leading-none text-foreground">
+                                    Cancel Report Generation?
+                                </DialogTitle>
+                                <DialogDescription className="text-xs text-muted-foreground mt-1">
+                                    Are you sure you want to stop generating this report?
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+
+                    <div className="py-2 text-xs text-muted-foreground leading-relaxed">
+                        If you cancel now, all current progress ({Math.round(exportProgress.percent)}%) will be discarded. All background processing, database queries, and graphic conversions will terminate immediately so you can make your corrections.
+                    </div>
+
+                    <DialogFooter className="flex items-center justify-end gap-2 sm:gap-2 pt-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setIsConfirmCancelOpen(false)}
+                            className="text-xs h-8"
+                        >
+                            Continue Generating
+                        </Button>
+                        <Button
+                            variant="destructive"
+                            size="sm"
+                            onClick={handleConfirmCancel}
+                            className="text-xs h-8 bg-destructive hover:bg-destructive/90 text-white font-medium"
+                        >
+                            Yes, Cancel Immediately
+                        </Button>
+                    </DialogFooter>
                 </DialogContent>
             </Dialog>
         </div>

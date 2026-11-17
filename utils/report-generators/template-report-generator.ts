@@ -16,6 +16,7 @@ interface ReportOptions {
     logoUrl?: string;
     contractorLogoUrl?: string;
     onProgress?: (percent: number, statusText: string) => void;
+    signal?: AbortSignal;
 }
 
 /**
@@ -535,16 +536,95 @@ function resolveDynamicTags(finalData: Record<string, any>, zip: PizZip) {
 }
 
 /**
+ * Enables raw XML substitution ({@tag}) for section content or any variable
+ * that supplies valid WordprocessingML (<w:p> / <w:tbl>).
+ * This allows rich text tables and formatting to render as native Word tables with borders.
+ */
+export function resolveRawXmlTags(finalData: Record<string, any>, zip: PizZip) {
+    if (!finalData || !zip) return;
+
+    // 1. Identify which tags provide raw WordprocessingML
+    const rawXmlTagNames = new Set<string>();
+
+    const checkAndRegister = (tag: string, val: any) => {
+        if (typeof val === "string" && (val.includes("<w:p") || val.includes("<w:tbl"))) {
+            rawXmlTagNames.add(tag);
+            rawXmlTagNames.add(tag.toUpperCase());
+            rawXmlTagNames.add(tag.toLowerCase());
+        }
+    };
+
+    // Check top-level keys
+    for (const [key, val] of Object.entries(finalData)) {
+        checkAndRegister(key, val);
+    }
+
+    // Check SECTIONS / sections array items
+    const sectionsArr = Array.isArray(finalData.SECTIONS) 
+        ? finalData.SECTIONS 
+        : (Array.isArray(finalData.sections) ? finalData.sections : []);
+
+    if (sectionsArr.length > 0) {
+        const hasXmlInSec = sectionsArr.some((s: any) => 
+            (typeof s.content === "string" && (s.content.includes("<w:p") || s.content.includes("<w:tbl"))) ||
+            (typeof s.xml_content === "string" && (s.xml_content.includes("<w:p") || s.xml_content.includes("<w:tbl")))
+        );
+
+        if (hasXmlInSec) {
+            [
+                "content", "CONTENT",
+                "xml_content", "XML_CONTENT",
+                "html_content", "HTML_CONTENT",
+                "raw_content", "RAW_CONTENT",
+                "section_content", "SECTION_CONTENT",
+                "sec_content", "SEC_CONTENT"
+            ].forEach(t => rawXmlTagNames.add(t));
+        }
+    }
+
+    if (rawXmlTagNames.size === 0) return;
+
+    // 2. Scan zip files and convert matched {TAG} to {@TAG}
+    const files = zip.files;
+    for (const [relativePath, file] of Object.entries(files)) {
+        if (!file.dir && relativePath.endsWith(".xml")) {
+            let text = file.asText();
+            let changed = false;
+
+            // Inside <w:t>...</w:t>, convert {TAG} to {@TAG}
+            text = text.replace(/(<w:t\b[^>]*>)([\s\S]*?)(<\/w:t>)/g, (_match, openTag, textContent, closeTag) => {
+                let content = textContent;
+                content = content.replace(/\{([A-Za-z0-9_]+)\}/g, (fullMatch, tagName) => {
+                    if (rawXmlTagNames.has(tagName)) {
+                        changed = true;
+                        return `{@${tagName}}`;
+                    }
+                    return fullMatch;
+                });
+                return `${openTag}${content}${closeTag}`;
+            });
+
+            if (changed) {
+                zip.file(relativePath, text);
+            }
+        }
+    }
+}
+
+/**
  * Generates a DOCX report from a template.
  * - Text tags: {TAG_NAME}
  * - Image tags: {%TAG_NAME}
  * - Loop tags: {#LOOP}...{/LOOP}
  */
-export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, data, fileName, logoUrl, contractorLogoUrl, onProgress }: ReportOptions) => {
+export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, data, fileName, logoUrl, contractorLogoUrl, onProgress, signal }: ReportOptions) => {
     const imageCache: Record<string, Uint8Array> = {};
     const finalData: Record<string, any> = {};
 
     try {
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
         let content: ArrayBuffer;
         if (preloadedTemplate) {
             content = preloadedTemplate;
@@ -552,9 +632,13 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             onProgress?.(80, "Fetching report template...");
             console.log(`[ReportGen] Fetching template: ${templateUrl}`);
             const tUrl = templateUrl.includes("?") ? `${templateUrl}&_t=${Date.now()}` : `${templateUrl}?_t=${Date.now()}`;
-            const response = await fetch(tUrl, { cache: "no-store" });
+            const response = await fetch(tUrl, { signal, cache: "no-store" });
             if (!response.ok) throw new Error(`Template fetch failed: ${response.statusText}`);
             content = await response.arrayBuffer();
+        }
+
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
         }
 
         // ── Pre-fetch Logos ───────────────────────────────────────
@@ -564,13 +648,14 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             try {
                 onProgress?.(84, "Loading company logo...");
                 console.log(`[ReportGen] Fetching logo: ${resolvedLogoUrl}`);
-                const lRes = await fetch(resolvedLogoUrl);
+                const lRes = await fetch(resolvedLogoUrl, { signal });
                 if (lRes.ok) {
                     const buf = await lRes.arrayBuffer();
                     logoBytes = toUint8Array(buf);
                     console.log(`[ReportGen] Logo OK: ${logoBytes.byteLength} bytes`);
                 }
-            } catch (e) {
+            } catch (e: any) {
+                if (signal?.aborted || e?.name === "AbortError") throw e;
                 console.warn("[ReportGen] Logo fetch error:", e);
             }
         }
@@ -581,13 +666,14 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             try {
                 onProgress?.(80, "Pre-loading contractor logo...");
                 console.log(`[ReportGen] Fetching contractor logo: ${resolvedContractorLogoUrl}`);
-                const clRes = await fetch(resolvedContractorLogoUrl);
+                const clRes = await fetch(resolvedContractorLogoUrl, { signal });
                 if (clRes.ok) {
                     const buf = await clRes.arrayBuffer();
                     contractorLogoBytes = toUint8Array(buf);
                     console.log(`[ReportGen] Contractor logo OK: ${contractorLogoBytes.byteLength} bytes`);
                 }
-            } catch (e) {
+            } catch (e: any) {
+                if (signal?.aborted || e?.name === "AbortError") throw e;
                 console.warn("[ReportGen] Contractor logo fetch error:", e);
             }
         }
@@ -595,6 +681,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         // ── Image cache (tagValue → Uint8Array) ─────────────────
         let totalImagesToProcess = 0;
         for (const [key, value] of Object.entries(data)) {
+            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
             const upperKey = key.toUpperCase();
             if (["CLIENT_LOGO", "COMPANY_LOGO", "LOGO", "CONTRACTOR_LOGO"].includes(upperKey)) continue;
             if (typeof value === "object" && value !== null && (value as any).data && (value as any).extension) {
@@ -662,6 +749,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
             }
 
             const promise = (async (): Promise<Uint8Array | null> => {
+                if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
                 if (cleanUrl.startsWith("data:image")) {
                     const base64 = cleanUrl.split(",")[1];
                     return base64ToUint8Array(base64);
@@ -670,19 +758,31 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
                 if (cleanUrl.startsWith("/") || cleanUrl.startsWith("http")) {
                     try {
                         const rawUrl = cleanUrl.startsWith("/") ? window.location.origin + cleanUrl : cleanUrl;
-                        let imgRes = await fetch(rawUrl).catch(() => null);
+                        let imgRes = await fetch(rawUrl, { signal }).catch((err) => {
+                            if (signal?.aborted || err?.name === "AbortError") throw err;
+                            return null;
+                        });
                         if (!imgRes || !imgRes.ok) {
+                            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
                             const proxyUrl = `/api/attachment/url?path=${encodeURIComponent(cleanUrl)}`;
-                            imgRes = await fetch(proxyUrl).catch(() => null);
+                            imgRes = await fetch(proxyUrl, { signal }).catch((err) => {
+                                if (signal?.aborted || err?.name === "AbortError") throw err;
+                                return null;
+                            });
                         }
                         if (!imgRes || !imgRes.ok) {
+                            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
                             const dlUrl = `/api/attachment/download?path=${encodeURIComponent(cleanUrl)}&bucket=attachments`;
-                            imgRes = await fetch(dlUrl).catch(() => null);
+                            imgRes = await fetch(dlUrl, { signal }).catch((err) => {
+                                if (signal?.aborted || err?.name === "AbortError") throw err;
+                                return null;
+                            });
                         }
                         if (imgRes && imgRes.ok) {
                             return toUint8Array(await imgRes.arrayBuffer());
                         }
-                    } catch (e) {
+                    } catch (e: any) {
+                        if (signal?.aborted || e?.name === "AbortError") throw e;
                         console.warn("Failed to fetch image:", e);
                     }
                     return null;
@@ -710,6 +810,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
         };
 
         for (const [key, value] of Object.entries(data)) {
+            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
             const upperKey = key.toUpperCase();
             // Reuse pre-fetched logo bytes without redundant network calls
             if (["CLIENT_LOGO", "COMPANY_LOGO", "LOGO"].includes(upperKey) && logoBytes) {
@@ -820,6 +921,7 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
 
         // Dynamically resolve custom filter tags and ensure NO_ and HAS_ symmetry
         resolveDynamicTags(finalData, zip);
+        resolveRawXmlTags(finalData, zip);
 
         const imageModule = new ImageModule({
             centered: false,
@@ -875,9 +977,11 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
 
         onProgress?.(96, "Rendering document tables, loop blocks, and pagination...");
         try {
+            if (signal?.aborted) throw new DOMException("Aborted", "AbortError");
             doc.render();
             console.log("[ReportGen] Render succeeded with image module.");
         } catch (renderErr: any) {
+            if (signal?.aborted || renderErr?.name === "AbortError") throw renderErr;
             console.warn("[ReportGen] Render with images failed, attempting fallback:", renderErr.message);
 
             // Fallback: text-only, fresh zip
@@ -887,6 +991,8 @@ export const generateTemplateReport = async ({ templateUrl, preloadedTemplate, d
 
             const zip2 = new PizZip(content);
             normalizeDelimiters(zip2);
+            resolveDynamicTags(textData, zip2);
+            resolveRawXmlTags(textData, zip2);
 
             const doc2 = new Docxtemplater(zip2, {
                 paragraphLoop: true,

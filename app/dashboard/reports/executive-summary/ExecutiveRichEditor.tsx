@@ -8,7 +8,7 @@ import TextAlign from "@tiptap/extension-text-align";
 import { TextStyle, FontFamily, FontSize } from "@tiptap/extension-text-style";
 import Color from "@tiptap/extension-color";
 import Highlight from "@tiptap/extension-highlight";
-import { Table } from "@tiptap/extension-table";
+import { Table, TableView, updateColumns } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableCell from "@tiptap/extension-table-cell";
 import TableHeader from "@tiptap/extension-table-header";
@@ -97,6 +97,47 @@ import {
 } from "./template-utils";
 import { EXECUTIVE_SUMMARY_TOC, normalizeSectionId } from "./constants";
 
+// Custom TableView that reliably applies percentage width and alignment to table DOM
+class CustomTableView extends TableView {
+    constructor(node: any, cellMinWidth: number, view: any, HTMLAttributes: any = {}) {
+        super(node, cellMinWidth, view, HTMLAttributes);
+        this.applyCustomStyles(node);
+    }
+
+    update(node: any) {
+        if (node.type !== this.node.type) return false;
+        this.node = node;
+        updateColumns(node, this.colgroup, this.table, this.cellMinWidth);
+        this.applyCustomStyles(node);
+        return true;
+    }
+
+    applyCustomStyles(node: any) {
+        const width = node.attrs.tableWidth || "100%";
+        const align = node.attrs.tableAlign || "center";
+
+        this.table.setAttribute("data-width", width);
+        this.table.setAttribute("data-align", align);
+
+        this.table.style.setProperty("width", width, "important");
+        this.table.style.setProperty("max-width", "100%", "important");
+
+        if (align === "center") {
+            this.table.style.setProperty("margin", "1em auto", "important");
+            this.table.style.setProperty("margin-left", "auto", "important");
+            this.table.style.setProperty("margin-right", "auto", "important");
+        } else if (align === "right") {
+            this.table.style.setProperty("margin", "1em 0 1em auto", "important");
+            this.table.style.setProperty("margin-left", "auto", "important");
+            this.table.style.setProperty("margin-right", "0", "important");
+        } else {
+            this.table.style.setProperty("margin", "1em auto 1em 0", "important");
+            this.table.style.setProperty("margin-left", "0", "important");
+            this.table.style.setProperty("margin-right", "auto", "important");
+        }
+    }
+}
+
 // Custom Table with Width and Alignment Attributes
 const CustomTable = Table.extend({
     addAttributes() {
@@ -126,6 +167,11 @@ const CustomTable = Table.extend({
                     "data-align": attributes.tableAlign || "center",
                 }),
             },
+        };
+    },
+    addNodeView() {
+        return ({ node, view, HTMLAttributes }) => {
+            return new CustomTableView(node, this.options.cellMinWidth, view, HTMLAttributes);
         };
     },
 });
@@ -1421,7 +1467,7 @@ export function ExecutiveRichEditor({
                                 <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                                     Table Width (Resize)
                                 </div>
-                                <div className="grid grid-cols-4 gap-1 px-2 pb-1.5">
+                                <div className="grid grid-cols-5 gap-1 px-2 pb-1.5">
                                     <button
                                         type="button"
                                         onClick={() => setTableWidth("100%", "center", true)}
@@ -1445,6 +1491,14 @@ export function ExecutiveRichEditor({
                                         title="Centered Width 75%"
                                     >
                                         75%
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setTableWidth("60%", "center", true)}
+                                        className="h-6 text-[11px] rounded border border-slate-200 dark:border-slate-700 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 flex items-center justify-center font-medium"
+                                        title="Width 60%"
+                                    >
+                                        60%
                                     </button>
                                     <button
                                         type="button"
@@ -1968,15 +2022,26 @@ export function ExecutiveRichEditor({
                         font-style: italic;
                         color: #64748b;
                     }
+                    .ProseMirror .tableWrapper {
+                        width: 100%;
+                        overflow-x: auto;
+                        margin: 0.75em 0;
+                    }
                     .ProseMirror table {
                         border-collapse: collapse !important;
                         table-layout: fixed !important;
-                        width: 100% !important;
-                        margin: 0.75em 0 !important;
+                        width: 100%;
+                        max-width: 100%;
+                        margin: 0.75em auto;
                         overflow: visible;
                         box-sizing: border-box;
                         font-size: 11px;
                     }
+                    .ProseMirror table[data-width="100%"] { width: 100% !important; }
+                    .ProseMirror table[data-width="85%"] { width: 85% !important; }
+                    .ProseMirror table[data-width="75%"] { width: 75% !important; }
+                    .ProseMirror table[data-width="60%"] { width: 60% !important; }
+                    .ProseMirror table[data-width="50%"] { width: 50% !important; }
                     .ProseMirror table[data-align="center"] {
                         margin-left: auto !important;
                         margin-right: auto !important;
@@ -1989,25 +2054,63 @@ export function ExecutiveRichEditor({
                         margin-left: auto !important;
                         margin-right: 0 !important;
                     }
+
+                    /* Preview Mode Table Formatting */
+                    .executive-rich-preview .tableWrapper {
+                        width: 100%;
+                        overflow-x: auto;
+                        margin: 0.75em 0;
+                    }
+                    .executive-rich-preview table {
+                        border-collapse: collapse !important;
+                        table-layout: fixed !important;
+                        width: 100%;
+                        max-width: 100%;
+                        margin: 0.75em auto;
+                        box-sizing: border-box;
+                        font-size: 11px;
+                    }
+                    .executive-rich-preview table[data-width="100%"] { width: 100% !important; }
+                    .executive-rich-preview table[data-width="85%"] { width: 85% !important; }
+                    .executive-rich-preview table[data-width="75%"] { width: 75% !important; }
+                    .executive-rich-preview table[data-width="60%"] { width: 60% !important; }
+                    .executive-rich-preview table[data-width="50%"] { width: 50% !important; }
+                    .executive-rich-preview table[data-align="center"] {
+                        margin-left: auto !important;
+                        margin-right: auto !important;
+                    }
+                    .executive-rich-preview table[data-align="left"] {
+                        margin-left: 0 !important;
+                        margin-right: auto !important;
+                    }
+                    .executive-rich-preview table[data-align="right"] {
+                        margin-left: auto !important;
+                        margin-right: 0 !important;
+                    }
+                    .executive-rich-preview table td,
+                    .executive-rich-preview table th,
                     .ProseMirror table td,
                     .ProseMirror table th {
                         min-width: 2em;
                         border: 1px solid #cbd5e1;
-                        padding: 5px 8px !important;
+                        padding: 6px 10px !important;
                         vertical-align: middle;
                         box-sizing: border-box;
                         position: relative;
                         font-size: 11px;
                         line-height: 1.35;
                     }
+                    .executive-rich-preview table p,
                     .ProseMirror table p {
                         margin: 0 !important;
                         padding: 0 !important;
                     }
+                    .executive-rich-preview table th,
                     .ProseMirror table th {
                         font-weight: bold;
                         text-align: left;
-                        background-color: #f1f5f9;
+                        background-color: #0f172a;
+                        color: #ffffff;
                     }
                     .ProseMirror table .selectedCell:after {
                         z-index: 2;
@@ -2059,7 +2162,7 @@ export function ExecutiveRichEditor({
                             </Button>
                         </div>
                         <div
-                            className="leading-relaxed text-slate-800 dark:text-slate-200"
+                            className="executive-rich-preview leading-relaxed text-slate-800 dark:text-slate-200"
                             dangerouslySetInnerHTML={{
                                 __html: evaluateDynamicTags(editor.getHTML(), statsContext)
                             }}

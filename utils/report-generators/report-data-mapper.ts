@@ -85,12 +85,20 @@ const PORTRAIT_SECTION_XML = `<w:sectPr><w:pgSz w:w="11906" w:h="16838" w:orient
 // Helper to load pdf.js from CDN and convert a PDF Blob to an array of images (page_image)
 const convertPdfBlobToImages = async (
     pdfBlob: Blob,
-    onPageProgress?: (page: number, totalPages: number) => void
+    onPageProgress?: (page: number, totalPages: number) => void,
+    signal?: AbortSignal
 ): Promise<Array<{ page_image: any, photo: any, is_landscape: boolean, section_break: string, qid: string, elevation: string, description: string }>> => {
     let pdf: any = null;
     try {
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
         // Load pdf.js dynamically
         const pdfjsLib = await new Promise<any>((resolve, reject) => {
+            if (signal?.aborted) {
+                reject(new DOMException("Aborted", "AbortError"));
+                return;
+            }
             if ((window as any).pdfjsLib) {
                 resolve((window as any).pdfjsLib);
                 return;
@@ -107,10 +115,16 @@ const convertPdfBlobToImages = async (
         });
 
         const arrayBuffer = await pdfBlob.arrayBuffer();
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
         pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
         const pages: any[] = [];
 
         for (let i = 1; i <= pdf.numPages; i++) {
+            if (signal?.aborted) {
+                throw new DOMException("Aborted", "AbortError");
+            }
             onPageProgress?.(i, pdf.numPages);
             const page = await pdf.getPage(i);
             const viewport = page.getViewport({ scale: 1.5 });
@@ -280,8 +294,12 @@ export const mapInspectionDataForDocx = async (
     sowReportNo?: string,
     companySettings?: any,
     activeTemplateTags?: Set<string> | null,
-    onProgress?: (info: DocxMappingProgress) => void
+    onProgress?: (info: DocxMappingProgress) => void,
+    signal?: AbortSignal
 ) => {
+    if (signal?.aborted) {
+        throw new DOMException("Aborted", "AbortError");
+    }
     records = normalizeReportRecords(records, { allowPurelyIncomplete: true });
     const safeAliases = Array.isArray(aliases) ? aliases : [];
     const aliasMap = new Map(safeAliases.map(a => [a.template_id, (a.alias || "").trim()]));
@@ -763,6 +781,9 @@ export const mapInspectionDataForDocx = async (
     let totalGeneratedPages = 0;
 
     for (let taskIdx = 0; taskIdx < activeSubReportTasks.length; taskIdx++) {
+        if (signal?.aborted) {
+            throw new DOMException("Aborted", "AbortError");
+        }
         const { a, templateId, alias, targetAliases } = activeSubReportTasks[taskIdx];
         const taskPctStart = 32 + (taskIdx / Math.max(1, totalSubReports)) * 34;
         const taskPctEnd = 32 + ((taskIdx + 1) / Math.max(1, totalSubReports)) * 34;
@@ -1416,14 +1437,17 @@ export const mapInspectionDataForDocx = async (
 
         // If PDF was generated, convert its pages to images and assign to {alias}_PAGES
         if (pdfBlob) {
+            if (signal?.aborted) {
+                throw new DOMException("Aborted", "AbortError");
+            }
             const pages = await convertPdfBlobToImages(pdfBlob, (page, totalPages) => {
                 const pagePct = Math.round(taskPctStart + (page / totalPages) * (taskPctEnd - taskPctStart));
                 onProgress?.({
                     percent: pagePct,
-                    status: `Rasterizing page ${page} of ${totalPages} for ${displayAlias}...`,
-                    detail: `Sub-report pages generated: ${totalGeneratedPages}`
+                    status: `Compiling sub-report (${taskIdx + 1}/${totalSubReports}): ${displayAlias} (Page ${page}/${totalPages})...`,
+                    detail: `Sub-report pages generated: ${totalGeneratedPages + page}`
                 });
-            });
+            }, signal);
             if (pages.length > 0) {
                 totalGeneratedPages += pages.length;
                 onProgress?.({
