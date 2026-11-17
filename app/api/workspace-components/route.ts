@@ -214,6 +214,53 @@ export const GET = withTenant(async (request, { companyId }) => {
       }
     });
 
+    // 6b. Also include any recorded inspection types from insp_records that were not in u_sow_items
+    (recsRes.data || []).forEach((r: any) => {
+      const rCode = String(r.inspection_type_code || "").trim().toUpperCase();
+      if (!rCode) return;
+
+      let matchingComp: any = null;
+      if (r.component_id) {
+        matchingComp = compById.get(r.component_id);
+      }
+      if (!matchingComp && r.component_qid) {
+        matchingComp = compByQid.get(String(r.component_qid).trim().toUpperCase());
+      }
+      if (matchingComp) {
+        if (!assignedCompsMap.has(matchingComp.id)) {
+          assignedCompsMap.set(matchingComp.id, []);
+        }
+        const existingTasks = assignedCompsMap.get(matchingComp.id)!;
+        const alreadyExists = existingTasks.some(
+          (t) => String(t.code).trim().toUpperCase() === rCode
+        );
+
+        if (!alreadyExists) {
+          const cQidUpper = String(matchingComp.q_id || matchingComp.name || "").trim().toUpperCase();
+          const dynKey1 = `${matchingComp.id}_${rCode}`;
+          const dynKey3 = cQidUpper ? `${cQidUpper}_${rCode}` : "";
+
+          const realStatus =
+            trueStatusMap.get(dynKey1) ||
+            (dynKey3 ? trueStatusMap.get(dynKey3) : undefined) ||
+            "completed";
+
+          const recCount = Math.max(
+            recordCountMap.get(dynKey1) || 0,
+            dynKey3 ? (recordCountMap.get(dynKey3) || 0) : 0,
+            1
+          );
+
+          existingTasks.push({
+            code: rCode,
+            status: realStatus,
+            count: recCount,
+            recordCount: recCount,
+          });
+        }
+      }
+    });
+
     // 7. Format assigned and unassigned components
     const assigned: any[] = [];
     const unassigned: any[] = [];

@@ -2244,10 +2244,17 @@ export function WorkspaceDialogs({
                                 {selectedComp?.taskStatuses
                                     ?.filter((ts: any) => {
                                         if (['CPCLB', 'UTCLB', 'RCPCLB', 'RUTCLB'].includes(ts.code)) return false;
+                                        const rawStatus = String(ts.status || "").toLowerCase();
+                                        if (rawStatus !== "pending" && rawStatus !== "not_started" && rawStatus !== "") return true;
                                         const it = allInspectionTypes.find(type => type.code === ts.code);
                                         if (!it) return true;
-                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
-                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+                                        const hasExplicit = (it.metadata?.rov !== undefined && it.metadata?.rov !== null) || (it.metadata?.diving !== undefined && it.metadata?.diving !== null) || it.metadata?.job_type;
+                                        if (hasExplicit) {
+                                            if (inspMethod === 'DIVING' && !isDiving) return false;
+                                            if (inspMethod === 'ROV' && !isRov) return false;
+                                        }
                                         return true;
                                     })
                                     .map((ts: any) => (
@@ -2288,8 +2295,13 @@ export function WorkspaceDialogs({
                                         const matchesSearch = it.name.toLowerCase().includes(addTaskSearch.toLowerCase()) || 
                                                             it.code.toLowerCase().includes(addTaskSearch.toLowerCase());
                                         if (!matchesSearch) return false;
-                                        if (inspMethod === 'DIVING') return it.metadata?.diving === 1;
-                                        if (inspMethod === 'ROV') return it.metadata?.rov === 1;
+                                        const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
+                                        const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
+                                        const hasExplicit = (it.metadata?.rov !== undefined && it.metadata?.rov !== null) || (it.metadata?.diving !== undefined && it.metadata?.diving !== null) || it.metadata?.job_type;
+                                        if (hasExplicit) {
+                                            if (inspMethod === 'DIVING' && !isDiving) return false;
+                                            if (inspMethod === 'ROV' && !isRov) return false;
+                                        }
                                         return true;
                                     })
                                     .map((it: any) => (

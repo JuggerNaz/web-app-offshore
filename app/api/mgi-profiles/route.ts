@@ -35,20 +35,27 @@ export const GET = withTenant(async (request, { companyId }) => {
     return NextResponse.json({ data });
 });
 
-export const POST = withTenant(async (request, { companyId }) => {
+export const POST = withTenant(async (request, { companyId, user }) => {
     const supabase = createClient();
     const body = await request.json();
     const { name, thresholds, is_active, is_job_specific, description } = body;
 
-    const { data: { user } } = await supabase.auth.getUser();
-
+    // Requirement: At any time only one active profile is allowed
     if (is_active && !is_job_specific) {
-        await (supabase as any)
+        const { data: existingActive } = await (supabase as any)
             .from('mgi_profiles')
-            .update({ is_active: false })
+            .select('id, name')
             .eq('is_active', true)
             .eq('is_job_specific', false)
-            .eq('company_id', companyId);
+            .eq('company_id', companyId)
+            .eq('is_archived', false)
+            .maybeSingle();
+
+        if (existingActive) {
+            return NextResponse.json({
+                error: `Only one active profile is allowed. "${existingActive.name}" is currently active. Please inactivate it first before activating this profile.`
+            }, { status: 400 });
+        }
     }
 
     const { data, error } = await (supabase as any)

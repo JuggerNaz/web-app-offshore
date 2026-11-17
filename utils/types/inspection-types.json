@@ -997,17 +997,7 @@
                 },
                 {
                     "name": "member_cp",
-                    "label": "CP 1",
-                    "type": "number",
-                    "unitCategory": "VOLTAGE",
-                    "defaultMetric": "mV",
-                    "defaultImperial": "mV",
-                    "group": "Member",
-                    "required": true
-                },
-                {
-                    "name": "member_cp_2",
-                    "label": "CP 2",
+                    "label": "Member CP",
                     "type": "number",
                     "unitCategory": "VOLTAGE",
                     "defaultMetric": "mV",
@@ -1069,7 +1059,8 @@
                 {
                     "name": "appurtenance_clamp_type",
                     "label": "Clamp Type",
-                    "type": "text",
+                    "type": "combo",
+                    "lib_code": "CLAM_TYP",
                     "group": "Appurtenance",
                     "required": true
                 },

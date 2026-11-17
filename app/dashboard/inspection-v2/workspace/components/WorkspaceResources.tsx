@@ -826,6 +826,12 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                         <div className="flex flex-wrap gap-1 mt-1.5">
                                                                             {(c.taskStatuses || [])
                                                                                 .filter((ts: any) => {
+                                                                                    // 1. Always show tasks that have recorded data, completed, anomaly, or incomplete status
+                                                                                    const rawStatus = String(ts.status || "").toLowerCase();
+                                                                                    const isInspectedOrRecorded = (rawStatus !== "pending" && rawStatus !== "not_started" && rawStatus !== "") || Number(ts.count || ts.recordCount || 0) > 0;
+                                                                                    if (isInspectedOrRecorded) return true;
+
+                                                                                    // 2. Mode compatibility check
                                                                                     const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
                                                                                     if (!it) return true;
                                                                                     const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
@@ -834,6 +840,18 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                                     if (!hasExplicit) return true;
                                                                                     if (inspMethod === "DIVING" && isDiving) return true;
                                                                                     if (inspMethod === "ROV" && isRov) return true;
+
+                                                                                    // 3. Fallback: if this component has no other tasks matching the current mode, don't hide its only scoped task
+                                                                                    const otherMatchingTasks = (c.taskStatuses || []).filter((otherTs: any) => {
+                                                                                        if (otherTs.code === ts.code) return false;
+                                                                                        const otherIt = (allInspectionTypes || []).find((type: any) => type.code === otherTs.code || type.name === otherTs.code);
+                                                                                        if (!otherIt) return true;
+                                                                                        if (inspMethod === "DIVING") return otherIt.metadata?.diving === 1 || otherIt.metadata?.diving === "1" || otherIt.metadata?.diving === true;
+                                                                                        if (inspMethod === "ROV") return otherIt.metadata?.rov === 1 || otherIt.metadata?.rov === "1" || otherIt.metadata?.rov === true;
+                                                                                        return true;
+                                                                                    });
+                                                                                    if (otherMatchingTasks.length === 0) return true;
+
                                                                                     return false;
                                                                                 })
                                                                                 .map((ts: any, idx: number) => {

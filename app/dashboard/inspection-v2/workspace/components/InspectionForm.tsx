@@ -27,7 +27,10 @@ import {
     RefreshCw,
     RotateCcw,
     ChevronUp,
-    ChevronDown
+    ChevronDown,
+    Wrench,
+    Activity,
+    Layers
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
@@ -2356,6 +2359,250 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
                                                                     {renderCell('chord_thick_12clk')}{renderCell('chord_thick_3clk')}{renderCell('chord_thick_6clk')}{renderCell('chord_thick_9clk')}
                                                                 </div>
                                                             </div>
+                                                        </div>
+                                                    );
+                                                } else if (type === 'BSINS' || type?.includes('BOLTED SUPPORT')) {
+                                                    const validFields = otherFields.filter((f: any) => f && f.name);
+
+                                                    const renderCell = (name: string, label?: string) => {
+                                                        const p = validFields.find((f: any) => f.name === name || f.label?.toLowerCase() === name.toLowerCase());
+                                                        if (!p) return null;
+                                                        return (
+                                                            <div key={name} className="w-full min-w-0">
+                                                                {label && (
+                                                                    <label className="text-[9px] font-black uppercase text-slate-500 dark:text-slate-400 mb-0.5 block truncate" title={label}>
+                                                                        {label}
+                                                                    </label>
+                                                                )}
+                                                                {renderInspectionField({ ...p, label: label || p.label }, 'primary')}
+                                                            </div>
+                                                        );
+                                                    };
+
+                                                    const renderCheckboxTile = (name: string, label: string) => {
+                                                        const p = validFields.find((f: any) => f.name === name || f.label?.toLowerCase() === name.toLowerCase());
+                                                        if (!p) return null;
+                                                        return (
+                                                            <div key={name} className="flex items-center justify-between p-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-blue-50/40 dark:hover:bg-blue-950/20 transition-all shadow-2xs">
+                                                                <span className="text-[10px] font-bold text-slate-700 dark:text-slate-300 pr-2 truncate" title={label}>
+                                                                    {label}
+                                                                </span>
+                                                                <div className="shrink-0">
+                                                                    {renderInspectionField(p, 'primary')}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    };
+
+                                                    return (
+                                                        <div className="space-y-3 animate-in fade-in slide-in-from-bottom-[3%] duration-200">
+                                                            {/* 1. STRUCTURAL BOLTING & GAP MATRIX (Member vs Brace) */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 shadow-sm space-y-3">
+                                                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-6 h-6 rounded-md bg-blue-600 dark:bg-blue-500 text-white flex items-center justify-center shadow-xs">
+                                                                            <Wrench className="w-3.5 h-3.5" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                                                                Bolt Status & Clamp Measurements
+                                                                            </h4>
+                                                                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                                                                                Side-by-side verification: Member vs. Brace
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                    <Badge variant="outline" className="text-[8.5px] font-black uppercase px-2 h-4.5 bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800">
+                                                                        Member & Brace Matrix
+                                                                    </Badge>
+                                                                </div>
+
+                                                                {/* Sub-grid A: Bolt Counts */}
+                                                                <div className="border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 rounded-lg p-2.5 space-y-2">
+                                                                    <div className="text-[9.5px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500"></span>
+                                                                        Bolt Counts (Qty)
+                                                                    </div>
+                                                                    
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-end pb-1 border-b border-slate-200/60 dark:border-slate-800">
+                                                                        <div className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 pl-1">Target</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-slate-700 dark:text-slate-300">Bolts Present</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-amber-600 dark:text-amber-400">Bolts Loose</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-rose-600 dark:text-rose-400">Bolts Missing</div>
+                                                                    </div>
+
+                                                                    {/* Member Row */}
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-center">
+                                                                        <div className="flex items-center gap-1.5 pl-1">
+                                                                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                                                                            <span className="text-[10px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider">Member</span>
+                                                                        </div>
+                                                                        <div>{renderCell('no_bolts_pres_memb')}</div>
+                                                                        <div>{renderCell('no_bolts_loose_memb')}</div>
+                                                                        <div>{renderCell('no_bolts_miss_memb')}</div>
+                                                                    </div>
+
+                                                                    {/* Brace Row */}
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-center pt-1 border-t border-slate-200/40 dark:border-slate-800/60">
+                                                                        <div className="flex items-center gap-1.5 pl-1">
+                                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                                                            <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Brace</span>
+                                                                        </div>
+                                                                        <div>{renderCell('no_bolts_pres_brace')}</div>
+                                                                        <div>{renderCell('no_bolts_loose_brace')}</div>
+                                                                        <div>{renderCell('no_bolts_miss_brace')}</div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Sub-grid B: Gap & Flange Measurements */}
+                                                                <div className="border border-slate-100 dark:border-slate-800/80 bg-slate-50/50 dark:bg-slate-900/40 rounded-lg p-2.5 space-y-2">
+                                                                    <div className="flex items-center justify-between">
+                                                                        <div className="text-[9.5px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                                                                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>
+                                                                            Gap & Flange Measurements
+                                                                        </div>
+                                                                        <span className="text-[8.5px] font-bold text-slate-400 dark:text-slate-500 italic">Values in mm</span>
+                                                                    </div>
+
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-end pb-1 border-b border-slate-200/60 dark:border-slate-800">
+                                                                        <div className="text-[9px] font-black uppercase text-slate-400 dark:text-slate-500 pl-1">Target</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-slate-700 dark:text-slate-300">Max Gap Top</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-slate-700 dark:text-slate-300">Max Gap Bottom</div>
+                                                                        <div className="text-center text-[9.5px] font-black uppercase text-slate-700 dark:text-slate-300">Max Flange Misalign</div>
+                                                                    </div>
+
+                                                                    {/* Member Gaps */}
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-center">
+                                                                        <div className="flex items-center gap-1.5 pl-1">
+                                                                            <span className="w-2 h-2 rounded-full bg-blue-500 shrink-0"></span>
+                                                                            <span className="text-[10px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider">Member</span>
+                                                                        </div>
+                                                                        <div>{renderCell('max_gap_top_member')}</div>
+                                                                        <div>{renderCell('max_gap_bottom_member')}</div>
+                                                                        <div>{renderCell('max_flange_misalign_member')}</div>
+                                                                    </div>
+
+                                                                    {/* Brace Gaps */}
+                                                                    <div className="grid grid-cols-[80px_1fr_1fr_1fr] sm:grid-cols-[100px_1fr_1fr_1fr] gap-2 items-center pt-1 border-t border-slate-200/40 dark:border-slate-800/60">
+                                                                        <div className="flex items-center gap-1.5 pl-1">
+                                                                            <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>
+                                                                            <span className="text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">Brace</span>
+                                                                        </div>
+                                                                        <div>{renderCell('max_gap_top_brace')}</div>
+                                                                        <div>{renderCell('max_gap_bottom_brace')}</div>
+                                                                        <div>{renderCell('max_flange_misalign_brace')}</div>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 2. CATHODIC PROTECTION (CP) READINGS - Clubbed & Auto-Aligned */}
+                                                            {(() => {
+                                                                const cpList = [
+                                                                    { key: 'appurtenance_cp', label: 'Appurtenance CP' },
+                                                                    { key: 'appurtenance_clamp_cp', label: 'Appurt. Clamp CP' },
+                                                                    { key: 'stub_cp', label: 'Stub CP' },
+                                                                    { key: 'member_clamp_cp', label: 'Memb. Clamp CP' },
+                                                                    { key: 'member_cp', label: 'Member CP' },
+                                                                    { key: 'member_cp_2', label: 'Member CP 2' },
+                                                                ].filter(item => validFields.some((f: any) => f.name === item.key || f.label?.toLowerCase() === item.key.toLowerCase()));
+
+                                                                const gridClass = cpList.length === 5 
+                                                                    ? "grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3 items-end"
+                                                                    : cpList.length === 4
+                                                                    ? "grid grid-cols-2 sm:grid-cols-4 gap-3 items-end"
+                                                                    : "grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end";
+
+                                                                return (
+                                                                    <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 shadow-sm space-y-2.5">
+                                                                        <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                                                                            <div className="flex items-center gap-2">
+                                                                                <div className="w-6 h-6 rounded-md bg-amber-500 text-white flex items-center justify-center shadow-xs">
+                                                                                    <Activity className="w-3.5 h-3.5" />
+                                                                                </div>
+                                                                                <div>
+                                                                                    <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                                                                        Cathodic Potential (CP) Survey
+                                                                                    </h4>
+                                                                                    <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                                                                                        Clubbed potential readings for Appurtenance, Stub, and Member
+                                                                                    </p>
+                                                                                </div>
+                                                                            </div>
+                                                                            <Badge variant="outline" className="text-[8.5px] font-black uppercase px-2 h-4.5 bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800">
+                                                                                Unit: mV
+                                                                            </Badge>
+                                                                        </div>
+
+                                                                        <div className={gridClass}>
+                                                                            {cpList.map(item => renderCell(item.key, item.label))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
+
+                                                            {/* 3. CLAMP SPECIFICATIONS & GENERAL INTEGRITY */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 shadow-sm space-y-3">
+                                                                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <div className="w-6 h-6 rounded-md bg-emerald-600 dark:bg-emerald-500 text-white flex items-center justify-center shadow-xs">
+                                                                            <CheckCircle2 className="w-3.5 h-3.5" />
+                                                                        </div>
+                                                                        <div>
+                                                                            <h4 className="text-[11px] font-black uppercase tracking-wider text-slate-800 dark:text-slate-200">
+                                                                                Clamp Specifications & Integrity Checklist
+                                                                            </h4>
+                                                                            <p className="text-[9px] font-bold text-slate-400 dark:text-slate-500">
+                                                                                Hardware specs, coating, liners, and earthing status
+                                                                            </p>
+                                                                        </div>
+                                                                    </div>
+                                                                </div>
+
+                                                                {/* Clamp Type */}
+                                                                <div className="max-w-md">
+                                                                    {renderCell('appurtenance_clamp_type', 'Appurtenance Clamp Type (e.g. J TYPE)')}
+                                                                </div>
+
+                                                                {/* 6 Integrity Checkbox Tiles */}
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2 pt-1">
+                                                                    {renderCheckboxTile('clamp_coating_satisfactory', 'Clamp Coating Satisfactory')}
+                                                                    {renderCheckboxTile('all_bolts_double_nutted', 'All Bolts Double Nutted')}
+                                                                    {renderCheckboxTile('liner_present_member_end', 'Liner Present Member End')}
+                                                                    {renderCheckboxTile('earthing_wire_or_bolt_present', 'Earthing Wire or Bolt Present')}
+                                                                    {renderCheckboxTile('liner_present_component_end', 'Liner Present Component End')}
+                                                                    {renderCheckboxTile('washers_present_all_bolts', 'Washers Present All Bolts')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* 4. CATCH-ALL FOR ANY REMAINING / CUSTOM / LEGACY FIELDS */}
+                                                            {(() => {
+                                                                const processed = [
+                                                                    'no_bolts_pres_memb', 'no_bolts_loose_memb', 'no_bolts_miss_memb',
+                                                                    'no_bolts_pres_brace', 'no_bolts_loose_brace', 'no_bolts_miss_brace',
+                                                                    'max_gap_top_member', 'max_gap_bottom_member', 'max_flange_misalign_member',
+                                                                    'max_gap_top_brace', 'max_gap_bottom_brace', 'max_flange_misalign_brace',
+                                                                    'appurtenance_cp', 'appurtenance_clamp_cp', 'stub_cp', 'member_clamp_cp', 'member_cp', 'member_cp_2',
+                                                                    'appurtenance_clamp_type',
+                                                                    'clamp_coating_satisfactory', 'all_bolts_double_nutted',
+                                                                    'liner_present_member_end', 'earthing_wire_or_bolt_present',
+                                                                    'liner_present_component_end', 'washers_present_all_bolts'
+                                                                ];
+                                                                const leftovers = validFields.filter((f: any) => !processed.includes(f.name));
+                                                                if (leftovers.length === 0) return null;
+                                                                return (
+                                                                    <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-xl p-3 shadow-sm space-y-2">
+                                                                        <h4 className="text-[10px] font-black uppercase tracking-wider text-slate-500">Additional Fields</h4>
+                                                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                                                            {leftovers.map((p: any) => (
+                                                                                <div key={p.name} className="space-y-0.5 min-w-0">
+                                                                                    <label className="text-[9px] font-black uppercase truncate block text-slate-600 dark:text-slate-400" title={p.label || p.name}>{p.label || p.name}</label>
+                                                                                    {renderInspectionField(p, 'primary')}
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    </div>
+                                                                );
+                                                            })()}
                                                         </div>
                                                     );
                                                 } else {

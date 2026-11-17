@@ -3379,6 +3379,33 @@ function V10PreviewLayout() {
         if (!insertError) {
           toast.success(`Component ${compObj?.name || compId} added to SOW.`);
 
+          // Immediately update componentsSow and componentsNonSow in local React state
+          const newStatusObj = { code: taskCode, status: newStatus, count: 1, recordCount: 1 };
+          const updateCompWithNewTask = (comp: any) => {
+            const curTasks = comp.tasks || [];
+            const curStatuses = comp.taskStatuses || [];
+            return {
+              ...comp,
+              tasks: curTasks.includes(taskCode) ? curTasks : [...curTasks, taskCode],
+              taskStatuses: curStatuses.some((ts: any) => String(ts.code).toUpperCase() === String(taskCode).toUpperCase())
+                ? curStatuses.map((ts: any) => String(ts.code).toUpperCase() === String(taskCode).toUpperCase() ? { ...ts, status: newStatus } : ts)
+                : [...curStatuses, newStatusObj],
+            };
+          };
+
+          setComponentsSow((prev) => {
+            const exists = (prev || []).some((c: any) => c.id === compId);
+            if (exists) {
+              return (prev || []).map((c: any) => (c.id === compId ? updateCompWithNewTask(c) : c));
+            }
+            const compToPromote = (allComps || []).find((c: any) => c.id === compId) || compObj;
+            return compToPromote ? [...(prev || []), updateCompWithNewTask(compToPromote)] : prev;
+          });
+
+          setComponentsNonSow((prev) => (prev || []).filter((c: any) => c.id !== compId));
+          setAllComps((prev) => (prev || []).map((c: any) => (c.id === compId ? updateCompWithNewTask(c) : c)));
+          setSelectedComp((prev: any) => (prev && prev.id === compId ? updateCompWithNewTask(prev) : prev));
+
           // Keep totals synchronized
           const { data: sowData } = await supabase
             .from("u_sow")
@@ -8724,30 +8751,67 @@ function V10PreviewLayout() {
       setPendingAttachments([]);
       setDeletedAttachmentIds([]);
 
-      // Optimistic UI update: refresh task status on component list & scope cards
-      const taskCode = it?.code || activeSpec;
-      const uiStatus = findingType === "Incomplete" ? "incomplete" : "completed";
-      setComponentsSow((prev) =>
-        prev.map((comp) => {
-          if (comp.id === selectedComp.id) {
-            const updatedComp = {
-              ...comp,
-              taskStatuses: comp.taskStatuses.map((ts: any) => {
-                if (ts.code === taskCode) {
-                  return { ...ts, status: uiStatus };
-                }
-                return ts;
-              }),
-            };
-            // Also update selectedComp reference so scope cards re-render
-            setSelectedComp(updatedComp);
-            return updatedComp;
-          }
-          return comp;
-        })
-      );
-
       const isEditSession = Boolean(editingRecordId);
+
+      // Optimistic UI update: refresh task status on component list & scope cards
+      const taskCode = String(it?.code || activeSpec || "").trim().toUpperCase();
+      const uiStatus = findingType === "Anomaly" ? "anomaly" : (findingType === "Incomplete" ? "incomplete" : "completed");
+
+      const updateCompTaskStatuses = (comp: any) => {
+        const existingStatuses: any[] = comp.taskStatuses || [];
+        const hasTask = existingStatuses.some(
+          (ts: any) => String(ts.code || "").trim().toUpperCase() === taskCode
+        );
+
+        let updatedStatuses: any[];
+        if (hasTask) {
+          updatedStatuses = existingStatuses.map((ts: any) => {
+            if (String(ts.code || "").trim().toUpperCase() === taskCode) {
+              const prevCount = Number(ts.count || ts.recordCount || 0);
+              const nextCount = isEditSession ? (prevCount > 0 ? prevCount : 1) : prevCount + 1;
+              return { ...ts, status: uiStatus, count: nextCount, recordCount: nextCount };
+            }
+            return ts;
+          });
+        } else {
+          updatedStatuses = [
+            ...existingStatuses,
+            { code: it?.code || activeSpec, status: uiStatus, count: 1, recordCount: 1 },
+          ];
+        }
+
+        const existingTasks: string[] = comp.tasks || [];
+        const taskCodeToPush = it?.code || activeSpec;
+        const updatedTasks = existingTasks.includes(taskCodeToPush)
+          ? existingTasks
+          : [...existingTasks, taskCodeToPush];
+
+        return {
+          ...comp,
+          tasks: updatedTasks,
+          taskStatuses: updatedStatuses,
+        };
+      };
+
+      // 1. Update selectedComp immediately
+      setSelectedComp((prev: any) => (prev ? updateCompTaskStatuses(prev) : prev));
+
+      // 2. Update componentsSow: if already in SOW, update it; if in Non-SOW, promote it to SOW!
+      setComponentsSow((prev: any[]) => {
+        const compList = prev || [];
+        const existsInSow = compList.some((c: any) => c.id === selectedComp.id);
+        if (existsInSow) {
+          return compList.map((c: any) => (c.id === selectedComp.id ? updateCompTaskStatuses(c) : c));
+        } else {
+          return [...compList, updateCompTaskStatuses(selectedComp)];
+        }
+      });
+
+      // 3. Remove from componentsNonSow if it was promoted
+      setComponentsNonSow((prev: any[]) => (prev || []).filter((c: any) => c.id !== selectedComp.id));
+
+      // 4. Update allComps
+      setAllComps((prev: any[]) => (prev || []).map((c: any) => (c.id === selectedComp.id ? updateCompTaskStatuses(c) : c)));
 
       if (isEditSession) {
         toast.success("Inspection record updated successfully!");
@@ -8827,6 +8891,37 @@ function V10PreviewLayout() {
         }));
       } else {
         toast.success("Inspection record saved successfully!");
+
+        // Optimistically add the new record to currentRecords and allWorkspaceRecords
+        if (opData) {
+          const resolvedTape = jobTapes?.find((t: any) => String(t.tape_id) === String(payload.tape_id));
+          const resolvedDep = deployments?.find((d: any) => String(d.id) === String(payload.dive_job_id || payload.rov_job_id));
+          const rTapeNo = resolvedTape?.tape_no || dynamicProps?.tape_no;
+          const rChapterNo = payload.inspection_data?.chapter_no;
+          const rDiveNo = resolvedDep?.jobNo || dynamicProps?.dive_no;
+
+          const newRecObj = {
+            ...opData,
+            ...payload,
+            insp_id: opData.insp_id,
+            component_id: selectedComp.id,
+            component_qid: selectedComp.q_id || selectedComp.name,
+            inspection_type_code: taskCode,
+            status: payload.status || (findingType === "Incomplete" ? "INCOMPLETE" : "COMPLETED"),
+            has_anomaly: findingType === "Anomaly",
+            tape_no: rTapeNo,
+            chapter_no: rChapterNo,
+            dive_no: rDiveNo,
+            deployment_no: rDiveNo,
+            insp_video_tapes: resolvedTape ? { tape_no: resolvedTape.tape_no, chapter_no: rChapterNo } : undefined,
+            insp_dive_jobs: (inspMethod === "DIVING" && resolvedDep) ? { job_no: resolvedDep.jobNo, name: resolvedDep.name } : undefined,
+            insp_rov_jobs: (inspMethod !== "DIVING" && resolvedDep) ? { job_no: resolvedDep.jobNo, name: resolvedDep.name } : undefined,
+          };
+
+          setCurrentRecords((prev: any[]) => [newRecObj, ...(prev || [])]);
+          setAllWorkspaceRecords((prev: any[]) => [newRecObj, ...(prev || [])]);
+        }
+
         resetForm();
       }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { 
     Waves, 
     Plus, 
@@ -16,10 +16,13 @@ import {
     Layers,
     AlertTriangle,
     ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
     MoreVertical,
     FileText,
     Settings2,
-    Check
+    Check,
+    Loader2
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -97,6 +100,9 @@ export default function MGIProfilerPage() {
     const [profiles, setProfiles] = useState<MGIProfile[]>([]);
     const [loading, setLoading] = useState(true);
     const [isFormOpen, setIsFormOpen] = useState(false);
+    const [isSaving, setIsSaving] = useState(false);
+    const [deleteProfileTarget, setDeleteProfileTarget] = useState<MGIProfile | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
     const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
     const [viewMode, setViewMode] = useState<"PROFILES" | "JOBWISE">("PROFILES");
     
@@ -192,10 +198,107 @@ export default function MGIProfilerPage() {
         }
     }
 
-    const filteredProfiles = profiles.filter(p => 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.description?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    type ProfileSortKey = "name" | "thresholds" | "type" | "status";
+    type JobwiseSortKey = "name" | "profile" | "status";
+    type SortDirection = "asc" | "desc";
+
+    const [sortKey, setSortKey] = useState<ProfileSortKey>("name");
+    const [sortDirection, setSortDirection] = useState<SortDirection>("asc");
+
+    const [jobwiseSortKey, setJobwiseSortKey] = useState<JobwiseSortKey>("name");
+    const [jobwiseSortDirection, setJobwiseSortDirection] = useState<SortDirection>("asc");
+
+    const handleSort = (key: ProfileSortKey) => {
+        if (sortKey === key) {
+            setSortDirection(prev => prev === "asc" ? "desc" : "asc");
+        } else {
+            setSortKey(key);
+            setSortDirection("asc");
+        }
+    };
+
+    const handleJobwiseSort = (key: JobwiseSortKey) => {
+        if (jobwiseSortKey === key) {
+            setJobwiseSortDirection(prev => prev === "asc" ? "desc" : "asc");
+        } else {
+            setJobwiseSortKey(key);
+            setJobwiseSortDirection("asc");
+        }
+    };
+
+    const renderSortIcon = (key: ProfileSortKey) => {
+        if (sortKey !== key) {
+            return (
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400/50 group-hover:text-rose-600 transition-colors shrink-0 ml-1.5 opacity-60 group-hover:opacity-100" />
+            );
+        }
+        return sortDirection === "asc" ? (
+            <ArrowUp className="w-3.5 h-3.5 text-rose-600 ml-1.5 font-bold shrink-0" />
+        ) : (
+            <ArrowDown className="w-3.5 h-3.5 text-rose-600 ml-1.5 font-bold shrink-0" />
+        );
+    };
+
+    const renderJobwiseSortIcon = (key: JobwiseSortKey) => {
+        if (jobwiseSortKey !== key) {
+            return (
+                <ArrowUpDown className="w-3.5 h-3.5 text-slate-400/50 group-hover:text-rose-600 transition-colors shrink-0 ml-1.5 opacity-60 group-hover:opacity-100" />
+            );
+        }
+        return jobwiseSortDirection === "asc" ? (
+            <ArrowUp className="w-3.5 h-3.5 text-rose-600 ml-1.5 font-bold shrink-0" />
+        ) : (
+            <ArrowDown className="w-3.5 h-3.5 text-rose-600 ml-1.5 font-bold shrink-0" />
+        );
+    };
+
+    const sortedProfiles = useMemo(() => {
+        const list = profiles.filter(p => 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            p.description?.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+
+        return [...list].sort((a, b) => {
+            let comparison = 0;
+            if (sortKey === "name") {
+                comparison = (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+            } else if (sortKey === "thresholds") {
+                const aLen = a.thresholds?.length || 0;
+                const bLen = b.thresholds?.length || 0;
+                comparison = aLen - bLen;
+            } else if (sortKey === "type") {
+                const aType = a.is_job_specific ? "JOB-SPECIFIC" : "GLOBAL";
+                const bType = b.is_job_specific ? "JOB-SPECIFIC" : "GLOBAL";
+                comparison = aType.localeCompare(bType);
+            } else if (sortKey === "status") {
+                const aStatus = a.is_active ? 1 : 0;
+                const bStatus = b.is_active ? 1 : 0;
+                comparison = aStatus - bStatus;
+            }
+
+            return sortDirection === "asc" ? comparison : -comparison;
+        });
+    }, [profiles, searchQuery, sortKey, sortDirection]);
+
+    const sortedJobPacks = useMemo(() => {
+        if (!jobPacks || jobPacks.length === 0) return [];
+        return [...jobPacks].sort((a, b) => {
+            let comparison = 0;
+            if (jobwiseSortKey === "name") {
+                comparison = (a.name || "").localeCompare(b.name || "", undefined, { sensitivity: "base" });
+            } else if (jobwiseSortKey === "profile") {
+                const aProf = profiles.find(p => p.id === mgiProfileByJob[a.id])?.name || "";
+                const bProf = profiles.find(p => p.id === mgiProfileByJob[b.id])?.name || "";
+                comparison = aProf.localeCompare(bProf, undefined, { sensitivity: "base" });
+            } else if (jobwiseSortKey === "status") {
+                const aStatus = a.status || "Active";
+                const bStatus = b.status || "Active";
+                comparison = aStatus.localeCompare(bStatus);
+            }
+
+            return jobwiseSortDirection === "asc" ? comparison : -comparison;
+        });
+    }, [jobPacks, profiles, mgiProfileByJob, jobwiseSortKey, jobwiseSortDirection]);
 
     const handleCreateProfile = () => {
         setEditingProfile({
@@ -227,25 +330,86 @@ export default function MGIProfilerPage() {
     };
 
     const handleSaveProfile = async () => {
-        if (!editingProfile?.name) return toast.error("Profile name is required");
+        if (!editingProfile?.name?.trim()) return toast.error("Profile name is required");
         
+        // Requirement 2: At any time only one active profile is allowed
+        if (editingProfile.is_active && !editingProfile.is_job_specific) {
+            const existingActive = profiles.find(p => p.is_active && !p.is_job_specific && p.id !== editingProfile.id);
+            if (existingActive) {
+                toast.error(`Only one active profile is allowed. "${existingActive.name}" is currently active. Please inactivate it first before activating this profile.`);
+                return;
+            }
+        }
+
+        setIsSaving(true);
         try {
             const method = editingProfile.id ? 'PATCH' : 'POST';
             const url = editingProfile.id ? `/api/mgi-profiles/${editingProfile.id}` : '/api/mgi-profiles';
             
+            const payload = {
+                name: editingProfile.name.trim(),
+                description: editingProfile.description || "",
+                thresholds: editingProfile.thresholds || [],
+                is_active: !!editingProfile.is_active,
+                is_job_specific: !!editingProfile.is_job_specific
+            };
+
             const res = await fetch(url, {
                 method,
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(editingProfile)
+                body: JSON.stringify(payload)
             });
             
-            if (!res.ok) throw new Error("Failed to save profile");
+            const resData = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(resData?.error || "Failed to save profile");
+            }
             
-            toast.success(editingProfile.id ? "Profile updated" : "Profile created");
+            toast.success(editingProfile.id ? "Profile updated successfully" : "Profile created successfully");
             setIsFormOpen(false);
             fetchData();
-        } catch (error) {
-            toast.error("Error saving profile");
+        } catch (error: any) {
+            console.error("[MGI Profiler] Error saving profile:", error);
+            toast.error(error?.message || "Error saving profile");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    const handleDeleteClick = (profile: MGIProfile) => {
+        if (profile.is_active && !profile.is_job_specific) {
+            toast.error(`Cannot delete "${profile.name}": It is currently set as the active global profile. Please deactivate or set another active profile first.`);
+            return;
+        }
+        setDeleteProfileTarget(profile);
+    };
+
+    const handleConfirmDelete = async () => {
+        if (!deleteProfileTarget) return;
+
+        setIsDeleting(true);
+        try {
+            const res = await fetch(`/api/mgi-profiles/${deleteProfileTarget.id}`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+            });
+
+            const resData = await res.json().catch(() => null);
+
+            if (!res.ok) {
+                throw new Error(resData?.error || "Failed to delete profile");
+            }
+
+            toast.success(resData?.message || `Profile "${deleteProfileTarget.name}" deleted successfully`);
+            setDeleteProfileTarget(null);
+            fetchData();
+            refetchJobpacks();
+        } catch (error: any) {
+            console.error("[MGI Profiler] Error deleting profile:", error);
+            toast.error(error?.message || "Failed to delete profile");
+        } finally {
+            setIsDeleting(false);
         }
     };
 
@@ -348,17 +512,80 @@ export default function MGIProfilerPage() {
                                 <TableRow className="bg-slate-50/50 dark:bg-slate-900/50 border-slate-100 dark:border-slate-800">
                                     {viewMode === "PROFILES" ? (
                                         <>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pl-6">Profile Name</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Thresholds</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Type</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Status</TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pl-6">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort("name")}
+                                                    className="inline-flex items-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Profile Name</span>
+                                                    {renderSortIcon("name")}
+                                                </button>
+                                            </TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort("thresholds")}
+                                                    className="inline-flex items-center justify-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Thresholds</span>
+                                                    {renderSortIcon("thresholds")}
+                                                </button>
+                                            </TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort("type")}
+                                                    className="inline-flex items-center justify-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Type</span>
+                                                    {renderSortIcon("type")}
+                                                </button>
+                                            </TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleSort("status")}
+                                                    className="inline-flex items-center justify-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Status</span>
+                                                    {renderSortIcon("status")}
+                                                </button>
+                                            </TableHead>
                                             <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pr-6 text-right">Actions</TableHead>
                                         </>
                                     ) : (
                                         <>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pl-6">Jobpack</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">MGI Profile</TableHead>
-                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">Status</TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pl-6">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleJobwiseSort("name")}
+                                                    className="inline-flex items-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Jobpack</span>
+                                                    {renderJobwiseSortIcon("name")}
+                                                </button>
+                                            </TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleJobwiseSort("profile")}
+                                                    className="inline-flex items-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>MGI Profile</span>
+                                                    {renderJobwiseSortIcon("profile")}
+                                                </button>
+                                            </TableHead>
+                                            <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 text-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleJobwiseSort("status")}
+                                                    className="inline-flex items-center justify-center gap-1 hover:text-rose-600 transition-colors group cursor-pointer select-none"
+                                                >
+                                                    <span>Status</span>
+                                                    {renderJobwiseSortIcon("status")}
+                                                </button>
+                                            </TableHead>
                                             <TableHead className="font-bold text-xs uppercase tracking-wider text-slate-500 pr-6 text-right">Actions</TableHead>
                                         </>
                                     )}
@@ -375,14 +602,14 @@ export default function MGIProfilerPage() {
                                         </TableCell>
                                     </TableRow>
                                 ) : viewMode === "PROFILES" ? (
-                                    filteredProfiles.length === 0 ? (
+                                    sortedProfiles.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={5} className="h-48 text-center text-slate-400 font-medium">
                                                 No profiles found
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        filteredProfiles.map((profile) => (
+                                        sortedProfiles.map((profile) => (
                                             <TableRow key={profile.id} className="hover:bg-rose-50/30 dark:hover:bg-rose-950/10 transition-colors border-slate-100 dark:border-slate-800">
                                                 <TableCell className="pl-6 py-4">
                                                     <div className="flex flex-col">
@@ -415,7 +642,13 @@ export default function MGIProfilerPage() {
                                                         <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-rose-100 hover:text-rose-600" onClick={() => handleEditProfile(profile)}>
                                                             <Settings2 className="w-4.5 h-4.5" />
                                                         </Button>
-                                                        <Button variant="ghost" size="icon" className="h-9 w-9 hover:bg-slate-100 text-slate-400 hover:text-rose-600">
+                                                        <Button 
+                                                            variant="ghost" 
+                                                            size="icon" 
+                                                            className="h-9 w-9 hover:bg-rose-100 text-slate-400 hover:text-rose-600 transition-colors"
+                                                            onClick={() => handleDeleteClick(profile)}
+                                                            title="Delete profile"
+                                                        >
                                                             <Trash2 className="w-4.5 h-4.5" />
                                                         </Button>
                                                     </div>
@@ -433,14 +666,14 @@ export default function MGIProfilerPage() {
                                                 </div>
                                             </TableCell>
                                         </TableRow>
-                                    ) : jobPacks.length === 0 ? (
+                                    ) : sortedJobPacks.length === 0 ? (
                                         <TableRow>
                                             <TableCell colSpan={4} className="h-48 text-center text-slate-400 font-medium">
                                                 {jobpacksError || "No jobpacks found"}
                                             </TableCell>
                                         </TableRow>
                                     ) : (
-                                        jobPacks.map((job) => {
+                                        sortedJobPacks.map((job) => {
                                             const profile = profiles.find(p => p.id === mgiProfileByJob[job.id]);
                                             return (
                                                 <TableRow key={job.id} className="hover:bg-slate-50 dark:hover:bg-slate-900 transition-colors border-slate-100 dark:border-slate-800">
@@ -521,7 +754,17 @@ export default function MGIProfilerPage() {
                                         <div className="flex items-center gap-2 flex-1">
                                             <Switch 
                                                 checked={editingProfile?.is_job_specific} 
-                                                onCheckedChange={(checked) => setEditingProfile({...editingProfile!, is_job_specific: checked})}
+                                                onCheckedChange={(checked) => {
+                                                    if (!checked && editingProfile?.is_active) {
+                                                        const activeProfile = profiles.find(p => p.is_active && !p.is_job_specific && p.id !== editingProfile?.id);
+                                                        if (activeProfile) {
+                                                            toast.error(`Only one active profile is allowed. "${activeProfile.name}" is currently active. Please inactivate it first before setting this profile as global active.`);
+                                                            setEditingProfile({...editingProfile!, is_job_specific: checked, is_active: false});
+                                                            return;
+                                                        }
+                                                    }
+                                                    setEditingProfile({...editingProfile!, is_job_specific: checked});
+                                                }}
                                                 className="data-[state=checked]:bg-rose-500"
                                             />
                                             <span className="text-sm font-bold text-slate-700 dark:text-slate-300">Job Specific</span>
@@ -663,16 +906,38 @@ export default function MGIProfilerPage() {
                                 <div className="flex items-center gap-2">
                                     <Switch 
                                         checked={editingProfile?.is_active} 
-                                        onCheckedChange={(checked) => setEditingProfile({...editingProfile!, is_active: checked})}
+                                        onCheckedChange={(checked) => {
+                                            if (checked && !editingProfile?.is_job_specific) {
+                                                const activeProfile = profiles.find(p => p.is_active && !p.is_job_specific && p.id !== editingProfile?.id);
+                                                if (activeProfile) {
+                                                    toast.error(`Only one active profile is allowed. "${activeProfile.name}" is currently active. Please inactivate it first before activating this profile.`);
+                                                    return;
+                                                }
+                                            }
+                                            setEditingProfile({...editingProfile!, is_active: checked});
+                                        }}
                                         className="data-[state=checked]:bg-emerald-500"
                                     />
                                     <span className="text-sm font-bold text-slate-600 dark:text-slate-400">Set as Active Profile</span>
                                 </div>
                                 <div className="flex items-center gap-3">
-                                    <Button variant="ghost" className="font-bold text-slate-500" onClick={() => setIsFormOpen(false)}>Cancel</Button>
-                                    <Button className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-8 rounded-xl shadow-lg shadow-rose-600/20" onClick={handleSaveProfile}>
-                                        <Save className="w-4 h-4 mr-2" />
-                                        Save Profile
+                                    <Button variant="ghost" className="font-bold text-slate-500" onClick={() => setIsFormOpen(false)} disabled={isSaving}>Cancel</Button>
+                                    <Button 
+                                        disabled={isSaving}
+                                        className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-8 rounded-xl shadow-lg shadow-rose-600/20 disabled:opacity-50" 
+                                        onClick={handleSaveProfile}
+                                    >
+                                        {isSaving ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Save className="w-4 h-4 mr-2" />
+                                                Save Profile
+                                            </>
+                                        )}
                                     </Button>
                                 </div>
                            </div>
@@ -720,6 +985,50 @@ export default function MGIProfilerPage() {
                                 onClick={handleLinkProfile}
                             >
                                 Apply to Jobpack
+                            </Button>
+                        </DialogFooter>
+                    </DialogContent>
+                </Dialog>
+
+                {/* Delete Confirmation Dialog */}
+                <Dialog open={!!deleteProfileTarget} onOpenChange={(open) => !open && setDeleteProfileTarget(null)}>
+                    <DialogContent className="max-w-md bg-white dark:bg-slate-950 border-slate-200 dark:border-slate-800">
+                        <DialogHeader>
+                            <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-900/30 text-rose-600 flex items-center justify-center mb-2">
+                                <Trash2 className="w-5 h-5" />
+                            </div>
+                            <DialogTitle className="text-xl font-black tracking-tight text-slate-900 dark:text-white">Delete MGI Profile</DialogTitle>
+                            <DialogDescription className="font-medium text-slate-500">
+                                Are you sure you want to delete <span className="font-bold text-slate-800 dark:text-slate-200">"{deleteProfileTarget?.name}"</span>?
+                            </DialogDescription>
+                        </DialogHeader>
+
+                        <div className="p-3 bg-amber-50/60 dark:bg-amber-950/20 rounded-xl border border-amber-200 dark:border-amber-800/40 flex items-start gap-2.5 text-xs text-amber-800 dark:text-amber-300">
+                            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                            <span>Profiles that are actively assigned to any jobpack cannot be deleted.</span>
+                        </div>
+
+                        <DialogFooter className="gap-2 sm:gap-0">
+                            <Button variant="ghost" className="font-bold text-slate-500" onClick={() => setDeleteProfileTarget(null)} disabled={isDeleting}>
+                                Cancel
+                            </Button>
+                            <Button 
+                                variant="destructive"
+                                className="bg-rose-600 hover:bg-rose-700 text-white font-bold px-6 rounded-xl"
+                                onClick={handleConfirmDelete}
+                                disabled={isDeleting}
+                            >
+                                {isDeleting ? (
+                                    <>
+                                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                        Deleting...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Trash2 className="w-4 h-4 mr-2" />
+                                        Delete Profile
+                                    </>
+                                )}
                             </Button>
                         </DialogFooter>
                     </DialogContent>
