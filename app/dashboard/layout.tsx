@@ -50,7 +50,7 @@ export default async function Layout({ children }: { children: React.ReactNode }
 
     if (result) {
       if ("error" in result) {
-        deactivationError = result.error;
+        deactivationError = result.error ?? null;
       } else {
         const rawComp = (result as any).company;
         const normalizedComp = Array.isArray(rawComp) ? rawComp[0] : rawComp;

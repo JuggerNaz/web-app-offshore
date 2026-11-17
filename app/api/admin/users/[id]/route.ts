@@ -426,7 +426,7 @@ export const DELETE = withRole(
 
       // If user has recorded inspection data and hard delete was not forced:
       // Perform SOFT DELETE / ARCHIVE to preserve historical audit records
-      if (hasInspectionData && !forceHardDelete) {
+      if (hasInspectionData && !forceHardParam) {
         // Deactivate company membership
         await db
           .from("company_memberships")

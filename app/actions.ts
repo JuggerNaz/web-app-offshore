@@ -190,12 +190,10 @@ export const selectTenantAction = async (formData: FormData) => {
     if (!userProfile) {
       await supabase.from("profiles").upsert({
         id: userRes.data.user.id,
-        email: userRes.data.user.email,
+        email: userRes.data.user.email!,
         full_name: userRes.data.user.user_metadata?.full_name || userRes.data.user.email?.split("@")[0] || "User",
         designation: userRes.data.user.user_metadata?.designation || "Staff",
         is_active: true,
-        login_restriction_type: "always",
-        device_restriction_type: "none",
         updated_at: new Date().toISOString(),
       });
     }

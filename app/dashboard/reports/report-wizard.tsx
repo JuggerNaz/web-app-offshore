@@ -178,6 +178,25 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
     const [addingTemplateToSecId, setAddingTemplateToSecId] = useState<string | number | null>(null);
     const [templateSearchTerm, setTemplateSearchTerm] = useState("");
 
+    // Pre-populate context from URL query parameters when navigated from Platform 3D QID Details
+    useEffect(() => {
+        if (typeof window === "undefined") return;
+        const params = new URLSearchParams(window.location.search);
+        const structureId = params.get("structureId") || params.get("structure_id") || "";
+        const jobPackId = params.get("jobpackId") || params.get("jobpack_id") || "";
+        const sowReportNo = params.get("sowReportNo") || params.get("sow_report_no") || "";
+        const componentId = params.get("componentId") || params.get("component_id") || "";
+        if (structureId || jobPackId || sowReportNo || componentId) {
+            setSelections((prev) => ({
+                ...prev,
+                structureId: structureId || prev.structureId,
+                jobPackId: jobPackId || prev.jobPackId,
+                sowReportNo: sowReportNo || prev.sowReportNo,
+                componentId: componentId || prev.componentId,
+            }));
+        }
+    }, []);
+
     const [selectedTemplates, setSelectedTemplates] = useState<string[]>(() => {
         const allIds: string[] = [];
         TOC_SECTIONS.forEach(sec => sec.templates.forEach(t => allIds.push(t.id)));
@@ -3641,6 +3660,16 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const extendedConfig = { ...reportConfig, prefix: isFindingsReport ? "F-" : "A-", isFindingsReport };
 
             return await generateDefectAnomalyReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, extendedConfig as any);
+        }
+
+        // Debris Location Report (debris flagged on elevation / plan sketches of each member QID)
+        if (currentTemplateId === "debris-location-report") {
+            const jobPack = selections.printBlankReport ? { name: ". . . . . . . . . . . . . . . . . . . .", metadata: {} } : await fetchJobPackData();
+            const structure = selections.printBlankReport ? { str_name: ". . . . . . . . . . . . . . . . . . . ." } : await fetchStructureData();
+            if ((!jobPack || !structure) && !selections.printBlankReport) return null;
+
+            const { generateDebrisLocationReport } = await import("@/utils/report-generators/debris-location-report");
+            return await generateDebrisLocationReport(jobPack || {}, structure || {}, selections.sowReportNo, companySettings, reportConfig as any);
         }
 
         // Diver Log Report
@@ -7753,7 +7782,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
-            let records: any[] = [];
+            const records: any[] = [];
             let recFrom = 0;
             const recPageSize = 1000;
             let recHasMore = true;
@@ -8034,7 +8063,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             };
 
             // 1. Fetch ALL insp_records with pagination (bypassing default 1000 limit)
-            let records: any[] = [];
+            const records: any[] = [];
             let recFrom = 0;
             const recPageSize = 1000;
             let recHasMore = true;
@@ -8490,7 +8519,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             if (!selections.printBlankReport && (!structure || !jobPack)) return null;
 
             let incompleteRecords: any[] = [];
-            let allRecords: any[] = [];
+            const allRecords: any[] = [];
             if (!selections.printBlankReport) {
                 try {
                     const supabase = (await import("@/utils/supabase/client")).createClient();

@@ -36,6 +36,7 @@ import {
     type Platform3DSessionState
 } from "../utils/platform-3d-storage";
 import { normalizeInspectionTaskCode, getTaskDefinition } from "@/components/dialogs/inspection-task-dialog";
+import { isAnomalyRecordRectified } from "@/components/dialogs/anomaly-status-dialog";
 
 interface Component3D {
     id: number;
@@ -88,6 +89,11 @@ interface Structural3DViewerProps {
     selectedInspectionTaskCode?: string | null;
     inspectionTaskSowItems?: any[];
     selectedTaskSowReportNo?: string | null;
+    isAnomalyStatusMode?: boolean;
+    selectedAnomalyStatusFilters?: string[];
+    anomalyItems?: any[];
+    anomalySowItems?: any[];
+    selectedAnomalySowReportNo?: string | null;
     isLoading?: boolean;
 }
 
@@ -132,7 +138,8 @@ function PileLegMeshComponent({
     onDoubleClick,
     showLabel,
     labelText,
-    flipCrowns
+    flipCrowns,
+    anomalyColor
 }: any) {
     const pileLegGroup = useMemo(() => {
         let legColor = "#facc15";
@@ -144,12 +151,12 @@ function PileLegMeshComponent({
         return new PileLeg({
             length: safeMeshLength,
             radius: Math.max(baseThickness / 2, 0.45), // Slimmer, realistic radius for Pile Legs
-            color: legColor,
+            color: anomalyColor || legColor,
             isSelected,
             isHovered: hovered,
             flipCrowns
         });
-    }, [safeMeshLength, baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, flipCrowns]);
+    }, [safeMeshLength, baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, anomalyColor, flipCrowns]);
 
     return (
         <group
@@ -204,6 +211,7 @@ const ComponentMesh = ({
     inspectionStatus = "NOT_INSPECTED",
     isStatusChecked = true,
     inspectionColor,
+    anomalyColor = null,
     allLayouts = [],
 }: {
     component: Component3D;
@@ -218,6 +226,7 @@ const ComponentMesh = ({
     inspectionStatus?: "Pending" | "Completed" | "Incomplete" | "NOT_INSPECTED";
     isStatusChecked?: boolean;
     inspectionColor?: string;
+    anomalyColor?: string | null;
     allLayouts?: any[];
 }) => {
     const [hovered, setHovered] = useState(false);
@@ -277,13 +286,15 @@ const ComponentMesh = ({
         ? "#f97316"
         : hovered
             ? "#60a5fa"
-            : isInspectionHighlighted
-                ? (inspectionStatus === "Incomplete"
-                    ? "#d97706"
-                    : inspectionStatus === "Completed"
-                        ? "#22c55e"
-                        : "#334155")
-                : defaultMeshColor;
+            : anomalyColor
+                ? anomalyColor
+                : isInspectionHighlighted
+                    ? (inspectionStatus === "Incomplete"
+                        ? "#d97706"
+                        : inspectionStatus === "Completed"
+                            ? "#22c55e"
+                            : "#334155")
+                    : defaultMeshColor;
 
     const emissiveColor = isSelected
         ? "#1d4ed8"
@@ -791,11 +802,11 @@ const ComponentMesh = ({
             return new GuideBucket({
                 outerRadius: (baseThickness || 0.3) / 2 + 0.08,
                 height: 0.55,
-                color: bucketColor,
+                color: anomalyColor || bucketColor,
                 isSelected,
                 isHovered: hovered,
             });
-        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, anomalyColor]);
 
         return (
             <group
@@ -858,11 +869,11 @@ const ComponentMesh = ({
             return new CaissonSupport({
                 outerRadius: (baseThickness || 0.3) / 2 + 0.05,
                 height: 0.45,
-                color: supportColor,
+                color: anomalyColor || supportColor,
                 isSelected,
                 isHovered: hovered,
             });
-        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+        }, [baseThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, anomalyColor]);
 
         return (
             <group
@@ -933,11 +944,11 @@ const ComponentMesh = ({
                 height: 0.7,
                 flangeWidth: 0.22,
                 flangeThickness: 0.05,
-                color: supportColor,
+                color: anomalyColor || supportColor,
                 isSelected,
                 isHovered: hovered,
             });
-        }, [riserThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus]);
+        }, [riserThickness, isSelected, hovered, isInspectionHighlighted, inspectionStatus, anomalyColor]);
 
         return (
             <group
@@ -998,6 +1009,7 @@ const ComponentMesh = ({
                 showLabel={showLabel}
                 labelText={labelText}
                 flipCrowns={startVec.y < endVec.y}
+                anomalyColor={anomalyColor}
             />
         );
     }
@@ -1591,6 +1603,9 @@ function InstancedComponentViewer({
     isInspectionTaskMode = false,
     selectedInspectionTaskCode = "ALL",
     sowTaskMap = null,
+    isAnomalyStatusMode = false,
+    selectedAnomalyStatusFilters = ["Open", "Rectified"],
+    anomalyStatusMap = null,
 }: {
     layouts: any[];
     selectedCompId?: number;
@@ -1612,6 +1627,9 @@ function InstancedComponentViewer({
     isInspectionTaskMode?: boolean;
     selectedInspectionTaskCode?: string | null;
     sowTaskMap?: Map<string | number, any> | null;
+    isAnomalyStatusMode?: boolean;
+    selectedAnomalyStatusFilters?: string[];
+    anomalyStatusMap?: Map<string | number, { hasOpen: boolean; hasRectified: boolean }> | null;
 }) {
     const weldRef = useRef<THREE.InstancedMesh>(null);
     const cylinderRef = useRef<THREE.InstancedMesh>(null);
@@ -1623,7 +1641,24 @@ function InstancedComponentViewer({
 
     const [hoveredComp, setHoveredComp] = useState<any | null>(null);
 
+    const getAnomalyColor = (item: any): string | null => {
+        if (!isAnomalyStatusMode || !anomalyStatusMap) return null;
+        const compId = item.comp?.id || item.comp?.comp_id || item.component?.id || item.id;
+        const compQId = String(item.comp?.q_id || item.component?.q_id || item.q_id || "").toUpperCase().trim();
+        const info = anomalyStatusMap.get(Number(compId)) || (compQId ? anomalyStatusMap.get(compQId) : null);
+        if (!info) return null;
+        if (selectedAnomalyStatusFilters.includes("Open") && info.hasOpen) return "#ef4444";
+        if (selectedAnomalyStatusFilters.includes("Rectified") && info.hasRectified) return "#22c55e";
+        return null;
+    };
+
     const getInspectionColor = (item: any, defaultColor: string) => {
+        // 0. If Anomaly Status Mode is active (only color components with anomalies; keep everything else defaultColor)
+        if (isAnomalyStatusMode) {
+            const anomalyCol = getAnomalyColor(item);
+            return anomalyCol || defaultColor;
+        }
+
         // 1. If Inspection Task Mode is active
         if (isInspectionTaskMode && sowTaskMap) {
             const compId = item.comp?.id || item.comp?.comp_id || item.id;
@@ -1820,7 +1855,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [cylinders, selectedCompId, mainMemberIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters]);
+    }, [cylinders, selectedCompId, mainMemberIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap, isAnomalyStatusMode, selectedAnomalyStatusFilters, anomalyStatusMap]);
 
     // Apply matrices and colors for Welds (Vertical Purple Cylinder Collars - Pic 2)
     useLayoutEffect(() => {
@@ -1890,7 +1925,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [welds, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters]);
+    }, [welds, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap, isAnomalyStatusMode, selectedAnomalyStatusFilters, anomalyStatusMap]);
 
     // Apply matrices and colors for Spheres (Structural Nodes ND)
     useLayoutEffect(() => {
@@ -1921,7 +1956,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [spheres, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters]);
+    }, [spheres, selectedCompId, mainNodeIds, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap, isAnomalyStatusMode, selectedAnomalyStatusFilters, anomalyStatusMap]);
 
     // Apply matrices and colors for Boxes (Clamps)
     useLayoutEffect(() => {
@@ -1948,7 +1983,7 @@ function InstancedComponentViewer({
 
         mesh.instanceMatrix.needsUpdate = true;
         if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-    }, [boxes, selectedCompId, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters]);
+    }, [boxes, selectedCompId, colorMode, currentRecords, historicalRecords, selectedCampaignId, libraryColors, selectedPriorityFilter, inspectionModeFilter, priorityScope, compareWithCurrent, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap, isAnomalyStatusMode, selectedAnomalyStatusFilters, anomalyStatusMap]);
 
     // Apply matrices and colors for Anodes (Standoff style)
     useLayoutEffect(() => {
@@ -2149,7 +2184,7 @@ function InstancedComponentViewer({
         elbowMesh.instanceMatrix.needsUpdate = true;
         if (elbowMesh.instanceColor) elbowMesh.instanceColor.needsUpdate = true;
         elbowMesh.count = elbowIndex;
-    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap]);
+    }, [anodes, cylinders, selectedCompId, mainMemberIds, isInspectionMode, selectedInspectionFilters, isInspectionTaskMode, selectedInspectionTaskCode, sowTaskMap, isAnomalyStatusMode, selectedAnomalyStatusFilters, anomalyStatusMap]);
 
     // Find layout of selected component for overlay label and highlight mesh
     const selectedLayout = useMemo(() => {
@@ -2542,6 +2577,7 @@ function InstancedComponentViewer({
                     inspectionStatus={layout.inspectionStatus || "Pending"}
                     isStatusChecked={selectedInspectionFilters.includes(layout.inspectionStatus || "Pending")}
                     inspectionColor={layout.color}
+                    anomalyColor={getAnomalyColor(layout)}
                     allLayouts={layouts}
                 />
             ))}
@@ -3001,6 +3037,11 @@ export function Structural3DViewer({
     selectedInspectionTaskCode = "ALL",
     inspectionTaskSowItems = [],
     selectedTaskSowReportNo = null,
+    isAnomalyStatusMode = false,
+    selectedAnomalyStatusFilters = ["Open", "Rectified"],
+    anomalyItems = [],
+    anomalySowItems = [],
+    selectedAnomalySowReportNo = null,
     isLoading = false
 }: Structural3DViewerProps) {
     const isWorkspace = Boolean(
@@ -3048,6 +3089,63 @@ export function Structural3DViewer({
         });
         return map;
     }, [inspectionTaskSowItems, selectedTaskSowReportNo]);
+
+    const anomalyStatusMap = useMemo(() => {
+        const map = new Map<string | number, { hasOpen: boolean; hasRectified: boolean }>();
+        if (!anomalyItems || anomalyItems.length === 0) return map;
+
+        const cleanFilter = selectedAnomalySowReportNo
+            ? selectedAnomalySowReportNo.replace(/\s+/g, "").toLowerCase()
+            : null;
+
+        const sowReportCompIds = new Set<number>();
+        const sowReportCompQids = new Set<string>();
+        if (cleanFilter && anomalySowItems && Array.isArray(anomalySowItems)) {
+            anomalySowItems.forEach((item: any) => {
+                const itemRep = String(item.report_number || "").replace(/\s+/g, "").toLowerCase();
+                if (itemRep === cleanFilter) {
+                    if (item.component_id) sowReportCompIds.add(Number(item.component_id));
+                    if (item.component_qid) sowReportCompQids.add(String(item.component_qid).toUpperCase().trim());
+                }
+            });
+        }
+
+        anomalyItems.forEach((item: any) => {
+            if (cleanFilter) {
+                const cleanRep = String(item.sow_report_no || "").replace(/\s+/g, "").toLowerCase();
+                if (cleanRep && cleanRep !== "n/a" && cleanRep !== "null") {
+                    if (cleanRep !== cleanFilter) return;
+                } else {
+                    const cid = Number(item.component_id);
+                    const qid = String(item.component_qid || "").toUpperCase().trim();
+                    if (!((cid && sowReportCompIds.has(cid)) || (qid && sowReportCompQids.has(qid)))) {
+                        return;
+                    }
+                }
+            }
+
+            const isRect = isAnomalyRecordRectified(item);
+            const compId = item.component_id ? Number(item.component_id) : null;
+            const compQId = item.component_qid ? String(item.component_qid).toUpperCase().trim() : null;
+
+            if (compId) {
+                const prev = map.get(compId) || { hasOpen: false, hasRectified: false };
+                map.set(compId, {
+                    hasOpen: prev.hasOpen || !isRect,
+                    hasRectified: prev.hasRectified || isRect,
+                });
+            }
+            if (compQId) {
+                const prev = map.get(compQId) || { hasOpen: false, hasRectified: false };
+                map.set(compQId, {
+                    hasOpen: prev.hasOpen || !isRect,
+                    hasRectified: prev.hasRectified || isRect,
+                });
+            }
+        });
+
+        return map;
+    }, [anomalyItems, anomalySowItems, selectedAnomalySowReportNo]);
 
     const activePlatformId = useMemo(() => {
         return (
@@ -4217,6 +4315,9 @@ export function Structural3DViewer({
                             isInspectionTaskMode={isInspectionTaskMode}
                             selectedInspectionTaskCode={selectedInspectionTaskCode}
                             sowTaskMap={sowTaskMap}
+                            isAnomalyStatusMode={isAnomalyStatusMode}
+                            selectedAnomalyStatusFilters={selectedAnomalyStatusFilters}
+                            anomalyStatusMap={anomalyStatusMap}
                         />
                     </SelectToZoom>
                 </Bounds>

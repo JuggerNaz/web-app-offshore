@@ -889,8 +889,15 @@ interface PipelineEventMenuPanelProps {
     depth?: string;
     cp_fg?: string;
     cp_fg_rdg?: string;
+    cp_gradient?: string;
+    cp_reading?: string;
+    cp_rdg?: string;
     heading?: string;
     rov_heading?: string;
+    pitch?: string;
+    roll?: string;
+    altitude?: string;
+    [key: string]: any;
   }) => void;
   currentKp?: number | string;
   inspMethod?: "DIVING" | "ROV";

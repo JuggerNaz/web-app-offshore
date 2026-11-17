@@ -63,7 +63,7 @@ const STORAGE_KEYS = {
     pipeline: 'data_acquisition_pipeline_v1',
 };
 
-export const TARGET_FIELD_CANONICAL_MAP: Record<string, string> = {
+const TARGET_FIELD_CANONICAL_MAP: Record<string, string> = {
     // CP Readings (Deduplicate cp_rdg / cp / cp_reading_mv -> cp_reading)
     cp_rdg: 'cp_reading',
     cp: 'cp_reading',

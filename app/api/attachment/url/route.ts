@@ -841,7 +841,7 @@ export async function GET(request: NextRequest) {
   const defaultStorageConfig = settings?.storage_config || {};
 
   const isDownload = request.nextUrl.searchParams.get("download") === "true" || request.nextUrl.searchParams.get("download") === "1";
-  const getExtraHeaders = () => {
+  const getExtraHeaders = (): Record<string, string> => {
     if (!isDownload) return {};
     const downloadFileName = fileName || (typeof targetUrlOrPath === "string" ? path.basename(targetUrlOrPath) : "") || "attachment";
     return {

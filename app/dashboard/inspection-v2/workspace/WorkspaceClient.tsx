@@ -6221,9 +6221,6 @@ function V10PreviewLayout() {
         });
 
         let existingTapeId = dupCheck.existingTapeId || null;
-        if (dupCheck.matchedTape) {
-          effectiveTapeObj = dupCheck.matchedTape;
-        }
 
         if (!existingTapeId && cleanTapeNo) {
           const { data: existingTape } = await supabase
@@ -6319,7 +6316,7 @@ function V10PreviewLayout() {
       const eventChapterNo = effectiveTapeObj?.chapter_no != null
         ? String(effectiveTapeObj.chapter_no)
         : String(targetChapter);
-      const eventDiveNo = effectiveTapeObj?.dive_job_no || effectiveTapeObj?.rov_job_no || activeDep?.jobNo || activeDep?.job_no || "N/A";
+      const eventDiveNo = effectiveTapeObj?.dive_job_no || effectiveTapeObj?.rov_job_no || activeDep?.jobNo || "N/A";
       const eventStructure = effectiveTapeObj?.structure_name || headerData.platformName || "N/A";
 
       if (action === "Stop Tape") {
