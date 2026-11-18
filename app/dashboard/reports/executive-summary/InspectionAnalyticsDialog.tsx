@@ -291,24 +291,35 @@ export function InspectionAnalyticsDialog({
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <Card className="shadow-sm border-slate-100 dark:border-slate-800">
                                         <CardHeader className="p-4 pb-2">
-                                            <CardTitle className="text-xs text-slate-400 font-bold uppercase">Anode Depletion Distribution</CardTitle>
+                                            <div className="flex items-center justify-between">
+                                                <CardTitle className="text-xs text-slate-400 font-bold uppercase">Anode Depletion Distribution</CardTitle>
+                                                <Badge variant="outline" className="text-[10px] font-bold text-slate-600 dark:text-slate-300">
+                                                    {d.anodeGvi?.registered && Number(d.anodeGvi.registered) !== Number(d.anodeGvi?.total)
+                                                        ? `Inspected: ${d.anodeGvi.total || 0} / ${d.anodeGvi.registered} Reg`
+                                                        : `Total Inspected: ${d.anodeGvi?.total || 0}`}
+                                                </Badge>
+                                            </div>
                                         </CardHeader>
                                         <CardContent className="p-4 pt-0 space-y-3">
                                             {d.anodeGvi?.depletionBuckets && Object.keys(d.anodeGvi.depletionBuckets).length > 0 ? (
-                                                Object.entries(d.anodeGvi.depletionBuckets).map(([bucket, count]: any) => (
-                                                    <div key={bucket} className="flex items-center justify-between text-xs">
-                                                        <span className="font-semibold text-slate-600 dark:text-slate-355">{bucket}</span>
-                                                        <div className="flex items-center gap-2">
-                                                            <div className="w-32 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
-                                                                <div 
-                                                                    className="bg-blue-600 h-2 rounded-full" 
-                                                                    style={{ width: `${(count / (d.anodeGvi.total || 1)) * 100}%` }}
-                                                                />
+                                                Object.entries(d.anodeGvi.depletionBuckets).map(([bucket, count]: any) => {
+                                                    const grandTotal = Number(d.anodeGvi?.registered || d.anodeGvi?.total || 1);
+                                                    const isBalanceBucket = bucket.toLowerCase().includes("scope") || bucket.toLowerCase().includes("sow");
+                                                    return (
+                                                        <div key={bucket} className="flex items-center justify-between text-xs">
+                                                            <span className={cn("font-semibold", isBalanceBucket ? "text-slate-500 dark:text-slate-400 italic" : "text-slate-600 dark:text-slate-355")}>{bucket}</span>
+                                                            <div className="flex items-center gap-2">
+                                                                <div className="w-32 bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                                                                    <div 
+                                                                        className={cn("h-2 rounded-full", isBalanceBucket ? "bg-slate-400 dark:bg-slate-500" : "bg-blue-600")}
+                                                                        style={{ width: `${(count / grandTotal) * 100}%` }}
+                                                                    />
+                                                                </div>
+                                                                <span className="font-bold w-6 text-right">{count}</span>
                                                             </div>
-                                                            <span className="font-bold w-6 text-right">{count}</span>
                                                         </div>
-                                                    </div>
-                                                ))
+                                                    );
+                                                })
                                             ) : (
                                                 <p className="text-xs text-slate-400 italic">No depletion stats recorded.</p>
                                             )}

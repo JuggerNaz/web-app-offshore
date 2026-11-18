@@ -180,10 +180,10 @@ export const POST = withTenant(async (request, { companyId }) => {
 
         const TOP_LEVEL_INSP_COLS = new Set([
           "insp_id", "structure_id", "component_id", "jobpack_id", "inspection_type_id",
-          "inspection_type_code", "status", "inspection_date", "inspection_time", "sow_report_no",
+          "inspection_type_code", "status", "inspection_status", "inspection_date", "inspection_time", "sow_report_no",
           "workunit", "dive_job_id", "rov_job_id", "dive_no", "elevation", "fp_kp",
           "structure_name", "structure_field", "structure_spec_type",
-          "component_id_str", "component_id_no", "component_qid", "component_description",
+          "component_id_str", "component_id_no", "component_qid", "component_type", "component_code", "code", "component_description",
           "start_node", "end_node", "elevation1", "elevation2", "jobpack_name",
           "marine_growth", "coating_condition", "component_condition", "nominal_thickness",
           "verification_depth", "ut_12_o_clock", "ut_3_o_clock", "ut_6_o_clock", "ut_9_o_clock",
@@ -196,6 +196,36 @@ export const POST = withTenant(async (request, { companyId }) => {
 
         if ((category === "inspection_records" || category === "incomplete") && !TOP_LEVEL_INSP_COLS.has(cond.field)) {
           finalField = `inspection_data->>${cond.field}`;
+        }
+
+        if (cond.field === "inspection_status") {
+          finalField = "status";
+        }
+
+        if (cond.field === "component_type" || cond.field === "component_code") {
+          if (category === "components") {
+            finalField = "code";
+          } else {
+            // Filter via structure_components IDs
+            let pattern = String(finalValue || "");
+            if (pattern.includes("*")) pattern = pattern.replace(/\*/g, "%");
+            if (finalOperator === "contains") pattern = `%${pattern}%`;
+            else if (finalOperator === "starts_with") pattern = `${pattern}%`;
+            else if (finalOperator === "ends_with") pattern = `%${pattern}`;
+            else if (finalOperator === "like" || finalOperator === "ilike") {
+              if (!pattern.includes("%") && !pattern.includes("_")) pattern = `%${pattern}%`;
+            }
+            
+            let compQ = (supabase as any).from("structure_components").select("id");
+            if (finalOperator === "eq") compQ = compQ.ilike("code", pattern);
+            else if (finalOperator === "neq") compQ = compQ.not("code", "ilike", pattern);
+            else compQ = compQ.ilike("code", pattern);
+
+            const { data: matchedComps } = await compQ.limit(5000);
+            const matchedIds = matchedComps?.map((c: any) => c.id) || [];
+            query = query.in("component_id", matchedIds.length > 0 ? matchedIds : [-1]);
+            continue;
+          }
         }
 
         if (cond.transform === "year" && fieldType === "date" && cond.value) {
@@ -242,6 +272,18 @@ export const POST = withTenant(async (request, { companyId }) => {
               query = query.neq(finalField, finalValue);
             }
             break;
+          case "like":
+          case "ilike": {
+            let pattern = String(finalValue || "");
+            if (pattern.includes("*")) {
+              pattern = pattern.replace(/\*/g, "%");
+            }
+            if (!pattern.includes("%") && !pattern.includes("_")) {
+              pattern = `%${pattern}%`;
+            }
+            query = query.ilike(finalField, pattern);
+            break;
+          }
           case "gt":
             query = query.gt(finalField, finalValue);
             break;
@@ -345,11 +387,20 @@ export const POST = withTenant(async (request, { companyId }) => {
           }
         });
       }
+      if (item.status !== undefined && item.inspection_status === undefined) {
+        item.inspection_status = item.status;
+      }
+      if (item.inspection_status !== undefined && item.status === undefined) {
+        item.status = item.inspection_status;
+      }
       return item;
     });
 
-    // Enrich component fields (start_node, end_node, elevation1, elevation2, component_description)
-    const COMPONENT_COLS = new Set(["start_node", "end_node", "elevation1", "elevation2", "component_description", "description"]);
+    // Enrich component fields (start_node, end_node, elevation1, elevation2, component_description, component_type)
+    const COMPONENT_COLS = new Set([
+      "start_node", "end_node", "elevation1", "elevation2", "component_description", "description",
+      "component_type", "component_code", "code"
+    ]);
     const hasComponentCols = selectFields.some(f => COMPONENT_COLS.has(f));
 
     if (hasComponentCols && results.length > 0) {
@@ -366,7 +417,10 @@ export const POST = withTenant(async (request, { companyId }) => {
             if (item.elevation1 === undefined || item.elevation1 === null) item.elevation1 = meta.elevation1 ?? meta.elv_1 ?? meta.elev_1 ?? meta.elevation_1 ?? meta.start_elevation ?? meta.elev1 ?? null;
             if (item.elevation2 === undefined || item.elevation2 === null) item.elevation2 = meta.elevation2 ?? meta.elv_2 ?? meta.elev_2 ?? meta.elevation_2 ?? meta.end_elevation ?? meta.elev2 ?? null;
             if (!item.description) item.description = meta.description || meta.desc || meta.component_description || item.comp_id || item.id_no || null;
+            if (!item.component_type) item.component_type = item.code || meta.component_type || meta.type || meta.comp_type || null;
           }
+          if (!item.component_type) item.component_type = item.code || null;
+          if (!item.component_code) item.component_code = item.component_type;
 
           // Fallback parsing from component string/code if start_node / end_node still missing
           if (!item.start_node || !item.end_node) {
@@ -386,7 +440,7 @@ export const POST = withTenant(async (request, { companyId }) => {
         const compIdsToFetch = new Set<number>();
         for (const item of results) {
           const cId = Number(item.component_id);
-          if (cId && (!item.start_node || !item.end_node || item.elevation1 === undefined || item.elevation1 === null || item.elevation2 === undefined || item.elevation2 === null || !item.component_description)) {
+          if (cId && (!item.start_node || !item.end_node || item.elevation1 === undefined || item.elevation1 === null || item.elevation2 === undefined || item.elevation2 === null || !item.component_description || !item.component_type)) {
             compIdsToFetch.add(cId);
           }
         }
@@ -423,7 +477,11 @@ export const POST = withTenant(async (request, { companyId }) => {
             if (item.elevation1 === undefined || item.elevation1 === null) item.elevation1 = meta.elevation1 ?? meta.elv_1 ?? meta.elev_1 ?? meta.elevation_1 ?? meta.start_elevation ?? meta.elev1 ?? idata?.elevation1 ?? idata?.elv_1 ?? null;
             if (item.elevation2 === undefined || item.elevation2 === null) item.elevation2 = meta.elevation2 ?? meta.elv_2 ?? meta.elev_2 ?? meta.elevation_2 ?? meta.end_elevation ?? meta.elev2 ?? idata?.elevation2 ?? idata?.elv_2 ?? null;
             if (!item.component_description) item.component_description = meta.description || meta.desc || meta.component_description || comp?.id_no || comp?.comp_id || item.component_id_str || item.component_id_no || null;
+            if (!item.component_type) item.component_type = comp?.code || meta.component_type || meta.type || meta.comp_type || meta.code || item.code || null;
           }
+
+          if (!item.component_type) item.component_type = comp?.code || item.code || null;
+          if (!item.component_code) item.component_code = item.component_type;
 
           // Fallback parsing from component string/code if start_node / end_node still missing
           if (!item.start_node || !item.end_node) {

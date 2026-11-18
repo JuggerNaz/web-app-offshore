@@ -16,11 +16,24 @@ export const GET = withTenant(async (request, { companyId }) => {
                 .select("*")
                 .eq("id", itemId);
 
-            if (companyId) {
-                query = query.or(`company_id.eq.${companyId},company_id.is.null`);
-            }
+            let { data, error } = companyId
+                ? await (supabase as any)
+                    .from("u_sow_items")
+                    .select("*")
+                    .eq("id", itemId)
+                    .or(`company_id.eq.${companyId},company_id.is.null`)
+                    .maybeSingle()
+                : await query.maybeSingle();
 
-            const { data, error } = await query.maybeSingle();
+            if (error && companyId) {
+                const fallback = await (supabase as any)
+                    .from("u_sow_items")
+                    .select("*")
+                    .eq("id", itemId)
+                    .maybeSingle();
+                data = fallback.data;
+                error = fallback.error;
+            }
 
             if (error) {
                 return NextResponse.json({ error: error.message }, { status: 400 });
@@ -39,13 +52,29 @@ export const GET = withTenant(async (request, { companyId }) => {
                     .select("*")
                     .eq("sow_id", sowId);
 
-                if (companyId) {
-                    query = query.or(`company_id.eq.${companyId},company_id.is.null`);
-                }
+                let { data: pageItems, error } = companyId
+                    ? await (supabase as any)
+                        .from("u_sow_items")
+                        .select("*")
+                        .eq("sow_id", sowId)
+                        .or(`company_id.eq.${companyId},company_id.is.null`)
+                        .order("id", { ascending: true })
+                        .range(from, from + PAGE_SIZE - 1)
+                    : await query
+                        .order("id", { ascending: true })
+                        .range(from, from + PAGE_SIZE - 1);
 
-                const { data: pageItems, error } = await query
-                    .order("id", { ascending: true })
-                    .range(from, from + PAGE_SIZE - 1);
+                // If error occurs (e.g. company_id column does not exist on u_sow_items), fallback without company_id
+                if (error && companyId) {
+                    const fallbackRes = await (supabase as any)
+                        .from("u_sow_items")
+                        .select("*")
+                        .eq("sow_id", sowId)
+                        .order("id", { ascending: true })
+                        .range(from, from + PAGE_SIZE - 1);
+                    pageItems = fallbackRes.data;
+                    error = fallbackRes.error;
+                }
 
                 if (error) {
                     return NextResponse.json({ error: error.message }, { status: 400 });

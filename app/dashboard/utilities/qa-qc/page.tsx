@@ -18,7 +18,8 @@ import {
   Database,
   Check,
   ChevronsUpDown,
-  Building2
+  Building2,
+  Boxes
 } from "lucide-react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -41,6 +42,7 @@ import AssociationSection from "./sections/AssociationMissing";
 import CPReadingSection from "./sections/CPReading";
 import EmptyFindingsSection from "./sections/EmptyFindings";
 import SeabedSurveySection from "./sections/SeabedSurvey";
+import InventoryCheckingSection from "./sections/InventoryChecking";
 
 export default function QAQCPage() {
   const [loading, setLoading] = useState(true);
@@ -292,7 +294,7 @@ export default function QAQCPage() {
   const [currentSowId, currentReportNo] = selectedReportId ? selectedReportId.split(':') : ["", ""];
 
   return (
-    <div className="flex flex-col min-h-screen bg-slate-50/50 dark:bg-slate-950/50">
+    <div className="flex flex-col h-full overflow-y-auto bg-slate-50/50 dark:bg-slate-950/50">
       {/* Header */}
       <header className="sticky top-0 z-30 w-full border-b bg-white/80 dark:bg-slate-900/80 backdrop-blur-md px-6 py-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
@@ -514,6 +516,9 @@ export default function QAQCPage() {
                 <TabsTrigger value="spellcheck" className="gap-2">
                   <SpellCheck className="h-4 w-4" /> Spell Check
                 </TabsTrigger>
+                <TabsTrigger value="inventory" className="gap-2">
+                  <Boxes className="h-4 w-4" /> Inventory Checking
+                </TabsTrigger>
                 <TabsTrigger value="attachments" className="gap-2">
                   <ImageIcon className="h-4 w-4" /> Attachments
                 </TabsTrigger>
@@ -535,6 +540,9 @@ export default function QAQCPage() {
             {/* Sections Content */}
             <TabsContent value="spellcheck">
               <SpellCheckSection jobpackId={selectedJobpack} structureId={selectedStructure} sowId={currentSowId} reportNo={currentReportNo} />
+            </TabsContent>
+            <TabsContent value="inventory">
+              <InventoryCheckingSection jobpackId={selectedJobpack} structureId={selectedStructure} sowId={currentSowId} reportNo={currentReportNo} />
             </TabsContent>
             <TabsContent value="attachments">
               <AttachmentSection jobpackId={selectedJobpack} structureId={selectedStructure} sowId={currentSowId} reportNo={currentReportNo} />

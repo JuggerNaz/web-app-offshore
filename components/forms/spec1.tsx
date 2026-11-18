@@ -40,7 +40,11 @@ export default function Spec1({ data, onSaved }: Props) {
   };
 
   const initialData = data
-    ? { ...data, inst_date: normalizeDate((data as any).inst_date) }
+    ? {
+        ...data,
+        cslot: data.cslot ?? (data as any).cslota ?? (data as any).slots ?? null,
+        inst_date: normalizeDate((data as any).inst_date)
+      }
     : data;
 
   const {
@@ -65,6 +69,7 @@ export default function Spec1({ data, onSaved }: Props) {
     if (data) {
       form.reset({
         ...data,
+        cslot: data.cslot ?? (data as any).cslota ?? (data as any).slots ?? null,
         inst_date: normalizeDate((data as any).inst_date)
       });
     }
@@ -353,7 +358,7 @@ export default function Spec1({ data, onSaved }: Props) {
               <CardContent className="grid grid-cols-2 md:grid-cols-5 gap-4 pt-2">
                 <FormFieldWrap label="Conductors" name="conduct" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Internal Piles" name="pileint" form={form} ftype="vertical" type="number" />
-                <FormFieldWrap label="Slots" name="cslota" form={form} ftype="vertical" type="number" />
+                <FormFieldWrap label="Slots" name="cslot" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Boatlanding" name="fender" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Risers" name="riser" form={form} ftype="vertical" type="number" />
                 <FormFieldWrap label="Sumps" name="sump" form={form} ftype="vertical" type="number" />

@@ -701,22 +701,39 @@ export const GET = withTenant(async (request, { companyId }) => {
 
         // ─── 5. ANODE (GVI / RGVI / SANI) ANALYSIS ─────────────────────────────
         const isAnodeRecord = (r: any) => {
-            const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
-            const compType = (
-                r.component_type ||
+            // Exclude anomaly records explicitly
+            const rawCompType = String(r.component_type || "").trim().toUpperCase();
+            if (rawCompType === "ANOMALY" || rawCompType === "ANOMALIES") return false;
+
+            const compCode = String(
                 r.structure_components?.code ||
+                r.component_type ||
                 r.structure_components?.metadata?.type ||
                 r.inspection_data?.component_type ||
                 ""
-            ).toUpperCase();
-            const qid = (r.structure_components?.q_id || r.inspection_data?.q_id || "").toUpperCase();
-            const d = r.inspection_data || {};
-            return (
-                code === "RSANI" || code === "SANI" ||
-                compType === "AN" || compType === "ANODE" || compType.startsWith("AN") ||
-                qid.startsWith("BAN") || qid.startsWith("AN") ||
-                !!d.anode_type || !!d.anode_depletion || !!d.anode_depletion_percent
-            );
+            ).trim().toUpperCase();
+
+            // Exclude explicitly known non-anode categories
+            const nonAnodeCodes = ["ML", "MB", "PL", "RS", "CD", "CS", "SM", "BL", "FD", "CR", "LG", "CA", "FW"];
+            if (compCode && nonAnodeCodes.includes(compCode)) return false;
+
+            const qid = String(r.structure_components?.q_id || r.inspection_data?.q_id || "").trim().toUpperCase();
+
+            // Exclude known non-anode prefixes
+            const nonAnodePrefixes = ["ML-", "MB-", "PL-", "RS-", "CD-", "CS-", "SM-", "BL-", "FD-", "CR-", "LG-", "CA-", "FW-", "M-", "LEG-", "PILE-", "RISER-", "COND-"];
+            if (qid && nonAnodePrefixes.some(p => qid.startsWith(p))) return false;
+
+            const isAnodeQid = /^(B?AN(ODE)?[-_\s]?\d+|AN[-_\s]|BAN[-_\s])/i.test(qid) || qid === "AN" || qid === "ANODE" || qid.startsWith("AN") || qid.startsWith("BAN");
+
+            const code = (r.inspection_type_code || r.inspection_type?.code || "").trim().toUpperCase();
+            const isAnodeInspType = code === "RSANI" || code === "SANI" || code === "ANODE" || code === "ANOD";
+
+            const isAnodeCompType = compCode === "AN" || compCode === "ANODE";
+
+            if (isAnodeCompType || isAnodeQid) return true;
+            if (isAnodeInspType && qid !== "N/A" && qid !== "NONE" && qid !== "") return true;
+
+            return false;
         };
 
         const anodeTargetRecords = (isReportSpecific && records.length > 0 ? records : rawRecords).filter(isAnodeRecord);
@@ -757,19 +774,33 @@ export const GET = withTenant(async (request, { companyId }) => {
         };
 
         // Helper to uniquely identify each physical anode
-        const getAnodeKey = (r: any): string => {
+        const getAnodeKey = (r: any): string | null => {
             const qid = (r.structure_components?.q_id || r.inspection_data?.q_id || "").toString().trim().toUpperCase();
+            const compCode = (r.structure_components?.code || r.component_type || "").toUpperCase();
+
             if (qid && qid !== "N/A" && qid !== "NONE" && qid !== "NULL" && qid !== "-") {
-                return `qid_${qid}`;
+                const nonAnodePrefixes = ["ML-", "MB-", "PL-", "RS-", "CD-", "CS-", "SM-", "BL-", "FD-", "CR-", "LG-", "CA-", "FW-", "M-", "LEG-"];
+                if (!nonAnodePrefixes.some(p => qid.startsWith(p))) {
+                    if (compCode === "AN" || compCode === "ANODE" || qid.startsWith("BAN") || qid.startsWith("AN") || /^(B?AN(ODE)?[-_\s]?\d+)/i.test(qid)) {
+                        return `qid_${qid}`;
+                    }
+                    return `qid_${qid}`;
+                }
             }
+
             if (r.component_id !== undefined && r.component_id !== null && r.component_id !== "" && String(r.component_id) !== "0") {
-                return `comp_${String(r.component_id).trim()}`;
+                const comp = compMap.get(String(r.component_id)) || compMap.get(Number(r.component_id));
+                const code = (comp?.code || r.structure_components?.code || r.component_type || "").toUpperCase();
+                const nonAnodeCodes = ["ML", "MB", "PL", "RS", "CD", "CS", "SM", "BL", "FD", "CR", "LG", "CA", "FW"];
+                if (!nonAnodeCodes.includes(code)) {
+                    if (code === "AN" || code === "ANODE" || (comp?.q_id && (comp.q_id.toUpperCase().startsWith("AN") || comp.q_id.toUpperCase().startsWith("BAN")))) {
+                        return `comp_${String(r.component_id).trim()}`;
+                    }
+                }
             }
-            const compName = (r.structure_components?.name || r.inspection_data?.component_name || "").toString().trim().toUpperCase();
-            if (compName && compName !== "N/A" && compName !== "NONE" && compName !== "NULL" && compName !== "-") {
-                return `name_${compName}`;
-            }
-            return `insp_${r.insp_id || Math.random()}`;
+
+            // Do not fallback to orphan `insp_${r.insp_id}` or Math.random() as they create phantom anodes
+            return null;
         };
 
         // Timestamp helper for determining newest inspection
@@ -815,6 +846,7 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anodeGroups = new Map<string, any[]>();
         anodeGviRecords.forEach((r: any) => {
             const key = getAnodeKey(r);
+            if (!key) return; // Skip orphan / invalid non-anode records
             if (!anodeGroups.has(key)) {
                 anodeGroups.set(key, []);
             }
@@ -973,6 +1005,40 @@ export const GET = withTenant(async (request, { companyId }) => {
         const cleanDepletionBuckets = Object.fromEntries(
             Object.entries(anodeDepletionBuckets).filter(([, v]) => v > 0)
         );
+
+        // Query total registered anodes in DB for this structure
+        let dbRegisteredAnodesCount = 0;
+        if (!isNaN(strNum)) {
+            try {
+                const { count: anCount } = await (supabase as any)
+                    .from("structure_components")
+                    .select("id", { count: "exact", head: true })
+                    .eq("structure_id", strNum)
+                    .eq("code", "AN")
+                    .or("is_deleted.is.null,is_deleted.eq.false");
+                dbRegisteredAnodesCount = anCount || 0;
+            } catch (err) {
+                console.error("[Summary API] Error querying registered anodes:", err);
+            }
+        }
+        const specAnodeQty = structureInfo?.metadata?.anode_count ?? structureInfo?.metadata?.an_qty;
+        const totalRegisteredAnodes = dbRegisteredAnodesCount > 0 ? dbRegisteredAnodesCount : (specAnodeQty ? Number(specAnodeQty) : 0);
+
+        // Scoped anodes in SOW for this report (or overall)
+        const targetAnodeSowItems = (targetSowItems || []).filter((item: any) => {
+            const type = String(item.component_type || "").trim().toUpperCase();
+            const code = String(item.inspection_code || "").trim().toUpperCase();
+            const qid = String(item.component_qid || "").trim().toUpperCase();
+            return type === "AN" || type === "ANODE" || code === "RSANI" || code === "SANI" || qid.startsWith("AN") || qid.startsWith("BAN");
+        });
+        const scopedAnodesCount = new Set(targetAnodeSowItems.map((i: any) => i.component_qid || i.component_id).filter(Boolean)).size;
+
+        const notInScopeCount = Math.max(0, totalRegisteredAnodes - anodeGviTotal);
+        if (notInScopeCount > 0) {
+            anodeDepletionBuckets["Not in SOW / Scope"] = notInScopeCount;
+            anodeDepletionBuckets["Not in Scope"] = notInScopeCount;
+            cleanDepletionBuckets["Not in SOW / Scope"] = notInScopeCount;
+        }
 
         // ─── 6. SELECTED ANODE INSPECTION (SANI/RSANI) & MAINTENANCE (ANMAIN) ─
         const saniRecords = rawRecords.filter((r: any) => {
@@ -2829,6 +2895,11 @@ export const GET = withTenant(async (request, { companyId }) => {
                 },
                 anodeGvi: {
                     total: anodeGviTotal,
+                    registered: totalRegisteredAnodes,
+                    scoped: scopedAnodesCount,
+                    inspected: anodeGviTotal,
+                    notInScope: notInScopeCount,
+                    balance: notInScopeCount,
                     rov: anodeGviRov,
                     dive: anodeGviDive,
                     anodeTypes: cleanAnodeTypesList,

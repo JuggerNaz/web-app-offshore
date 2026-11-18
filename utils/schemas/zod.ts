@@ -115,6 +115,7 @@ export const PlatformSchema = z.object({
   cr_user: z.string().optional().nullable(),
   crane: z.coerce.number().optional().nullable(),
   cslot: z.coerce.number().optional().nullable(),
+  cslota: z.coerce.number().optional().nullable(),
   def_unit: z.string().optional().nullable(),
   depth: z.coerce.number().optional().nullable(),
   desg_life: z.coerce.number().optional().nullable(),

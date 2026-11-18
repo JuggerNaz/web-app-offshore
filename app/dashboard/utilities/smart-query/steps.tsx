@@ -27,14 +27,14 @@ const ICON_MAP: Record<string, any> = {
 
 // ─── STEP 1: CATEGORY ──────────────────────────────────────────────────────────
 
-export function StepCategory({ 
-  value, 
+export function StepCategory({
+  value,
   onChange,
   savedQueries = [],
   onLoadQuery,
   onDeleteQuery
-}: { 
-  value: string; 
+}: {
+  value: string;
   onChange: (v: string) => void;
   savedQueries?: any[];
   onLoadQuery?: (sq: any) => void;
@@ -98,7 +98,7 @@ export function StepCategory({
             <p className="text-xs text-slate-500">Resume from your saved templates</p>
           </div>
         </div>
-        
+
         {savedQueries.length === 0 ? (
           <div className="p-6 rounded-2xl border border-slate-200 border-dashed dark:border-slate-800 text-center bg-slate-50/50 dark:bg-slate-900/20">
             <p className="text-sm text-slate-400 font-medium">No saved queries found</p>
@@ -153,16 +153,16 @@ export function StepFields({ category, selected, onChange }: { category: string;
 
   // Filter available fields
   const availableFields = cat.fields.filter(f => {
-    const matchesSearch = f.label.toLowerCase().includes(searchAvailable.toLowerCase()) || 
-                          f.key.toLowerCase().includes(searchAvailable.toLowerCase());
+    const matchesSearch = f.label.toLowerCase().includes(searchAvailable.toLowerCase()) ||
+      f.key.toLowerCase().includes(searchAvailable.toLowerCase());
     const matchesType = typeFilter === "all" || f.dataType === typeFilter;
     return matchesSearch && matchesType;
   });
 
   // Filter selected fields for search in right panel
-  const displayedSelectedDefs = selectedFieldDefs.filter(f => 
-    !searchSelected || 
-    f.label.toLowerCase().includes(searchSelected.toLowerCase()) || 
+  const displayedSelectedDefs = selectedFieldDefs.filter(f =>
+    !searchSelected ||
+    f.label.toLowerCase().includes(searchSelected.toLowerCase()) ||
     f.key.toLowerCase().includes(searchSelected.toLowerCase())
   );
 
@@ -353,7 +353,7 @@ export function StepFields({ category, selected, onChange }: { category: string;
       {viewMode === "dual" ? (
         /* ════════════════════ DUAL-PANEL STUDIO VIEW (DRAG & DROP) ════════════════════ */
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
-          
+
           {/* ◄ LEFT PANEL: AVAILABLE FIELDS POOL (5 COLS) */}
           <div className="lg:col-span-6 bg-slate-900/60 rounded-2xl border border-slate-800/80 p-4 space-y-3.5 flex flex-col h-[560px]">
             <div className="flex items-center justify-between">
@@ -364,18 +364,18 @@ export function StepFields({ category, selected, onChange }: { category: string;
                 </Badge>
               </div>
               <div className="flex items-center gap-1.5">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-7 text-xs text-cyan-400 hover:text-cyan-300 hover:bg-cyan-500/10 px-2"
                   onClick={selectAll}
                 >
                   <Plus className="w-3 h-3 mr-1" /> Add All
                 </Button>
                 {searchAvailable && (
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
+                  <Button
+                    variant="ghost"
+                    size="sm"
                     className="h-7 text-xs text-slate-400 hover:text-white px-2"
                     onClick={selectMatching}
                   >
@@ -396,7 +396,7 @@ export function StepFields({ category, selected, onChange }: { category: string;
                   className="pl-8 text-xs h-8 rounded-xl bg-slate-950/70 border-slate-800 text-slate-200 placeholder:text-slate-500"
                 />
                 {searchAvailable && (
-                  <button 
+                  <button
                     onClick={() => setSearchAvailable("")}
                     className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
                   >
@@ -490,7 +490,7 @@ export function StepFields({ category, selected, onChange }: { category: string;
           </div>
 
           {/* ► RIGHT PANEL: SELECTED & ORDERED FIELDS SEQUENCE (7 COLS) */}
-          <div 
+          <div
             onDragOver={(e) => {
               e.preventDefault();
               setIsOverSelectedPanel(true);
@@ -510,12 +510,12 @@ export function StepFields({ category, selected, onChange }: { category: string;
                   {selected.length} columns
                 </Badge>
               </div>
-              
+
               {/* Preset actions */}
               <div className="flex items-center gap-1">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-7 text-xs text-slate-400 hover:text-white px-2"
                   onClick={sortAlphabetical}
                   title="Sort selected columns A to Z"
@@ -523,9 +523,9 @@ export function StepFields({ category, selected, onChange }: { category: string;
                 >
                   <ArrowDownAZ className="w-3 h-3 mr-1" /> A-Z
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-7 text-xs text-slate-400 hover:text-white px-2"
                   onClick={resetToDefaultOrder}
                   title="Reset to category schema order"
@@ -533,9 +533,9 @@ export function StepFields({ category, selected, onChange }: { category: string;
                 >
                   <RotateCcw className="w-3 h-3 mr-1" /> Reset
                 </Button>
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
+                <Button
+                  variant="ghost"
+                  size="sm"
                   className="h-7 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10 px-2"
                   onClick={clearAll}
                   disabled={selected.length === 0}
@@ -555,7 +555,7 @@ export function StepFields({ category, selected, onChange }: { category: string;
                 className="pl-8 text-xs h-8 rounded-xl bg-slate-950/70 border-slate-800 text-slate-200 placeholder:text-slate-500"
               />
               {searchSelected && (
-                <button 
+                <button
                   onClick={() => setSearchSelected("")}
                   className="absolute right-2.5 top-2 text-slate-400 hover:text-white"
                 >
@@ -575,9 +575,9 @@ export function StepFields({ category, selected, onChange }: { category: string;
                   <p className="text-xs text-slate-500 mt-1 max-w-[280px]">
                     Click or drag fields from the left to build your table column order.
                   </p>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
+                  <Button
+                    size="sm"
+                    variant="outline"
                     className="mt-4 rounded-xl text-xs border-cyan-500/30 text-cyan-400 hover:bg-cyan-500/10"
                     onClick={selectAll}
                   >
@@ -607,7 +607,7 @@ export function StepFields({ category, selected, onChange }: { category: string;
                     >
                       {/* Drag Handle & Order Badge */}
                       <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                        <div 
+                        <div
                           className="cursor-grab active:cursor-grabbing p-1 text-slate-500 hover:text-cyan-400 rounded transition-colors"
                           title="Drag to reorder column position"
                         >
@@ -917,7 +917,7 @@ function ValueSuggester({ category, field, onSelect }: { category: string, field
         const data = await res.json();
         if (data.values) setValues(data.values);
       } catch (e) {
-         toast.error("Failed to fetch suggestions");
+        toast.error("Failed to fetch suggestions");
       } finally {
         setLoading(false);
       }
@@ -935,27 +935,27 @@ function ValueSuggester({ category, field, onSelect }: { category: string, field
       </PopoverTrigger>
       <PopoverContent className="w-64 p-0 rounded-xl shadow-xl overflow-hidden border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" align="start">
         <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-           <Input 
-             placeholder="Search values..." 
-             className="h-8 text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900" 
-             value={search} onChange={e => setSearch(e.target.value)} 
-           />
+          <Input
+            placeholder="Search values..."
+            className="h-8 text-xs border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900"
+            value={search} onChange={e => setSearch(e.target.value)}
+          />
         </div>
         <div className="max-h-[240px] overflow-y-auto p-1.5 custom-scrollbar">
           {loading ? (
-             <div className="py-8 flex flex-col items-center justify-center gap-2">
-               <Loader2 className="w-5 h-5 animate-spin text-cyan-500" />
-               <span className="text-xs text-slate-400">Loading suggestions...</span>
-             </div>
+            <div className="py-8 flex flex-col items-center justify-center gap-2">
+              <Loader2 className="w-5 h-5 animate-spin text-cyan-500" />
+              <span className="text-xs text-slate-400">Loading suggestions...</span>
+            </div>
           ) : filtered.length === 0 ? (
-             <div className="py-6 text-center text-xs text-slate-400">No matching values found</div>
+            <div className="py-6 text-center text-xs text-slate-400">No matching values found</div>
           ) : (
-             filtered.map((val, i) => (
-               <button key={i} className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg truncate transition-colors text-slate-700 dark:text-slate-300 font-medium"
-                 onClick={() => { onSelect(String(val)); setOpen(false); }}>
-                 {val === "" ? <span className="text-slate-400 italic">(Empty)</span> : String(val)}
-               </button>
-             ))
+            filtered.map((val, i) => (
+              <button key={i} className="w-full text-left px-3 py-2 text-xs hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg truncate transition-colors text-slate-700 dark:text-slate-300 font-medium"
+                onClick={() => { onSelect(String(val)); setOpen(false); }}>
+                {val === "" ? <span className="text-slate-400 italic">(Empty)</span> : String(val)}
+              </button>
+            ))
           )}
         </div>
       </PopoverContent>
@@ -1020,63 +1020,64 @@ export function StepConditions({ category, selectedFields, conditions, onChange 
       )}
 
       <div className="space-y-2">
-          {conditions.map((cond, idx) => {
-            const fieldDef = cat.fields.find(f => f.key === cond.field);
-            const operators = fieldDef ? getOperatorsForType(fieldDef.dataType) : QUERY_OPERATORS;
-            const opDef = QUERY_OPERATORS.find(o => o.id === cond.operator);
-            return (
-              <div key={idx} className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
-                {idx > 0 && (
-                  <select value={cond.logic || "AND"} onChange={e => update(idx, { logic: e.target.value as "AND" | "OR" })}
-                    className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold w-16">
-                    <option value="AND">AND</option>
-                    <option value="OR">OR</option>
+        {conditions.map((cond, idx) => {
+          const fieldDef = cat.fields.find(f => f.key === cond.field);
+          const operators = fieldDef ? getOperatorsForType(fieldDef.dataType) : QUERY_OPERATORS;
+          const opDef = QUERY_OPERATORS.find(o => o.id === cond.operator);
+          return (
+            <div key={idx} className="flex flex-wrap items-center gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50">
+              {idx > 0 && (
+                <select value={cond.logic || "AND"} onChange={e => update(idx, { logic: e.target.value as "AND" | "OR" })}
+                  className="h-8 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-xs font-bold w-16">
+                  <option value="AND">AND</option>
+                  <option value="OR">OR</option>
+                </select>
+              )}
+              <div className="flex items-center gap-1">
+                <select value={cond.field} onChange={e => update(idx, { field: e.target.value, operator: "eq", value: "", transform: "" })}
+                  className="h-9 rounded-l-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[140px] border-r-0 focus:ring-0">
+                  <option value="">Field...</option>
+                  {availFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
+                </select>
+                {fieldDef && (fieldDef.dataType === 'date' || fieldDef.dataType === 'text') && (
+                  <select value={cond.transform || ""} onChange={e => update(idx, { transform: e.target.value })}
+                    className="h-9 rounded-r-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-[10px] font-bold uppercase text-violet-600 focus:ring-0 cursor-pointer">
+                    <option value="">Normal</option>
+                    {fieldDef.dataType === 'date' && <><option value="year">Year</option><option value="month">Month</option></>}
+                    {fieldDef.dataType === 'text' && <><option value="uppercase">Upper</option><option value="length">Length</option></>}
                   </select>
                 )}
-                <div className="flex items-center gap-1">
-                  <select value={cond.field} onChange={e => update(idx, { field: e.target.value, operator: "eq", value: "", transform: "" })}
-                    className="h-9 rounded-l-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[140px] border-r-0 focus:ring-0">
-                    <option value="">Field...</option>
-                    {availFields.map(f => <option key={f.key} value={f.key}>{f.label}</option>)}
-                  </select>
-                  {fieldDef && (fieldDef.dataType === 'date' || fieldDef.dataType === 'text') && (
-                    <select value={cond.transform || ""} onChange={e => update(idx, { transform: e.target.value })}
-                      className="h-9 rounded-r-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-2 text-[10px] font-bold uppercase text-violet-600 focus:ring-0 cursor-pointer">
-                      <option value="">Normal</option>
-                      {fieldDef.dataType === 'date' && <><option value="year">Year</option><option value="month">Month</option></>}
-                      {fieldDef.dataType === 'text' && <><option value="uppercase">Upper</option><option value="length">Length</option></>}
-                    </select>
+              </div>
+              <select value={cond.operator} onChange={e => update(idx, { operator: e.target.value })}
+                className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[120px]">
+                {operators.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              {opDef && opDef.requiresValue && (
+                <div className="flex items-center gap-1.5">
+                  <Input value={cond.value} onChange={e => update(idx, { value: e.target.value })}
+                    placeholder={cond.operator === "like" ? "Pattern e.g. CD%..." : "Value..."}
+                    type={cond.transform === "year" ? "number" : fieldDef?.dataType === "number" ? "number" : fieldDef?.dataType === "date" ? "date" : "text"}
+                    className={cn("h-9 rounded-lg text-sm", cond.operator === "like" ? "w-44 font-mono" : "w-32")} />
+                  {cond.field && (
+                    <ValueSuggester
+                      category={category}
+                      field={cond.field}
+                      onSelect={(val) => update(idx, { value: val })}
+                    />
+                  )}
+                  {opDef.valueCount === 2 && (
+                    <><span className="text-xs text-slate-400">to</span>
+                      <Input value={cond.value2 || ""} onChange={e => update(idx, { value2: e.target.value })} placeholder="Value 2..."
+                        type={fieldDef?.dataType === "number" ? "number" : "text"} className="h-9 rounded-lg text-sm w-32" /></>
                   )}
                 </div>
-                <select value={cond.operator} onChange={e => update(idx, { operator: e.target.value })}
-                  className="h-9 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-sm min-w-[120px]">
-                  {operators.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-                {opDef && opDef.requiresValue && (
-                  <div className="flex items-center gap-1.5">
-                    <Input value={cond.value} onChange={e => update(idx, { value: e.target.value })} placeholder="Value..."
-                      type={cond.transform === "year" ? "number" : fieldDef?.dataType === "number" ? "number" : fieldDef?.dataType === "date" ? "date" : "text"}
-                      className="h-9 rounded-lg text-sm w-32" />
-                    {cond.field && (
-                      <ValueSuggester 
-                        category={category} 
-                        field={cond.field} 
-                        onSelect={(val) => update(idx, { value: val })} 
-                      />
-                    )}
-                    {opDef.valueCount === 2 && (
-                      <><span className="text-xs text-slate-400">to</span>
-                        <Input value={cond.value2 || ""} onChange={e => update(idx, { value2: e.target.value })} placeholder="Value 2..."
-                          type={fieldDef?.dataType === "number" ? "number" : "text"} className="h-9 rounded-lg text-sm w-32" /></>
-                    )}
-                  </div>
-                )}
-                <Button variant="ghost" size="icon" className="shrink-0 text-red-400 hover:text-red-600 h-8 w-8" onClick={() => remove(idx)}><Trash2 className="w-3.5 h-3.5" /></Button>
-              </div>
-            );
-          })}
-          <Button onClick={add} variant="outline" size="sm" className="rounded-xl gap-1"><Plus className="w-3 h-3" /> Add Condition</Button>
-        </div>
+              )}
+              <Button variant="ghost" size="icon" className="shrink-0 text-red-400 hover:text-red-600 h-8 w-8" onClick={() => remove(idx)}><Trash2 className="w-3.5 h-3.5" /></Button>
+            </div>
+          );
+        })}
+        <Button onClick={add} variant="outline" size="sm" className="rounded-xl gap-1"><Plus className="w-3 h-3" /> Add Condition</Button>
+      </div>
       {conditions.length > 0 && (
         <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-800">
           <p className="text-[10px] font-bold uppercase text-slate-400 mb-2">Active Filters</p>

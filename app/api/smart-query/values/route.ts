@@ -96,6 +96,25 @@ export const GET = withTenant(async (request, { companyId }) => {
       return NextResponse.json({ values: distinctValues.slice(0, 500) });
     }
 
+    const isComponentTypeField = ["component_type", "component_code", "code"].includes(field);
+    if (isComponentTypeField) {
+      const [{ data: compData }, { data: viewData }] = await Promise.all([
+        (supabase as any).from("structure_components").select("code").not("code", "is", null).limit(5000),
+        (supabase as any).from(catDef.table).select(field).not(field, "is", null).limit(5000).catch(() => ({ data: [] })),
+      ]);
+
+      const valueSet = new Set<string>();
+      (compData || []).forEach((c: any) => {
+        if (c.code) valueSet.add(String(c.code).trim().toUpperCase());
+      });
+      (viewData || []).forEach((v: any) => {
+        if (v && v[field]) valueSet.add(String(v[field]).trim().toUpperCase());
+      });
+
+      const distinctValues = Array.from(valueSet).filter(Boolean).sort((a, b) => a.localeCompare(b, undefined, { sensitivity: "base" }));
+      return NextResponse.json({ values: distinctValues.slice(0, 500) });
+    }
+
     let query = (supabase as any)
       .from(catDef.table)
       .select(field)

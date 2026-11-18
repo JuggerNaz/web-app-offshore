@@ -244,8 +244,14 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
           {
                 "key": "component_qid",
                 "label": "Component QID",
-                "dataType": "number",
+                "dataType": "text",
                 "description": "Component queue ID"
+          },
+          {
+                "key": "component_type",
+                "label": "Component Type",
+                "dataType": "text",
+                "description": "Component type or code (e.g. CD, CS, RS, PL, MB, AN)"
           },
           {
                 "key": "component_description",
@@ -303,9 +309,9 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
           },
           {
                 "key": "status",
-                "label": "Status",
+                "label": "Inspection Status",
                 "dataType": "text",
-                "description": "COMPLETED, INCOMPLETE, PENDING"
+                "description": "Inspection record status (COMPLETED, INCOMPLETE, PENDING)"
           },
           {
                 "key": "inspection_date",
@@ -1824,7 +1830,8 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       // Component Details
       { key: "component_id_str", label: "Component ID", dataType: "text", description: "Parent component identifier" },
       { key: "component_id_no", label: "Component ID No", dataType: "text", description: "Component ID number" },
-      { key: "component_qid", label: "Component QID", dataType: "number", description: "Component queue ID" },
+      { key: "component_qid", label: "Component QID", dataType: "text", description: "Component queue ID" },
+      { key: "component_type", label: "Component Type", dataType: "text", description: "Component type or code (e.g. CD, CS, RS, PL, MB)" },
       { key: "component_description", label: "Component Description", dataType: "text", description: "Component description" },
       { key: "start_node", label: "Start Node", dataType: "text", description: "Start node" },
       { key: "end_node", label: "End Node", dataType: "text", description: "End node" },
@@ -1858,7 +1865,8 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       // Component Details
       { key: "component_id_str", label: "Component ID", dataType: "text", description: "Parent component identifier" },
       { key: "component_id_no", label: "Component ID No", dataType: "text", description: "Component ID number" },
-      { key: "component_qid", label: "Component QID", dataType: "number", description: "Component queue ID" },
+      { key: "component_qid", label: "Component QID", dataType: "text", description: "Component queue ID" },
+      { key: "component_type", label: "Component Type", dataType: "text", description: "Component type or code (e.g. CD, CS, RS, PL, MB)" },
       { key: "component_description", label: "Component Description", dataType: "text", description: "Component description" },
       { key: "start_node", label: "Start Node", dataType: "text", description: "Start node" },
       { key: "end_node", label: "End Node", dataType: "text", description: "End node" },
@@ -1888,7 +1896,8 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       // Component Details
       { key: "component_id_str", label: "Component ID", dataType: "text", description: "Target component identifier" },
       { key: "component_id_no", label: "Component ID No", dataType: "text", description: "Component ID number" },
-      { key: "component_qid", label: "Component QID", dataType: "number", description: "Component queue ID" },
+      { key: "component_qid", label: "Component QID", dataType: "text", description: "Component queue ID" },
+      { key: "component_type", label: "Component Type", dataType: "text", description: "Component type or code (e.g. CD, CS, RS, PL, MB)" },
       { key: "component_description", label: "Component Description", dataType: "text", description: "Component description" },
       { key: "start_node", label: "Start Node", dataType: "text", description: "Start node" },
       { key: "end_node", label: "End Node", dataType: "text", description: "End node" },
@@ -1896,6 +1905,7 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "elevation2", label: "Elevation 2", dataType: "text", description: "Elevation 2" },
 
       { key: "inspection_type_code", label: "Inspection Type", dataType: "text", description: "Planned inspection type" },
+      { key: "status", label: "Inspection Status", dataType: "text", description: "Inspection Status" },
       { key: "incomplete_reason", label: "Reason", dataType: "text", description: "Reason for incomplete status" },
 
       // Audit User & Date Fields
@@ -1943,6 +1953,7 @@ export interface OperatorDef {
 export const QUERY_OPERATORS: OperatorDef[] = [
   { id: "eq", label: "Equals", symbol: "=", applicableTo: ["text", "number", "date", "boolean"], requiresValue: true, valueCount: 1 },
   { id: "neq", label: "Not Equals", symbol: "!=", applicableTo: ["text", "number", "date"], requiresValue: true, valueCount: 1 },
+  { id: "like", label: "LIKE", symbol: "LIKE", applicableTo: ["text"], requiresValue: true, valueCount: 1 },
   { id: "contains", label: "Contains", symbol: "~", applicableTo: ["text"], requiresValue: true, valueCount: 1 },
   { id: "starts_with", label: "Starts With", symbol: "^", applicableTo: ["text"], requiresValue: true, valueCount: 1 },
   { id: "ends_with", label: "Ends With", symbol: "$", applicableTo: ["text"], requiresValue: true, valueCount: 1 },
@@ -2051,7 +2062,8 @@ export function parseNaturalLanguage(input: string, availableFields: FieldDef[])
       const opPatterns: { pattern: RegExp; operator: string }[] = [
           { pattern: /(?:is|equals?|=)\s+(.+)$/i, operator: "eq" },
           { pattern: /(?:is not|not equals?|!=|<>)\s+(.+)$/i, operator: "neq" },
-          { pattern: /(?:contains?|includes?|like)\s+(.+)$/i, operator: "contains" },
+          { pattern: /(?:like)\s+(.+)$/i, operator: "like" },
+          { pattern: /(?:contains?|includes?)\s+(.+)$/i, operator: "contains" },
           { pattern: /(?:starts? with|begins? with)\s+(.+)$/i, operator: "starts_with" },
           { pattern: /(?:ends? with)\s+(.+)$/i, operator: "ends_with" },
           { pattern: /(?:is empty|is null)$/i, operator: "is_empty" },

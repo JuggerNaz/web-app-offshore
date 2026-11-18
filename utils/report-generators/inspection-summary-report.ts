@@ -887,14 +887,15 @@ export const generateInspectionSummaryReport = async (
             });
 
             // 4. Render Data Cells
+            const cellFontSize = Math.min(5.5, Math.max(4.4, rowH * 1.55));
             rows.forEach((r, rIdx) => {
                 const rY = tableY + headH + (rIdx * rowH);
-                const textY = rY + (rowH / 2) + 0.9;
+                const textY = rY + (rowH / 2) + (cellFontSize * 0.16);
 
                 let cellX = bx;
                 r.cols.forEach((cell, cIdx) => {
                     const cW = colWidths[cIdx];
-                    doc.setFontSize(5.5);
+                    doc.setFontSize(cellFontSize);
                     doc.setFont("helvetica", cell.bold ? "bold" : "normal");
                     doc.setTextColor(...colors.textDark);
 
@@ -1219,35 +1220,65 @@ export const generateInspectionSummaryReport = async (
                 }
 
                 const depletions = anodeGvi?.depletionBuckets || {};
-                const d0 = depletions["0-25%"] ?? depletions["0–25%"] ?? 0;
-                const d25 = depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 0;
-                const d50 = depletions["50-75%"] ?? depletions["50–75%"] ?? 0;
-                const d75 = depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 0;
-                const dNotEval = depletions["Not Evaluated"] ?? depletions["not evaluated"] ?? depletions["Not Recorded"] ?? depletions["not recorded"] ?? 0;
+                const d0 = Number(depletions["0-25%"] ?? depletions["0–25%"] ?? 0);
+                const d25 = Number(depletions["26-50%"] ?? depletions["25-50%"] ?? depletions["25–50%"] ?? 0);
+                const d50 = Number(depletions["50-75%"] ?? depletions["50–75%"] ?? 0);
+                const d75 = Number(depletions["76-100%"] ?? depletions["75-100%"] ?? depletions["75–100%"] ?? 0);
+                const dNotEval = Number(depletions["Not Evaluated"] ?? depletions["not evaluated"] ?? depletions["Not Recorded"] ?? depletions["not recorded"] ?? 0);
 
-                const col1W = Math.round(bw * 0.63);
+                const col1W = Math.round(bw * 0.60);
                 const col2W = bw - col1W;
 
-                const totAnodeCount = (Number(d0) + Number(d25) + Number(d50) + Number(d75) + Number(dNotEval)) || anodeGvi?.total || 1;
-                const pct0 = totAnodeCount > 0 ? Math.round((Number(d0) / totAnodeCount) * 100) : 0;
-                const pct25 = totAnodeCount > 0 ? Math.round((Number(d25) / totAnodeCount) * 100) : 0;
-                const pct50 = totAnodeCount > 0 ? Math.round((Number(d50) / totAnodeCount) * 100) : 0;
-                const pct75 = totAnodeCount > 0 ? Math.round((Number(d75) / totAnodeCount) * 100) : 0;
-                const pctNotEval = totAnodeCount > 0 ? Math.round((Number(dNotEval) / totAnodeCount) * 100) : 0;
+                const regAnodes = anodeGvi?.registered || structureInfo?.metadata?.anode_count || structureInfo?.metadata?.an_qty;
+                const regNum = regAnodes ? Number(regAnodes) : 0;
 
-                const healthPct = totAnodeCount > 0 ? Math.round(((Number(d0) + Number(d25)) / totAnodeCount) * 100) : 100;
+                const totAnodeInspected = Number(anodeGvi?.total) || (d0 + d25 + d50 + d75 + dNotEval) || 1;
+
+                const dNotInScope = Number(
+                    depletions["Not in SOW / Scope"] ?? 
+                    depletions["Not in Scope"] ?? 
+                    depletions["Not in SOW"] ?? 
+                    anodeGvi?.notInScope ?? 
+                    anodeGvi?.balance ?? 
+                    (regNum > totAnodeInspected ? regNum - totAnodeInspected : 0)
+                );
+
+                const grandTotal = regNum > 0 ? regNum : (totAnodeInspected + dNotInScope);
+                const denom = grandTotal > 0 ? grandTotal : totAnodeInspected;
+
+                const pct0 = denom > 0 ? Math.round((d0 / denom) * 100) : 0;
+                const pct25 = denom > 0 ? Math.round((d25 / denom) * 100) : 0;
+                const pct50 = denom > 0 ? Math.round((d50 / denom) * 100) : 0;
+                const pct75 = denom > 0 ? Math.round((d75 / denom) * 100) : 0;
+                const pctNotEval = denom > 0 ? Math.round((dNotEval / denom) * 100) : 0;
+                const pctNotInScope = denom > 0 ? Math.round((dNotInScope / denom) * 100) : 0;
+
+                const healthPct = totAnodeInspected > 0 ? Math.round(((d0 + d25) / totAnodeInspected) * 100) : 100;
                 const adviceText = `Anode Health: ${healthPct}% (<50% dep.)`;
 
-                const rows = [
+                const rows: { cols: { val: string; bold?: boolean; align?: "left" | "center" | "right" }[] }[] = [
                     { cols: [{ val: "Platform Anode Type", align: "left" as const }, { val: anodeTypeDisplay, bold: true, align: "right" as const }] },
-                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: `${d0} (${pct0}%)`, bold: Number(d0) > 0, align: "right" as const }] },
-                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: Number(d25) > 0, align: "right" as const }] },
-                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: Number(d50) > 0, align: "right" as const }] },
-                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: Number(d75) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Not Evaluated", align: "left" as const }, { val: `${dNotEval} (${pctNotEval}%)`, bold: Number(dNotEval) > 0, align: "right" as const }] },
-                    { cols: [{ val: "Anode Health", align: "left" as const }, { val: `${healthPct}% (<50% dep.)`, bold: true, align: "right" as const }] },
-                    { cols: [{ val: "Total Anodes Logged", bold: true, align: "left" as const }, { val: String(anodeGvi?.total || totAnodeCount), bold: true, align: "right" as const }] },
+                    { cols: [{ val: "0-25% Depletion", align: "left" as const }, { val: `${d0} (${pct0}%)`, bold: d0 > 0, align: "right" as const }] },
+                    { cols: [{ val: "26-50% Depletion", align: "left" as const }, { val: `${d25} (${pct25}%)`, bold: d25 > 0, align: "right" as const }] },
+                    { cols: [{ val: "50-75% Depletion", align: "left" as const }, { val: `${d50} (${pct50}%)`, bold: d50 > 0, align: "right" as const }] },
+                    { cols: [{ val: "76-100% Depletion", align: "left" as const }, { val: `${d75} (${pct75}%)`, bold: d75 > 0, align: "right" as const }] },
+                    { cols: [{ val: "Not Evaluated", align: "left" as const }, { val: `${dNotEval} (${pctNotEval}%)`, bold: dNotEval > 0, align: "right" as const }] },
                 ];
+
+                if (dNotInScope > 0) {
+                    rows.push({
+                        cols: [
+                            { val: "Not in SOW / Scope", align: "left" as const },
+                            { val: `${dNotInScope} (${pctNotInScope}%)`, bold: true, align: "right" as const }
+                        ]
+                    });
+                }
+
+                rows.push(
+                    { cols: [{ val: "Anode Health", align: "left" as const }, { val: `${healthPct}% (<50% dep.)`, bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Total Inspected", bold: true, align: "left" as const }, { val: String(totAnodeInspected), bold: true, align: "right" as const }] },
+                    { cols: [{ val: "Total Registered", bold: true, align: "left" as const }, { val: String(grandTotal), bold: true, align: "right" as const }] }
+                );
 
                 drawTableGrid(
                     bx, by, bw, bh,

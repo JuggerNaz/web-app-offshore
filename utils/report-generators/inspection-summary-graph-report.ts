@@ -1728,12 +1728,42 @@ export const generateInspectionSummaryGraphReport = async (
 
                 const totAnodeCount = (d0 + d25 + d50 + d75 + dNotEval);
                 const totalAnodes = typeof anodeGvi?.total === "number" && anodeGvi.total > 0 ? anodeGvi.total : (totAnodeCount || 1);
+
+                // Format Total header clearly showing Inspected vs Registered / Scoped
+                const regAnodes = anodeGvi?.registered || structureInfo?.metadata?.anode_count || structureInfo?.metadata?.an_qty;
+                const regNum = regAnodes ? Number(regAnodes) : 0;
+                const scopedNum = anodeGvi?.scoped ? Number(anodeGvi.scoped) : 0;
+
+                let totalLabel = `Total: ${totalAnodes}`;
+                if (regNum > 0 && regNum !== totalAnodes) {
+                    totalLabel = `Inspected: ${totalAnodes} / ${regNum} Reg`;
+                } else if (scopedNum > 0 && scopedNum !== totalAnodes) {
+                    totalLabel = `Inspected: ${totalAnodes} / ${scopedNum} Scoped`;
+                } else if (regNum > 0 && regNum === totalAnodes) {
+                    totalLabel = `Total: ${totalAnodes} (100%)`;
+                }
+
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(...colors.textMuted);
-                doc.text(`Total: ${totalAnodes}`, bx + bw - 3, graphY + 3.8, { align: "right" });
+                let aTotalFontSize = 4.6;
+                doc.setFontSize(aTotalFontSize);
+                while (aTotalFontSize > 3.2 && doc.getTextWidth(totalLabel) > (bw - 32)) {
+                    aTotalFontSize -= 0.2;
+                    doc.setFontSize(aTotalFontSize);
+                }
+                doc.text(totalLabel, bx + bw - 3, graphY + 3.8, { align: "right" });
 
-                // 5 Depletion Bars (including Not Evaluated)
-                const maxAnodeDep = Math.max(1, d0, d25, d50, d75, dNotEval);
+                // Balance not in SOW / Scope count so the total anodes in graph tally with registered anodes
+                const dNotInScope = Number(
+                    depletions["Not in SOW / Scope"] ?? 
+                    depletions["Not in Scope"] ?? 
+                    depletions["Not in SOW"] ?? 
+                    anodeGvi?.notInScope ?? 
+                    anodeGvi?.balance ?? 
+                    (regNum > totalAnodes ? regNum - totalAnodes : 0)
+                );
+
+                // Depletion Bars (including Not Evaluated and Not in Scope balance)
                 const aRanges = [
                     { label: "0-25%", count: d0, color: colors.emerald },
                     { label: "26-50%", count: d25, color: colors.blue },
@@ -1742,20 +1772,40 @@ export const generateInspectionSummaryGraphReport = async (
                     { label: "Not Evaluated", count: dNotEval, color: colors.textMuted },
                 ];
 
-                const pillH = Math.min(5.2, Math.max(4.2, graphH * 0.1));
-                const aBarStartY = graphY + 5.5;
-                const availableBarH = graphH - pillH - 7.5;
-                const aRowH = Math.max(3.6, availableBarH / aRanges.length);
+                if (dNotInScope > 0) {
+                    aRanges.push({
+                        label: "Not in Scope",
+                        count: dNotInScope,
+                        color: [148, 163, 184]
+                    });
+                }
+
+                const maxAnodeDep = Math.max(1, ...aRanges.map(r => r.count));
+
+                const pillH = Math.min(4.8, Math.max(3.8, graphH * 0.09));
+                const aBarStartY = graphY + 4.8;
+                const pillY = graphY + graphH - pillH - 1.0;
+                const availableBarH = pillY - aBarStartY - 0.8;
+                const aRowH = Math.max(2.8, availableBarH / aRanges.length);
 
                 aRanges.forEach((ar, aIdx) => {
                     const ay = aBarStartY + (aIdx * aRowH);
                     const rowMidY = ay + (aRowH / 2);
-                    const barH = Math.min(3.2, Math.max(2.0, aRowH * 0.40));
+                    const barH = Math.min(2.8, Math.max(1.8, aRowH * 0.42));
                     const barY = rowMidY - (barH / 2);
                     const textY = rowMidY + 0.8;
 
-                    const isLongLabel = ar.label.length > 8;
-                    doc.setFontSize(isLongLabel ? 3.8 : 4.6);
+                    let lblFontSize = 4.6;
+                    if (ar.label.length > 11) {
+                        lblFontSize = 3.3;
+                    } else if (ar.label.length > 8) {
+                        lblFontSize = 3.8;
+                    }
+                    doc.setFontSize(lblFontSize);
+                    while (doc.getTextWidth(ar.label) > 15.8 && lblFontSize > 2.8) {
+                        lblFontSize -= 0.2;
+                        doc.setFontSize(lblFontSize);
+                    }
                     doc.setFont("helvetica", "normal");
                     doc.setTextColor(...colors.textDark);
                     doc.text(ar.label, bx + 3, textY);
@@ -1779,11 +1829,11 @@ export const generateInspectionSummaryGraphReport = async (
                 });
 
                 // Bottom health spectrum pill as shown in pic1: Anode Health: <pct>% (<50% dep.)
-                const totAnodesForHealth = totalAnodes || totAnodeCount || 1;
-                const healthPct = Math.round(((d0 + d25) / totAnodesForHealth) * 100);
+                const totInspectedForHealth = (d0 + d25 + d50 + d75 + dNotEval) || totalAnodes || 1;
+                const healthPct = Math.round(((d0 + d25) / totInspectedForHealth) * 100);
 
                 doc.setFillColor(248, 250, 252);
-                doc.roundedRect(bx + 3, graphY + graphH - pillH - 1.2, bw - 6, pillH, 1, 1, "F");
+                doc.roundedRect(bx + 3, pillY, bw - 6, pillH, 1, 1, "F");
 
                 const aHealthStr = `Anode Health: ${healthPct}% (<50% dep.)`;
 
@@ -1796,7 +1846,7 @@ export const generateInspectionSummaryGraphReport = async (
                 }
                 // >=70% emerald (healthy), 50-69% amber (caution, matching pic1 63%), <50% red
                 doc.setTextColor(...(healthPct >= 70 ? colors.emerald : (healthPct >= 50 ? colors.amber : colors.red)));
-                doc.text(aHealthStr, bx + (bw / 2), graphY + graphH - 1.2 - (pillH / 2) + 1.0, { align: "center" });
+                doc.text(aHealthStr, bx + (bw / 2), pillY + (pillH / 2) + 1.0, { align: "center" });
             }
         });
 
