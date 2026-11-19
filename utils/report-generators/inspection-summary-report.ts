@@ -1433,6 +1433,17 @@ export const generateInspectionSummaryReport = async (
                         { cols: [{ val: "Recorded Max Potential", align: "left" as const }, { val: `${maxV} mV`, bold: maxV > cpNominalMax, align: "right" as const }] },
                         { cols: [{ val: "Min Allowable Limit (P1)", align: "left" as const }, { val: `${cpMinAllowable} mV`, align: "right" as const }] },
                         { cols: [{ val: "Nominal Max Allowable (P2)", align: "left" as const }, { val: `${cpNominalMax} mV`, align: "right" as const }] },
+                        ...(cp?.preReplacement?.totalCount > 0
+                            ? [{
+                                cols: [
+                                    { val: "Pre-Replacement CP (Archived)", align: "left" as const },
+                                    {
+                                        val: `${cp.preReplacement.minVal ?? "N/A"} to ${cp.preReplacement.maxVal ?? "N/A"} mV (${cp.preReplacement.totalCount})`,
+                                        align: "right" as const,
+                                    },
+                                ],
+                            }]
+                            : []),
                         { cols: [{ val: "Critical Defect Max (P1)", align: "left" as const }, { val: `${cpCriticalMax} mV`, align: "right" as const }] },
                         { cols: [{ val: "Protection Criteria Status", align: "left" as const }, { val: statusLabel, bold: true, align: "right" as const }] },
                     ];

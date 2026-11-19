@@ -6,6 +6,7 @@ import { Box, AlertTriangle, Plus, X, ChevronRight, CheckCircle2, Trash2 } from 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import inspectionSpecs from "@/utils/types/inspection-types.json";
+import { doesInspectionTypeMatchMode } from "@/utils/inspection-mode";
 import { InspectionForm } from "../../components/InspectionForm";
 
 interface InspectionFormPanelProps {
@@ -247,7 +248,11 @@ export function InspectionFormPanel({
                 </div>
 
                 <div className="w-full max-w-lg space-y-3">
-                  {(selectedComp.taskStatuses || []).map((ts: any) => {
+                  {(selectedComp.taskStatuses || [])
+                    .filter((ts: any) =>
+                      doesInspectionTypeMatchMode(ts.code, inspMethod || "DIVING", allInspectionTypes)
+                    )
+                    .map((ts: any) => {
                     const isCompleted = ts.status === 'completed';
                     const rawSpecName = allInspectionTypes?.find(t => t.code === ts.code)?.name || ts.code;
                     const specName = (rawSpecName || '').replace(/^ROV\s+/i, '');

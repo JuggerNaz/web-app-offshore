@@ -1094,6 +1094,54 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
         }
     }, [selectedComp, activeSpec, activeFormProps, isEditing, compNomThickness]);
 
+    // Auto-populate / auto-update Anode Type from selected Anode component specification
+    const lastAutoAnodeKeyRef = React.useRef<string>("");
+    React.useEffect(() => {
+        if (isEditing || !selectedComp || !handleDynamicPropChange) return;
+        const fieldsList = Array.isArray(resolvedFields) && resolvedFields.length > 0 ? resolvedFields : (activeFormProps || []);
+        const hasAnodeTypeField = fieldsList.some((p: any) => p?.name === 'anode_type');
+        if (!hasAnodeTypeField) return;
+
+        const rawMeta = typeof selectedComp?.raw?.metadata === 'string'
+            ? (() => { try { return JSON.parse(selectedComp.raw.metadata); } catch { return {}; } })()
+            : (selectedComp?.raw?.metadata || selectedComp?.metadata || {});
+        const compAnodeTypeRaw =
+            rawMeta?.additionalInfo?.thetype ??
+            rawMeta?.anodeType ??
+            rawMeta?.anode_type ??
+            selectedComp?.anode_type ??
+            "";
+        const compAnodeTypeStr = String(compAnodeTypeRaw || "").trim();
+        if (!compAnodeTypeStr) return;
+
+        const compKey = `${selectedComp?.id || selectedComp?.name || ''}_${activeSpec || ''}_${compAnodeTypeStr}`;
+        if (lastAutoAnodeKeyRef.current === compKey && dynamicProps?.anode_type) return;
+
+        // Match against ANOD_TYP library options if loaded
+        const anodLib = libOptionsMap?.['ANOD_TYP'] || [];
+        let resolvedVal = compAnodeTypeStr;
+        if (Array.isArray(anodLib) && anodLib.length > 0) {
+            const needle = compAnodeTypeStr.toLowerCase();
+            const match = anodLib.find((o: any) => {
+                if (typeof o === 'string') return o.toLowerCase() === needle;
+                const candidates = [o.lib_id, o.value, o.code, o.lib_desc, o.label, o.name]
+                    .filter((x) => x !== undefined && x !== null)
+                    .map((x) => String(x).trim().toLowerCase());
+                return candidates.includes(needle);
+            });
+            if (match) {
+                resolvedVal = typeof match === 'string'
+                    ? match
+                    : String(match.lib_desc ?? match.label ?? match.value ?? match.lib_id ?? compAnodeTypeStr);
+            }
+        }
+
+        if (String(dynamicProps?.anode_type || '').trim() !== resolvedVal) {
+            handleDynamicPropChange('anode_type', resolvedVal);
+        }
+        lastAutoAnodeKeyRef.current = compKey;
+    }, [selectedComp, activeSpec, resolvedFields, activeFormProps, isEditing, libOptionsMap]);
+
     React.useEffect(() => {
         if (!isEditing && activeSpec?.toUpperCase() === 'RSEAB' && handleDynamicPropChange) {
             const currentDepth = dynamicProps?.verification_depth;
@@ -1595,6 +1643,20 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
             <ScrollArea className="flex-1">
                 <div className="p-2">
                     <div className="space-y-2">
+                        {["ANMAIN", "ANODE_MAINT"].includes((activeSpec || "").toUpperCase().trim()) &&
+                            (dynamicProps?.replaced === true ||
+                                dynamicProps?.replaced === "true" ||
+                                dynamicProps?.replaced === 1 ||
+                                String(dynamicProps?.replaced || "").toLowerCase() === "yes") && (
+                                <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/80 dark:bg-blue-950/30 px-3 py-2 text-[11px] text-blue-800 dark:text-blue-200 flex items-start gap-2">
+                                    <Info className="w-3.5 h-3.5 mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
+                                    <div>
+                                        <span className="font-bold">Anode Replacement Active:</span> Saving will archive{" "}
+                                        <strong>{selectedComp?.name}</strong>&apos;s current specification &amp; prior CP/depletion readings into{" "}
+                                        <strong>Anode History</strong>, and update the active Anode Component Spec with the new details below. If you changed the QID using <em>Change</em>, the previous QID will be rolled back losslessly.
+                                    </div>
+                                </div>
+                            )}
                         <AnimatePresence mode="wait">
                             <motion.div key={activeSpec} initial={{ opacity: 0, y: 5 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -5 }} transition={{ duration: 0.2 }} className="p-1 border border-slate-200 dark:border-slate-800 bg-slate-50/30 dark:bg-slate-950/30 rounded-lg space-y-1">
                                 <div className="border-b border-slate-200 dark:border-slate-800 pb-1 space-y-0.5">
@@ -2107,7 +2169,100 @@ export const InspectionForm: React.FC<InspectionFormProps> = ({
 
                                             {(() => {
                                                 const type = activeSpec?.toUpperCase();
-                                                if (type === 'MGROW') {
+                                                if (type === 'PL_AN') {
+                                                    const validFields = otherFields.filter((f: any) => f && f.name);
+                                                    const renderPlanCell = (name: string, labelOverride?: string) => {
+                                                        const p = validFields.find((f: any) => f.name === name);
+                                                        if (!p) return null;
+                                                        const lbl = labelOverride || p.label || p.name;
+                                                        return (
+                                                            <div key={p.name} className="space-y-1 min-w-0 flex flex-col justify-end">
+                                                                <label
+                                                                    className="text-[9px] font-black uppercase tracking-wider text-slate-600 dark:text-slate-400 block truncate"
+                                                                    title={lbl}
+                                                                >
+                                                                    {lbl}
+                                                                </label>
+                                                                <div className="w-full min-w-0 [&_input]:min-w-0 [&_input]:w-full">
+                                                                    {renderInspectionField({ ...p, label: lbl }, 'primary')}
+                                                                </div>
+                                                            </div>
+                                                        );
+                                                    };
+
+                                                    const groupedNames = [
+                                                        'anode_type', 'anode_form', 'anode_length', 'anode_depletion_percent', 'anode_secured_to_structure',
+                                                        'member_cp', 'anode_cp', 'topstub_cp', 'bottomstub_cp',
+                                                        'max_pitting_depth', 'avg_pitting_depth', 'max_pitting_diameter', 'avg_pitting_diameter',
+                                                        'circumference_c1', 'circumference_c2', 'circumference_c3',
+                                                    ];
+                                                    const remainingFields = validFields.filter((f: any) => !groupedNames.includes(f.name));
+
+                                                    return (
+                                                        <div className="space-y-2.5 animate-in fade-in slide-in-from-bottom-[5%] duration-200">
+                                                            {/* Group 1: Anode Details & Condition */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2.5 shadow-sm space-y-2">
+                                                                <label className="text-[10px] font-black text-blue-600 dark:text-blue-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
+                                                                    Anode Details &amp; Condition
+                                                                </label>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 items-end">
+                                                                    {renderPlanCell('anode_type', 'Anode Type')}
+                                                                    {renderPlanCell('anode_form', 'Anode Form')}
+                                                                    {renderPlanCell('anode_length', 'Anode Length')}
+                                                                    {renderPlanCell('anode_depletion_percent', 'Anode Depletion')}
+                                                                    {renderPlanCell('anode_secured_to_structure', 'Secured to Structure')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 2: Cathodic Protection (CP) Readings */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2.5 shadow-sm space-y-2">
+                                                                <label className="text-[10px] font-black text-emerald-600 dark:text-emerald-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
+                                                                    Cathodic Protection (CP) Readings
+                                                                </label>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                    {renderPlanCell('member_cp', 'Member CP')}
+                                                                    {renderPlanCell('anode_cp', 'Anode CP')}
+                                                                    {renderPlanCell('topstub_cp', 'Top Stub CP')}
+                                                                    {renderPlanCell('bottomstub_cp', 'Bottom Stub CP')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 3: Pitting Measurements */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2.5 shadow-sm space-y-2">
+                                                                <label className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
+                                                                    Pitting Measurements
+                                                                </label>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                    {renderPlanCell('max_pitting_depth', 'Max Pitting Depth')}
+                                                                    {renderPlanCell('avg_pitting_depth', 'Avg Pitting Depth')}
+                                                                    {renderPlanCell('max_pitting_diameter', 'Max Pitting Diameter')}
+                                                                    {renderPlanCell('avg_pitting_diameter', 'Avg Pitting Diameter')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Group 4: Circumference Measurements */}
+                                                            <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2.5 shadow-sm space-y-2">
+                                                                <label className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest block border-b border-slate-100 dark:border-slate-800 pb-1">
+                                                                    Circumference Measurements
+                                                                </label>
+                                                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                                    {renderPlanCell('circumference_c1', 'Circumference C1')}
+                                                                    {renderPlanCell('circumference_c2', 'Circumference C2')}
+                                                                    {renderPlanCell('circumference_c3', 'Circumference C3')}
+                                                                </div>
+                                                            </div>
+
+                                                            {/* Any additional/future fields */}
+                                                            {remainingFields.length > 0 && (
+                                                                <div className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 rounded-lg p-2.5 shadow-sm">
+                                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                        {remainingFields.map((p: any) => renderPlanCell(p.name))}
+                                                                    </div>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    );
+                                                } else if (type === 'MGROW') {
                                                     const circ = otherFields.filter((f: any) => ['circumferential_measurement_5m_above', 'circumferential_measurement_0m', 'circumferential_measurement_5m_below'].includes(f.name));
                                                     const bools = otherFields.filter((f: any) => f.type === 'boolean');
                                                     const rest = otherFields.filter((f: any) => !circ.includes(f) && !bools.includes(f));

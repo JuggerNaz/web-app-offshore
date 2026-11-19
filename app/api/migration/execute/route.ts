@@ -5898,21 +5898,49 @@ export async function POST(request: NextRequest) {
             return result;
           };
 
-          // Helper to parse anode details from comments
+          // Helper to parse anode details (Anode Type, Anode Form, and split Anode Depletion) from comments
+          const detectAnodeFormFromText = (text: string): string | null => {
+            if (!text) return null;
+            const lower = text.toLowerCase();
+            if (lower.includes("bracelet")) return "Bracelet";
+            if (lower.includes("collar")) return "Collar";
+            if (lower.includes("sled")) return "Sled";
+            if (/\bbar\b/.test(lower)) return "Bar";
+            return null;
+          };
+
+          const pctToDepletionBucket = (pct: number): string | null => {
+            if (isNaN(pct)) return null;
+            if (pct >= 0 && pct <= 25) return "0 - 25%";
+            if (pct > 25 && pct <= 50) return "25 - 50%";
+            if (pct > 50 && pct <= 75) return "50 - 75%";
+            if (pct > 75 && pct <= 100) return "75 - 100%";
+            return null;
+          };
+
+          const rangeToDepletionBucket = (start: number, end: number): string => {
+            if (start <= 0 && end <= 25) return "0 - 25%";
+            if (start >= 25 && start <= 26 && end <= 50) return "25 - 50%";
+            if (start >= 50 && start <= 51 && end <= 75) return "50 - 75%";
+            if (start >= 75 && start <= 76 && end <= 100) return "75 - 100%";
+            return `${start} - ${end}%`;
+          };
+
           const parseAnodeDetails = (comment: string) => {
-            if (!comment) return {};
+            if (!comment) return { anodeForm: null, depletion: null, anodeType: null };
             const cleanComment = comment.trim();
             const lowerComment = cleanComment.toLowerCase();
 
             let anodeType: any = null;
-            let depletion: any = null;
+            let anodeForm: string | null = null;
+            let depletion: string | null = null;
 
             // Split comment by semicolon first (plain split to avoid Tailwind CSS regex static analysis bugs)
             const sections = cleanComment.split(';');
 
             // Construct regular expressions dynamically to shield them from Tailwind scanner
             const typeRegex = new RegExp("\\btype\\s*(?:-|:|\\s)?\\s*([a-g0-9]+)\\b", "i");
-            const rangeRegex = new RegExp("(\\d+)\\s*-\\s*(\\d+)\\s*%");
+            const rangeRegex = new RegExp("(\\d+)\\s*[-–]\\s*(\\d+)\\s*%");
             const pctRegex = new RegExp("(\\d+)\\s*%");
 
             for (const sec of sections) {
@@ -5920,9 +5948,7 @@ export async function POST(request: NextRequest) {
               const lowerSec = trimmedSec.toLowerCase();
 
               // 1. Parse Anode Type
-              // If section mentions "anode" and we haven't found anodeType yet
               if (lowerSec.includes("anode") && !anodeType) {
-                // Check if it has a pattern like "type-X" or "type X"
                 const typeMatch = lowerSec.match(typeRegex);
                 if (typeMatch) {
                   const code = typeMatch[1].toLowerCase().trim();
@@ -5935,7 +5961,6 @@ export async function POST(request: NextRequest) {
                   }
                 }
 
-                // If we didn't find it by type match, maybe the word after "anode:" is in the library?
                 if (!anodeType) {
                   const colonParts = trimmedSec.split(":");
                   if (colonParts.length > 1) {
@@ -5951,29 +5976,26 @@ export async function POST(request: NextRequest) {
                 }
               }
 
-              // 2. Parse Depletion from section
+              // 2. Detect Anode Form from section
+              if (!anodeForm) {
+                const secForm = detectAnodeFormFromText(lowerSec);
+                if (secForm) anodeForm = secForm;
+              }
+
+              // 3. Parse Depletion (clean split value without form prefix) from section
               if ((lowerSec.includes("deplet") || lowerSec.includes("%")) && !depletion) {
-                let category = "Bar";
-                if (lowerSec.includes("bracelet")) category = "Bracelet";
-                else if (lowerSec.includes("collar")) category = "Collar";
-                else if (lowerSec.includes("sled")) category = "Sled";
-                else if (lowerSec.includes("bar")) category = "Bar";
+                const secForm = detectAnodeFormFromText(lowerSec);
+                if (secForm) anodeForm = secForm;
 
                 const rangeMatch = lowerSec.match(rangeRegex);
                 if (rangeMatch) {
-                  const start = parseInt(rangeMatch[1]);
-                  const end = parseInt(rangeMatch[2]);
-                  depletion = `${category}: ${start} - ${end}% Depletion`;
+                  depletion = rangeToDepletionBucket(parseInt(rangeMatch[1]), parseInt(rangeMatch[2]));
                 } else {
                   const pctMatch = lowerSec.match(pctRegex);
                   if (pctMatch) {
-                    const pct = parseInt(pctMatch[1]);
-                    if (pct >= 0 && pct <= 25) depletion = `${category}: 0 - 25% Depletion`;
-                    else if (pct > 25 && pct <= 50) depletion = `${category}: 25 - 50% Depletion`;
-                    else if (pct > 50 && pct <= 75) depletion = `${category}: 50 - 75% Depletion`;
-                    else if (pct > 75 && pct <= 100) depletion = `${category}: 75 - 100% Depletion`;
+                    depletion = pctToDepletionBucket(parseInt(pctMatch[1]));
                   } else if (lowerSec.includes("unable to estimate") || lowerSec.includes("unable to assess") || lowerSec.includes("cannot estimate")) {
-                    depletion = `${category}: Unable to Estimate`;
+                    depletion = "Unable to Estimate";
                   }
                 }
               }
@@ -5994,32 +6016,27 @@ export async function POST(request: NextRequest) {
               }
             }
 
+            // Fallback for anode form globally
+            if (!anodeForm) {
+              anodeForm = detectAnodeFormFromText(lowerComment);
+            }
+
             // Fallback for depletion globally if not found in sections
             if (!depletion) {
-              let category = "Bar";
-              if (lowerComment.includes("bracelet")) category = "Bracelet";
-              else if (lowerComment.includes("collar")) category = "Collar";
-              else if (lowerComment.includes("sled")) category = "Sled";
-              else if (lowerComment.includes("bar")) category = "Bar";
-
               const rangeMatch = lowerComment.match(rangeRegex);
               if (rangeMatch) {
-                const start = parseInt(rangeMatch[1]);
-                const end = parseInt(rangeMatch[2]);
-                depletion = `${category}: ${start} - ${end}% Depletion`;
+                depletion = rangeToDepletionBucket(parseInt(rangeMatch[1]), parseInt(rangeMatch[2]));
               } else {
                 const pctMatch = lowerComment.match(pctRegex);
                 if (pctMatch) {
-                  const pct = parseInt(pctMatch[1]);
-                  if (pct >= 0 && pct <= 25) depletion = `${category}: 0 - 25% Depletion`;
-                  else if (pct > 25 && pct <= 50) depletion = `${category}: 25 - 50% Depletion`;
-                  else if (pct > 50 && pct <= 75) depletion = `${category}: 50 - 75% Depletion`;
-                  else if (pct > 75 && pct <= 100) depletion = `${category}: 75 - 100% Depletion`;
+                  depletion = pctToDepletionBucket(parseInt(pctMatch[1]));
+                } else if (lowerComment.includes("unable to estimate") || lowerComment.includes("unable to assess") || lowerComment.includes("cannot estimate")) {
+                  depletion = "Unable to Estimate";
                 }
               }
             }
 
-            return { depletion, anodeType };
+            return { anodeForm, depletion, anodeType };
           };
 
           // Helper to parse debris dimensions from comments
@@ -6580,7 +6597,18 @@ export async function POST(request: NextRequest) {
             const allTextForMgParsing = [commentsText, descriptionText, mgCondText, inspCondText].filter(Boolean).join(' ; ');
             const mgDetails = parseMarineGrowthFromComment(allTextForMgParsing);
             const mgiThicknessDetails = parseMgiThicknessFromComment(allTextForMgParsing);
-            const anodeDetails = parseAnodeDetails(commentsText);
+
+            // Gate anode comment parsing strictly to Anode components / Anode inspection types
+            const isAnodeInspection =
+              compCode.toUpperCase() === 'AN' ||
+              compCode.toUpperCase() === 'ANODE' ||
+              ['PL_AN', 'RSANI', 'SANI', 'ANODE', 'ANOD'].includes(typCode.toUpperCase());
+            const anodeCommentSource = isRov
+              ? [commentsText, descriptionText].filter(Boolean).join(' ; ')
+              : [inspCondText, commentsText, descriptionText].filter(Boolean).join(' ; ');
+            const anodeDetails = isAnodeInspection
+              ? parseAnodeDetails(anodeCommentSource)
+              : { anodeForm: null, depletion: null, anodeType: null };
 
             // Merge details into mappedTypeData (these will flow through combinedData)
             if (mgDetails.softMg) mappedTypeData.marine_growth_soft = mgDetails.softMg;
@@ -6590,6 +6618,9 @@ export async function POST(request: NextRequest) {
                 mappedTypeData[k] = v;
               }
             });
+            if (anodeDetails.anodeForm) {
+              mappedTypeData.anode_form = anodeDetails.anodeForm;
+            }
             if (anodeDetails.depletion) {
               mappedTypeData.depletion = anodeDetails.depletion;
               mappedTypeData.anode_depletion = anodeDetails.depletion;
@@ -6677,13 +6708,18 @@ export async function POST(request: NextRequest) {
               }
             });
 
-            // Explicitly re-apply parsed Anode details
-            if (anodeDetails.anodeType) {
-              inspectionDataObj.anode_type = anodeDetails.anodeType;
-            }
-            if (anodeDetails.depletion) {
-              inspectionDataObj.anode_depletion = anodeDetails.depletion;
-              inspectionDataObj.depletion = anodeDetails.depletion;
+            // Explicitly re-apply parsed Anode details (strictly for Anode components/types)
+            if (isAnodeInspection) {
+              if (anodeDetails.anodeType) {
+                inspectionDataObj.anode_type = anodeDetails.anodeType;
+              }
+              if (anodeDetails.anodeForm) {
+                inspectionDataObj.anode_form = anodeDetails.anodeForm;
+              }
+              if (anodeDetails.depletion) {
+                inspectionDataObj.anode_depletion = anodeDetails.depletion;
+                inspectionDataObj.depletion = anodeDetails.depletion;
+              }
             }
 
             // Explicitly set parsed timecode / counter_no
@@ -6810,10 +6846,39 @@ export async function POST(request: NextRequest) {
               inspectionDataObj.topstub_cp = toNegativeStr(combinedData.topstub_cp);
               inspectionDataObj.bottomstub_cp = toNegativeStr(combinedData.botstub_cp);
 
-              // Dimensions & Depletion
+              // Dimensions, Anode Form & Depletion
               inspectionDataObj.anode_type = combinedData.type !== undefined && combinedData.type !== null ? String(combinedData.type).trim() : null;
               inspectionDataObj.anode_length = combinedData.length !== undefined && combinedData.length !== null ? Number(combinedData.length) : null;
-              inspectionDataObj.anode_depletion_percent = combinedData.depletion !== undefined && combinedData.depletion !== null ? Number(combinedData.depletion) : null;
+
+              // Resolve Anode Form for Diving PL_AN: check explicit column / depletion text / comments, default to "Bar"
+              const rawDivingForm =
+                combinedData.anode_form ??
+                combinedData.an_form ??
+                combinedData.form ??
+                detectAnodeFormFromText(String(combinedData.depletion ?? "")) ??
+                detectAnodeFormFromText(findingsVal) ??
+                anodeDetails.anodeForm;
+              inspectionDataObj.anode_form =
+                rawDivingForm && String(rawDivingForm).trim() !== ""
+                  ? String(rawDivingForm).trim()
+                  : "Bar";
+
+              // Normalize Diving PL_AN depletion into clean split depletion bucket/value
+              const rawDivingDepl = combinedData.depletion;
+              if (rawDivingDepl !== undefined && rawDivingDepl !== null && String(rawDivingDepl).trim() !== "") {
+                const rawStr = String(rawDivingDepl).trim();
+                const numVal = Number(rawStr);
+                if (!isNaN(numVal)) {
+                  inspectionDataObj.anode_depletion_percent = pctToDepletionBucket(numVal) ?? `${numVal}%`;
+                } else {
+                  const parsed = parseAnodeDetails(rawStr);
+                  inspectionDataObj.anode_depletion_percent =
+                    parsed.depletion ||
+                    rawStr.replace(/^(bar|bracelet|collar|sled)\s*[:\-]?\s*/i, "").replace(/\s*depletion\s*$/i, "").trim();
+                }
+              } else {
+                inspectionDataObj.anode_depletion_percent = anodeDetails.depletion || null;
+              }
 
               // Pittings
               inspectionDataObj.max_pitting_depth = combinedData.max_pit !== undefined && combinedData.max_pit !== null ? Number(combinedData.max_pit) : null;

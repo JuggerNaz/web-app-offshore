@@ -209,6 +209,54 @@ export function InspectionAnalyticsDialog({
                                         </table>
                                     </div>
                                 </div>
+
+                                {/* Pre- vs. Post-Replacement CP & Anode Comparison (Same Jobpack) */}
+                                {Array.isArray(d.anodeMaintenance?.prePostComparison) && d.anodeMaintenance.prePostComparison.length > 0 && (
+                                    <div className="space-y-3 pt-2">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <h3 className="text-xs font-black uppercase text-amber-600 dark:text-amber-400 tracking-wider">
+                                                Anode Replacement — Pre vs. Post CP &amp; Depletion Readings (Same Jobpack)
+                                            </h3>
+                                            <Badge variant="outline" className="text-[10px] border-amber-200 bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">
+                                                Current stats above exclude {d.cp?.preReplacement?.totalCount || 0} pre-replacement reading(s)
+                                            </Badge>
+                                        </div>
+                                        <div className="border border-amber-200/70 dark:border-amber-900/40 rounded-xl bg-white dark:bg-slate-950 overflow-hidden shadow-sm">
+                                            <table className="w-full text-left border-collapse">
+                                                <thead>
+                                                    <tr className="bg-amber-50/60 dark:bg-amber-950/20 border-b text-[10px] uppercase font-bold text-slate-600 dark:text-slate-300">
+                                                        <th className="p-3">Anode QID</th>
+                                                        <th className="p-3">Replaced Date</th>
+                                                        <th className="p-3">Pre-Replacement CP (Old Anode)</th>
+                                                        <th className="p-3">Pre Depletion</th>
+                                                        <th className="p-3">Post-Replacement CP (New Active)</th>
+                                                        <th className="p-3">Post Depletion</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y text-xs text-slate-700 dark:text-slate-300">
+                                                    {d.anodeMaintenance.prePostComparison.map((row: any) => (
+                                                        <tr key={row.qid} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30">
+                                                            <td className="p-3 font-mono font-bold text-blue-600 dark:text-blue-400">{row.qid}</td>
+                                                            <td className="p-3 font-mono text-[11px]">{row.replacedDate || "—"}</td>
+                                                            <td className="p-3 font-semibold text-amber-700 dark:text-amber-400">
+                                                                {row.preCpCount > 0
+                                                                    ? `${formatCp(row.preCpMin)} – ${formatCp(row.preCpMax)} (${row.preCpCount})`
+                                                                    : "—"}
+                                                            </td>
+                                                            <td className="p-3">{row.preDepletion ? `${row.preDepletion}%` : "—"}</td>
+                                                            <td className="p-3 font-semibold text-emerald-700 dark:text-emerald-400">
+                                                                {row.postCpCount > 0
+                                                                    ? `${formatCp(row.postCpMin)} – ${formatCp(row.postCpMax)} (${row.postCpCount})`
+                                                                    : "—"}
+                                                            </td>
+                                                            <td className="p-3">{row.postDepletion ? `${row.postDepletion}%` : "—"}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                )}
                             </TabsContent>
 
                             {/* FMD TAB */}

@@ -179,6 +179,7 @@ function getTemplateTableSpec(templateId: string): {
                         { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Anode QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Elevation (m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
+                        { content: "Anode Form", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "CP (-mV)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Depletion %", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
                         { content: "Dimensions (L x W x H)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: [203, 213, 225]} },
@@ -186,13 +187,14 @@ function getTemplateTableSpec(templateId: string): {
                     ]
                 ],
                 columnStyles: {
-                    0: { cellWidth: 16, halign: "center" },
-                    1: { cellWidth: 28 },
-                    2: { cellWidth: 22, halign: "center" },
-                    3: { cellWidth: 22, halign: "center" },
-                    4: { cellWidth: 22, halign: "center" },
-                    5: { cellWidth: 32, halign: "center" },
-                    6: { cellWidth: "auto" },
+                    0: { cellWidth: 14, halign: "center" },
+                    1: { cellWidth: 26 },
+                    2: { cellWidth: 20, halign: "center" },
+                    3: { cellWidth: 20, halign: "center" },
+                    4: { cellWidth: 20, halign: "center" },
+                    5: { cellWidth: 20, halign: "center" },
+                    6: { cellWidth: 28, halign: "center" },
+                    7: { cellWidth: "auto" },
                 }
             };
 

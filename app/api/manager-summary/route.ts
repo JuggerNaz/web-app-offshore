@@ -409,11 +409,38 @@ export const GET = withTenant(async (request, { companyId }) => {
                     findingByPriority[p] = (findingByPriority[p] || 0) + 1;
                 });
 
+                // Identify anodes with active (post-replacement) readings in this jobpack so
+                // same-jobpack pre-replacement readings (anode_history_id != null) do not skew current stats.
+                // Purely historical past jobpacks (where all records have anode_history_id != null) are preserved.
+                const activeAnodeCompIdsInJp = new Set<number>();
+                const replacedAnodeCompIdsInJp = new Set<number>();
+                recs.forEach((r: any) => {
+                    if (r.component_id && r.anode_history_id == null) {
+                        activeAnodeCompIdsInJp.add(Number(r.component_id));
+                    }
+                    const code = (r.inspection_type_code || r.inspection_type?.code || "").toUpperCase();
+                    if ((code === "ANMAIN" || code === "ANODE_MAINT") && r.component_id) {
+                        const repVal = r.replaced ?? r.inspection_data?.replaced;
+                        if (repVal === true || repVal === "true" || repVal === 1 || repVal === "1" || String(repVal || "").toLowerCase() === "yes") {
+                            replacedAnodeCompIdsInJp.add(Number(r.component_id));
+                        }
+                    }
+                });
+
                 // ── CP Readings & Depth Scatter Data ──
                 let cpCount = 0, cpMin: number | null = null, cpMax: number | null = null, cpSum = 0;
                 const cpDepthPoints: { depth: number; potential_mv: number; component: string; status: string }[] = [];
 
                 recs.forEach((r: any) => {
+                    // Exclude pre-replacement readings if this anode was replaced in this same jobpack
+                    if (
+                        r.component_id &&
+                        r.anode_history_id != null &&
+                        (replacedAnodeCompIdsInJp.has(Number(r.component_id)) ||
+                            activeAnodeCompIdsInJp.has(Number(r.component_id)))
+                    ) {
+                        return;
+                    }
                     const rawCp = r.cp_rdg ?? r.cp_reading_mv ?? r.cp_in ?? "";
                     const v = parseFloat(rawCp);
                     const depthVal = Math.abs(parseFloat(r.water_depth ?? r.elevation ?? "25") || 25);
@@ -468,19 +495,24 @@ export const GET = withTenant(async (request, { companyId }) => {
                 const depletionBuckets: Record<string, number> = { "0–25%": 0, "25–50%": 0, "50–75%": 0, "75–100%": 0, "Not Evaluated": 0 };
                 let evaluatedCount = 0;
 
-                anodeGroups.forEach((recs) => {
+                anodeGroups.forEach((groupRecs) => {
                     // Sort chronologically
-                    recs.sort((a, b) => {
+                    groupRecs.sort((a, b) => {
                         const tA = a.inspection_date ? Date.parse(a.inspection_date) : (a.created_at ? Date.parse(a.created_at) : 0);
                         const tB = b.inspection_date ? Date.parse(b.inspection_date) : (b.created_at ? Date.parse(b.created_at) : 0);
                         if (!isNaN(tA) && !isNaN(tB) && tA !== tB) return tA - tB;
                         return Number(a.insp_id || a.id || 0) - Number(b.insp_id || b.id || 0);
                     });
 
+                    // Prefer active (post-replacement) anode records if present in this jobpack;
+                    // preserve historical-era records for past jobpacks.
+                    const activeOnly = groupRecs.filter((r: any) => r.anode_history_id == null);
+                    const effectiveGroup = activeOnly.length > 0 ? activeOnly : groupRecs;
+
                     // Search for latest depletion from newest to oldest
                     let bucket: string | null = null;
-                    for (let i = recs.length - 1; i >= 0; i--) {
-                        const r = recs[i];
+                    for (let i = effectiveGroup.length - 1; i >= 0; i--) {
+                        const r = effectiveGroup[i];
                         const raw = r.anode_depletion || r.anode_depletion_percent || r.depletion;
                         if (raw === undefined || raw === null || raw === "") continue;
                         const num = typeof raw === "number" ? raw : parseFloat(String(raw).replace(/[^0-9.]/g, ""));

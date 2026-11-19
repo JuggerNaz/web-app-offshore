@@ -8,6 +8,8 @@ import Link from "next/link";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { createClient } from "@/utils/supabase/client";
+import { getClientTimePayload } from "@/utils/client-time";
+import { doesRecordMatchMode } from "@/utils/inspection-mode";
 
 import {
   Activity,
@@ -944,11 +946,12 @@ function V10PreviewLayout() {
       : currentRecords;
     if (!baseSource || baseSource.length === 0) return [];
 
-    // Filter out calibration/test records as requested
+    // Filter out calibration/test records and isolate strictly to active inspection mode (DIVING vs ROV)
     const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
     const filtered = baseSource.filter((r: any) => {
       const code = r.inspection_type_code || r.inspection_type?.code;
-      return !excludedCodes.includes(code);
+      if (excludedCodes.includes(code)) return false;
+      return doesRecordMatchMode(r, inspMethod);
     });
 
     const sortableRecords = [...filtered];
@@ -1059,7 +1062,7 @@ function V10PreviewLayout() {
     });
 
     return sortableRecords;
-  }, [allWorkspaceRecords, currentRecords, sortConfig]);
+  }, [allWorkspaceRecords, currentRecords, sortConfig, inspMethod]);
 
   // Search Matching Mode ("ANY" | "ALL" | "EXACT")
   const [searchMode, setSearchMode] = useState<"ANY" | "ALL" | "EXACT">("ALL");
@@ -1068,7 +1071,7 @@ function V10PreviewLayout() {
     const rawQuery = recordSearchQuery.trim();
     if (!rawQuery) return sortedRecords;
 
-    // Filter out calibration/test records from the full database records set
+    // Filter out calibration/test records and isolate strictly to active inspection mode (DIVING vs ROV)
     const excludedCodes = ["RCPCLB", "RUTCLB", "CPCLB", "UTCLB"];
     const baseSource = (allWorkspaceRecords && allWorkspaceRecords.length > 0)
       ? allWorkspaceRecords
@@ -1076,7 +1079,8 @@ function V10PreviewLayout() {
 
     const sourceRecords = baseSource.filter((r: any) => {
       const code = r.inspection_type_code || r.inspection_type?.code;
-      return !excludedCodes.includes(code);
+      if (excludedCodes.includes(code)) return false;
+      return doesRecordMatchMode(r, inspMethod);
     });
 
     // 1. Helper to extract structured component metadata safely
@@ -1456,7 +1460,7 @@ function V10PreviewLayout() {
     });
 
     return scoredRecords.map((item) => item.record);
-  }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig]);
+  }, [sortedRecords, allWorkspaceRecords, currentRecords, recordSearchQuery, searchMode, sortConfig, inspMethod]);
 
   // Paginated window for silky smooth 60 FPS table rendering (0ms in-memory page flips)
   const pagedDisplayRecords = useMemo(() => {
@@ -8556,6 +8560,127 @@ function V10PreviewLayout() {
 
       if (opError) throw opError;
 
+      // ─── ANODE REPLACEMENT ARCHIVING & WRONG-QID ROLLBACK/REASSIGNMENT ───
+      try {
+        const savedTypeCode = String(it?.code || activeSpec || payload.inspection_type_code || "").toUpperCase();
+        const isAnmain = savedTypeCode === "ANMAIN" || savedTypeCode === "ANODE_MAINT";
+        const wasAnmain = Boolean(
+          editingRecordId &&
+            originalRecordContext &&
+            ["ANMAIN", "ANODE_MAINT"].includes(String(originalRecordContext.inspection_type_code || "").toUpperCase())
+        );
+        const compChanged = Boolean(
+          editingRecordId &&
+            originalRecordContext?.component_id &&
+            Number(originalRecordContext.component_id) !== Number(selectedComp.id)
+        );
+        const isAnodeComp =
+          String(selectedComp?.code || selectedComp?.type || payload.component_type || "").toUpperCase() === "AN";
+        const repVal = payload.inspection_data?.replaced;
+        const isReplaced =
+          repVal === true ||
+          repVal === "true" ||
+          repVal === "1" ||
+          repVal === 1 ||
+          String(repVal || "").toLowerCase() === "yes" ||
+          String(repVal || "").toLowerCase() === "replaced";
+        const clientTime = getClientTimePayload();
+        const replacedDate =
+          payload.inspection_data?.installed_date ||
+          payload.inspection_date ||
+          clientTime.clientLocalDate;
+        const newAnodeSpec = {
+          anode_type: payload.inspection_data?.anode_type ?? null,
+          position: payload.inspection_data?.position ?? null,
+          fitting: payload.inspection_data?.fitting ?? null,
+          installed_date: payload.inspection_data?.installed_date ?? null,
+          material_alloy: payload.inspection_data?.material_alloy ?? null,
+          installed_type: payload.inspection_data?.installed_type ?? null,
+          life: payload.inspection_data?.life ?? null,
+        };
+
+        if (compChanged && (wasAnmain || isAnmain)) {
+          // Wrong-QID Reassignment: atomically rollback old QID spec & readings,
+          // transfer linked logs/AI analysis (attachments & anomalies follow insp_id),
+          // and archive/update new QID spec.
+          const reassignRes = await fetch("/api/structure-components/anode-reassign", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              inspId: opData.insp_id,
+              oldComponentId: originalRecordContext.component_id,
+              newComponentId: selectedComp.id,
+              newSpec: newAnodeSpec,
+              replaced: isAnmain && isReplaced && isAnodeComp,
+              replacedDate,
+              jobpackId: jobPackId || payload.jobpack_id || null,
+              remarks: payload.description || null,
+              ...clientTime,
+            }),
+          });
+          if (!reassignRes.ok) {
+            const errJson = await reassignRes.json().catch(() => ({}));
+            toast.error(errJson?.error || "Warning: Anode QID rollback/reassignment failed.");
+          } else {
+            toast.success("Wrong QID rolled back cleanly and new Anode QID updated.");
+          }
+        } else if (isAnmain && isAnodeComp) {
+          if (isReplaced) {
+            const repRes = await fetch(
+              `/api/structure-components/item/${selectedComp.id}/anode-history`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  source: "ANMAIN",
+                  inspId: opData.insp_id,
+                  jobpackId: jobPackId || payload.jobpack_id || null,
+                  replacedDate,
+                  newSpec: newAnodeSpec,
+                  remarks: payload.description || null,
+                  ...clientTime,
+                }),
+              }
+            );
+            if (!repRes.ok) {
+              const errJson = await repRes.json().catch(() => ({}));
+              toast.error(errJson?.error || "Warning: Failed to archive previous anode spec.");
+            } else {
+              const repJson = await repRes.json().catch(() => ({}));
+              const genNo = repJson?.data?.generation_no;
+              toast.success(
+                repJson?.data?.updated_existing
+                  ? "Anode replacement specification updated."
+                  : `Previous anode spec archived (Gen #${genNo || ""}) and current spec updated.`
+              );
+            }
+          } else if (editingRecordId) {
+            // If Replaced was toggled off on an existing ANMAIN record, rollback if it had archived a spec
+            await fetch(
+              `/api/structure-components/item/${selectedComp.id}/anode-history?inspId=${opData.insp_id}&clientTimestamp=${encodeURIComponent(clientTime.clientTimestamp)}`,
+              { method: "DELETE" }
+            );
+          }
+        } else if (!editingRecordId && isAnodeComp && payload.inspection_date) {
+          // For backdated non-ANMAIN inspections on an AN component, tag with matching historical anode if applicable
+          const { data: resolvedHistId } = await (supabase as any).rpc(
+            "fn_resolve_anode_history_for_date",
+            {
+              p_component_id: selectedComp.id,
+              p_inspection_date: String(payload.inspection_date).slice(0, 10),
+            }
+          );
+          if (resolvedHistId) {
+            await (supabase as any)
+              .from("insp_records")
+              .update({ anode_history_id: resolvedHistId })
+              .eq("insp_id", opData.insp_id);
+          }
+        }
+      } catch (anodeSyncErr) {
+        console.error("Anode history synchronization error:", anodeSyncErr);
+      }
+
       const newStatus = findingType === "Incomplete" ? "incomplete" : "completed";
 
       // Robust SOW Status Synchronization
@@ -8874,6 +8999,8 @@ function V10PreviewLayout() {
 
         setOriginalRecordContext((prev: any) => ({
           ...prev,
+          component_id: selectedComp.id,
+          inspection_type_code: it?.code || activeSpec || prev?.inspection_type_code,
           dive_job_id: payload.dive_job_id,
           rov_job_id: payload.rov_job_id,
           tape_id: payload.tape_id,
@@ -10495,7 +10622,7 @@ function V10PreviewLayout() {
             setRecordsOffset={setRecordsOffset}
             recordsLimit={recordsLimit}
             setRecordsLimit={setRecordsLimit}
-            totalRecords={allWorkspaceRecords.length > 0 ? allWorkspaceRecords.length : (totalRecords || sortedRecords.length)}
+            totalRecords={sortedRecords.length}
             matchingCount={displayRecords.length}
             editingRecordId={editingRecordId}
             isPipe={isPipe}

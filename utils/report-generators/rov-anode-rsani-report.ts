@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { extractAnodeFormAndDepletion } from "./anode-report-helpers";
 
 interface CompanySettings {
     company_name?: string;
@@ -150,9 +151,10 @@ export const generateROVAnodeRSANIReport = async (
             { content: 'No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'QID', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Elevation (m)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Anode Type', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
+            { content: 'Anode Form', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Depletion (%)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Anode CP (mV)', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
-            { content: 'Anode Type', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Marine Growth (%)', colSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Anomaly', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
             { content: 'Dive No.', rowSpan: 2, styles: { valign: 'middle' as const, halign: 'center' as const } },
@@ -173,9 +175,8 @@ export const generateROVAnodeRSANIReport = async (
                 const qid = r.structure_components?.q_id || r.component?.q_id || 'N/A';
                 const elev = r.elevation ?? d.elevation ?? '-';
                 
-                // Formulate Depletion
-                const depl = d.depletion_percent ?? d.anode_depletion ?? d.depletion;
-                const depletion = depl !== undefined && depl !== null && depl !== '' ? (String(depl).includes('%') ? String(depl) : `${depl}%`) : '-';
+                // Formulate Anode Form & Depletion (supports split fields & legacy combined strings)
+                const { anodeForm, depletion } = extractAnodeFormAndDepletion(d, '-');
 
                 // Formulate CP
                 const cpVal = d.cp_rdg ?? d.cp_reading_mv ?? d.cp ?? '';
@@ -225,9 +226,10 @@ export const generateROVAnodeRSANIReport = async (
                     idx + 1,
                     qid,
                     elev,
+                    anodeType,
+                    anodeForm,
                     depletion,
                     cp,
-                    anodeType,
                     mg.hard,
                     mg.soft,
                     (isAnomaly || isDefect) ? 'Yes' : 'No',
@@ -235,23 +237,24 @@ export const generateROVAnodeRSANIReport = async (
                     findings
                 ];
             }) : [
-                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No selected anode (RSANI) observations recorded for this scope."]
+                ["-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "-", "No selected anode (RSANI) observations recorded for this scope."]
             ],
             theme: 'grid',
             headStyles: {fillColor: config?.printFriendly ? [255,255,255] : colors.navy, textColor: config?.printFriendly ? colors.navy : 255, fontSize: 8, fontStyle: 'bold', halign: 'center', lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255]},
             styles: {fontSize: 7, cellPadding: 2, textColor: colors.text, lineColor: colors.border, lineWidth: 0.1},
             columnStyles: {
-                0: { cellWidth: 14, halign: 'center' },
-                1: { cellWidth: 30 },
-                2: { cellWidth: 20, halign: 'center' },
-                3: { cellWidth: 22, halign: 'center' },
-                4: { cellWidth: 22, halign: 'center' },
-                5: { cellWidth: 24 },
-                6: { cellWidth: 16, halign: 'center' },
-                7: { cellWidth: 16, halign: 'center' },
-                8: { cellWidth: 17, halign: 'center' },
-                9: { cellWidth: 22, halign: 'center' },
-                10: { cellWidth: 'auto' }
+                0: { cellWidth: 12, halign: 'center' },
+                1: { cellWidth: 28 },
+                2: { cellWidth: 18, halign: 'center' },
+                3: { cellWidth: 22 },
+                4: { cellWidth: 18, halign: 'center' },
+                5: { cellWidth: 20, halign: 'center' },
+                6: { cellWidth: 20, halign: 'center' },
+                7: { cellWidth: 14, halign: 'center' },
+                8: { cellWidth: 14, halign: 'center' },
+                9: { cellWidth: 15, halign: 'center' },
+                10: { cellWidth: 20, halign: 'center' },
+                11: { cellWidth: 'auto' }
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;

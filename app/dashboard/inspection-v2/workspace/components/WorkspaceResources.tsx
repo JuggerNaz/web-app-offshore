@@ -3,6 +3,7 @@ import dynamic from "next/dynamic";
 import useSWR from "swr";
 import { fetcher } from "@/utils/utils";
 import { toast } from "sonner";
+import { doesInspectionTypeMatchMode } from "@/utils/inspection-mode";
 import { 
     Search, 
     Box, 
@@ -650,22 +651,8 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
 
     const availableInspectionTypesForMode = React.useMemo(() => {
         return (allInspectionTypes || []).filter((it: any) => {
-            const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
-            const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
-            
             // 1. Operational Mode Filter (DIVING vs ROV)
-            let matchesMode = true;
-            if (inspMethod === "DIVING") {
-                if (it.metadata?.diving !== undefined || it.metadata?.rov !== undefined || it.metadata?.job_type) {
-                    matchesMode = isDiving;
-                }
-            } else if (inspMethod === "ROV") {
-                if (it.metadata?.diving !== undefined || it.metadata?.rov !== undefined || it.metadata?.job_type) {
-                    matchesMode = isRov;
-                }
-            }
-
-            if (!matchesMode) return false;
+            if (!doesInspectionTypeMatchMode(it, inspMethod, allInspectionTypes)) return false;
 
             // 2. Structure Type Filter (PLATFORM vs PIPELINE)
             const structTypeMeta = (it.structure_type || it.structure_group || it.metadata?.structure_type || it.metadata?.structure_group || it.metadata?.category || "").toString().toUpperCase();
@@ -825,35 +812,9 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                                                         )}
                                                                         <div className="flex flex-wrap gap-1 mt-1.5">
                                                                             {(c.taskStatuses || [])
-                                                                                .filter((ts: any) => {
-                                                                                    // 1. Always show tasks that have recorded data, completed, anomaly, or incomplete status
-                                                                                    const rawStatus = String(ts.status || "").toLowerCase();
-                                                                                    const isInspectedOrRecorded = (rawStatus !== "pending" && rawStatus !== "not_started" && rawStatus !== "") || Number(ts.count || ts.recordCount || 0) > 0;
-                                                                                    if (isInspectedOrRecorded) return true;
-
-                                                                                    // 2. Mode compatibility check
-                                                                                    const it = (allInspectionTypes || []).find((type: any) => type.code === ts.code || type.name === ts.code);
-                                                                                    if (!it) return true;
-                                                                                    const isRov = it.metadata?.rov === 1 || it.metadata?.rov === "1" || it.metadata?.rov === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("ROV"));
-                                                                                    const isDiving = it.metadata?.diving === 1 || it.metadata?.diving === "1" || it.metadata?.diving === true || (it.metadata?.job_type && String(it.metadata.job_type).toUpperCase().includes("DIVING"));
-                                                                                    const hasExplicit = (it.metadata?.rov !== undefined && it.metadata?.rov !== null) || (it.metadata?.diving !== undefined && it.metadata?.diving !== null) || it.metadata?.job_type;
-                                                                                    if (!hasExplicit) return true;
-                                                                                    if (inspMethod === "DIVING" && isDiving) return true;
-                                                                                    if (inspMethod === "ROV" && isRov) return true;
-
-                                                                                    // 3. Fallback: if this component has no other tasks matching the current mode, don't hide its only scoped task
-                                                                                    const otherMatchingTasks = (c.taskStatuses || []).filter((otherTs: any) => {
-                                                                                        if (otherTs.code === ts.code) return false;
-                                                                                        const otherIt = (allInspectionTypes || []).find((type: any) => type.code === otherTs.code || type.name === otherTs.code);
-                                                                                        if (!otherIt) return true;
-                                                                                        if (inspMethod === "DIVING") return otherIt.metadata?.diving === 1 || otherIt.metadata?.diving === "1" || otherIt.metadata?.diving === true;
-                                                                                        if (inspMethod === "ROV") return otherIt.metadata?.rov === 1 || otherIt.metadata?.rov === "1" || otherIt.metadata?.rov === true;
-                                                                                        return true;
-                                                                                    });
-                                                                                    if (otherMatchingTasks.length === 0) return true;
-
-                                                                                    return false;
-                                                                                })
+                                                                                .filter((ts: any) =>
+                                                                                    doesInspectionTypeMatchMode(ts.code, inspMethod, allInspectionTypes)
+                                                                                )
                                                                                 .map((ts: any, idx: number) => {
                                                                                     const tCode = ts.code;
                                                                                     const matchedType = (allInspectionTypes || []).find((type: any) => type.code === tCode || type.name === tCode);
@@ -1064,7 +1025,9 @@ export function WorkspaceResources(props: WorkspaceResourcesProps) {
                                         {/* Details Grid: Leg (Start ➔ End), Nodes, WT, Group/Face, Component Type & Code, Associated Component */}
                                          {(() => {
                                              const details = getComponentNodeLegDetails(previewComp);
-                                             const assignedTasks = previewComp.taskStatuses || previewComp.tasks || [];
+                                             const assignedTasks = (previewComp.taskStatuses || previewComp.tasks || []).filter((tItem: any) =>
+                                                 doesInspectionTypeMatchMode(tItem?.code || tItem, inspMethod, allInspectionTypes)
+                                             );
                                              const wtReading = getWallThickness(previewComp);
                                              const groupName = getStructureGroup(previewComp);
                                              const faceVal = getFaceValue(previewComp);

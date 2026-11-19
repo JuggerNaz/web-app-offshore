@@ -47,51 +47,23 @@ export const ANODE_TYPE_LIST = [
     "Zn - Zinc", "Al - Aluminum", "Mg - Magnesium", "Other"
 ];
 
-export const ANODE_DEPLETION_GROUPS: { type: string; options: string[] }[] = [
-    {
-        type: "Bar",
-        options: [
-            "Bar: 0 - 25% Depletion",
-            "Bar: 25 - 50% Depletion",
-            "Bar: 50 - 75% Depletion",
-            "Bar: 75 - 100% Depletion",
-            "Bar: Unable to Estimate"
-        ]
-    },
-    {
-        type: "Bracelet",
-        options: [
-            "Bracelet: 0 - 25% Depletion",
-            "Bracelet: 25 - 50% Depletion",
-            "Bracelet: 50 - 75% Depletion",
-            "Bracelet: 75 - 100% Depletion",
-            "Bracelet: Unable to Estimate"
-        ]
-    },
-    {
-        type: "Collar",
-        options: [
-            "Collar: 0 - 25% Depletion",
-            "Collar: 25 - 50% Depletion",
-            "Collar: 50 - 75% Depletion",
-            "Collar: 75 - 100% Depletion",
-            "Collar: Unable to Estimate"
-        ]
-    },
-    {
-        type: "Sled",
-        options: [
-            "Sled: 0 - 25% Depletion",
-            "Sled: 25 - 50% Depletion",
-            "Sled: 50 - 75% Depletion",
-            "Sled: 75 - 100% Depletion",
-            "Sled: Unable to Estimate"
-        ]
-    }
+export const ANODE_FORM_LIST = [
+    "Bar",
+    "Bracelet",
+    "Collar",
+    "Sled"
 ];
 
-// Flat list for backward compatibility
-export const ANODE_DEPLETION_LIST = ANODE_DEPLETION_GROUPS.flatMap(g => g.options);
+export const ANODE_DEPLETION_LIST = [
+    "0 - 25%",
+    "25 - 50%",
+    "50 - 75%",
+    "75 - 100%",
+    "Unable to Estimate"
+];
+
+// Kept empty for backward compatibility (Anode Form and Anode Depletion are now separate fields)
+export const ANODE_DEPLETION_GROUPS: { type: string; options: string[] }[] = [];
 
 
 export const ROV_MOVEMENT_BRANCHES: Record<string, string[]> = {

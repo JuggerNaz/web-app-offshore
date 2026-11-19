@@ -1988,10 +1988,28 @@
                     "defaultImperial": "in"
                 },
                 {
+                    "name": "anode_form",
+                    "label": "Anode Form",
+                    "type": "combo",
+                    "options": [
+                        "Bar",
+                        "Bracelet",
+                        "Collar",
+                        "Sled"
+                    ],
+                    "required": false
+                },
+                {
                     "name": "anode_depletion_percent",
                     "label": "Anode Depletion",
-                    "type": "number",
-                    "unitCategory": "PERCENTAGE",
+                    "type": "combo",
+                    "options": [
+                        "0 - 25%",
+                        "25 - 50%",
+                        "50 - 75%",
+                        "75 - 100%",
+                        "Unable to Estimate"
+                    ],
                     "required": false
                 },
                 {
@@ -2635,10 +2653,27 @@
                             "lib_code": "ANOD_TYP"
                         },
                         {
+                            "name": "anode_form",
+                            "label": "Anode Form",
+                            "type": "combo",
+                            "options": [
+                                "Bar",
+                                "Bracelet",
+                                "Collar",
+                                "Sled"
+                            ]
+                        },
+                        {
                             "name": "anode_depletion",
                             "label": "Anode Depletion",
                             "type": "combo",
-                            "lib_code": "ADA"
+                            "options": [
+                                "0 - 25%",
+                                "25 - 50%",
+                                "50 - 75%",
+                                "75 - 100%",
+                                "Unable to Estimate"
+                            ]
                         },
                         {
                             "$ref": "marine_growth_soft"
@@ -2769,10 +2804,27 @@
                     "lib_code": "ANOD_TYP"
                 },
                 {
+                    "name": "anode_form",
+                    "label": "Anode Form",
+                    "type": "combo",
+                    "options": [
+                        "Bar",
+                        "Bracelet",
+                        "Collar",
+                        "Sled"
+                    ]
+                },
+                {
                     "name": "anode_depletion",
                     "label": "Anode Depletion",
                     "type": "combo",
-                    "lib_code": "ADA"
+                    "options": [
+                        "0 - 25%",
+                        "25 - 50%",
+                        "50 - 75%",
+                        "75 - 100%",
+                        "Unable to Estimate"
+                    ]
                 },
                 {
                     "$ref": "marine_growth_soft"

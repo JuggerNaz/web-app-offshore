@@ -19,6 +19,7 @@ import {
     DEBRIS_LIST,
     DEBRIS_MATERIAL_LIST,
     ANODE_TYPE_LIST, 
+    ANODE_FORM_LIST,
     ANODE_DEPLETION_LIST,
     ANODE_DEPLETION_GROUPS 
 } from "../constants";
@@ -62,7 +63,8 @@ const InspectionField = ({
     const isCoating = fieldName.includes('coating condition') || fieldName.includes('coatingcondition') || fieldName.includes('coating_condition');
     const isCompCondition = fieldName.includes('component condition') || fieldName.includes('componentcondition') || fieldName.includes('component_condition');
     const isAnodeType = fieldName === 'anode type' || fieldName === 'anode_type';
-    const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion';
+    const isAnodeForm = fieldName === 'anode form' || fieldName === 'anode_form';
+    const isAnodeDep = fieldName === 'anode depletion' || fieldName === 'anode_depletion' || fieldName === 'anode_depletion_percent';
     const isDebris = fieldName === 'debris' || fieldName.includes('debris_type') || fieldName.includes('debris_desc') || fieldName === 'debris description';
     const isDebrisMaterial = fieldName.includes('debris_material') || fieldName.includes('debris material') || fieldName === 'material' || fieldName.includes('material type');
     const isPlatformFace = fieldName === 'platform face' || fieldName === 'platform_face' || fieldName === 'face';
@@ -70,7 +72,7 @@ const InspectionField = ({
 
     const isTimeField = fieldName.includes('time') || fieldName.includes('counter') || p.type === 'time' || p.name === 'tape_count_no' || p.name === 'inspection_time';
 
-    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeDep || isDebris || isDebrisMaterial || isPlatformFace || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
+    const isComboEligible = p.type !== 'number' && p.type !== 'time' && (isLocation || isPosition || isMarineGrowth || isCoating || isCompCondition || isAnodeType || isAnodeForm || isAnodeDep || isDebris || isDebrisMaterial || isPlatformFace || p.type === 'select' || p.type === 'combo' || !!p.lib_code || !!p.optionsSource);
     const borderClass = type === 'secondary' ? 'border-amber-300' : 'border-slate-300';
     const ringClass = type === 'secondary' ? 'focus-visible:ring-amber-500' : 'focus-visible:ring-slate-500';
 
@@ -150,11 +152,13 @@ const InspectionField = ({
             options = Array.from(new Set([...options, ...DEBRIS_MATERIAL_LIST]));
         } else if (isAnodeType && options.length === 0) {
             options = [...ANODE_TYPE_LIST];
+        } else if (isAnodeForm && options.length === 0) {
+            options = [...ANODE_FORM_LIST];
         } else if (isAnodeDep && options.length === 0) {
             options = [...ANODE_DEPLETION_LIST];
         }
 
-        const isGrouped = isAnodeDep && options.length > 0 && ANODE_DEPLETION_GROUPS.length > 0;
+        const isGrouped = false;
 
         const filteredOptions = options.filter(opt => 
             String(opt).toLowerCase().includes(searchTerm.toLowerCase())

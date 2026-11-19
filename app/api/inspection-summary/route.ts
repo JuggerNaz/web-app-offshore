@@ -875,15 +875,21 @@ export const GET = withTenant(async (request, { companyId }) => {
                 return idA - idB;
             });
 
-            const latestRec = recs[recs.length - 1];
+            // If this anode was replaced in this jobpack (has both historical anode_history_id != null
+            // and current active anode_history_id == null records), isolate current stats to active anode records only.
+            // For purely historical jobpacks (all records have anode_history_id != null), keep those historical-era records.
+            const activeAnodeRecs = recs.filter((r: any) => r.anode_history_id == null);
+            const effectiveRecs = activeAnodeRecs.length > 0 ? activeAnodeRecs : recs;
+
+            const latestRec = effectiveRecs[effectiveRecs.length - 1];
             const latestIsIncomplete = isRecordIncompleteOrCannotReach(latestRec);
 
-            // Find the latest valid depletion value (searching newest to oldest)
+            // Find the latest valid depletion value (searching newest to oldest within effectiveRecs)
             let foundBucket: "0-25%" | "26-50%" | "50-75%" | "76-100%" | null = null;
             let primaryRecord = latestRec;
 
-            for (let i = recs.length - 1; i >= 0; i--) {
-                const r = recs[i];
+            for (let i = effectiveRecs.length - 1; i >= 0; i--) {
+                const r = effectiveRecs[i];
                 const raw = extractRawDepletion(r);
                 const b = parseDepletionBucket(raw);
                 if (b) {
@@ -1059,6 +1065,9 @@ export const GET = withTenant(async (request, { companyId }) => {
         const anmainInstalled = 0;
         let anmainMaintenanceCount = 0;
 
+        const replacedCompIdsInJobpack = new Set<number>();
+        const replacedDateByCompId = new Map<number, string>();
+
         anmainRecords.forEach((r: any) => {
             const d = r.inspection_data || {};
             const repVal = d.replaced;
@@ -1076,15 +1085,35 @@ export const GET = withTenant(async (request, { companyId }) => {
 
             if (isReplaced) {
                 anmainReplaced++;
+                if (r.component_id) {
+                    replacedCompIdsInJobpack.add(Number(r.component_id));
+                    replacedDateByCompId.set(
+                        Number(r.component_id),
+                        d.installed_date || r.inspection_date || ""
+                    );
+                }
             } else {
                 anmainMaintenanceCount++;
             }
         });
 
-        // ─── 7. CP READINGS ───────────────────────────────────────────────────
+        // Track components that have active (anode_history_id == null) readings in this scope
+        const activeCompIdsInScope = new Set<number>();
+        rawRecords.forEach((r: any) => {
+            if (r.component_id && r.anode_history_id == null) {
+                activeCompIdsInScope.add(Number(r.component_id));
+            }
+        });
+
+        // ─── 7. CP READINGS (Current vs Pre-Replacement Isolation) ────────────
         // Scan ALL inspection records for cp readings — every inspection type that
         // embeds cp_rdg (RGVI, RRISI, RSZCI, RCOND, RCASN, RSWNI, RSANI, etc.)
         // or cp_reading_mv (CP dedicated type) is included.
+        // If an anode was replaced within this jobpack (or has active readings alongside
+        // archived pre-replacement readings), pre-replacement readings (anode_history_id != null)
+        // are isolated into preReplacementCp & prePostComparison so current stats only reflect
+        // the active (post-replacement) anode. Historical jobpacks (where all readings belong to
+        // that era's active anode) remain fully included.
         let cpPrimaryCount = 0;       // records that have a valid primary CP value
         let cpPrimaryRov = 0;
         let cpPrimaryDive = 0;
@@ -1094,6 +1123,38 @@ export const GET = withTenant(async (request, { companyId }) => {
         let cpMinVal: number | null = null;
         let cpMaxVal: number | null = null;
         const cpDetails: Record<string, Record<string, Array<{ val: number; type: "primary" | "additional"; mode: string }>>> = {};
+
+        // Same-jobpack Pre-Replacement CP tracking
+        let preCpCount = 0;
+        let preCpMinVal: number | null = null;
+        let preCpMaxVal: number | null = null;
+        const prePostMap = new Map<
+            string,
+            {
+                qid: string;
+                componentId: number | null;
+                replacedDate: string;
+                preCpVals: number[];
+                postCpVals: number[];
+                preDepletion: string | null;
+                postDepletion: string | null;
+            }
+        >();
+
+        const ensurePrePostEntry = (qid: string, compId: number | null) => {
+            if (!prePostMap.has(qid)) {
+                prePostMap.set(qid, {
+                    qid,
+                    componentId: compId,
+                    replacedDate: compId ? replacedDateByCompId.get(compId) || "" : "",
+                    preCpVals: [],
+                    postCpVals: [],
+                    preDepletion: null,
+                    postDepletion: null,
+                });
+            }
+            return prePostMap.get(qid)!;
+        };
 
         const trackCp = (val: number) => {
             if (!isNaN(val) && isFinite(val)) {
@@ -1108,20 +1169,23 @@ export const GET = withTenant(async (request, { companyId }) => {
             const isDive = isDiveRecord(r);
             const mode = isRov ? "ROV" : "DIVE";
             const comp = r.structure_components || {};
+            const compId = r.component_id ? Number(r.component_id) : null;
             const qid = comp.q_id || r.inspection_data?.q_id || `ID: ${r.component_id || "Unknown"}`;
             const inspCode = r.inspection_type_code || r.inspection_type?.code || "UNKNOWN";
             const typeName = r.inspection_type?.name || inspCode;
 
+            const isReplacedInScope =
+                compId !== null &&
+                (replacedCompIdsInJobpack.has(compId) ||
+                    (r.anode_history_id != null && activeCompIdsInScope.has(compId)));
+            const isPreReplacementReading = isReplacedInScope && r.anode_history_id != null;
+
             const readings: Array<{ val: number; type: "primary" | "additional"; mode: string }> = [];
 
             // --- Primary CP reading ---
-            const primaryRaw = d.cp_rdg ?? d.cp_reading_mv ?? "";
+            const primaryRaw = d.cp_rdg ?? d.cp_reading_mv ?? d.anode_cp ?? "";
             const primary = parseFloat(primaryRaw);
             if (!isNaN(primary) && isFinite(primary)) {
-                cpPrimaryCount++;
-                if (isRov)  cpPrimaryRov++;
-                if (isDive) cpPrimaryDive++;
-                trackCp(primary);
                 readings.push({ val: primary, type: "primary", mode });
             }
 
@@ -1129,15 +1193,48 @@ export const GET = withTenant(async (request, { companyId }) => {
             (Array.isArray(d.cp_rdg_additional) ? d.cp_rdg_additional : []).forEach((a: any) => {
                 const addVal = parseFloat(a.reading ?? a.cp_rdg ?? "");
                 if (!isNaN(addVal) && isFinite(addVal)) {
-                    cpAdditionalCount++;
-                    if (isRov)  cpAdditionalRov++;
-                    if (isDive) cpAdditionalDive++;
-                    trackCp(addVal);
                     readings.push({ val: addVal, type: "additional", mode });
                 }
             });
 
+            // Capture Pre vs Post comparison for replaced anodes in this jobpack
+            if (isReplacedInScope) {
+                const entry = ensurePrePostEntry(qid, compId);
+                const rawDep = d.anode_depletion ?? d.anode_depletion_percent ?? d.depletion ?? null;
+                if (isPreReplacementReading) {
+                    readings.forEach((rd) => {
+                        entry.preCpVals.push(rd.val);
+                        preCpCount++;
+                        if (preCpMinVal === null || rd.val < preCpMinVal) preCpMinVal = rd.val;
+                        if (preCpMaxVal === null || rd.val > preCpMaxVal) preCpMaxVal = rd.val;
+                    });
+                    if (rawDep !== null && rawDep !== undefined && String(rawDep).trim() !== "") {
+                        entry.preDepletion = String(rawDep).trim();
+                    }
+                    // Exclude pre-replacement reading from current active CP totals
+                    return;
+                } else {
+                    readings.forEach((rd) => entry.postCpVals.push(rd.val));
+                    if (rawDep !== null && rawDep !== undefined && String(rawDep).trim() !== "") {
+                        entry.postDepletion = String(rawDep).trim();
+                    }
+                }
+            }
+
             if (readings.length > 0) {
+                readings.forEach((rd) => {
+                    if (rd.type === "primary") {
+                        cpPrimaryCount++;
+                        if (isRov) cpPrimaryRov++;
+                        if (isDive) cpPrimaryDive++;
+                    } else {
+                        cpAdditionalCount++;
+                        if (isRov) cpAdditionalRov++;
+                        if (isDive) cpAdditionalDive++;
+                    }
+                    trackCp(rd.val);
+                });
+
                 const formattedName = formatInspectionTypeName(typeName);
                 if (!cpDetails[formattedName]) {
                     cpDetails[formattedName] = {};
@@ -1148,6 +1245,22 @@ export const GET = withTenant(async (request, { companyId }) => {
                 cpDetails[formattedName][qid].push(...readings);
             }
         });
+
+        const prePostComparison = Array.from(prePostMap.values())
+            .filter((e) => e.preCpVals.length > 0 || e.postCpVals.length > 0 || e.preDepletion || e.postDepletion)
+            .map((e) => ({
+                qid: e.qid,
+                componentId: e.componentId,
+                replacedDate: e.replacedDate,
+                preCpCount: e.preCpVals.length,
+                preCpMin: e.preCpVals.length > 0 ? Math.min(...e.preCpVals) : null,
+                preCpMax: e.preCpVals.length > 0 ? Math.max(...e.preCpVals) : null,
+                preDepletion: e.preDepletion,
+                postCpCount: e.postCpVals.length,
+                postCpMin: e.postCpVals.length > 0 ? Math.min(...e.postCpVals) : null,
+                postCpMax: e.postCpVals.length > 0 ? Math.max(...e.postCpVals) : null,
+                postDepletion: e.postDepletion,
+            }));
 
         // --- 8. MGI ANALYSIS ---
         const mgiRecords = rawRecords.filter((r: any) => {
@@ -2914,6 +3027,7 @@ export const GET = withTenant(async (request, { companyId }) => {
                     replaced: anmainReplaced,
                     installed: anmainInstalled,
                     maintenanceCount: anmainMaintenanceCount,
+                    prePostComparison: prePostComparison,
                 },
                 sani: { total: saniTotal, rov: saniRov, dive: saniDive },
                 cp: {
@@ -2931,6 +3045,11 @@ export const GET = withTenant(async (request, { companyId }) => {
                     nominalMaxMv: cpNominalMaxMv,
                     criticalMaxMv: cpCriticalMaxMv,
                     cpDetails: cpDetails,
+                    preReplacement: {
+                        totalCount: preCpCount,
+                        minVal: preCpMinVal,
+                        maxVal: preCpMaxVal,
+                    },
                 },
                 anomalies: {
                     total: anomalyValidTotal,

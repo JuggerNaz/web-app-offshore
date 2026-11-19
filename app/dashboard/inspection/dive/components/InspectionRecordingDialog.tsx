@@ -10,6 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { createClient } from "@/utils/supabase/client";
+import { getClientTimePayload } from "@/utils/client-time";
 import { toast } from "sonner";
 import { Loader2, Save, AlertTriangle, Sparkles } from "lucide-react";
 import { useAtomValue, useSetAtom } from "jotai";
@@ -844,6 +845,57 @@ export default function InspectionRecordingDialog({
 
                 if (insertError) throw insertError;
                 insertedRecord = data;
+            }
+
+            // Archive old Anode spec & update active spec if ANMAIN with Replaced = true
+            try {
+                const typeCode = String(payload.inspection_type_code || currentRecord?.inspection_type_code || sowItem?.inspection_code || '').toUpperCase();
+                const isAnmain = typeCode === 'ANMAIN' || typeCode === 'ANODE_MAINT';
+                const compType = String(payload.component_type || sowItem?.component_type || '').toUpperCase();
+                const compId = payload.component_id;
+                const repVal = (payload.inspection_data as any)?.replaced;
+                const isReplaced =
+                    repVal === true ||
+                    repVal === 'true' ||
+                    repVal === '1' ||
+                    repVal === 1 ||
+                    String(repVal || '').toLowerCase() === 'yes' ||
+                    String(repVal || '').toLowerCase() === 'replaced';
+
+                if (isAnmain && compId && (compType === 'AN' || compType === 'ANODE')) {
+                    const clientTime = getClientTimePayload();
+                    if (isReplaced) {
+                        const d = (payload.inspection_data || {}) as any;
+                        await fetch(`/api/structure-components/item/${compId}/anode-history`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                source: 'ANMAIN',
+                                inspId: insertedRecord?.insp_id,
+                                jobpackId: payload.jobpack_id || null,
+                                replacedDate: d.installed_date || payload.inspection_date || clientTime.clientLocalDate,
+                                ...clientTime,
+                                newSpec: {
+                                    anode_type: d.anode_type ?? null,
+                                    position: d.position ?? null,
+                                    fitting: d.fitting ?? null,
+                                    installed_date: d.installed_date ?? null,
+                                    material_alloy: d.material_alloy ?? null,
+                                    installed_type: d.installed_type ?? null,
+                                    life: d.life ?? null,
+                                },
+                                remarks: payload.description || null,
+                            }),
+                        });
+                    } else if (currentRecord?.insp_id) {
+                        await fetch(
+                            `/api/structure-components/item/${compId}/anode-history?inspId=${insertedRecord?.insp_id}&clientTimestamp=${encodeURIComponent(clientTime.clientTimestamp)}`,
+                            { method: 'DELETE' }
+                        );
+                    }
+                }
+            } catch (anodeErr) {
+                console.error('Anode history sync error (legacy dive dialog):', anodeErr);
             }
 
             // Handle Anomaly Record

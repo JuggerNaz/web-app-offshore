@@ -31,6 +31,7 @@ import { DataTable } from "@/components/data-table/data-table";
 import { comments, attachments, globalAttachments } from "@/components/data-table/columns";
 import { ComponentCommentDialog } from "./component-comment-dialog";
 import { ComponentAttachmentDialog } from "./component-attachment-dialog";
+import { AnodeHistoryView } from "@/components/component/anode-history-view";
 import { useState, useEffect } from "react";
 import { useAtom } from "jotai";
 import { urlId, urlType } from "@/utils/client-state";
@@ -97,7 +98,7 @@ type ComponentSpecDialogProps = {
 };
 
 export function ComponentSpecDialog({
-  component,
+  component: componentProp,
   open,
   onOpenChange,
   onSuccess,
@@ -108,6 +109,12 @@ export function ComponentSpecDialog({
   createdFrom,
   inline = false,
 }: ComponentSpecDialogProps) {
+  const [localComponent, setLocalComponent] = useState(componentProp);
+  useEffect(() => {
+    setLocalComponent(componentProp);
+  }, [componentProp]);
+  const component = localComponent;
+
   const isCreateMode = mode === "create";
   const [isEditing, setIsEditing] = useState(false);
   const isEditMode = isEditing;
@@ -1611,7 +1618,15 @@ export function ComponentSpecDialog({
           )}
           <Tabs defaultValue="specifications" className="w-full">
             <TabsList
-              className={cn("grid w-full bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl", inline ? "mb-5 h-10" : "mb-8 h-12", isCreateMode ? "grid-cols-2" : "grid-cols-4")}
+              className={cn(
+                "grid w-full bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl",
+                inline ? "mb-5 h-10" : "mb-8 h-12",
+                isCreateMode
+                  ? "grid-cols-2"
+                  : (component?.code || "").toUpperCase() === "AN"
+                  ? "grid-cols-5"
+                  : "grid-cols-4"
+              )}
             >
               <TabsTrigger
                 value="specifications"
@@ -1639,6 +1654,14 @@ export function ComponentSpecDialog({
                   >
                     Attachments
                   </TabsTrigger>
+                  {(component?.code || "").toUpperCase() === "AN" && (
+                    <TabsTrigger
+                      value="anode-history"
+                      className={cn("rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm text-blue-600 dark:text-blue-400", inline && "h-8 rounded-lg text-[9px]")}
+                    >
+                      Anode History
+                    </TabsTrigger>
+                  )}
                 </>
               )}
             </TabsList>
@@ -4123,6 +4146,40 @@ export function ComponentSpecDialog({
                     )}
                   </div>
                 </TabsContent>
+
+                {/* Anode History Tab (AN components only) */}
+                {(component?.code || "").toUpperCase() === "AN" && component?.id && (
+                  <TabsContent value="anode-history" className="mt-0 outline-none">
+                    <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-6">
+                      <AnodeHistoryView
+                        componentId={component.id}
+                        qId={component.q_id}
+                        onSpecUpdated={(updatedComponent) => {
+                          if (updatedComponent) {
+                            setLocalComponent(updatedComponent);
+                            const newAddInfo = updatedComponent?.metadata?.additionalInfo;
+                            if (newAddInfo && typeof newAddInfo === "object") {
+                              setFormData((prev: any) => ({
+                                ...prev,
+                                additionalInfo: {
+                                  ...(prev.additionalInfo || {}),
+                                  ...newAddInfo,
+                                },
+                              }));
+                            }
+                          }
+                          if (listKey) {
+                            mutate(listKey);
+                          }
+                          if (structureId) {
+                            mutate((key: any) => typeof key === "string" && key.includes(`/api/structure-components/${structureId}`));
+                          }
+                          onSuccess?.();
+                        }}
+                      />
+                    </div>
+                  </TabsContent>
+                )}
               </>
             )}
           </Tabs>

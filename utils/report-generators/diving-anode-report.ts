@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 import { format, min, max } from "date-fns";
 import { loadLogoWithTransparency, drawLogo, applyWatermarkAndSignaturesGlobal, formatPdfDate, normalizeReportRecords, getInspectionDateRange, formatReportFindingText, applyRecordCellStyling, REPORT_FOOTER_APP_TEXT, draw3SectionHeader, drawStandardContextRow } from "./shared-logo";
+import { extractAnodeFormAndDepletion } from "./anode-report-helpers";
 
 interface CompanySettings {
     company_name?: string;
@@ -140,8 +141,7 @@ export const generateDivingAnodeReport = async (
             const wC1 = d.circumference_c1 ?? d.wastage_c1 ?? "—";
             const wC2 = d.circumference_c2 ?? d.wastage_c2 ?? "—";
             const wC3 = d.circumference_c3 ?? d.wastage_c3 ?? "—";
-            const depl = d.anode_depletion_percent ?? d.anode_depletion ?? d.depletion;
-            const depletion = depl !== undefined && depl !== null && depl !== "" ? (String(depl).includes("%") ? String(depl) : `${depl}%`) : "—";
+            const { anodeForm, depletion } = extractAnodeFormAndDepletion(d, "—");
 
             const pitDepthAvg = d.avg_pitting_depth ?? d.pitting_depth_avg ?? "—";
             const pitDepthMax = d.max_pitting_depth ?? d.pitting_depth_max ?? "—";
@@ -171,6 +171,7 @@ export const generateDivingAnodeReport = async (
                 String(diveNo),
                 String(secured),
                 String(anodeType),
+                String(anodeForm),
                 String(wLen),
                 String(wC1),
                 String(wC2),
@@ -196,6 +197,7 @@ export const generateDivingAnodeReport = async (
             { content: "Dive No.", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Secured", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Anode Type", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
+            { content: "Anode Form", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Length\n(mm)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Circumference (mm)", colSpan: 3, styles: {halign: "center" as const, lineWidth: 0.1, lineColor: colors.border} },
             { content: "Depletion\n(%)", rowSpan: 2, styles: {halign: "center" as const, valign: "middle" as const, lineWidth: 0.1, lineColor: colors.border} },
@@ -235,26 +237,27 @@ export const generateDivingAnodeReport = async (
                 lineColor: colors.border,
                 overflow: "linebreak", lineWidth: 0.1,},
             columnStyles: {
-                0:  { cellWidth: 8,   halign: "center" }, // No.
-                1:  { cellWidth: 16 },                    // Comp QID
-                2:  { cellWidth: 10,  halign: "center" }, // Elev
-                3:  { cellWidth: 12,  halign: "center" }, // Dive No
-                4:  { cellWidth: 11,  halign: "center" }, // Secured
-                5:  { cellWidth: 14 },                    // Anode Type
-                6:  { cellWidth: 10,  halign: "center" }, // Length
-                7:  { cellWidth: 10,  halign: "center" }, // C1
-                8:  { cellWidth: 10,  halign: "center" }, // C2
-                9:  { cellWidth: 10,  halign: "center" }, // C3
-                10: { cellWidth: 12,  halign: "center" }, // Depletion
-                11: { cellWidth: 10,  halign: "center" }, // Pit Depth Avg
-                12: { cellWidth: 10,  halign: "center" }, // Pit Depth Max
-                13: { cellWidth: 10,  halign: "center" }, // Pit Diam Avg
-                14: { cellWidth: 10,  halign: "center" }, // Pit Diam Max
-                15: { cellWidth: 11,  halign: "center" }, // Anode CP
-                16: { cellWidth: 11,  halign: "center" }, // Member Stub CP
-                17: { cellWidth: 11,  halign: "center" }, // Top Stub CP
-                18: { cellWidth: 11,  halign: "center" }, // Bottom Stub CP
-                19: { cellWidth: "auto" },                // Findings
+                0:  { cellWidth: 7,   halign: "center" }, // No.
+                1:  { cellWidth: 15 },                    // Comp QID
+                2:  { cellWidth: 9,   halign: "center" }, // Elev
+                3:  { cellWidth: 11,  halign: "center" }, // Dive No
+                4:  { cellWidth: 10,  halign: "center" }, // Secured
+                5:  { cellWidth: 13 },                    // Anode Type
+                6:  { cellWidth: 11,  halign: "center" }, // Anode Form
+                7:  { cellWidth: 9,   halign: "center" }, // Length
+                8:  { cellWidth: 9,   halign: "center" }, // C1
+                9:  { cellWidth: 9,   halign: "center" }, // C2
+                10: { cellWidth: 9,   halign: "center" }, // C3
+                11: { cellWidth: 12,  halign: "center" }, // Depletion
+                12: { cellWidth: 9.5, halign: "center" }, // Pit Depth Avg
+                13: { cellWidth: 9.5, halign: "center" }, // Pit Depth Max
+                14: { cellWidth: 9.5, halign: "center" }, // Pit Diam Avg
+                15: { cellWidth: 9.5, halign: "center" }, // Pit Diam Max
+                16: { cellWidth: 10.5, halign: "center" }, // Anode CP
+                17: { cellWidth: 10.5, halign: "center" }, // Member Stub CP
+                18: { cellWidth: 10.5, halign: "center" }, // Top Stub CP
+                19: { cellWidth: 10.5, halign: "center" }, // Bottom Stub CP
+                20: { cellWidth: "auto" },                // Findings
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;

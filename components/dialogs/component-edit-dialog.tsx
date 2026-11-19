@@ -38,6 +38,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { comments, attachments } from "@/components/data-table/columns";
 import { ComponentCommentDialog } from "./component-comment-dialog";
 import { ComponentAttachmentDialog } from "./component-attachment-dialog";
+import { AnodeHistoryView } from "@/components/component/anode-history-view";
 import { Wrench, Settings2, Save, X, Plus, Link2, Unlink, Search as SearchIcon, CheckCircle2, AlertCircle, GitBranch } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -1009,7 +1010,12 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
 
         <div className="flex-1 overflow-y-auto p-8 pt-6">
           <Tabs defaultValue={defaultTab || "specifications"} className="w-full">
-            <TabsList className="grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl grid-cols-4 h-12">
+            <TabsList
+              className={cn(
+                "grid w-full mb-8 bg-slate-100/50 dark:bg-slate-800/50 p-1 rounded-2xl h-12",
+                (component?.code || "").toUpperCase() === "AN" ? "grid-cols-5" : "grid-cols-4"
+              )}
+            >
               <TabsTrigger
                 value="specifications"
                 className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm"
@@ -1034,6 +1040,14 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
               >
                 Attachments
               </TabsTrigger>
+              {(component?.code || "").toUpperCase() === "AN" && (
+                <TabsTrigger
+                  value="anode-history"
+                  className="rounded-xl font-bold uppercase text-[10px] tracking-widest data-[state=active]:bg-white dark:data-[state=active]:bg-slate-950 data-[state=active]:shadow-sm text-blue-600 dark:text-blue-400"
+                >
+                  Anode History
+                </TabsTrigger>
+              )}
             </TabsList>
 
             {/* Specifications Tab */}
@@ -3136,6 +3150,35 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
                 )}
               </div>
             </TabsContent>
+
+            {(component?.code || "").toUpperCase() === "AN" && component?.id && (
+              <TabsContent value="anode-history" className="mt-0 outline-none">
+                <div className="bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200/60 dark:border-slate-800/60 rounded-[1.5rem] p-6">
+                  <AnodeHistoryView
+                    componentId={component.id}
+                    qId={component.q_id}
+                    onSpecUpdated={(updatedComponent) => {
+                      const newAddInfo = updatedComponent?.metadata?.additionalInfo;
+                      if (newAddInfo && typeof newAddInfo === "object") {
+                        setFormData((prev: any) => ({
+                          ...prev,
+                          additionalInfo: {
+                            ...(prev.additionalInfo || {}),
+                            ...newAddInfo,
+                          },
+                        }));
+                      }
+                      if (listKey) {
+                        mutate(listKey);
+                      }
+                      if (structureId) {
+                        mutate((key: any) => typeof key === "string" && key.includes(`/api/structure-components/${structureId}`));
+                      }
+                    }}
+                  />
+                </div>
+              </TabsContent>
+            )}
           </Tabs>
         </div>
 
