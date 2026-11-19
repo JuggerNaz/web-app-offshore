@@ -202,6 +202,33 @@ export const POST = withTenant(async (request, { companyId }) => {
           finalField = "status";
         }
 
+        if (cond.field === "is_deleted" || cond.field === "deleted" || cond.field === "archived") {
+          finalField = "is_deleted";
+          if (finalOperator === "is_false") {
+            query = query.or("is_deleted.is.null,is_deleted.eq.false");
+            continue;
+          } else if (finalOperator === "is_true") {
+            query = query.eq("is_deleted", true);
+            continue;
+          } else if (finalOperator === "eq") {
+            const bVal = String(finalValue).toLowerCase() === "true" || finalValue === true || finalValue === 1;
+            if (bVal) {
+              query = query.eq("is_deleted", true);
+            } else {
+              query = query.or("is_deleted.is.null,is_deleted.eq.false");
+            }
+            continue;
+          } else if (finalOperator === "neq") {
+            const bVal = String(finalValue).toLowerCase() === "true" || finalValue === true || finalValue === 1;
+            if (bVal) {
+              query = query.or("is_deleted.is.null,is_deleted.eq.false");
+            } else {
+              query = query.eq("is_deleted", true);
+            }
+            continue;
+          }
+        }
+
         if (cond.field === "component_type" || cond.field === "component_code") {
           if (category === "components") {
             finalField = "code";
@@ -433,6 +460,10 @@ export const POST = withTenant(async (request, { companyId }) => {
             } else if (singleMatch && !item.start_node) {
               item.start_node = singleMatch[1];
             }
+          }
+
+          if (item.is_deleted !== undefined) {
+            item.is_deleted = item.is_deleted === true;
           }
         }
       } else if (category === "inspection_records" || category === "incomplete" || category === "anomalies" || category === "findings") {

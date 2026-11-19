@@ -950,18 +950,6 @@ export function ComponentEditDialog({ component, open, onOpenChange, listKey, ty
         mutate(allComponentsKey);
       }
 
-      const targetStructureId = component?.structure_id || structureId;
-      const targetPageType = pageType || (component?.code?.toLowerCase() === "pp" ? "pipeline" : "platform");
-
-      if (targetStructureId && targetPageType === "platform") {
-        try {
-          await fetch(`/api/platform/webapp-3d/${targetStructureId}?resync=true`, { method: "POST" });
-          mutate(`/api/platform/webapp-3d/${targetStructureId}`);
-        } catch (err) {
-          console.error("Failed to resync 3D cache:", err);
-        }
-      }
-
       toast("Component updated successfully", { position: "bottom-right" });
       onOpenChange(false);
     } catch (error) {

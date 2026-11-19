@@ -121,7 +121,7 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
     table: "v_smart_query_components",
     fields: [
       { key: "id", label: "Record ID", dataType: "number", description: "Internal record ID" },
-      { key: "q_id", label: "Component QID", dataType: "number", description: "Component queue identifier" },
+      { key: "q_id", label: "Component QID", dataType: "text", description: "Component queue identifier" },
       { key: "comp_id", label: "Component ID", dataType: "text", description: "Component identifier" },
       { key: "id_no", label: "ID Number", dataType: "text", description: "Component ID number" },
       { key: "structure_name", label: "Structure Name", dataType: "text", description: "Name of parent structure" },
@@ -140,6 +140,7 @@ export const QUERY_CATEGORIES: CategoryDef[] = [
       { key: "end_node", label: "End Node", dataType: "text", description: "End node number" },
       { key: "elevation1", label: "Elevation 1", dataType: "text", description: "Starting elevation" },
       { key: "elevation2", label: "Elevation 2", dataType: "text", description: "Ending elevation" },
+      { key: "is_deleted", label: "Deleted or Archived", dataType: "boolean", description: "Indicates whether the component is deleted or archived" },
 
       // Audit User & Date Fields
       { key: "created_by", label: "Create User", dataType: "text", description: "User who created the component" },

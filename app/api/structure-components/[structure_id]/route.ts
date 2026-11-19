@@ -5,7 +5,6 @@ import { createClient, createAdminClient, isServiceRoleConfigured } from "@/util
 import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
-import { syncWebapp3D } from "@/utils/platform-3d-math";
 
 /**
  * GET /api/structure-components/[structure_id]
@@ -369,23 +368,6 @@ export const POST = withAuth(
 
     if (error) {
       return handleSupabaseError(error, "Failed to create structure component");
-    }
-
-    // Trigger synchronous 3D coordinates recalculation for this structure
-    try {
-      const { data: plat } = await (dbClient as any)
-        .from("platform")
-        .select("plat_id")
-        .eq("plat_id", structureIdNumber)
-        .maybeSingle();
-
-      if (plat) {
-        await syncWebapp3D(adminSupabase, structureIdNumber).catch((err) => {
-          console.error("[3D Sync Error]", err);
-        });
-      }
-    } catch (err) {
-      console.warn("[3D Sync Check Error]", err);
     }
 
     return apiSuccess(data);

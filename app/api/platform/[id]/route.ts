@@ -54,10 +54,16 @@ export async function PUT(request: Request, { params }: { params: Promise<{ id: 
     } else return NextResponse.json({ error: error.message || "Failed to update platform" }, { status: 500 });
   }
 
-  // Trigger 3D recalculation after updating platform specifications
-  await syncWebapp3D(adminSupabase, Number(id)).catch((err) => {
-    console.error("[3D Sync Error on platform PUT]", err);
-  });
+  // Trigger 3D recalculation in background without blocking response
+  (async () => {
+    try {
+      await syncWebapp3D(adminSupabase, Number(id)).catch((err) => {
+        console.error("[3D Background Sync Error on platform PUT]", err);
+      });
+    } catch (err) {
+      console.warn("[3D Background Sync Error on platform PUT]", err);
+    }
+  })().catch(() => {});
 
   return NextResponse.json({ data });
 }

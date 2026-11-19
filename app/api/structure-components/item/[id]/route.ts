@@ -4,7 +4,6 @@ import { apiSuccess } from "@/utils/api-response";
 import { handleSupabaseError } from "@/utils/api-error-handler";
 import { withAuth } from "@/utils/with-auth";
 import type { Database } from "@/supabase/schema";
-import { syncWebapp3D } from "@/utils/platform-3d-math";
 
 type StructureComponentUpdate =
   Database["public"]["Tables"]["structure_components"]["Update"];
@@ -83,24 +82,6 @@ export const PATCH = withAuth(
       return handleSupabaseError(error, "Failed to update structure component");
     }
 
-    if (data?.structure_id) {
-      try {
-        const { data: plat } = await (supabase as any)
-          .from("platform")
-          .select("plat_id")
-          .eq("plat_id", data.structure_id)
-          .maybeSingle();
-
-        if (plat) {
-          await syncWebapp3D(adminSupabase, data.structure_id).catch((err) => {
-            console.error("[3D Sync Error]", err);
-          });
-        }
-      } catch (err) {
-        console.warn("[3D Sync Check Error]", err);
-      }
-    }
-
     return apiSuccess(data);
   }
 );
@@ -116,7 +97,6 @@ export const DELETE = withAuth(
   ) => {
     const useAdmin = isServiceRoleConfigured();
     const supabase = useAdmin ? createAdminClient() : createClient();
-    const adminSupabase = supabase;
     const { id } = await params;
 
     const componentId = Number(id);
@@ -127,13 +107,6 @@ export const DELETE = withAuth(
       );
     }
 
-    // Fetch existing component first to get its structure_id for 3D synchronization
-    const { data: existingComp } = await supabase
-      .from("structure_components")
-      .select("structure_id")
-      .eq("id", componentId)
-      .maybeSingle();
-
     const { error } = await supabase
       .from("structure_components")
       .delete()
@@ -141,24 +114,6 @@ export const DELETE = withAuth(
 
     if (error) {
       return handleSupabaseError(error, "Failed to delete structure component");
-    }
-
-    if (existingComp?.structure_id) {
-      try {
-        const { data: plat } = await (supabase as any)
-          .from("platform")
-          .select("plat_id")
-          .eq("plat_id", existingComp.structure_id)
-          .maybeSingle();
-
-        if (plat) {
-          await syncWebapp3D(adminSupabase, existingComp.structure_id).catch((err) => {
-            console.error("[3D Sync Error on DELETE]", err);
-          });
-        }
-      } catch (err) {
-        console.warn("[3D Sync Check Error on DELETE]", err);
-      }
     }
 
     return apiSuccess({ success: true });

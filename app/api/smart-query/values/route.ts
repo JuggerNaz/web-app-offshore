@@ -29,6 +29,10 @@ export const GET = withTenant(async (request, { companyId }) => {
     const isJobpackNameField = ["jobpack_name", "jobpack_name_alt", "name"].includes(field) && (category === "jobpacks" || category === "sow" || category === "inspection_records" || category === "anomalies" || category === "findings" || category === "incomplete");
     const isInspectionTypeField = ["inspection_type_code", "disc_type"].includes(field);
 
+    if (field === "is_deleted" || fieldDef.dataType === "boolean") {
+      return NextResponse.json({ values: ["true", "false"] });
+    }
+
     if (isStructureNameField) {
       // Fetch across platform, structure, pipeline, and view master tables to show all available structures
       const [{ data: platData }, { data: structData }, { data: pipeData }, { data: viewData }, { data: structViewData }] = await Promise.all([

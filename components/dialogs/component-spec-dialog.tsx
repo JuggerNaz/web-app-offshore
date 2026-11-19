@@ -1250,15 +1250,6 @@ export function ComponentSpecDialog({
         mutate(allComponentsKey);
       }
 
-      if (structureId && pageType === "platform") {
-        try {
-          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
-          mutate(`/api/platform/webapp-3d/${structureId}`);
-        } catch (err) {
-          console.error("Failed to resync 3D cache:", err);
-        }
-      }
-
       toast("Component created successfully");
       onOpenChange(false);
 
@@ -1402,15 +1393,6 @@ export function ComponentSpecDialog({
       }
       if (allComponentsKey) {
         mutate(allComponentsKey);
-      }
-
-      if (structureId && pageType === "platform") {
-        try {
-          await fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" });
-          mutate(`/api/platform/webapp-3d/${structureId}`);
-        } catch (err) {
-          console.error("Failed to resync 3D cache:", err);
-        }
       }
 
       toast("Component updated successfully", { position: "bottom-right" });
@@ -3872,15 +3854,6 @@ export function ComponentSpecDialog({
                     setViewAssocId(newId);
                     if (listKey) mutate(listKey);
                     if (allComponentsKey) mutate(allComponentsKey);
-                    if (structureId && pageType === "platform") {
-                      fetch(`/api/platform/webapp-3d/${structureId}?resync=true`, { method: "POST" })
-                        .then(() => {
-                          mutate(`/api/platform/webapp-3d/${structureId}`);
-                        })
-                        .catch((err) => {
-                          console.error("Failed to resync 3D cache:", err);
-                        });
-                    }
                     toast.success(newId ? "Association saved successfully" : "Association cleared");
                   } catch (err) {
                     console.error("Failed to save association:", err);
