@@ -611,9 +611,9 @@ export const mapInspectionDataForDocx = async (
         'rov-conductor-report': ['RCOND', 'RCON'],
         'rov-rcond-report': ['RCOND', 'RCON'],
         'rov-rcond-sketch-report': ['RCOND', 'RCON'],
-        'szci-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
-        'rov-szci-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
-        'rov-splash-zone-report': ['RSZCI', 'SZCI', 'SZONE', 'SPLASH'],
+        'szci-report': ['RSZCI'],
+        'rov-szci-report': ['RSZCI'],
+        'rov-splash-zone-report': ['RSZCI'],
         'rov-selected-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
         'selected-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
         'rov-node-report': ['RSWNI', 'SWNI', 'NODE', 'CVI', 'RCVI'],
@@ -1190,8 +1190,8 @@ export const mapInspectionDataForDocx = async (
             } else if (templateId === 'szci-report' || templateId === 'rov-szci-report' || templateId === 'rov-splash-zone-report' || templateId === 'splash-zone-report') {
                 
                 pdfBlob = await generateROVSZCIReport(records.filter(r => {
-                    const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase();
-                    return ["RSZCI", "SZCI", "SZONE", "SPLASH", "DSZCI"].includes(code);
+                    const code = (r.inspection_type?.code || r.inspection_type_code || "").toUpperCase().trim();
+                    return code === "RSZCI" && !(r.dive_job_id && !r.rov_job_id);
                 }), sharedHeaderData, companySettings || {}, sharedConfig as any);
             } else if (templateId === 'rov-anode-report' || templateId === 'anode-report' || templateId === 'rgani-report') {
                 

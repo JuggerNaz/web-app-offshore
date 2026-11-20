@@ -35,6 +35,18 @@ export const generateROVSZCIReport = async (
 ): Promise<Blob | void | null> => {
     try {
         records = normalizeReportRecords(records);
+        // Strictly restrict ROV Splash Zone report to RSZCI inspection type and ROV records only
+        if (!config.isBlankReport && Array.isArray(records)) {
+            records = records.filter((r: any) => {
+                const hasDiveOnly =
+                    (r.dive_job_id !== null && r.dive_job_id !== undefined && String(r.dive_job_id).trim() !== "") &&
+                    (r.rov_job_id === null || r.rov_job_id === undefined || String(r.rov_job_id).trim() === "");
+                if (hasDiveOnly) return false;
+                const code = String(r.inspection_type?.code || r.inspection_type_code || "").toUpperCase().trim();
+                if (code && code !== "RSZCI") return false;
+                return true;
+            });
+        }
         if (!config.isBlankReport && (!records || records.length === 0)) {
             return null;
         }

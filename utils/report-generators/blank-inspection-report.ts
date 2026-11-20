@@ -742,8 +742,8 @@ export const generateBlankInspectionReport = async (
                 return await generateInspectionReport(0, companySettings, generatorConfig as any);
             }
             case "diving-utclb-report": {
-                const { generateDivingUTWTKReport } = await import("./diving-utwtk-report");
-                return await generateDivingUTWTKReport(blankRecords, headerData, companySettings, generatorConfig as any);
+                const { generateDivingUTCLBReport } = await import("./diving-utclb-report");
+                return await generateDivingUTCLBReport(blankRecords, headerData, companySettings, generatorConfig as any);
             }
             case "rov-seabed-report":
             case "seabed-survey-debris":

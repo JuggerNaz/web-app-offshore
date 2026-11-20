@@ -4174,7 +4174,9 @@ export function ComponentSpecDialog({
                           if (structureId) {
                             mutate((key: any) => typeof key === "string" && key.includes(`/api/structure-components/${structureId}`));
                           }
-                          onSuccess?.();
+                          if (updatedComponent) {
+                            onSuccess?.(updatedComponent);
+                          }
                         }}
                       />
                     </div>

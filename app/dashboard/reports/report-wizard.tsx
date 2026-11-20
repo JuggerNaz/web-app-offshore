@@ -4650,11 +4650,11 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
             const jobPack = await fetchJobPackData();
             if (!structure || !jobPack) return null;
 
-            // Fetch type IDs for Splash Zone inspection types to query efficiently in SQL
+            // Fetch type IDs strictly for ROV Splash Zone (RSZCI)
             const { data: typeRows } = await supabase
                 .from('inspection_type')
                 .select('id, code')
-                .or('code.ilike.%SZ%,code.ilike.%SPLASH%,code.ilike.%SZONE%');
+                .ilike('code', 'RSZCI');
 
             const szTypeIds = typeRows ? typeRows.map(t => t.id) : [];
 
@@ -4693,8 +4693,7 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                 return null;
             }
 
-            // FILTER MANUALLY
-            const szCodes = ['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI'];
+            // FILTER MANUALLY — strictly RSZCI (ROV) records only
             const szciRecords = records?.filter(r => {
                 const sowMatches = !selections.sowReportNo || 
                     selections.sowReportNo === "all" ||
@@ -4702,9 +4701,10 @@ export function ReportWizard({ onClose }: ReportWizardProps) {
                     String(r.sow_report_no || '').toLowerCase().includes(selections.sowReportNo.toLowerCase()) ||
                     String(selections.sowReportNo).toLowerCase().includes(String(r.sow_report_no || '').toLowerCase());
                 const jobPackMatches = !selections.jobPackId || String(r.jobpack_id) === String(selections.jobPackId);
-                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase();
-                const isSZ = szCodes.includes(code);
-                return sowMatches && jobPackMatches && isSZ;
+                const code = String(r.inspection_type?.code || r.inspection_type_code || '').toUpperCase().trim();
+                const isRszci = code === 'RSZCI';
+                const notDiving = !(r.dive_job_id && !r.rov_job_id);
+                return sowMatches && jobPackMatches && isRszci && notDiving;
             });
 
             if (!szciRecords || szciRecords.length === 0) {

@@ -198,10 +198,11 @@ export function getMatchingRecordsForTemplate(templateOrId: any, records: any[])
         case 'DMGI':
             return records.filter(r => hasCode(r, ['RMGI', 'MGROW', 'DMGI']));
         case 'RSZCI':
+            return records.filter(r => hasCode(r, ['RSZCI']) && !(r.dive_job_id && !r.rov_job_id));
         case 'SZCI':
         case 'DSZCI':
         case 'SZONE':
-            return records.filter(r => hasCode(r, ['RSZCI', 'SZCI', 'DSZCI', 'SZONE']));
+            return records.filter(r => hasCode(r, ['SZCI', 'DSZCI', 'SZONE']));
         case 'RSCOR':
         case 'SCOUR':
         case 'DSCOR':
@@ -556,7 +557,7 @@ export function ReportWizardDialog({
             { id: 'rwdi', code: 'RWDI', name: 'Water Depth Measurement Survey Report (ROV)', description: 'Portrait ROV Water Depth Measurement Survey report.', mode: 'ROV', category: 'Inspection', handler: handlers.generateROVRWDIReport, available: hasRecords(['RWDI']) },
             { id: 'mgi_rov', code: 'RMGI-GRAPH', name: 'Marine Growth Graph Report (ROV)', description: 'Marine Growth Graph Report (ROV) RMGI with Graph', mode: 'ROV', category: 'Inspection', handler: handlers.generateMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
             { id: 'rov_rmgi_report', code: 'RMGI', name: 'Marine Growth Inspection Report (ROV)', description: 'Marine Growth Inspection Report (ROV) RMGI Standard Table', mode: 'ROV', category: 'Inspection', handler: handlers.generateRMGIReport, available: hasRecords(['RMGI', 'MGROW']) },
-            { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI']) },
+            { id: 'szci_rov', code: 'RSZCI', name: 'Splash Zone Inspection Report (ROV)', description: 'Splash zone wall thickness and CP inspection summary with clock positions', mode: 'ROV', category: 'Inspection', handler: handlers.generateSZCIReport, available: hasRecords(['RSZCI']) },
             { id: 'rscor_survey_rov', code: 'RSCOR', name: 'Scour Survey Report (ROV)', description: 'Standard portrait tabular ROV Scour Survey report (RSCOUR/RSCOR) with No., QID, Elevation, Dive No., Tape No., and findings.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORSurveyReport || handlers.generateRSCORReport, available: hasScourRecords },
             { id: 'rscor_rov', code: 'RSCOR-SKETCH', name: 'Scour Survey Sketch Report (ROV)', description: 'Detailed landscape graphical ROV scour survey of horizontal members with graphical mudline profiles.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORReport, available: hasScourRecords },
             { id: 'rscor_v2_rov', code: 'RSCOR-V2', name: 'Scour Survey Sketch Report v2 (ROV)', description: 'Detailed landscape ROV scour survey sketch report v2 with side-by-side graphical layout.', mode: 'ROV', category: 'Inspection', handler: handlers.generateRSCORV2Report, available: hasScourRecords },
@@ -594,6 +595,7 @@ export function ReportWizardDialog({
             { id: 'plco', code: 'PL_CO', name: 'Coating Damage Inspection (Diving)', description: 'Landscape Diving Coating Damage Survey report.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingPLCOReport, available: hasRecords(['PL_CO']) },
             { id: 'cp_div', code: 'CPSURV', name: 'Cathodic Protection Survey Report (Diving)', description: 'Landscape CP survey report with pre/post dive calibration, potential readings, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingCPSURVReport || handlers.generateCPReport, available: currentRecords.some(isDivingCPSURVRecord) },
             { id: 'cpclb', code: 'CPCLB', name: 'CP Calibration Report (Diving)', description: 'Pre-dive and post-dive calibration records for CP probes.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateCPCLBReport, available: hasRecords(['CPCLB']) },
+            { id: 'utclb', code: 'UTCLB', name: 'UT Calibration Report (Diving)', description: 'Landscape ultrasonic thickness equipment and step-block calibration records.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateUTCLBReport, available: hasRecords(['UTCLB']) },
             { id: 'fmd_div', code: 'DFMD', name: 'Flooded Member Inspection Report (Diving)', description: 'Flooded Member Inspection report (Diving) with QID, Elevation, Dive No., Flooded, Grouted, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingFMDReport || handlers.generateFMDReport, available: hasRecords(['DFMD', 'FLOOD', 'FMD']) },
             { id: 'measu_div', code: 'MEASU', name: 'Measurement Dimensional Survey Report (Diving)', description: 'Measurement Dimensional Survey report (Diving) with QID, Elevation, Dive No., Type, Unit, Result, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingMEASUReport || handlers.generateFullInspectionReport, available: hasRecords(['MEASU', 'DMSR', 'MEASUREMENT', 'DMEAS']) },
             { id: 'rrisi_div', code: 'DRRISI', name: 'Riser Inspection Report with Sketch (Diving)', description: 'Riser Survey report (Diving) with Sketch — QID, Elevation, Dive No., CP, UT, and findings.', mode: 'DIVING', category: 'Inspection', handler: handlers.generateDivingRRISIReport || handlers.generateFullInspectionReport, available: currentRecords.some(r => {

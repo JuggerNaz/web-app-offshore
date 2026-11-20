@@ -523,12 +523,11 @@ export function useWorkspaceReports(
     };
 
     const generateSZCIReportBlob = async (printFriendly?: boolean, showSignatures?: boolean): Promise<Blob | void> => {
-        const szCodes = ['RSZCI', 'SZCI', 'SZONE', 'SPLASH', 'DSZCI'];
         const sowReportNo = headerData.sowReportNo;
         const szciRecords = currentRecords.filter(r => {
-            const code = String(r.inspection_type_code || r.inspection_type?.code || '').toUpperCase();
-            const isSZ = szCodes.includes(code);
-            if (!isSZ) return false;
+            const code = String(r.inspection_type_code || r.inspection_type?.code || '').toUpperCase().trim();
+            if (code !== 'RSZCI') return false;
+            if (r.dive_job_id && !r.rov_job_id) return false;
             if (!sowReportNo || sowReportNo === "N/A" || sowReportNo === "all") return true;
             const rSow = String(r.sow_report_no || '').toLowerCase();
             return !r.sow_report_no || rSow.includes(sowReportNo.toLowerCase()) || sowReportNo.toLowerCase().includes(rSow);

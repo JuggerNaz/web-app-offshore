@@ -28,8 +28,9 @@ interface ReportConfig {
 /**
  * Item Maintenance Inspection Report (Diving) — Portrait Mode
  * Specific for Inspection Type ITMAIN
- * 
- * Columns: No. | QID | Elevation (m) | Dive No. | Angle (°) | Dim 1 (m) | Dim 2 (m) | Dim 3 (m) | Findings
+ *
+ * Row 1: No. (rowSpan 2) | QID (rowSpan 2) | Elevation (m) | Dive No. | Angle (°) | Dim 1 (m) | Dim 2 (m) | Dim 3 (m) | Comments
+ * Row 2: [merged No. & QID] | Findings : <findings text> (colSpan 7)
  */
 export const generateDivingITMAINReport = async (
     records: any[],
@@ -108,7 +109,7 @@ export const generateDivingITMAINReport = async (
             }, config.printFriendly, margin);
         };
 
-        // ── Build Table Rows ───────────────────────────────────────────────────
+        // ── Build Table Rows (2 rows per record) ───────────────────────────────
         const sorted = [...targetRecords].sort((a, b) => {
             const elA = parseFloat(a.elevation ?? a.inspection_data?.elevation ?? 0) || 0;
             const elB = parseFloat(b.elevation ?? b.inspection_data?.elevation ?? 0) || 0;
@@ -117,14 +118,14 @@ export const generateDivingITMAINReport = async (
 
         const isPF = config?.printFriendly;
 
-        const buildRow = (r: any, idx: number): string[] => {
+        const buildRows = (r: any, idx: number): any[][] => {
             const d = r.inspection_data || {};
             const comp = r.structure_components || r.component || {};
             const qid = comp.q_id || comp.qid || "N/A";
-            
+
             // Elevation formatting with unit
             const rawElev = r.elevation ?? d.elevation;
-            const elevation = (rawElev !== undefined && rawElev !== null && String(rawElev).trim() !== "") 
+            const elevation = (rawElev !== undefined && rawElev !== null && String(rawElev).trim() !== "")
                 ? (String(rawElev).toLowerCase().includes("m") ? String(rawElev) : `${rawElev} m`)
                 : "—";
 
@@ -155,13 +156,15 @@ export const generateDivingITMAINReport = async (
                 ? (String(rawDim3).toLowerCase().includes("m") || String(rawDim3).toLowerCase().includes("mm") ? String(rawDim3) : `${rawDim3} m`)
                 : "—";
 
-            // Findings column & Postfix handling
-            const findingsParts: string[] = [];
-
-            // 1) Main Remarks / Findings / Comments text
-            const mainFinding = 
+            // Comments (kept separate from Findings)
+            const commentsDisplay =
                 (typeof d.comments === 'string' && d.comments.trim()) ? d.comments.trim() :
                 (typeof r.comments === 'string' && r.comments.trim()) ? r.comments.trim() :
+                "—";
+
+            // Findings (from r.description / findings / remarks / notes — never overwritten by comments)
+            const mainFinding =
+                (typeof r.description === 'string' && r.description.trim()) ? r.description.trim() :
                 (typeof d.findings === 'string' && d.findings.trim()) ? d.findings.trim() :
                 (typeof d.finding === 'string' && d.finding.trim()) ? d.finding.trim() :
                 (typeof d.remarks === 'string' && d.remarks.trim()) ? d.remarks.trim() :
@@ -170,19 +173,33 @@ export const generateDivingITMAINReport = async (
                 (typeof r.notes === 'string' && r.notes.trim()) ? r.notes.trim() :
                 "";
 
-            const findingsDisplay = formatReportFindingText(r, mainFinding || r.description);
+            const findingsDisplay = formatReportFindingText(r, mainFinding) || "—";
 
-            return [
-                String(idx + 1),
-                qid,
-                String(elevation),
-                String(diveNo),
-                String(angleDisplay),
-                String(dim1Display),
-                String(dim2Display),
-                String(dim3Display),
-                findingsDisplay
+            const topCenterStyle = { valign: "top" as const, halign: "center" as const };
+
+            // Row 1: No. & QID merged across 2 rows, measurements & Comments aligned top-center
+            const row1 = [
+                { content: String(idx + 1), rowSpan: 2, styles: topCenterStyle },
+                { content: String(qid), rowSpan: 2, styles: topCenterStyle },
+                { content: String(elevation), styles: topCenterStyle },
+                { content: String(diveNo), styles: topCenterStyle },
+                { content: String(angleDisplay), styles: topCenterStyle },
+                { content: String(dim1Display), styles: topCenterStyle },
+                { content: String(dim2Display), styles: topCenterStyle },
+                { content: String(dim3Display), styles: topCenterStyle },
+                { content: String(commentsDisplay), styles: topCenterStyle },
             ];
+
+            // Row 2: Findings under 3rd column spanning across remaining 7 columns
+            const row2 = [
+                {
+                    content: `Findings : ${findingsDisplay}`,
+                    colSpan: 7,
+                    styles: { valign: "top" as const, halign: "left" as const },
+                },
+            ];
+
+            return [row1, row2];
         };
 
         // ── Draw Document Body ────────────────────────────────────────────────
@@ -193,46 +210,55 @@ export const generateDivingITMAINReport = async (
             startY,
             margin: { left: margin, right: margin, top: margin + HEADER_H + 10 },
             head: [[
-                { content: "No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "QID", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Elevation\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dive No.", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Angle\n(°)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dim 1\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dim 2\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Dim 3\n(m)", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
-                { content: "Findings", styles: {halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border} },
+                { content: "No.", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "QID", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Elevation\n(m)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Dive No.", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Angle\n(°)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Dim 1\n(m)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Dim 2\n(m)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Dim 3\n(m)", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
+                { content: "Comments", styles: { halign: "center", valign: "middle", lineWidth: 0.1, lineColor: colors.border } },
             ]],
-            body: sorted.map(buildRow),
+            body: sorted.flatMap(buildRows),
             theme: "grid",
-            headStyles: {fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
+            headStyles: {
+                fillColor: config?.printFriendly ? [255, 255, 255] : colors.navy,
                 textColor: config?.printFriendly ? colors.navy : [255, 255, 255],
                 fontSize: 7.5,
                 cellPadding: { top: 2, bottom: 2, left: 1, right: 1 },
                 fontStyle: "bold",
                 halign: "center",
                 valign: "middle",
-                minCellHeight: 10, lineWidth: 0.1, lineColor: config?.printFriendly ? colors.border : [255, 255, 255],},
-            styles: {fontSize: 7,
+                minCellHeight: 10,
+                lineWidth: 0.1,
+                lineColor: config?.printFriendly ? colors.border : [255, 255, 255],
+            },
+            styles: {
+                fontSize: 7,
                 cellPadding: 2,
                 textColor: colors.text,
                 lineColor: colors.border,
-                overflow: "linebreak", lineWidth: 0.1,},
+                valign: "top",
+                halign: "center",
+                overflow: "linebreak",
+                lineWidth: 0.1,
+            },
             columnStyles: {
-                0: { cellWidth: 10, halign: "center" },  // No.
-                1: { cellWidth: 20 },                     // QID
-                2: { cellWidth: 18, halign: "center" },   // Elevation
-                3: { cellWidth: 16, halign: "center" },   // Dive No.
-                4: { cellWidth: 16, halign: "center" },   // Angle
-                5: { cellWidth: 16, halign: "center" },   // Dim 1
-                6: { cellWidth: 16, halign: "center" },   // Dim 2
-                7: { cellWidth: 16, halign: "center" },   // Dim 3
-                8: { cellWidth: "auto" },                 // Findings
+                0: { cellWidth: 10, halign: "center", valign: "top" },     // No.
+                1: { cellWidth: 20, halign: "center", valign: "top" },     // QID
+                2: { cellWidth: 18, halign: "center", valign: "top" },     // Elevation
+                3: { cellWidth: 16, halign: "center", valign: "top" },     // Dive No.
+                4: { cellWidth: 16, halign: "center", valign: "top" },     // Angle
+                5: { cellWidth: 16, halign: "center", valign: "top" },     // Dim 1
+                6: { cellWidth: 16, halign: "center", valign: "top" },     // Dim 2
+                7: { cellWidth: 16, halign: "center", valign: "top" },     // Dim 3
+                8: { cellWidth: "auto", halign: "center", valign: "top" }, // Comments
             },
             didParseCell: (data) => {
                 if (data.section !== "body") return;
-                const r = sorted[data.row.index];
-                applyRecordCellStyling(data.cell, r, isPF);
+                const r = sorted[Math.floor(data.row.index / 2)];
+                if (r) applyRecordCellStyling(data.cell, r, isPF);
             },
             didDrawPage: (data) => {
                 if (data.pageNumber > 1) drawPageHeader(doc);
